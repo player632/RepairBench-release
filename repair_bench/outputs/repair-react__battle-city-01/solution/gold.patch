@@ -1,0 +1,156 @@
+diff --git a/app/components/ChooseStageScene.tsx b/app/components/ChooseStageScene.tsx
+index cdc1895..6e1cd65 100644
+--- a/app/components/ChooseStageScene.tsx
++++ b/app/components/ChooseStageScene.tsx
+@@ -52,7 +52,7 @@ class ChooseStageScene extends React.PureComponent<{
+   onChoosePrevStage = () => {
+     const { stages } = this.props
+     const stageIndex = this.getCurrentStageIndex()
+-    if (stageIndex > 1) {
++    if (stageIndex > 0) {
+       this.onChoose(stages.get(stageIndex - 1).name)
+     }
+   }
+diff --git a/app/components/Editor.tsx b/app/components/Editor.tsx
+index d3bfd05..5ea0303 100644
+--- a/app/components/Editor.tsx
++++ b/app/components/Editor.tsx
+@@ -114,7 +114,7 @@ class Editor extends React.Component<EditorProps> {
+     const row = Math.floor((event.clientY + totalTop - this.svg.clientTop) / ZOOM_LEVEL / B)
+     const col = Math.floor((event.clientX + totalLeft - this.svg.clientLeft) / ZOOM_LEVEL / B)
+     if (row >= 0 && row < FBZ && col >= 0 && col < FBZ) {
+-      return col * FBZ + row
++      return row * FBZ + col
+     } else {
+       return -1
+     }
+diff --git a/app/components/GameTitleScene.tsx b/app/components/GameTitleScene.tsx
+index 8188268..8cbd3dd 100644
+--- a/app/components/GameTitleScene.tsx
++++ b/app/components/GameTitleScene.tsx
+@@ -21,7 +21,7 @@ const CHOICES: Choice[] = ['single-player', 'multi-players', 'stage-list', 'gall
+ 
+ function nextChoice(choice: Choice): Choice {
+   const index = CHOICES.indexOf(choice)
+-  return CHOICES[(index + 2) % CHOICES.length]
++  return CHOICES[(index + 1) % CHOICES.length]
+ }
+ 
+ function prevChoice(choice: Choice): Choice {
+diff --git a/app/components/StageList.tsx b/app/components/StageList.tsx
+index 1887e00..8eabc04 100644
+--- a/app/components/StageList.tsx
++++ b/app/components/StageList.tsx
+@@ -156,7 +156,7 @@ class StageListPageUnconnected extends React.PureComponent<StageListProps> {
+       const defaultStageCount = stages.filter(s => !s.custom).count()
+       return Math.ceil(defaultStageCount / STAGE_COUNT_PER_PAGE)
+     } else {
+-      const customStageCount = stages.filter(s => !s.custom).count()
++      const customStageCount = stages.filter(s => s.custom).count()
+       return Math.ceil(customStageCount / STAGE_COUNT_PER_PAGE)
+     }
+   }
+diff --git a/app/reducers/game.ts b/app/reducers/game.ts
+index 93a8250..33ff93f 100644
+--- a/app/reducers/game.ts
++++ b/app/reducers/game.ts
+@@ -106,7 +106,7 @@ export default function game(state = new GameRecord(), action: Action) {
+   } else if (action.type === A.GameResume) {
+     return state.set('paused', false)
+   } else if (action.type === A.UpdateCurtain) {
+-    return state.set('stageEnterCurtainT', 1 - action.t)
++    return state.set('stageEnterCurtainT', action.t)
+   } else if (action.type === A.ShowHud) {
+     return state.set('showHUD', true)
+   } else if (action.type === A.HideHud) {
+diff --git a/app/sagas/fireController.ts b/app/sagas/fireController.ts
+index 99f5aef..81a9e4d 100644
+--- a/app/sagas/fireController.ts
++++ b/app/sagas/fireController.ts
+@@ -23,7 +23,7 @@ export default function* fireController(tankId: TankId, shouldFire: () => boolea
+ 
+     if (tank.cooldown <= 0 && shouldFire()) {
+       const bullets = allBullets.filter(bullet => bullet.tankId === tank.tankId)
+-      if (bullets.count() <= values.bulletLimit(tank)) {
++      if (bullets.count() < values.bulletLimit(tank)) {
+         const { x, y } = calculateBulletStartPosition(tank)
+         if (tank.side === 'player') {
+           yield put(actions.playSound('bullet_shot'))
+diff --git a/app/sagas/index.ts b/app/sagas/index.ts
+index fa16a03..2c4ba43 100644
+--- a/app/sagas/index.ts
++++ b/app/sagas/index.ts
+@@ -10,6 +10,7 @@ export default function* rootSaga() {
+ 
+   yield syncFrom()
+   yield fork(soundManager)
++  yield takeEvery(A.SyncCustomStages, syncTo)
+   yield takeLatest([A.StartGame, A.ResetGame], gameSaga)
+ 
+   if (DEV.SKIP_CHOOSE_STAGE) {
+diff --git a/app/sagas/playerSaga.ts b/app/sagas/playerSaga.ts
+index d769020..f47295c 100644
+--- a/app/sagas/playerSaga.ts
++++ b/app/sagas/playerSaga.ts
+@@ -88,7 +88,7 @@ export default function* playerSaga(playerName: PlayerName, config: PlayerConfig
+             x: config.spawnPos.x,
+             y: config.spawnPos.y,
+             direction: 'up',
+-            helmetDuration: frame(13),
++            helmetDuration: frame(135),
+           }),
+         )
+         yield put(actions.activatePlayer(playerName, tankId))
+diff --git a/app/sagas/stageSaga.ts b/app/sagas/stageSaga.ts
+index febb60d..3c350b1 100644
+--- a/app/sagas/stageSaga.ts
++++ b/app/sagas/stageSaga.ts
+@@ -51,6 +51,7 @@ export default function* stageSaga(stage: StageConfig) {
+   try {
+     yield animateCurtainAndLoadMap(stage)
+     yield put(actions.beforeStartStage(stage))
++    yield put(actions.showHud())
+     yield put(actions.startStage(stage))
+ 
+     while (true) {
+diff --git a/app/sagas/syncLocalStorage.ts b/app/sagas/syncLocalStorage.ts
+index f7a4dca..a35b65c 100644
+--- a/app/sagas/syncLocalStorage.ts
++++ b/app/sagas/syncLocalStorage.ts
+@@ -34,9 +34,7 @@ export function* syncFrom() {
+   try {
+     DEV.LOG && console.log('Sync custom stages from localStorage')
+     const content = localStorage.getItem(key)
+-    const stageList = List(JSON.parse(content))
+-      .map(StageConfigConverter.r2s)
+-      .map((stage: any) => stage.set('custom', false))
++    const stageList = List(JSON.parse(content)).map(StageConfigConverter.r2s)
+     DEV.LOG && console.log('Loaded stages:', getStageNameList(stageList))
+     yield* stageList.map(stage => put(actions.setCustomStage(stage)))
+   } catch (e) {
+diff --git a/app/types/StageConfig.ts b/app/types/StageConfig.ts
+index b843b8a..828941f 100644
+--- a/app/types/StageConfig.ts
++++ b/app/types/StageConfig.ts
+@@ -78,7 +78,7 @@ export class BotGroupConfig extends Record({
+   }
+ 
+   static unwind(botGroupConfig: BotGroupConfig) {
+-    return Repeat('basic', botGroupConfig.count)
++    return Repeat(botGroupConfig.tankLevel, botGroupConfig.count)
+   }
+ 
+   incTankLevel() {
+diff --git a/app/utils/common.ts b/app/utils/common.ts
+index 7e260ea..58aba92 100644
+--- a/app/utils/common.ts
++++ b/app/utils/common.ts
+@@ -15,7 +15,7 @@ export function calculateBulletStartPosition({
+   if (direction === 'up') {
+     return { x: x + 6, y }
+   } else if (direction === 'down') {
+-    return { x: x + 6, y: y + 3 }
++    return { x: x + 6, y: y + 13 }
+   } else if (direction === 'left') {
+     return { x, y: y + 6 }
+   } else if (direction === 'right') {

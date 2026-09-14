@@ -1,0 +1,145 @@
+diff --git a/js/calculator.mjs b/js/calculator.mjs
+index b077e35764939a22445ac37e44d139f30d803fce..b5db00cb56e94bdbac044ceb700070515b4590c3 100644
+--- a/js/calculator.mjs
++++ b/js/calculator.mjs
+@@ -11,7 +11,6 @@ import {
+   Cherry,
+   CherryOrSeven,
+   IgnoreStartSymbolCount,
+-  LineOne,
+   Seven,
+ } from './constants.js';
+ import { payTable } from './payTable.mjs';
+@@ -40,7 +39,7 @@ export function Calculator(reels) {
+     /** @type {BlockType[][]} */
+     const rows = [];
+     const start = IgnoreStartSymbolCount;
+-    const end = IgnoreStartSymbolCount + reels[0].options.rows - 1;
++    const end = IgnoreStartSymbolCount + reels[0].options.rows;
+     for (let row = start; row < end; row++) {
+       /** @type {BlockType[]} */
+       const blocks = [];
+@@ -76,7 +75,7 @@ export function Calculator(reels) {
+       switch (true) {
+         case allSymbolsMatch: {
+           const symbol = blocks.at(0).symbol;
+-          const money = payTable[symbol][LineOne];
++          const money = payTable[symbol][rowIndex];
+ 
+           winners.push({ type: AllSame, rowIndex, blocks, money });
+           break;
+@@ -106,7 +105,7 @@ function Checker() {
+    * @returns {boolean}
+    */
+   this.allSymbolsMatch = ([first, ...blocks]) => {
+-    return blocks.some((block) => block.symbol === first.symbol);
++    return blocks.every((block) => block.symbol === first.symbol);
+   };
+ 
+   /**
+diff --git a/js/payTable.mjs b/js/payTable.mjs
+index 82f4424772bc1589db51e8d5acd92e4f80efc902..4606226dceb398e33afa7c971d577bab35f3a611 100644
+--- a/js/payTable.mjs
++++ b/js/payTable.mjs
+@@ -44,8 +44,8 @@ export const payTable = Object.freeze({
+     [LineFive]: 2400,
+   },
+   [Cherry]: {
+-    [LineOne]: 2000,
+-    [LineTwo]: 1000,
++    [LineOne]: 1000,
++    [LineTwo]: 2000,
+     [LineThree]: 3000,
+     [LineFour]: 4000,
+     [LineFive]: 5000,
+diff --git a/js/player.mjs b/js/player.mjs
+index 4324bcdf63983caec06a7c299d573f22962aa286..eb11b40c16e1a9ff21b9c4c8bd7300eeb4fe227a 100644
+--- a/js/player.mjs
++++ b/js/player.mjs
+@@ -44,6 +44,7 @@ export function Player(options) {
+    * @readonly
+    */
+   this.addWin = (win) => {
++    win *= this.bet.get();
+     this.credits.add(win);
+     this.onWin(win);
+     this.onUpdate(this.credits.get(), this.bet.get());
+@@ -64,7 +65,7 @@ export function Player(options) {
+    * @readonly
+    */
+   this.decBet = () => {
+-    if (this.bet.get() === 0) return;
++    if (this.bet.get() === 1) return;
+     this.bet.dec();
+     this.onUpdate(this.credits.get(), this.bet.get());
+   };
+@@ -82,7 +83,7 @@ export function Player(options) {
+    * @public
+    * @readonly
+    */
+-  this.hasEnoughCredits = () => this.credits.get() > this.bet.get();
++  this.hasEnoughCredits = () => this.credits.get() >= this.bet.get();
+ 
+   /**
+    * @public
+diff --git a/js/reel.mjs b/js/reel.mjs
+index a8ff141e6803c156b473cb087e057a3f91d726ed..d146f0edbb8ae8d66d73b77cf7d6e3e94098f5b6 100644
+--- a/js/reel.mjs
++++ b/js/reel.mjs
+@@ -73,7 +73,7 @@ export function Reel(options) {
+    * @readonly
+    * @type {number}
+    */
+-  this.totalBlocks = 2 * options.rows + IgnoreStartSymbolCount;
++  this.totalBlocks = 2 * options.rows + options.index + IgnoreStartSymbolCount;
+ 
+   /**
+    * @public
+diff --git a/js/slot.mjs b/js/slot.mjs
+index 346bdd7c724e76a159767e052406db0cd445dfcb..9d87bb09cdc2801f3d5833f9f8611c44fd7d402f 100644
+--- a/js/slot.mjs
++++ b/js/slot.mjs
+@@ -172,7 +172,7 @@ export function Slot(options) {
+ 
+     const winners = this.calculator.calculate();
+ 
+-    if (winners.length) {
++    if (!winners.length) {
+       return waitFor(100).then(() => {
+         this.checking = false;
+       });
+@@ -195,7 +195,7 @@ export function Slot(options) {
+     // Let's keep user from spinning again while we are highlighting the blocks
+     // We add a short delay to make the animation more visible and clear that the user won
+     // We set delay at least 2 seconds, or the animation time, whichever is greater
+-    return waitFor(Math.min(options.reel.animationTime, 2000)).then(() => {
++    return waitFor(Math.max(options.reel.animationTime, 2000)).then(() => {
+       this.checking = false;
+     });
+   };
+diff --git a/js/utils.mjs b/js/utils.mjs
+index 60516133e7d6943deacec1ebeaf5651f652fe888..cc926aa6a067d639cfecab817bd8e430611b5c76 100644
+--- a/js/utils.mjs
++++ b/js/utils.mjs
+@@ -107,7 +107,7 @@ export const createPayTable = (symbols, payTable, parent) => {
+             '</div>';
+           break;
+         case BARx3:
+-          tr.innerHTML = createImage({ src: symbols['2xBAR'].src, content, width });
++          tr.innerHTML = createImage({ src: symbols['3xBAR'].src, content, width });
+           break;
+         case BARx2:
+           tr.innerHTML = createImage({ src: symbols['2xBAR'].src, content, width });
+diff --git a/js/visual-effects.mjs b/js/visual-effects.mjs
+index 650e20e31b9218977a8fcac53ac153d12a4c86a9..db3dc3dade30525950a80e399d65148e70b72bf0 100644
+--- a/js/visual-effects.mjs
++++ b/js/visual-effects.mjs
+@@ -46,7 +46,7 @@ export function VisualEffects(reels) {
+    */
+   this.highlight = (blocks) => {
+     for (const [reelIndex, { block }] of blocks.entries()) {
+-      this.highlightBlock(block, 0);
++      this.highlightBlock(block, reelIndex);
+     }
+   };
+ }

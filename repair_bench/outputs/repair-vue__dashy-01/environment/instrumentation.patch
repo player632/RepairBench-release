@@ -1,0 +1,338 @@
+diff --git a/src/components/LinkItems/Collapsable.vue b/src/components/LinkItems/Collapsable.vue
+index 44f94ae..6a4e3e8 100644
+--- a/src/components/LinkItems/Collapsable.vue
++++ b/src/components/LinkItems/Collapsable.vue
+@@ -4,6 +4,7 @@
+     { 'is-open': isExpanded, 'full-height': cutToHeight && !isMasonry },
+     `collapsable ${rowColSpanClass}`, sectionClassName
+     ]"
++    :data-testid="`section-${uniqueKey}`"
+     :style="dynamicStyle"
+   >
+     <input
+@@ -16,13 +17,13 @@
+     <div class="section-header"
+       @mouseup.right="openRightClickMenu" @contextmenu="preventNativeContextMenu"
+       @long-press="openRightClickMenu" v-longPress="500">
+-      <label :for="sectionKey" class="collapse-toggle"
++      <label :for="sectionKey" class="collapse-toggle" :data-testid="`section-toggle-${uniqueKey}`"
+         v-tooltip="toggleTooltip()" :aria-label="$t('context-menus.section.expand-collapse')">
+         <span class="arrow" aria-hidden="true"></span>
+       </label>
+       <Icon v-if="icon" :icon="icon" size="small" :url="title" class="section-icon"
+         @click="toggle" />
+-      <h3 @click="toggle">{{ title }}</h3>
++      <h3 @click="toggle" :data-testid="`section-title-${uniqueKey}`">{{ title }}</h3>
+       <OpenIcon v-if="title" @click.prevent.stop="navigateToSection"
+         v-tooltip="openTooltip()" class="header-action" />
+       <EditModeIcon v-if="isEditMode" @click="openEditModal"
+diff --git a/src/components/LinkItems/Item.vue b/src/components/LinkItems/Item.vue
+index b8cd280..ad38275 100644
+--- a/src/components/LinkItems/Item.vue
++++ b/src/components/LinkItems/Item.vue
+@@ -12,6 +12,7 @@
+       :href="effectiveUrl"
+       :target="anchorTarget"
+       :class="`item ${makeClassList}`"
++      :data-testid="`item-${item.id}`"
+       v-tooltip="getTooltipOptions()"
+       :rel="`${item.rel || 'noopener noreferrer'}`"
+       tabindex="0"
+@@ -19,7 +20,7 @@
+       :style="customStyle"
+     >
+       <!-- Item Text -->
+-      <div :id="`tile-${item.id}`" :class="`tile-title ${!itemIcon? 'bounce no-icon': ''}`">
++      <div :id="`tile-${item.id}`" :data-testid="`tile-title-${item.id}`" :class="`tile-title ${!itemIcon? 'bounce no-icon': ''}`">
+         <span ref="titleText" class="text">{{ item.title }}</span>
+         <p class="description">{{ item.description }}</p>
+       </div>
+@@ -33,12 +34,14 @@
+         :hotkey="item.hotkey" />
+       <div class="indicators-container">
+         <!-- Status indicator dot (if enabled) showing weather service is available -->
+-        <StatusIndicator
+-          v-if="enableStatusCheck"
+-          :statusSuccess="statusResponse?.successStatus"
+-          :statusText="statusResponse?.message"
+-          :statusAccessibility="appConfig.statusCheckAccessibility"
+-        />
++        <span v-if="enableStatusCheck" :data-testid="`status-indicator-${item.id}`" class="status-indicator-wrap">
++          <StatusIndicator
++            v-if="enableStatusCheck"
++            :statusSuccess="statusResponse?.successStatus"
++            :statusText="statusResponse?.message"
++            :statusAccessibility="appConfig.statusCheckAccessibility"
++          />
++        </span>
+         <!-- Status indicator dot (if enabled) showing host ping status -->
+         <StatusIndicator
+           v-if="isPingCheckEnabled"
+diff --git a/src/components/LinkItems/ItemContextMenu.vue b/src/components/LinkItems/ItemContextMenu.vue
+index 75b2651..6131328 100644
+--- a/src/components/LinkItems/ItemContextMenu.vue
++++ b/src/components/LinkItems/ItemContextMenu.vue
+@@ -1,6 +1,6 @@
+ <template>
+   <transition name="slide">
+-    <div class="context-menu" v-if="show"
++    <div class="context-menu" v-if="show" data-testid="item-context-menu"
+       :style="posX && posY ? `top:${posY}px;left:${posX}px;` : ''">
+       <!-- Open Options -->
+       <ul class="menu-section">
+@@ -23,7 +23,7 @@
+           <WorkspaceOpenIcon />
+           <span>{{ $t('context-menus.item.workspace') }}</span>
+         </li>
+-        <li @click="launch('clipboard')">
++        <li @click="launch('clipboard')" data-testid="item-context-menu-copy">
+           <ClipboardOpenIcon />
+           <span>{{ $t('context-menus.item.clipboard') }}</span>
+         </li>
+diff --git a/src/components/MinimalView/MinimalSection.vue b/src/components/MinimalView/MinimalSection.vue
+index 967efe8..530cfff 100644
+--- a/src/components/MinimalView/MinimalSection.vue
++++ b/src/components/MinimalView/MinimalSection.vue
+@@ -1,6 +1,7 @@
+ <template>
+   <div
+     :class="`minimal-section-inner ${selected ? 'selected' : ''} ${showAll ? 'show-all': ''}`"
++    :data-testid="`minimal-section-${groupId}`"
+     :style="dynamicStyle">
+     <div class="section-items" :style="gridStyle" v-if="items && (selected || showAll)">
+       <template v-for="(item) in sortedItems" :key="item.id">
+diff --git a/src/components/PageStrcture/Footer.vue b/src/components/PageStrcture/Footer.vue
+index ff3b96f..9536a44 100644
+--- a/src/components/PageStrcture/Footer.vue
++++ b/src/components/PageStrcture/Footer.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <footer v-if="visible && text" v-html="sanitizedText"></footer>
++  <footer v-if="visible && text" data-testid="footer-text" v-html="sanitizedText"></footer>
+ </template>
+ 
+ <script>
+diff --git a/src/components/PageStrcture/Nav.vue b/src/components/PageStrcture/Nav.vue
+index 677a082..4e41927 100644
+--- a/src/components/PageStrcture/Nav.vue
++++ b/src/components/PageStrcture/Nav.vue
+@@ -18,6 +18,7 @@
+           :to="link.path"
+           :title="link.title"
+           class="nav-item"
++          :data-testid="`nav-link-${index}`"
+           @click="closeIfBurger"
+         >{{ link.title }}</router-link>
+         <a
+@@ -27,6 +28,7 @@
+           :title="link.title"
+           class="nav-item"
+           rel="noopener noreferrer"
++          :data-testid="`nav-link-${index}`"
+           @click="onLinkClick(link, $event)"
+         >{{ link.title }}</a>
+       </template>
+diff --git a/src/components/PageStrcture/PageTitle.vue b/src/components/PageStrcture/PageTitle.vue
+index 366fff6..4289db7 100644
+--- a/src/components/PageStrcture/PageTitle.vue
++++ b/src/components/PageStrcture/PageTitle.vue
+@@ -4,8 +4,8 @@
+     <img v-if="logo" :src="logo" class="site-logo" />
+     <!-- Page heading and sub-heading -->
+     <div class="text">
+-      <h1>{{ title }}</h1>
+-      <span class="subtitle">{{ description }}</span>
++      <h1 data-testid="page-title">{{ title }}</h1>
++      <span class="subtitle" data-testid="page-subtitle">{{ description }}</span>
+     </div>
+     <EditModeIcon v-if="isEditMode" @click.stop.prevent="editTitle()"
+       class="edit-icon" v-tooltip="tooltip()" />
+diff --git a/src/components/Settings/ItemSizeSelector.vue b/src/components/Settings/ItemSizeSelector.vue
+index b3177cf..bc86d28 100644
+--- a/src/components/Settings/ItemSizeSelector.vue
++++ b/src/components/Settings/ItemSizeSelector.vue
+@@ -4,18 +4,21 @@
+     <div class="display-options">
+       <IconSmall
+         @click="updateIconSize('small')"
++        data-testid="icon-size-small"
+         v-tooltip="tooltip($t('settings.item-size-small'))"
+         :class="`layout-icon ${iconSize === 'small' ? 'selected' : ''}`"
+         tabindex="-2"
+       />
+       <IconMedium
+         @click="updateIconSize('medium')"
++        data-testid="icon-size-medium"
+         v-tooltip="tooltip($t('settings.item-size-medium'))"
+         :class="`layout-icon ${iconSize === 'medium' ? 'selected' : ''}`"
+         tabindex="-2"
+       />
+       <IconLarge
+         @click="updateIconSize('large')"
++        data-testid="icon-size-large"
+         v-tooltip="tooltip($t('settings.item-size-large'))"
+         :class="`layout-icon ${iconSize === 'large' ? 'selected' : ''}`"
+         tabindex="-2"
+diff --git a/src/components/Settings/LayoutSelector.vue b/src/components/Settings/LayoutSelector.vue
+index 9ce9c64..49eba55 100644
+--- a/src/components/Settings/LayoutSelector.vue
++++ b/src/components/Settings/LayoutSelector.vue
+@@ -4,24 +4,28 @@
+     <div class="display-options">
+       <IconDeafault
+         @click="updateDisplayLayout('auto')"
++        data-testid="layout-auto"
+         v-tooltip="tooltip($t('settings.layout-auto'))"
+         :class="`layout-icon ${layout === 'auto' ? 'selected' : ''}`"
+         tabindex="-2"
+       />
+       <IconHorizontal
+         @click="updateDisplayLayout('horizontal')"
++        data-testid="layout-horizontal"
+         v-tooltip="tooltip($t('settings.layout-horizontal'))"
+         :class="`layout-icon ${layout === 'horizontal' ? 'selected' : ''}`"
+         tabindex="-2"
+       />
+       <IconVertical
+         @click="updateDisplayLayout('vertical')"
++        data-testid="layout-vertical"
+         v-tooltip="tooltip($t('settings.layout-vertical'))"
+         :class="`layout-icon ${layout === 'vertical' ? 'selected' : ''}`"
+         tabindex="-2"
+       />
+       <IconMasonry
+         @click="updateDisplayLayout('masonry')"
++        data-testid="layout-masonry"
+         v-tooltip="tooltip($t('settings.layout-masonry'))"
+         :class="`layout-icon ${layout === 'masonry' ? 'selected' : ''}`"
+         tabindex="-2"
+diff --git a/src/components/Settings/OptionsPanel.vue b/src/components/Settings/OptionsPanel.vue
+index 94ead54..9949398 100644
+--- a/src/components/Settings/OptionsPanel.vue
++++ b/src/components/Settings/OptionsPanel.vue
+@@ -1,6 +1,7 @@
+ <template>
+   <div
+     class="options-panel"
++    data-testid="options-panel"
+     role="dialog"
+     aria-labelledby="options-panel-title"
+   >
+@@ -9,6 +10,7 @@
+       <button
+         type="button"
+         class="close-btn"
++        data-testid="options-close"
+         @click="close"
+         v-tooltip="$t('settings.hide')"
+         :aria-label="$t('settings.hide')"
+@@ -21,6 +23,7 @@
+       <button
+         type="button"
+         class="action-btn"
++        data-testid="edit-mode-toggle"
+         :class="{ 'is-primary': !isEditMode }"
+         @click="startEdit"
+         :disabled="isEditMode"
+@@ -32,6 +35,7 @@
+       <button
+         type="button"
+         class="action-btn"
++        data-testid="config-launcher"
+         @click="openConfig"
+         v-tooltip="$t('settings.config-launcher-tooltip')"
+       >
+@@ -59,6 +63,7 @@
+         :key="v.id"
+         :to="pathFor(v.id)"
+         class="view-btn"
++        :data-testid="`view-switcher-${v.id}`"
+         :class="{ 'is-active': currentView === v.id }"
+         v-tooltip="v.label"
+         @click="close"
+diff --git a/src/components/Settings/SearchBar.vue b/src/components/Settings/SearchBar.vue
+index 08fe45a..fb65f28 100644
+--- a/src/components/Settings/SearchBar.vue
++++ b/src/components/Settings/SearchBar.vue
+@@ -1,9 +1,10 @@
+ <template>
+-  <form @submit.prevent="searchSubmitted" :class="minimalSearch ? 'minimal' : 'normal'">
++  <form @submit.prevent="searchSubmitted" :class="minimalSearch ? 'minimal' : 'normal'" :data-testid="minimalSearch ? 'minimal-search' : 'search-form'">
+     <label for="filter-tiles">{{ $t('search.search-label') }}</label>
+     <div class="search-wrap">
+       <input
+         id="filter-tiles"
++        data-testid="search-input"
+         :value="input"
+         ref="filter"
+         role="searchbox"
+@@ -18,6 +19,7 @@
+       </div>
+       <i v-if="input.length > 0"
+         class="clear-search"
++        data-testid="search-clear"
+         :title="$t('search.clear-search-tooltip')"
+         @click="clearFilterInput">x</i>
+   </form>
+diff --git a/src/components/Settings/SettingsContainer.vue b/src/components/Settings/SettingsContainer.vue
+index cb73299..62aae89 100644
+--- a/src/components/Settings/SettingsContainer.vue
++++ b/src/components/Settings/SettingsContainer.vue
+@@ -9,6 +9,7 @@
+       <button
+         type="button"
+         class="options-trigger"
++        data-testid="options-trigger"
+         :class="{ open: panelOpen }"
+         @click.stop="togglePanel"
+         v-tooltip="$t('settings.options-tooltip')"
+diff --git a/src/components/Settings/ThemeSelector.vue b/src/components/Settings/ThemeSelector.vue
+index 54d2a30..ded20c0 100644
+--- a/src/components/Settings/ThemeSelector.vue
++++ b/src/components/Settings/ThemeSelector.vue
+@@ -6,6 +6,7 @@
+       :options="themeNames"
+       v-model="selectedTheme"
+       class="theme-dropdown"
++      data-testid="theme-select"
+       :tabindex="-2"
+       @option:selected="themeChangedInUI"
+     />
+diff --git a/src/utils/Toast.js b/src/utils/Toast.js
+index 1c2f68a..ad4df76 100644
+--- a/src/utils/Toast.js
++++ b/src/utils/Toast.js
+@@ -142,6 +142,7 @@ function ensureContainer() {
+   containerEl = document.createElement('div');
+   containerEl.id = CONTAINER_ID;
+   containerEl.setAttribute('role', 'region');
++  containerEl.setAttribute('data-testid', 'toast-container');
+   containerEl.setAttribute('aria-label', 'Notifications');
+   document.body.appendChild(containerEl);
+   return containerEl;
+diff --git a/src/views/Home.vue b/src/views/Home.vue
+index 1436df4..e13d40c 100644
+--- a/src/views/Home.vue
++++ b/src/views/Home.vue
+@@ -14,7 +14,7 @@
+       </router-link>
+     </div>
+     <!-- Main content, section for each group of items -->
+-    <div v-if="checkTheresData(sections) || isEditMode" :class="computedClass"
++    <div v-if="checkTheresData(sections) || isEditMode" :class="computedClass" data-testid="group-container"
+       ref="sectionsContainer" v-drag-sort="sectionDragConfig">
+       <template v-for="section in filteredSections" :key="makeSectionId(section)">
+         <Section
+diff --git a/src/views/Minimal.vue b/src/views/Minimal.vue
+index 8b11811..296f7a2 100644
+--- a/src/views/Minimal.vue
++++ b/src/views/Minimal.vue
+@@ -6,7 +6,7 @@
+     </div>
+     <!-- Page title and search bar -->
+     <div class="title-and-search">
+-      <router-link to="/">
++      <router-link to="/" data-testid="minimal-home-link">
+         <h1>{{ pageInfo.title }}</h1>
+       </router-link>
+       <MinimalSearch

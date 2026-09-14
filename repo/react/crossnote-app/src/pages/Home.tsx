@@ -1,0 +1,449 @@
+import {
+  Box,
+  CircularProgress,
+  CssBaseline,
+  Divider,
+  Drawer,
+  Fab,
+  Hidden,
+  IconButton,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  ListItemText,
+  Tooltip,
+} from "@material-ui/core";
+import {
+  createStyles,
+  fade,
+  makeStyles,
+  Theme,
+  useTheme,
+} from "@material-ui/core/styles";
+import clsx from "clsx";
+import {
+  Cog as SettingsIcon,
+  Menu,
+  Notebook,
+  PlusCircleOutline,
+} from "mdi-material-ui";
+import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import AddNotebookDialog from "../components/AddNotebookDialog";
+import LanguageSelectorDialog from "../components/LanguageSelectorDialog";
+import { MainPanel } from "../components/MainPanel";
+import NotebookTreeView from "../components/NotebookTreeView";
+import { CrossnoteContainer, HomeSection } from "../containers/crossnote";
+import { globalContainers } from "../containers/global";
+import { SettingsContainer } from "../containers/settings";
+import { getNoteIcon } from "../lib/note";
+
+const drawerWidth = 200;
+const notesPanelWidth = 350;
+const notesPanelMinWidth = 220;
+const notesPanelMaxWidth = 400;
+const useStyles = makeStyles((theme: Theme) =>
+  createStyles({
+    page: {
+      display: "flex",
+      width: "100%",
+      height: "100%",
+    },
+    appBar: {
+      zIndex: theme.zIndex.drawer + 1,
+      boxShadow: "none",
+    },
+    toolBar: {
+      display: "flex",
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    search: {
+      "position": "relative",
+      "borderRadius": theme.shape.borderRadius,
+      "backgroundColor": fade(theme.palette.common.white, 0.15),
+      "&:hover": {
+        backgroundColor: fade(theme.palette.common.white, 0.25),
+      },
+      "marginRight": theme.spacing(2),
+      "marginLeft": 0,
+      "width": "100%",
+      [theme.breakpoints.up("sm")]: {
+        marginLeft: theme.spacing(3),
+        width: "auto",
+      },
+    },
+    searchIcon: {
+      width: theme.spacing(7),
+      height: "100%",
+      position: "absolute",
+      pointerEvents: "none",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    inputRoot: {
+      color: "inherit",
+    },
+    inputInput: {
+      padding: theme.spacing(1, 1, 1, 7),
+      transition: theme.transitions.create("width"),
+      width: "100%",
+      [theme.breakpoints.up("md")]: {
+        width: 200,
+      },
+    },
+    displayNone: {
+      display: "none",
+    },
+    drawer: {
+      [theme.breakpoints.up("sm")]: {
+        width: drawerWidth,
+        flexShrink: 0,
+      },
+    },
+    drawerPaper: {
+      width: drawerWidth,
+      backgroundColor: theme.palette.background.default,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      overflow: "hidden",
+    },
+    notebooksSection: {
+      overflowY: "auto",
+    },
+    controllersSection: {
+      // flex: 1,
+    },
+    listItemIcon: {
+      color: theme.palette.text.secondary,
+    },
+    selectedSection: {
+      backgroundColor: "#ccc",
+    },
+    left: {
+      display: "flex",
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    menuButton: {
+      marginRight: theme.spacing(2),
+      /*
+      [theme.breakpoints.up("sm")]: {
+        display: "none"
+      }
+      */
+    },
+    notesPanel: {
+      maxWidth: "100%",
+      height: "100%",
+      borderRadius: 0,
+      backgroundColor: theme.palette.background.default,
+      [theme.breakpoints.down("xs")]: {
+        width: "100%",
+      },
+    },
+    editorPanel: {
+      position: "absolute",
+      width: "100%",
+      height: "100%",
+      borderRadius: 0,
+      backgroundColor: theme.palette.background.default,
+      [theme.breakpoints.down("md")]: {
+        // width: `calc(100% - ${notesPanelWidth}px)`,
+        // left: `${notesPanelWidth}px`
+      },
+      [theme.breakpoints.down("xs")]: {
+        display: "none",
+        top: "0",
+        left: "0",
+        width: "100%",
+        height: "100%",
+      },
+    },
+    toolBarSpace: theme.mixins.toolbar,
+    fab: {
+      position: "fixed",
+      bottom: theme.spacing(2),
+      right: theme.spacing(2),
+      zIndex: 999,
+    },
+  }),
+);
+
+interface QueryParams {
+  notebookID?: string;
+  repo?: string;
+  branch?: string;
+  filePath?: string;
+}
+
+interface Props {
+  section: HomeSection;
+  queryParams: QueryParams;
+}
+
+export function Home(props: Props) {
+  const classes = useStyles(props);
+  const theme = useTheme();
+  // const isMobile = useMediaQuery(theme.breakpoints.down("xs"));
+  const [addNotebookDialogOpen, setAddNotebookDialogOpen] =
+    useState<boolean>(false);
+  const [addNotebookRepo, setAddNotebookRepo] = useState<string>("");
+  const [addNotebookBranch, setAddNotebookBranch] = useState<string>("");
+  const [
+    addNotebookDialogHideOpeningLocal,
+    setAddNotebookDialogHideOpeningLocal,
+  ] = useState<boolean>(false);
+
+  const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const { t } = useTranslation();
+  const crossnoteContainer = CrossnoteContainer.useContainer();
+  const settingsContainer = SettingsContainer.useContainer();
+
+  // HACK: Register globalContainers for widgets use
+  globalContainers.settingsContainer = settingsContainer;
+  globalContainers.crossnoteContainer = crossnoteContainer;
+
+  const toggleDrawer = useCallback(() => {
+    setDrawerOpen(!drawerOpen);
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!crossnoteContainer.initialized) {
+      return;
+    }
+    if (props.section === HomeSection.Notebooks) {
+      if (props.queryParams) {
+        if (props.queryParams.repo && props.queryParams.branch) {
+          // The query values are already percent-decoded by URLSearchParams;
+          // decoding again would corrupt values containing a literal "%" and
+          // throw URIError on malformed sequences.
+          const repo = props.queryParams.repo || "";
+          const branch = props.queryParams.branch || "";
+          const filePath = props.queryParams.filePath || "";
+          const notebook = crossnoteContainer.notebooks.find(
+            (nb) => nb.gitURL === repo && nb.gitBranch === branch,
+          );
+          if (notebook) {
+            notebook
+              .refreshNotesIfNotLoaded({
+                dir: "./",
+                includeSubdirectories: true,
+              })
+              .then((notes) => {
+                if (filePath) {
+                  const note = notes[filePath];
+                  if (note) {
+                    crossnoteContainer.addTabNode({
+                      type: "tab",
+                      component: "Note",
+                      config: {
+                        component: "Note",
+
+                        singleton: false,
+                        noteFilePath: note.filePath,
+                        notebookPath: note.notebookPath,
+                        icon: getNoteIcon(note),
+                      },
+                      name: note.title,
+                    });
+                  } else {
+                    //note not found
+                    crossnoteContainer.addTabNode({
+                      type: "tab",
+                      component: "Notes",
+                      id: "Notes: " + notebook.dir,
+                      name: notebook.name,
+                      config: {
+                        component: "Note",
+
+                        singleton: true,
+                        notebookPath: notebook.dir,
+                        icon: ":notebook_with_decorative_cover:",
+                      },
+                    });
+                  }
+                } else {
+                  crossnoteContainer.addTabNode({
+                    type: "tab",
+                    component: "Notes",
+                    id: "Notes: " + notebook.dir,
+                    name: notebook.name,
+                    config: {
+                      component: "Notes",
+                      singleton: true,
+                      notebookPath: notebook.dir,
+                      icon: ":notebook_with_decorative_cover:",
+                    },
+                  });
+                }
+              })
+              .catch((error) => {
+                console.error(error);
+              });
+          } else {
+            // Show dialog
+            setAddNotebookRepo(repo);
+            setAddNotebookBranch(branch);
+            setAddNotebookDialogHideOpeningLocal(true);
+            setAddNotebookDialogOpen(true);
+          }
+        }
+      }
+    }
+  }, [props.section, props.queryParams, crossnoteContainer.initialized]);
+
+  useEffect(() => {
+    crossnoteContainer.setHomeSection(props.section);
+  }, [props.section]);
+
+  const drawer = (
+    <React.Fragment>
+      <Box
+        className={clsx(classes.notebooksSection)}
+        style={{
+          overflowY: crossnoteContainer.initialized ? "auto" : "hidden",
+        }}
+      >
+        <List disablePadding={true}>
+          <ListItem>
+            <ListItemIcon className={clsx(classes.listItemIcon)}>
+              <Notebook></Notebook>
+            </ListItemIcon>
+            <ListItemText primary={t("general/Notebooks")}></ListItemText>
+            <ListItemSecondaryAction style={{ right: "0" }}>
+              {crossnoteContainer.initialized && (
+                <Tooltip title={t("general/add-a-notebook")}>
+                  <IconButton
+                    className={clsx(classes.listItemIcon)}
+                    onClick={() => {
+                      setAddNotebookDialogHideOpeningLocal(false);
+                      setAddNotebookDialogOpen(true);
+                    }}
+                  >
+                    <PlusCircleOutline></PlusCircleOutline>
+                  </IconButton>
+                </Tooltip>
+              )}
+            </ListItemSecondaryAction>
+          </ListItem>
+        </List>
+        <List disablePadding={true} style={{ marginBottom: theme.spacing(16) }}>
+          {crossnoteContainer.notebooks.map((notebook) => {
+            return (
+              <ListItem
+                disableGutters={true}
+                style={{ padding: "0" }}
+                key={notebook._id}
+              >
+                <NotebookTreeView
+                  notebook={notebook}
+                  onCloseDrawer={() => setDrawerOpen(false)}
+                ></NotebookTreeView>
+              </ListItem>
+            );
+          })}
+          {!crossnoteContainer.initialized && (
+            <ListItem>
+              <CircularProgress style={{ margin: "0 auto" }}></CircularProgress>
+            </ListItem>
+          )}
+        </List>
+      </Box>
+
+      <Box className={clsx(classes.controllersSection)}>
+        <Divider></Divider>
+        <List disablePadding={true}>
+          <ListItem
+            button
+            data-testid={"cn-drawer-settings"}
+            onClick={() => {
+              crossnoteContainer.addTabNode({
+                type: "tab",
+                component: "Settings",
+                name: t("general/Settings"),
+                id: "Settings",
+                config: {
+                  component: "Settings",
+                  singleton: true,
+                  icon: ":gear:",
+                },
+              });
+              setDrawerOpen(false);
+            }}
+          >
+            <ListItemIcon className={clsx(classes.listItemIcon)}>
+              <SettingsIcon></SettingsIcon>
+            </ListItemIcon>
+            <ListItemText primary={t("general/Settings")}></ListItemText>
+          </ListItem>
+        </List>
+      </Box>
+    </React.Fragment>
+  );
+
+  return (
+    <Box className={clsx(classes.page)}>
+      <CssBaseline></CssBaseline>
+      <nav
+        className={clsx(classes.drawer, "drawer")}
+        data-testid={"cn-drawer"}
+      >
+        {/* The implementation can be swapped with js to avoid SEO duplication of links. */}
+        <Hidden smUp implementation="css">
+          <Drawer
+            variant="temporary"
+            open={drawerOpen}
+            onClose={toggleDrawer}
+            classes={{
+              paper: classes.drawerPaper,
+            }}
+            ModalProps={{
+              keepMounted: true, // Better open performance on mobile.
+            }}
+          >
+            {drawer}
+          </Drawer>
+        </Hidden>
+        <Hidden xsDown implementation="css">
+          <Drawer
+            data-testid={"cn-drawer-permanent"}
+            classes={{
+              paper: classes.drawerPaper,
+            }}
+            variant="permanent"
+            open
+          >
+            {drawer}
+          </Drawer>
+        </Hidden>
+        <Hidden smUp implementation="css">
+          <Fab
+            color="primary"
+            size="small"
+            onClick={toggleDrawer}
+            className={clsx(classes.fab)}
+          >
+            <Menu></Menu>
+          </Fab>
+        </Hidden>
+      </nav>
+      <MainPanel toggleDrawer={toggleDrawer}></MainPanel>
+      <AddNotebookDialog
+        open={addNotebookDialogOpen}
+        onClose={() => {
+          setAddNotebookDialogOpen(false);
+          setAddNotebookDialogHideOpeningLocal(false);
+        }}
+        canCancel={true}
+        gitURL={addNotebookRepo}
+        gitBranch={addNotebookBranch}
+        hideOpeningLocal={addNotebookDialogHideOpeningLocal}
+      ></AddNotebookDialog>
+      <LanguageSelectorDialog></LanguageSelectorDialog>
+    </Box>
+  );
+}

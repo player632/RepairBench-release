@@ -1,0 +1,30 @@
+<script lang="ts">
+    import {countryColors} from '$lib/store'
+    import {getCountryColor} from '$lib/utils'
+
+    export let data
+    export let foundFeatures
+    export let unfoundFeatures
+    export let path
+    export let clickCountryHandler
+    export let countryFocusedHandler
+
+    let feature = data[0]
+    let topojson = data[1]
+
+    $: color = getCountryColor(topojson, $countryColors)
+    $: found = foundFeatures.includes(feature)
+    $: disabled = !unfoundFeatures.includes(topojson)
+</script>
+
+{#key found}
+    <!-- svelte-ignore a11y-mouse-events-have-key-events -->
+    <path
+        data-testid={'country-' + (topojson?.properties?.name ?? 'unknown')}
+        on:mouseover={() => countryFocusedHandler(topojson)}
+        on:mouseleave={() => countryFocusedHandler()}
+        on:click={() => clickCountryHandler(topojson)}
+        class={found || disabled ? 'fill-gray' : `${color} hover:fill-foreground cursor-pointer`}
+        d={path(feature)}
+    />
+{/key}

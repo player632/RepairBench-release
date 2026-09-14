@@ -1,0 +1,145 @@
+diff --git a/src/components/TextBox/ConfirmationControls.tsx b/src/components/TextBox/ConfirmationControls.tsx
+index 4f067efa4a1f0e95a0d59fcfd936c4bd04448cbf..626a3c97ed601e61d966c8d0b9df4172034652db 100644
+--- a/src/components/TextBox/ConfirmationControls.tsx
++++ b/src/components/TextBox/ConfirmationControls.tsx
+@@ -32,8 +32,8 @@ export default function ConfirmationControls({store, textarea}: IConfirmationCon
+     function updateText() { 
+         if (text.editing) { setText('editing', false) }
+         if (text.translated !== textarea?.value && textarea && textarea?.value) { 
+-            setText('translated', textarea.value)
+             save_text(storeToDTO(text))
++            setText('translated', textarea.value)
+         }
+     }
+ 
+diff --git a/src/components/TextBox/index.tsx b/src/components/TextBox/index.tsx
+index 0c41ffc1c9ef0cea491d2c17b6875a449c57652f..03f42af6231a186a646d88cd9cb41dfdb9f2e478 100644
+--- a/src/components/TextBox/index.tsx
++++ b/src/components/TextBox/index.tsx
+@@ -82,7 +82,7 @@ export default function TextBox( {modelName: model_name, providerKey, index}: IT
+             .catch(e => e)
+             const translated = typeof result !== "string"? result : result?.replaceAll("\n", "").replaceAll("  ", " ").trim().replace(/^"(.*?)"$/, '$1')
+             setText('translated', translated)
+-            if (index===0 && options?.save) { save_text(storeToDTO(text)) }
++            if (options?.save) { save_text(storeToDTO(text)) }
+         }
+     }
+ 
+@@ -103,7 +103,7 @@ export default function TextBox( {modelName: model_name, providerKey, index}: IT
+     })
+ 
+     const listener = () => { //console.log('Listened!')
+-        if (auto_fetch() && index !== 0) { translate() }
++        if (auto_fetch() && index !== 0) { translate({ save: true }) }
+     }
+     window.addEventListener('refreshAll', listener)
+     onCleanup(() => window.removeEventListener('refreshAll', listener))
+diff --git a/src/components/TextBoxes/ButtonsPanel/index.tsx b/src/components/TextBoxes/ButtonsPanel/index.tsx
+index e74fed0944a535386842530aa3a1bf4bfbd4a49f..41dee64f37da61a957e0815fafb65bda2adb9197 100644
+--- a/src/components/TextBoxes/ButtonsPanel/index.tsx
++++ b/src/components/TextBoxes/ButtonsPanel/index.tsx
+@@ -13,7 +13,7 @@ export default function ButtonsPanel() {
+ 
+     return ( 
+         <section data-testid="rb-buttons-panel" class="flex gap-2 fixed top-1 right-0 p-3 rounded-xl bg-gradient-to-b from-bg-black/20 to-bg-black/0">
+-            <button data-testid="rb-refresh-all" onclick={refreshAll} title="Refresh all">
++            <button data-testid="rb-refresh-all" onclick={() => { refreshAll }} title="Refresh all">
+                 <svg class="w-8 h-8 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                 </svg>
+diff --git a/src/global/configs.ts b/src/global/configs.ts
+index 3983a4fcf19482ab6e9ba94d291dfe63e0752f15..d121cb9bfe5987d6403e33f50be77b7235668ef3 100644
+--- a/src/global/configs.ts
++++ b/src/global/configs.ts
+@@ -70,7 +70,7 @@ export function getEnabled() {
+ 
+ 
+     enabled_models.sort( (b, a) => { 
+-        if (typeof a.index==="number" && typeof b.index==="number") { return b.index < a.index? -1 : 0 }
++        if (typeof a.index==="number" && typeof b.index==="number") { return b.index > a.index? -1 : 0 }
+         return 0
+     } )
+ 
+diff --git a/src/global/lib.ts b/src/global/lib.ts
+index 9b8456ce6406d09b2676f230e4b7426b54680c02..c04c1db66d34508e3ee0e3c2069af42c30a4166b 100644
+--- a/src/global/lib.ts
++++ b/src/global/lib.ts
+@@ -47,7 +47,7 @@ function setCallback(this: any, callback: ICallback) {
+     if (callback instanceof Function) { 
+         this.callback = ({ window_title, text }: ICallbackParams) => { 
+             if (text.startsWith("　")) { text = text.replace("　", "") }
+-            return callback({ window_title, text: text.replaceAll("\n", "") })
++            return callback({ window_title, text: text.trim() })
+         }
+     }
+ }
+diff --git a/src/global/text.ts b/src/global/text.ts
+index e66b3fc5814d4b65175ff80216ae9bfeebc4d51d..c649dcc47b1e2f58ace52c9e2bc97c46bdb0a050 100644
+--- a/src/global/text.ts
++++ b/src/global/text.ts
+@@ -45,7 +45,7 @@ async function onTextChange( {window_title, text}: { window_title: string, text:
+ export async function save_text(textDTO: Omit<ISaveTextDTO, 'window_title'>) { 
+     let { originalText, translatedText } = textDTO
+     const window_title = global_text().window_title
+-    if (!configs().caching || !originalText || !window_title) { return null }
++    if (!originalText || !window_title) { return null }
+     if (typeof translatedText !== "string") { translatedText = "" }
+ 
+     originalText = originalText?.replace(/.*(\「.*?\」).*/, "$1").replace(/.*(\（.*?\）).*/, "$1")
+@@ -97,7 +97,7 @@ export const userPrompt = ( {text, enableContext, n}: IUserPromptOptions ) => {
+     const speakerNamePrompt = `Output format: [speaker_name]: "translated text"`
+ 
+ return `
+-    ${enableContext!==false? text_history.toJSONPrompt(n) : ""}
++    ${enableContext!==false? text_history.toXMLPrompt(n) : ""}
+ 
+     Now translate this to ${configs().targetLanguage}: ${text.trim()}
+     ${hasSpeakerName? speakerNamePrompt : ""}`
+diff --git a/src/pages/Settings/Lang.tsx b/src/pages/Settings/Lang.tsx
+index 00eb466d45c975d2be74ca7189368b2ac558d582..e72089d8c243ca7f73c0311128c0b283d8439cbf 100644
+--- a/src/pages/Settings/Lang.tsx
++++ b/src/pages/Settings/Lang.tsx
+@@ -26,7 +26,7 @@ export default function Lang() {
+             <label for="language">Target language:</label>
+             <input data-testid="rb-language" list="languages" name="language" id="language"
+              class="text-black px-2" value={configs().targetLanguage} onChange={ (e) => { 
+-                if (e.currentTarget.value !== configs().targetLanguage) { 
++                if (e.currentTarget.value === configs().targetLanguage) { 
+                     configs().targetLanguage = e.currentTarget.value
+                     save_config(configs())
+                 }
+diff --git a/src/pages/Settings/ModelsList.tsx b/src/pages/Settings/ModelsList.tsx
+index 03ecab9cc9a5e187957b7f38f320de9f0e0a6a77..a482091c3e8cfdf342227d84c6549b1578e91a2d 100644
+--- a/src/pages/Settings/ModelsList.tsx
++++ b/src/pages/Settings/ModelsList.tsx
+@@ -96,7 +96,7 @@ function ModelItem( {model, providerName: provider_name, textInputRef}: {model:
+         target: HTMLInputElement;
+     }) { 
+ 
+-        const api_key = provider.about_url? textInputRef?.value : "none"
++        const api_key = provider.about_url? "none" : textInputRef?.value
+         const enabled = e.currentTarget.checked
+         const { name, owned_by } = model
+         if (!api_key && enabled) { e.currentTarget.checked = false }
+diff --git a/src/providers/Auto.ts b/src/providers/Auto.ts
+index f3c9088f6f558e20902e2b8f86fc3c2ae9f9b3e7..2aecd5b470f991c507e583de2dfa12ad67d2b1c0 100644
+--- a/src/providers/Auto.ts
++++ b/src/providers/Auto.ts
+@@ -23,7 +23,7 @@ export const languageCodes = {
+ 
+ const lang = () => { 
+     const target = configs().targetLanguage as keyof typeof languageCodes
+-    const lang = languageCodes[target]
++    const lang = target
+     //console.log(target)
+     return lang
+ }
+@@ -50,7 +50,7 @@ async function DeepLXHandler(text: string) {
+             target_lang: lang()
+         })
+     }).then(response => response.json())
+-    .then(response => response?.data)
++    .then(response => response?.text)
+ }
+ 
+ async function SugoiHandler(text: string) { 

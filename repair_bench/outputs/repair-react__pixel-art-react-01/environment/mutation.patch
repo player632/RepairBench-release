@@ -1,0 +1,165 @@
+diff --git a/src/components/Animation.jsx b/src/components/Animation.jsx
+index fdc12be..7f06859 100644
+--- a/src/components/Animation.jsx
++++ b/src/components/Animation.jsx
+@@ -8,7 +8,7 @@ const Animation = props => {
+   const keyframeRules = keyframes`${boxShadow}`.rules;
+   const style = {
+     position: 'absolute',
+-    animation: `x ${duration}s infinite`,
++    animation: `x ${duration / 2}s infinite`,
+     animationName: keyframeName,
+     left: '-5px',
+     top: '-5px'
+diff --git a/src/components/Bucket.jsx b/src/components/Bucket.jsx
+index f8b7879..9aa7621 100644
+--- a/src/components/Bucket.jsx
++++ b/src/components/Bucket.jsx
+@@ -1,7 +1,7 @@
+ import React from 'react';
+ import { connect } from 'react-redux';
+ import { switchTool } from '../store/actions/actionCreators';
+-import { BUCKET } from '../store/reducers/drawingToolStates';
++import { BUCKET, ERASER } from '../store/reducers/drawingToolStates';
+ 
+ const Bucket = ({ bucketOn, switchBucket }) => (
+   <button
+@@ -16,7 +16,7 @@ const mapStateToProps = state => ({
+   bucketOn: state.present.get('drawingTool') === BUCKET
+ });
+ 
+-const switchBucketAction = switchTool(BUCKET);
++const switchBucketAction = switchTool(ERASER);
+ const mapDispatchToProps = dispatch => ({
+   switchBucket: () => dispatch(switchBucketAction)
+ });
+diff --git a/src/components/Dimensions.jsx b/src/components/Dimensions.jsx
+index d4b6bd0..5519383 100644
+--- a/src/components/Dimensions.jsx
++++ b/src/components/Dimensions.jsx
+@@ -19,7 +19,11 @@ const Dimensions = props => {
+   return (
+     <div className="dimensions">
+       <PickerWrapper>
+-        <Picker type="columns" value={columns} action={changeDimensions} />
++        <Picker
++          type="columns"
++          value={columns}
++          action={(type, delta) => changeDimensions('rows', delta)}
++        />
+       </PickerWrapper>
+       <PickerWrapper>
+         <Picker type="rows" value={rows} action={changeDimensions} />
+diff --git a/src/components/Frame.jsx b/src/components/Frame.jsx
+index 6278cd7..b232c25 100644
+--- a/src/components/Frame.jsx
++++ b/src/components/Frame.jsx
+@@ -85,7 +85,7 @@ export default class Frame extends React.Component {
+               ref={c => {
+                 this.percentage = c;
+               }}
+-              disabled={lastFrame || !active}
++              disabled={lastFrame && !active}
+             />
+           </div>
+         )}
+diff --git a/src/components/LoadDrawing.jsx b/src/components/LoadDrawing.jsx
+index b4745c3..b96a8fb 100644
+--- a/src/components/LoadDrawing.jsx
++++ b/src/components/LoadDrawing.jsx
+@@ -59,7 +59,7 @@ export default class LoadDrawing extends React.Component {
+     const { actions, open, close } = this.props;
+     e.stopPropagation();
+     if (browserStorage) {
+-      const removed = removeProjectFromStorage(browserStorage, key);
++      const removed = removeProjectFromStorage(browserStorage, key + 1);
+       if (removed) {
+         actions.sendNotification('Drawing deleted');
+         close();
+diff --git a/src/components/Preview.jsx b/src/components/Preview.jsx
+index 43591d6..00164c3 100644
+--- a/src/components/Preview.jsx
++++ b/src/components/Preview.jsx
+@@ -9,7 +9,7 @@ const Preview = props => {
+   const generatePreview = () => {
+     const { activeFrameIndex, duration, storedData, animationName } = props;
+     const { frames, columns, cellSize, animate } = storedData || props;
+-    const animation = frames.size > 1 && animate;
++    const animation = frames.size > 2 && animate;
+     let animationData;
+     let cssString;
+ 
+diff --git a/src/components/PreviewBox.jsx b/src/components/PreviewBox.jsx
+index 174328d..c469adc 100644
+--- a/src/components/PreviewBox.jsx
++++ b/src/components/PreviewBox.jsx
+@@ -54,7 +54,7 @@ const PreviewBox = props => {
+           frames={frameList}
+           columns={columns}
+           rows={rows}
+-          cellSize={isNormalSize ? bgPixelSize : smPixelSize}
++          cellSize={isNormalSize ? smPixelSize : bgPixelSize}
+           duration={duration}
+           activeFrameIndex={activeFrameIndex}
+           animate={animate}
+diff --git a/src/components/SimpleNotification.jsx b/src/components/SimpleNotification.jsx
+index 0d8fb0b..b783616 100644
+--- a/src/components/SimpleNotification.jsx
++++ b/src/components/SimpleNotification.jsx
+@@ -29,7 +29,7 @@ const SimpleNotification = ({
+     </CSSTransition>
+   ));
+ 
+-  if (notificationList.size > 0) {
++  if (notificationList.size > 1) {
+     removeNotifications();
+   }
+ 
+diff --git a/src/utils/drawHandlersProvider.js b/src/utils/drawHandlersProvider.js
+index a961ce8..07d8ebf 100644
+--- a/src/utils/drawHandlersProvider.js
++++ b/src/utils/drawHandlersProvider.js
+@@ -24,7 +24,7 @@ const getCellActionProps = (props, id) => ({
+ const getCellCoordinates = (id, columnsCount) => {
+   const y = Math.trunc(Math.abs(id / columnsCount));
+   const x = id - columnsCount * y;
+-  return { x: x + 1, y: y + 1 };
++  return { x, y: y + 1 };
+ };
+ 
+ const drawHandlersProvider = rootComponent => ({
+@@ -40,7 +40,7 @@ const drawHandlersProvider = rootComponent => ({
+         const { props } = gridComponent;
+         if (props.drawingTool !== 'MOVE') {
+           const actionProps = getCellActionProps(props, id);
+-          if (!rootComponent.state.dragging) props.cellAction(actionProps);
++          if (rootComponent.state.dragging) props.cellAction(actionProps);
+           rootComponent.setState({
+             dragging: true
+           });
+diff --git a/src/utils/startup.js b/src/utils/startup.js
+index f1f0928..6f75287 100644
+--- a/src/utils/startup.js
++++ b/src/utils/startup.js
+@@ -13,7 +13,7 @@ const initialSetup = (dispatch, storage) => {
+   if (dataStored) {
+     // Load current project from the storage
+     const currentProjectIndex = dataStored.current;
+-    if (currentProjectIndex >= 0) {
++    if (currentProjectIndex > 0) {
+       const {
+         frames,
+         paletteGridData,
+diff --git a/src/utils/storage.js b/src/utils/storage.js
+index 072e36b..19b0297 100644
+--- a/src/utils/storage.js
++++ b/src/utils/storage.js
+@@ -58,7 +58,7 @@ export function saveProjectToStorage(storage, projectData) {
+     let dataStored = getDataFromStorage(storage);
+     if (dataStored) {
+       dataStored.stored.push(projectData);
+-      dataStored.current = dataStored.stored.length - 1;
++      dataStored.current = 0;
+     } else {
+       dataStored = {
+         stored: [projectData],

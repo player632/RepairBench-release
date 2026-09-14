@@ -1,0 +1,214 @@
+diff --git a/src/components/keyboard/button/index.js b/src/components/keyboard/button/index.js
+index 101c315..066bccf 100644
+--- a/src/components/keyboard/button/index.js
++++ b/src/components/keyboard/button/index.js
+@@ -17,6 +17,7 @@ export default class Button extends React.Component {
+       <div
+         className={cn({ [style.button]: true, [style[color]]: true, [style[size]]: true })}
+         style={{ top, left }}
++        data-testid={this.props.testid}
+       >
+         <i
+           className={cn({ [style.active]: active })}
+diff --git a/src/components/keyboard/index.js b/src/components/keyboard/index.js
+index fd60877..4e917bb 100644
+--- a/src/components/keyboard/index.js
++++ b/src/components/keyboard/index.js
+@@ -92,6 +92,7 @@ export default class Keyboard extends React.Component {
+           position
+           active={keyboard.get('rotate')}
+           ref={(c) => { this.dom_rotate = c; }}
++          testid="rt-key-rotate"
+         />
+         <Button
+           color="blue"
+@@ -102,6 +103,7 @@ export default class Keyboard extends React.Component {
+           arrow="translate(0,-71px) rotate(180deg)"
+           active={keyboard.get('down')}
+           ref={(c) => { this.dom_down = c; }}
++          testid="rt-key-down"
+         />
+         <Button
+           color="blue"
+@@ -112,6 +114,7 @@ export default class Keyboard extends React.Component {
+           arrow="translate(60px, -12px) rotate(270deg)"
+           active={keyboard.get('left')}
+           ref={(c) => { this.dom_left = c; }}
++          testid="rt-key-left"
+         />
+         <Button
+           color="blue"
+@@ -122,6 +125,7 @@ export default class Keyboard extends React.Component {
+           arrow="translate(-60px, -12px) rotate(90deg)"
+           active={keyboard.get('right')}
+           ref={(c) => { this.dom_right = c; }}
++          testid="rt-key-right"
+         />
+         <Button
+           color="blue"
+@@ -131,6 +135,7 @@ export default class Keyboard extends React.Component {
+           label={`${i18n.drop[lan]} (SPACE)`}
+           active={keyboard.get('drop')}
+           ref={(c) => { this.dom_space = c; }}
++          testid="rt-key-space"
+         />
+         <Button
+           color="red"
+@@ -140,6 +145,7 @@ export default class Keyboard extends React.Component {
+           label={`${i18n.reset[lan]}(R)`}
+           active={keyboard.get('reset')}
+           ref={(c) => { this.dom_r = c; }}
++          testid="rt-key-reset"
+         />
+         <Button
+           color="green"
+@@ -149,6 +155,7 @@ export default class Keyboard extends React.Component {
+           label={`${i18n.sound[lan]}(S)`}
+           active={keyboard.get('music')}
+           ref={(c) => { this.dom_s = c; }}
++          testid="rt-key-sound"
+         />
+         <Button
+           color="green"
+@@ -158,6 +165,7 @@ export default class Keyboard extends React.Component {
+           label={`${i18n.pause[lan]}(P)`}
+           active={keyboard.get('pause')}
+           ref={(c) => { this.dom_p = c; }}
++          testid="rt-key-pause"
+         />
+       </div>
+     );
+diff --git a/src/components/matrix/index.js b/src/components/matrix/index.js
+index c4b1d2d..150098f 100644
+--- a/src/components/matrix/index.js
++++ b/src/components/matrix/index.js
+@@ -149,7 +149,7 @@ export default class Matrix extends React.Component {
+       matrix = this.getResult();
+     }
+     return (
+-      <div className={style.matrix}>{
++      <div className={style.matrix} data-testid="rt-matrix">{
+           matrix.map((p, k1) => (<p key={k1}>
+             {
+               p.map((e, k2) => <b
+diff --git a/src/components/music/index.js b/src/components/music/index.js
+index 11b347c..2e1fb74 100644
+--- a/src/components/music/index.js
++++ b/src/components/music/index.js
+@@ -11,6 +11,7 @@ export default class Music extends React.Component {
+   render() {
+     return (
+       <div
++        data-testid="rt-music"
+         className={cn(
+           {
+             bg: true,
+diff --git a/src/components/next/index.js b/src/components/next/index.js
+index 9a290c6..43de798 100644
+--- a/src/components/next/index.js
++++ b/src/components/next/index.js
+@@ -49,7 +49,7 @@ export default class Next extends React.Component {
+   }
+   render() {
+     return (
+-      <div className={style.next}>
++      <div className={style.next} data-testid="rt-next">
+         {
+           this.state.block.map((arr, k1) => (
+             <div key={k1}>
+diff --git a/src/components/pause/index.js b/src/components/pause/index.js
+index c0326e1..207e1d9 100644
+--- a/src/components/pause/index.js
++++ b/src/components/pause/index.js
+@@ -42,6 +42,7 @@ export default class Pause extends React.Component {
+   render() {
+     return (
+       <div
++        data-testid="rt-pause"
+         className={cn(
+           {
+             bg: true,
+diff --git a/src/components/point/index.js b/src/components/point/index.js
+index fae8e60..83cadae 100644
+--- a/src/components/point/index.js
++++ b/src/components/point/index.js
+@@ -60,7 +60,7 @@ export default class Point extends React.Component {
+   }
+   render() {
+     return (
+-      <div>
++      <div data-testid="rt-point">
+         <p>{ this.state.label }</p>
+         <Number number={this.state.number} />
+       </div>
+diff --git a/src/instrumentationProbe.js b/src/instrumentationProbe.js
+new file mode 100644
+index 0000000..458516a
+--- /dev/null
++++ b/src/instrumentationProbe.js
+@@ -0,0 +1,50 @@
++// instrumentation: read-only probe bridge for verification (window.__TETRIS__)
++import { List } from 'immutable';
++import actions from './actions';
++
++export function installProbe(store) {
++  const read = () => {
++    const s = store.getState();
++    const cur = s.get('cur');
++    const matrix = s.get('matrix');
++    const rows = [];
++    matrix.forEach((line) => {
++      const r = [];
++      line.forEach((n) => r.push(n ? 1 : 0));
++      rows.push(r);
++    });
++    let lowest = -1;
++    for (let i = rows.length - 1; i >= 0; i--) {
++      if (rows[i].some(Boolean)) { lowest = i; break; }
++    }
++    return {
++      points: s.get('points'),
++      max: s.get('max'),
++      clearLines: s.get('clearLines'),
++      speedRun: s.get('speedRun'),
++      speedStart: s.get('speedStart'),
++      startLines: s.get('startLines'),
++      pause: s.get('pause'),
++      lock: s.get('lock'),
++      reset: s.get('reset'),
++      music: s.get('music'),
++      cur: cur ? { type: cur.type, xy: [cur.xy.get(0), cur.xy.get(1)], rotateIndex: cur.rotateIndex } : null,
++      next: s.get('next'),
++      rows,
++      filled: rows.reduce((a, r) => a + r.filter(Boolean).length, 0),
++      lowestFilledRow: lowest,
++    };
++  };
++  window.__TETRIS__ = {
++    read,
++    // test fixtures: deterministic piece placement for verification
++    forcePiece: (type) => {
++      store.dispatch(actions.moveBlock({ type }));
++      return true;
++    },
++    setMatrix: (rows) => {
++      store.dispatch(actions.matrix(List(rows.map(r => List(r)))));
++      return true;
++    },
++  };
++}
+diff --git a/src/store/index.js b/src/store/index.js
+index f643782..cee9bee 100644
+--- a/src/store/index.js
++++ b/src/store/index.js
+@@ -1,6 +1,10 @@
+ import { createStore } from 'redux';
+ import rootReducer from '../reducers';
++import { installProbe } from '../instrumentationProbe';
+ 
+ const store = createStore(rootReducer, window.devToolsExtension && window.devToolsExtension());
+ 
++// instrumentation: attach verification probe
++installProbe(store);
++
+ export default store;

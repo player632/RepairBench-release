@@ -1,0 +1,166 @@
+diff --git a/.env b/.env
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/.env
+@@ -0,0 +1,3 @@
++PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
++PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_placeholder_offline_key
++SUPABASE_SECRET_KEY=placeholder_offline_secret_key
+diff --git a/package.json b/package.json
+index 48f7943..9f03f99 100644
+--- a/package.json
++++ b/package.json
+@@ -19,6 +19,7 @@
+ 	},
+ 	"devDependencies": {
+ 		"@sveltejs/adapter-cloudflare": "7.2.9",
++		"@sveltejs/adapter-static": "^3.0.10",
+ 		"@sveltejs/kit": "2.70.3",
+ 		"@sveltejs/vite-plugin-svelte": "^7.3.0",
+ 		"@tailwindcss/vite": "4.3.3",
+diff --git a/src/lib/components/system/Analytics.svelte b/src/lib/components/system/Analytics.svelte
+index ecbfe5e..72f44f6 100644
+--- a/src/lib/components/system/Analytics.svelte
++++ b/src/lib/components/system/Analytics.svelte
+@@ -1,28 +1,4 @@
+ <script>
+-	import { onMount } from 'svelte';
+-	import { browser } from '$app/environment';
+-
+-	const beacon = { token: 'e8f7ea160f464f118b12dc2a395614d5' };
+-
+-	onMount(() => {
+-		if (browser) {
+-			// Google Analytics
+-			window.dataLayer = window.dataLayer || [];
+-			function gtag() {
+-				window.dataLayer.push(arguments);
+-			}
+-			gtag('js', new Date());
+-			gtag('config', 'G-9M6JETNYJ5');
+-		}
+-	});
++	// Repair-Bench offline adaptation: the external analytics loaders (Google tag manager
++	// and the Cloudflare beacon) are removed so the static build performs zero network requests.
+ </script>
+-
+-{#if browser}
+-	<!-- Cloudflare Web Analytics -->
+-	<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify(beacon)}>
+-	</script>
+-	<!-- End Cloudflare Web Analytics -->
+-
+-	<!-- Google tag (gtag.js) -->
+-	<script async src="https://www.googletagmanager.com/gtag/js?id=G-9M6JETNYJ5"></script>
+-{/if}
+diff --git a/src/lib/components/system/SEO.svelte b/src/lib/components/system/SEO.svelte
+index 826eb89..93b4756 100644
+--- a/src/lib/components/system/SEO.svelte
++++ b/src/lib/components/system/SEO.svelte
+@@ -6,8 +6,8 @@
+ 	const author = 'Ayfri';
+ 	const description =
+ 		'Atom Clicker is a free incremental game. Click atoms, buy upgrades and buildings, prestige through protons, electrons and photons, and climb the leaderboard.';
+-	const absoluteImageLink = `${site}/currencies/atom.svg`;
+-	const absoluteOgImageLink = `${site}/ingame-screenshot.png`;
++	const absoluteImageLink = '/currencies/atom.svg';
++	const absoluteOgImageLink = '/in-game-screenshot.png';
+ 
+ 	const structuredData = {
+ 		'@context': 'https://schema.org',
+diff --git a/src/lib/stores/supabaseAuth.svelte.ts b/src/lib/stores/supabaseAuth.svelte.ts
+index c0007e4..fec05f1 100644
+--- a/src/lib/stores/supabaseAuth.svelte.ts
++++ b/src/lib/stores/supabaseAuth.svelte.ts
+@@ -23,65 +23,15 @@ export class SupabaseAuth {
+ 	 * Initializes the Supabase client and sets up auth listeners.
+ 	 * Must be called in a browser environment.
+ 	 */
++	/**
++	 * Repair-Bench offline adaptation: the Supabase client is never created. Auth stays
++	 * signed-out, so every cloud-dependent feature (cloud saves, leaderboard submission,
++	 * quark sync, remote banner) degrades gracefully and the static build performs zero
++	 * network requests.
++	 */
+ 	async init() {
+-		if (!browser || this.initialized) {
+-			this.loading = false;
+-			return;
+-		}
+-
+-		// Not available in Web Workers, and blocked outright when site data is disabled or storage is partitioned
+-		if (!isLocalStorageAvailable()) {
+-			console.warn('SupabaseAuth: localStorage not available, skipping init');
+-			this.loading = false;
+-			return;
+-		}
+-
+-		try {
+-			this.supabase = createClient<Database>(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+-				auth: {
+-					autoRefreshToken: true,
+-					persistSession: true,
+-					detectSessionInUrl: true,
+-				},
+-			});
+-
+-			multiTabDetector.init();
+-
+-			this.initialized = true;
+-
+-			// Get initial session
+-			const {
+-				data: { session },
+-			} = await this.supabase.auth.getSession();
+-			this.currentSession = session;
+-			await this.handleAuthStateChange(session?.user || null);
+-
+-			// Listen for auth changes
+-			this.supabase.auth.onAuthStateChange(async (event, session) => {
+-				console.log('Auth state changed:', event);
+-				this.currentSession = session;
+-				await this.handleAuthStateChange(session?.user || null);
+-			});
+-
+-			// Update offline status on unload
+-			window.addEventListener('beforeunload', () => {
+-				if (this.currentSession?.access_token) {
+-					fetch('/api/auth/status', {
+-						method: 'POST',
+-						headers: {
+-							'Authorization': `Bearer ${this.currentSession.access_token}`,
+-							'Content-Type': 'application/json',
+-						},
+-						body: JSON.stringify({ is_online: false }),
+-						keepalive: true,
+-					});
+-				}
+-			});
+-		} catch (err) {
+-			console.error('Supabase auth initialization error:', err);
+-			this.error = err as Error;
+-			this.loading = false;
+-		}
++		this.initialized = true;
++		this.loading = false;
+ 	}
+ 
+ 	private async handleAuthStateChange(user: User | null) {
+diff --git a/svelte.config.js b/svelte.config.js
+index 323f4d1..32dfd77 100644
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,10 +1,10 @@
+-import adapter from '@sveltejs/adapter-cloudflare';
++import adapter from '@sveltejs/adapter-static';
+ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+ 
+ /** @type {import('@sveltejs/kit').Config} */
+ const config = {
+ 	kit: {
+-		adapter: adapter(),
++		adapter: adapter({ fallback: 'index.html' }),
+ 		alias: {
+ 			'@': 'src/*',
+ 			'@components': 'src/lib/components/*',

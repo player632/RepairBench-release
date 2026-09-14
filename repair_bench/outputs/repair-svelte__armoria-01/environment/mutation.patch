@@ -1,0 +1,146 @@
+diff --git a/src/components/App.svelte b/src/components/App.svelte
+index d1dd1b9..c27725f 100644
+--- a/src/components/App.svelte
++++ b/src/components/App.svelte
+@@ -111,12 +111,7 @@
+ 
+       $matrices[0] = [0];
+ 
+-      if (viewParam) {
+-        if (sizeParam) coaSize = sizeParam;
+-        $state.view = 1; // open in view only mode
+-      } else {
+-        $state.edit = 1; // open in edit mode
+-      }
++      $state.edit = 1; // open in edit mode
+     }
+   }
+ 
+diff --git a/src/components/editor/Editor.svelte b/src/components/editor/Editor.svelte
+index 812cdad..7b2fc79 100644
+--- a/src/components/editor/Editor.svelte
++++ b/src/components/editor/Editor.svelte
+@@ -40,7 +40,7 @@
+   $state.positions = null;
+ 
+   let coa = $history[historyId] || generate(seed || undefined); // on load
+-  $: restore($changes); // on undo/redo
++  $: restore(changes); // on undo/redo
+   $: reroll(historyId); // on reroll
+   $: update(menu, $uploaded); // on menu update and charge upload
+   $: edit(coa); // on edit
+@@ -50,7 +50,6 @@
+   function reroll(historyId) {
+     coa = $history[historyId] || generate(seed || undefined);
+     if (!$history[historyId]) $history.push(coa);
+-    changes.reset();
+     defineMenuState();
+   }
+ 
+@@ -65,7 +64,6 @@
+          that should be fixed in Svelte 5 (see https://github.com/sveltejs/svelte/issues/8551)
+          For now, we have to highlight it again.
+       */
+-      await tick();
+       highlight("shield", name, index)();
+     } else {
+       section[name] = !section[name];
+diff --git a/src/components/editor/EditorControls.svelte b/src/components/editor/EditorControls.svelte
+index 4ab0246..7b57719 100644
+--- a/src/components/editor/EditorControls.svelte
++++ b/src/components/editor/EditorControls.svelte
+@@ -15,7 +15,7 @@
+   const clone = (event: Event) => {
+     event.stopPropagation();
+     const elementCopy = JSON.parse(JSON.stringify(el));
+-    els = [...els, elementCopy];
++    els.push(elementCopy);
+   };
+ 
+   const forward = (event: Event) => {
+diff --git a/src/components/editor/EditorInscription.svelte b/src/components/editor/EditorInscription.svelte
+index 34343d5..792a49f 100644
+--- a/src/components/editor/EditorInscription.svelte
++++ b/src/components/editor/EditorInscription.svelte
+@@ -11,7 +11,7 @@
+ 
+ <span data-tooltip={$t("tooltip.inscriptions.text")} use:tooltip>
+   <span>{$t("editor.inscriptions.text")}:</span>
+-  <input type="text" bind:value={inscription.text} data-testid="input-inscription-text" />
++  <input type="text" value={inscription.text} data-testid="input-inscription-text" />
+ </span>
+ 
+ <span>
+diff --git a/src/components/navigation/header/menu/Language.svelte b/src/components/navigation/header/menu/Language.svelte
+index 2ed75f3..9537e07 100644
+--- a/src/components/navigation/header/menu/Language.svelte
++++ b/src/components/navigation/header/menu/Language.svelte
+@@ -7,7 +7,6 @@
+ 
+   const changeLanguage = (newLocale: string) => () => {
+     locale.set(newLocale);
+-    localStorage.setItem("locale", newLocale);
+   };
+ 
+   const getLocaleName = (locale: string) => {
+diff --git a/src/components/navigation/header/menu/Redo.svelte b/src/components/navigation/header/menu/Redo.svelte
+index 9472e9a..08d5872 100644
+--- a/src/components/navigation/header/menu/Redo.svelte
++++ b/src/components/navigation/header/menu/Redo.svelte
+@@ -4,7 +4,7 @@
+   import {changes} from "data/stores";
+   import NavButton from "../shared/NavButton.svelte";
+ 
+-  $: redoable = $changes[1] < changes.length() - 1;
++  const redoable = $changes[1] < changes.length() - 1;
+ </script>
+ 
+ <NavButton
+diff --git a/src/components/navigation/header/menu/Rollback.svelte b/src/components/navigation/header/menu/Rollback.svelte
+index 300abef..b3be856 100644
+--- a/src/components/navigation/header/menu/Rollback.svelte
++++ b/src/components/navigation/header/menu/Rollback.svelte
+@@ -12,7 +12,7 @@
+ <NavButton
+   value="rollback"
+   label={$t(`menu.rollback`)}
+-  disabled={!$matrix}
++  disabled={$matrix}
+   onclick={rollback}
+   tip={$t($state.edit ? "tooltip.rollbackEdit" : "tooltip.rollback")}
+   gesture={$t("tooltip.swipeUp")}
+diff --git a/src/data/stores.ts b/src/data/stores.ts
+index 9eec6ec..0ffe360 100644
+--- a/src/data/stores.ts
++++ b/src/data/stores.ts
+@@ -62,7 +62,7 @@ export const iconedNav = writable(false);
+ 
+ const createMessageStore = () => {
+   const {subscribe, set} = writable(null);
+-  const defaultTimeout = 5000;
++  const defaultTimeout = 500;
+ 
+   return {
+     subscribe,
+@@ -102,7 +102,7 @@ const createChangesStore = () => {
+     },
+     undo: () =>
+       update(() => {
+-        if (position > 0) position -= 1;
++        if (position > 1) position -= 1;
+         return [history[position], position];
+       }),
+     redo: () =>
+diff --git a/src/scripts/getters.js b/src/scripts/getters.js
+index 63c13e9..22af2d0 100644
+--- a/src/scripts/getters.js
++++ b/src/scripts/getters.js
+@@ -56,7 +56,7 @@ function addInescutcheon(charge) {
+ }
+ 
+ function fetchCharge(charge) {
+-  if (loadedCharges[charge]) return; // already added
++  if (!loadedCharges[charge]) return; // already added
+   loadedCharges[charge] = true;
+ 
+   if (customCharges[charge]) {

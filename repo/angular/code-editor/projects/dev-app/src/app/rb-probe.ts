@@ -1,0 +1,662 @@
+/**
+ * rb-probe.ts - RepairBench read-only observation bridge for the code-editor dev-app.
+ *
+ * Published on `window.__CE__`. Every reading is taken from the LIVE DOM, from
+ * getComputedStyle, from the resource-timing buffer or from a passive console latch:
+ * the bridge never reads an Angular component field, never reaches into a CodeMirror
+ * EditorView instance and never mutates application state on its own. The only writes
+ * it performs are the ones a user could perform (element.click(), a mousedown/click
+ * pair on the select container, an option click), and every driver reports what it did
+ * as a string so a checkpoint can prove the interaction happened instead of trusting a
+ * sleep.
+ *
+ * Nothing here throws: every getter is wrapped, and an unavailable reading degrades to
+ * the sentinel '-' (or -1 for a count) rather than to an exception, so a checkpoint can
+ * only fail on a measured value and never on a bridge crash.
+ */
+type AnyEl = Element;
+
+const CE_VERSION = '1.0-r24ce';
+const NA = '-';
+const REMOTE = /^(https?:)?\/\//;
+
+/* ------------------------------------------------------------------ *
+ * passive latches, installed at import time (before bootstrapApplication)
+ * ------------------------------------------------------------------ */
+
+const consoleErrors: string[] = [];
+const consoleInfos: string[] = [];
+const consoleLogs: string[] = [];
+
+function latch(name: 'error' | 'info' | 'log', sink: string[]): void {
+  const orig = console[name].bind(console) as (...data: unknown[]) => void;
+  console[name] = (...data: unknown[]): void => {
+    try {
+      sink.push(
+        data
+          .map((d) => {
+            try {
+              return typeof d === 'string' ? d : JSON.stringify(d) ?? String(d);
+            } catch {
+              return String(d);
+            }
+          })
+          .join(' ')
+          .slice(0, 300),
+      );
+    } catch {
+      /* the latch must never break the app's own logging */
+    }
+    orig(...data);
+  };
+}
+latch('error', consoleErrors);
+latch('info', consoleInfos);
+latch('log', consoleLogs);
+
+/* ------------------------------------------------------------------ *
+ * DOM primitives
+ * ------------------------------------------------------------------ */
+
+function q(sel: string, root: ParentNode | null = document): AnyEl[] {
+  try {
+    return root ? Array.from(root.querySelectorAll(sel)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function one(sel: string, root: ParentNode | null = document): AnyEl | null {
+  try {
+    return root ? root.querySelector(sel) : null;
+  } catch {
+    return null;
+  }
+}
+
+function cs(el: AnyEl | null, prop: string): string {
+  if (!el) return NA;
+  try {
+    const v = getComputedStyle(el as HTMLElement)[prop as any];
+    return v === undefined || v === null || v === '' ? NA : String(v);
+  } catch {
+    return NA;
+  }
+}
+
+function px(el: AnyEl | null, which: 'x' | 'y' | 'w' | 'h'): number {
+  if (!el) return -1;
+  try {
+    const r = (el as HTMLElement).getBoundingClientRect();
+    const raw = which === 'x' ? r.x : which === 'y' ? r.y : which === 'w' ? r.width : r.height;
+    return Math.round(raw);
+  } catch {
+    return -1;
+  }
+}
+
+function txt(el: AnyEl | null): string {
+  if (!el) return NA;
+  try {
+    return String((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim();
+  } catch {
+    return NA;
+  }
+}
+
+function joinList(values: unknown[]): string {
+  return values.map((v) => (v === null || v === undefined || v === '' ? NA : String(v))).join('|');
+}
+
+function directButtons(host: AnyEl | null): AnyEl[] {
+  if (!host) return [];
+  try {
+    return Array.from(host.children).filter((c) => c.tagName.toLowerCase() === 'button');
+  } catch {
+    return [];
+  }
+}
+
+function cssVarValue(name: string): string {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+    const s = v === undefined || v === null ? '' : String(v).trim();
+    return s === '' ? NA : s;
+  } catch {
+    return NA;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * editor addressing
+ *
+ * The dev-app renders CodeMirror hosts in a fixed shape per route:
+ *   /home : <code-editor> #0 = the configurable main editor
+ *           <code-editor> #1 = the unified diff-editor (unifiedMergeView -> .cm-merge-b)
+ *           <diff-editor>    = the split merge view (.cm-merge-a + .cm-merge-b)
+ *   /diff : <diff-editor>    = the split merge view (.cm-merge-a + .cm-merge-b)
+ *           <code-editor> #0 = the trailing unified demo editor
+ * Editors are therefore addressed by ROLE, never by a bare document index, and the two
+ * merge sides are addressed through their own .cm-merge-a / .cm-merge-b side classes -
+ * which is exactly the channel the orientation input re-orders.
+ * ------------------------------------------------------------------ */
+
+type EditorKey =
+  | 'home-main'
+  | 'home-unified'
+  | 'home-split-a'
+  | 'home-split-b'
+  | 'diff-a'
+  | 'diff-b'
+  | 'diff-trailing';
+
+const EDITOR_KEYS: EditorKey[] = [
+  'home-main',
+  'home-unified',
+  'home-split-a',
+  'home-split-b',
+  'diff-a',
+  'diff-b',
+  'diff-trailing',
+];
+
+function editorRoot(key: string): AnyEl | null {
+  const codeHosts = q('code-editor');
+  const diffHosts = q('diff-editor');
+  const inHost = (host: AnyEl | null | undefined, sel: string): AnyEl | null =>
+    host ? one(sel, host) : null;
+  switch (key) {
+    case 'home-main':
+      return inHost(codeHosts[0], '.cm-editor');
+    case 'home-unified':
+      return inHost(codeHosts[1], '.cm-editor');
+    case 'home-split-a':
+      return inHost(diffHosts[0], '.cm-merge-a');
+    case 'home-split-b':
+      return inHost(diffHosts[0], '.cm-merge-b');
+    case 'diff-a':
+      return inHost(diffHosts[0], '.cm-merge-a');
+    case 'diff-b':
+      return inHost(diffHosts[0], '.cm-merge-b');
+    case 'diff-trailing':
+      return inHost(codeHosts[0], '.cm-editor');
+    default:
+      return null;
+  }
+}
+
+function allEditors(): AnyEl[] {
+  return q('.cm-editor');
+}
+
+function allContents(): AnyEl[] {
+  return q('.cm-content');
+}
+
+function contentOf(key: string): AnyEl | null {
+  const root = editorRoot(key);
+  return root ? one('.cm-content', root) : null;
+}
+
+function docTextOfRoot(root: AnyEl | null): string {
+  const c = root ? one('.cm-content', root) : null;
+  if (!c) return NA;
+  try {
+    return String((c as HTMLElement).innerText ?? '').replace(/\r/g, '').replace(/\n/g, '|');
+  } catch {
+    return NA;
+  }
+}
+
+function countIn(root: AnyEl | null, sel: string): number {
+  return root ? q(sel, root).length : -1;
+}
+
+function tokSpansOfRoot(root: AnyEl | null): number {
+  return countIn(root, '.cm-content .cm-line span');
+}
+
+/* ------------------------------------------------------------------ *
+ * drivers - real DOM events only, each returning a string receipt
+ * ------------------------------------------------------------------ */
+
+function buttons(): AnyEl[] {
+  return q('button');
+}
+
+function clickButton(label: string): string {
+  try {
+    const want = String(label).replace(/\s+/g, ' ').trim();
+    const hit = buttons().find((b) => txt(b) === want);
+    if (!hit) return 'no-button:' + want;
+    (hit as HTMLElement).click();
+    return 'clicked:' + want;
+  } catch (e) {
+    return 'error:' + String((e as Error)?.message ?? e).slice(0, 80);
+  }
+}
+
+function clickButtonNth(label: string, index: number): string {
+  try {
+    const want = String(label).replace(/\s+/g, ' ').trim();
+    const hits = buttons().filter((b) => txt(b) === want);
+    const hit = hits[index];
+    if (!hit) return 'no-button:' + want + '#' + index + '(of' + hits.length + ')';
+    (hit as HTMLElement).click();
+    return 'clicked:' + want + '#' + index;
+  } catch (e) {
+    return 'error:' + String((e as Error)?.message ?? e).slice(0, 80);
+  }
+}
+
+function clickChunkButton(side: 'accept' | 'reject', index: number): string {
+  try {
+    const all = q('.cm-chunkButtons button');
+    const hits = all.filter((b) => txt(b).toLowerCase() === side);
+    const hit = hits[index];
+    if (!hit) return 'no-chunk-button:' + side + '#' + index + '(of' + hits.length + ')';
+    (hit as HTMLElement).click();
+    return 'clicked-chunk:' + side + '#' + index;
+  } catch (e) {
+    return 'error:' + String((e as Error)?.message ?? e).slice(0, 80);
+  }
+}
+
+function openLangCombo(): string {
+  try {
+    const c = one('.ng-select-container');
+    if (!c) return 'no-ng-select';
+    c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    (c as HTMLElement).click();
+    return 'opened';
+  } catch (e) {
+    return 'error:' + String((e as Error)?.message ?? e).slice(0, 80);
+  }
+}
+
+function pickLangOption(name: string): string {
+  try {
+    const opts = q('.ng-option');
+    const hit = opts.find((o) => txt(o) === String(name));
+    if (!hit) return 'no-option:' + name + '(of' + opts.length + ')';
+    (hit as HTMLElement).click();
+    return 'picked:' + name;
+  } catch (e) {
+    return 'error:' + String((e as Error)?.message ?? e).slice(0, 80);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * resource timing / offline census
+ * ------------------------------------------------------------------ */
+
+function resEntries(): PerformanceResourceTiming[] {
+  try {
+    return performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+  } catch {
+    return [];
+  }
+}
+
+function resStatus(e: PerformanceResourceTiming): number {
+  const v = (e as unknown as { responseStatus?: number }).responseStatus;
+  return typeof v === 'number' ? v : 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * the bridge
+ * ------------------------------------------------------------------ */
+
+const bridge = {
+  version: (): string => CE_VERSION,
+
+  /* ---- document / shell ---- */
+  docTitle: (): string => {
+    try {
+      return document.title;
+    } catch {
+      return NA;
+    }
+  },
+  htmlLang: (): string => document.documentElement?.lang ?? NA,
+  htmlColorScheme: (): string => cs(document.documentElement, 'colorScheme'),
+  bodyColorScheme: (): string => cs(document.body, 'colorScheme'),
+  bodyColor: (): string => cs(document.body, 'color'),
+  bodyBackgroundColor: (): string => cs(document.body, 'backgroundColor'),
+  cssVar: (name: string): string => cssVarValue(name),
+  primaryVar: (): string => cssVarValue('--mat-sys-primary'),
+  onSurfaceVar: (): string => cssVarValue('--mat-sys-on-surface'),
+  baseHref: (): string => one('base')?.getAttribute('href') ?? NA,
+  locationPathname: (): string => {
+    try {
+      return location.pathname;
+    } catch {
+      return NA;
+    }
+  },
+  locationSearch: (): string => {
+    try {
+      return location.search;
+    } catch {
+      return NA;
+    }
+  },
+  locationHash: (): string => {
+    try {
+      return location.hash;
+    } catch {
+      return NA;
+    }
+  },
+  appRootChildTags: (): string => joinList(Array.from(one('app-root')?.children ?? []).map((c) => c.tagName.toLowerCase())),
+  appRootChildCount: (): number => (one('app-root') ? one('app-root')!.children.length : -1),
+  layoutHostCount: (): number => q('app-layout').length,
+  bodyMargin: (): string => cs(document.body, 'margin'),
+  bodyBoxSizing: (): string => cs(document.body, 'boxSizing'),
+  bodyHeight: (): string => cs(document.body, 'height'),
+  spacerExists: (): boolean => !!one('.spacer'),
+  spacerFlexGrow: (): string => cs(one('.spacer'), 'flexGrow'),
+  spacerWidth: (): number => px(one('.spacer'), 'w'),
+  spacerTagIndex: (): number => {
+    const tb = one('mat-toolbar');
+    if (!tb) return -1;
+    const kids = Array.from(tb.children);
+    const hit = kids.findIndex((k) => k.classList.contains('spacer'));
+    return hit;
+  },
+
+  /* ---- toolbar ---- */
+  toolbarCount: (): number => q('mat-toolbar').length,
+  toolbarText: (): string => txt(one('mat-toolbar')),
+  toolbarChildTags: (): string => joinList(Array.from(one('mat-toolbar')?.children ?? []).map((c) => c.tagName.toLowerCase())),
+  toolbarChildCount: (): number => (one('mat-toolbar') ? one('mat-toolbar')!.children.length : -1),
+  toolbarBg: (): string => cs(one('mat-toolbar'), 'backgroundColor'),
+  toolbarAnchorCount: (): number => q('mat-toolbar a').length,
+  toolbarAnchorClass: (): string => {
+    const a = one('mat-toolbar a');
+    return a ? String((a as HTMLElement).className ?? '') : NA;
+  },
+  toolbarAnchorClassCount: (): number => {
+    const a = one('mat-toolbar a');
+    return a ? String((a as HTMLElement).className ?? '').split(/\s+/).filter(Boolean).length : -1;
+  },
+  toolbarAnchorHref: (): string => one('mat-toolbar a')?.getAttribute('href') ?? NA,
+  toolbarAnchorTarget: (): string => one('mat-toolbar a')?.getAttribute('target') ?? NA,
+  toolbarAnchorDisplay: (): string => cs(one('mat-toolbar a'), 'display'),
+  toolbarAnchorX: (): number => px(one('mat-toolbar a'), 'x'),
+  toolbarAnchorWidth: (): number => px(one('mat-toolbar a'), 'w'),
+  toolbarAnchorSvgCount: (): number => countIn(one('mat-toolbar a'), 'svg'),
+  toolbarAnchorSvgPathLength: (): number => {
+    const p = one('mat-toolbar a svg path');
+    return p ? (p.getAttribute('d') ?? '').length : -1;
+  },
+
+  /* ---- offline census ---- */
+  externalScriptCount: (): number => q('script[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length,
+  externalLinkCount: (): number => q('link[href]').filter((s) => REMOTE.test(s.getAttribute('href') ?? '')).length,
+  externalImgCount: (): number => q('img[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length,
+  externalIframeCount: (): number => q('iframe[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length,
+  externalRefTagCount: (): number =>
+    q('script[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length +
+    q('link[href]').filter((s) => REMOTE.test(s.getAttribute('href') ?? '')).length +
+    q('img[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length +
+    q('iframe[src]').filter((s) => REMOTE.test(s.getAttribute('src') ?? '')).length,
+  extAnchorCount: (): number => q('a[href]').filter((a) => REMOTE.test(a.getAttribute('href') ?? '')).length,
+  extAnchorHrefs: (): string =>
+    joinList(q('a[href]').map((a) => a.getAttribute('href')).filter((h) => REMOTE.test(h ?? ''))),
+  resourceEntryCount: (): number => resEntries().length,
+  foreignResourceEntryCount: (): number => {
+    try {
+      return resEntries().filter((e) => !String(e.name).startsWith(location.origin)).length;
+    } catch {
+      return -1;
+    }
+  },
+  resourceFailCount: (): number => resEntries().filter((e) => resStatus(e) >= 400).length,
+  resourceFailNames: (): string =>
+    joinList(
+      resEntries()
+        .filter((e) => resStatus(e) >= 400)
+        .map((e) => String(e.name).replace(location.origin, '')),
+    ),
+  langSampleRequestCount: (): number =>
+    resEntries().filter((e) => String(e.name).includes('lang_samples')).length,
+  langSampleRequestPaths: (): string =>
+    joinList(
+      resEntries()
+        .filter((e) => String(e.name).includes('lang_samples'))
+        .map((e) => String(e.name).replace(location.origin, '')),
+    ),
+  langSampleStatusList: (): string =>
+    joinList(
+      resEntries()
+        .filter((e) => String(e.name).includes('lang_samples'))
+        .map(
+          (e) => String(e.name).replace(location.origin, '').split('/').pop() + '=' + resStatus(e),
+        ),
+    ),
+
+  /* ---- console latch ---- */
+  consoleErrorCount: (): number => consoleErrors.length,
+  consoleErrorHead: (): string => joinList(consoleErrors.slice(0, 3)),
+  consoleInfoCount: (): number => consoleInfos.length,
+  consoleLogCount: (): number => consoleLogs.length,
+  languageNotFoundLogged: (): boolean => consoleErrors.some((m) => m.includes('Language not found')),
+
+  /* ---- state isolation ---- */
+  storageKeyList: (): string => {
+    try {
+      return joinList(Object.keys(localStorage));
+    } catch {
+      return NA;
+    }
+  },
+  sessionStorageKeyList: (): string => {
+    try {
+      return joinList(Object.keys(sessionStorage));
+    } catch {
+      return NA;
+    }
+  },
+  ownGlobals: (): string => {
+    try {
+      return joinList(Object.keys(window).filter((k) => k.startsWith('__')));
+    } catch {
+      return NA;
+    }
+  },
+
+  /* ---- gui form (home) ---- */
+  guiLabelList: (): string => joinList(q('.gui-field-label').map(txt)),
+  guiLabelCount: (): number => q('.gui-field-label').length,
+  guiFieldGroupCount: (): number => q('gui-field-group').length,
+  guiFormCount: (): number => q('gui-form').length,
+  guiGroupOfLabel: (label: string): string => {
+    const hit = q('.gui-field-label').find((l) => txt(l) === label);
+    if (!hit) return NA;
+    const group = hit.closest('gui-field-group');
+    return group ? joinList(Array.from(group.querySelectorAll('button')).map(txt)) : NA;
+  },
+  themeButtonLabels: (): string => bridge.guiGroupOfLabel('Theme'),
+  setupButtonLabels: (): string => bridge.guiGroupOfLabel('Setup'),
+  orientationButtonLabels: (): string => bridge.guiGroupOfLabel('Orientation'),
+  revertButtonLabels: (): string => bridge.guiGroupOfLabel('Revert controls'),
+  slideToggleCount: (): number => q('mat-slide-toggle').length,
+  slideToggleCheckedBits: (): string =>
+    q('mat-slide-toggle')
+      .map((t) => (t.classList.contains('mat-mdc-slide-toggle-checked') ? '1' : '0'))
+      .join(''),
+  ngSelectContainerCount: (): number => q('.ng-select-container').length,
+  ngSelectValue: (): string => txt(one('.ng-value-label')),
+  ngSelectOptionCount: (): number => q('.ng-option').length,
+  ngSelectOptionsOpen: (): number => q('.ng-dropdown-panel').length,
+  ngSelectFirstOptions: (): string => joinList(q('.ng-option').slice(0, 4).map(txt)),
+  allInputValues: (): string =>
+    joinList(q('input').map((i) => (i as HTMLInputElement).value ?? '')),
+  inputCount: (): number => q('input').length,
+  h4List: (): string => joinList(q('h4').map(txt)),
+  sectionCount: (): number => q('section').length,
+  sectionGridCols: (): string => joinList(q('section').map((s) => cs(s, 'gridTemplateColumns'))),
+  sectionDisplayList: (): string => joinList(q('section').map((s) => cs(s, 'display'))),
+  sectionMaxWidth: (): string => cs(one('section'), 'maxWidth'),
+  asideCount: (): number => q('aside').length,
+  asideWidthList: (): string => joinList(q('aside').map((a) => px(a, 'w'))),
+  configPanelPosition: (): string => cs(one('.config-panel'), 'position'),
+  configPanelTop: (): string => cs(one('.config-panel'), 'top'),
+  editorWrapDisplay: (): string => cs(one('.editor-wrap'), 'display'),
+  editorWrapChildren: (): string =>
+    joinList(Array.from(one('.editor-wrap')?.children ?? []).map((c) => c.tagName.toLowerCase())),
+  editorWrapChildCount: (): number => (one('.editor-wrap') ? one('.editor-wrap')!.children.length : -1),
+  textareaCount: (): number => q('textarea').length,
+  textareaValueLength: (): number => {
+    const t = one('textarea') as HTMLTextAreaElement | null;
+    return t ? String(t.value ?? '').length : -1;
+  },
+  textareaHeight: (): number => px(one('textarea'), 'h'),
+  buttonInventory: (): string => joinList(buttons().map(txt)),
+
+  /* ---- editors: whole-route lists ---- */
+  editorCount: (): number => allEditors().length,
+  contentCount: (): number => allContents().length,
+  cmLineTotal: (): number => q('.cm-line').length,
+  hostCounts: (): string => 'code-editor:' + q('code-editor').length + '|diff-editor:' + q('diff-editor').length,
+  editorSideClasses: (): string =>
+    joinList(
+      allEditors().map((e) => ['cm-merge-a', 'cm-merge-b'].filter((c) => e.classList.contains(c)).join(',') || NA),
+    ),
+  editorClassLists: (): string =>
+    joinList(
+      allEditors().map((e) =>
+        String((e as HTMLElement).className ?? '')
+          .split(/\s+/)
+          .filter((c) => c && !/^[ͼ]/.test(c))
+          .sort()
+          .join(' ') || NA,
+      ),
+    ),
+  docTexts: (): string => joinList(allEditors().map(docTextOfRoot)),
+  docLens: (): string =>
+    joinList(
+      allContents().map((c) => {
+        try {
+          return String((c as HTMLElement).innerText ?? '').replace(/\r/g, '').length;
+        } catch {
+          return -1;
+        }
+      }),
+    ),
+  docLineCounts: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-line'))),
+  docFirstLines: (): string => joinList(allEditors().map((e) => txt(one('.cm-line', e)))),
+  tokSpanCounts: (): string => joinList(allEditors().map(tokSpansOfRoot)),
+  gutters: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-gutters'))),
+  lineNumbers: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-lineNumbers'))),
+  foldGutters: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-foldGutter'))),
+  changeGutters: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-changeGutter'))),
+  activeLines: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-activeLine'))),
+  activeLineGutters: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-activeLineGutter'))),
+  ctEditables: (): string =>
+    joinList(allContents().map((c) => c.getAttribute('contenteditable') ?? '')),
+  ctAriaReadonlys: (): string => joinList(allContents().map((c) => c.getAttribute('aria-readonly') ?? '')),
+  ctWhiteSpaces: (): string => joinList(allContents().map((c) => cs(c, 'whiteSpace'))),
+  placeholders: (): string => joinList(allEditors().map((e) => txt(one('.cm-placeholder', e)))),
+  mergeChangedLines: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-changedLine'))),
+  mergeInsertedLines: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-insertedLine'))),
+  mergeDeletedChunks: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-deletedChunk'))),
+  mergeChangedTexts: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-changedText'))),
+  mergeChangedTextTotal: (): number => q('.cm-changedText').length,
+  mergeDeletedTexts: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-deletedText'))),
+  chunkButtonCounts: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-chunkButtons'))),
+  chunkButtonTexts: (): string =>
+    joinList(allEditors().map((e) => q('.cm-chunkButtons button', e).map(txt).join('+'))),
+  revertControlCounts: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-revertControl'))),
+  mergeSpacers: (): string => joinList(allEditors().map((e) => countIn(e, '.cm-mergeSpacer'))),
+  editorHeightList: (): string => joinList(allEditors().map((e) => px(e, 'h'))),
+
+  /* ---- editors: per-role ---- */
+  docText: (key: string): string => docTextOfRoot(editorRoot(key)),
+  docLineCount: (key: string): number => countIn(editorRoot(key), '.cm-line'),
+  docLen: (key: string): number => {
+    const c = contentOf(key);
+    if (!c) return -1;
+    try {
+      return String((c as HTMLElement).innerText ?? '').replace(/\r/g, '').length;
+    } catch {
+      return -1;
+    }
+  },
+  firstLine: (key: string): string => txt(one('.cm-line', editorRoot(key))),
+  tokSpanCount: (key: string): number => tokSpansOfRoot(editorRoot(key)),
+  gutterCount: (key: string): number => countIn(editorRoot(key), '.cm-gutters'),
+  lineNumberCount: (key: string): number => countIn(editorRoot(key), '.cm-lineNumbers'),
+  foldGutterCount: (key: string): number => countIn(editorRoot(key), '.cm-foldGutter'),
+  changeGutterCount: (key: string): number => countIn(editorRoot(key), '.cm-changeGutter'),
+  activeLineCount: (key: string): number => countIn(editorRoot(key), '.cm-activeLine'),
+  chunkButtonCount: (key: string): number => countIn(editorRoot(key), '.cm-chunkButtons'),
+  chunkButtonTextList: (key: string): string =>
+    q('.cm-chunkButtons button', editorRoot(key)).map(txt).join('+'),
+  revertControlCount: (key: string): number => countIn(editorRoot(key), '.cm-revertControl'),
+  mergeSpacerCount: (key: string): number => countIn(editorRoot(key), '.cm-mergeSpacer'),
+  changedTextCount: (key: string): number => countIn(editorRoot(key), '.cm-changedText'),
+  deletedChunkCount: (key: string): number => countIn(editorRoot(key), '.cm-deletedChunk'),
+  insertedLineCount: (key: string): number => countIn(editorRoot(key), '.cm-insertedLine'),
+  sideClass: (key: string): string => {
+    const e = editorRoot(key);
+    return e ? (['cm-merge-a', 'cm-merge-b'].filter((c) => e.classList.contains(c)).join(',') || NA) : NA;
+  },
+  editable: (key: string): string => contentOf(key)?.getAttribute('contenteditable') ?? NA,
+  placeholderOf: (key: string): string => txt(one('.cm-placeholder', editorRoot(key))),
+  exists: (key: string): boolean => !!editorRoot(key),
+  editorKeys: (): string => joinList(EDITOR_KEYS),
+
+  /* ---- diff page chrome ---- */
+  diffButtonTexts: (): string => {
+    const host = one('app-diff');
+    return joinList(directButtons(host).map(txt));
+  },
+  diffButtonCount: (): number => {
+    const host = one('app-diff');
+    return host ? directButtons(host).length : -1;
+  },
+  diffEditorHostCount: (): number => q('app-diff diff-editor').length,
+  diffTrailingHostCount: (): number => q('app-diff code-editor').length,
+  diffEditorHostHeight: (): string => cs(one('app-diff diff-editor'), 'height'),
+
+  /* ---- drivers ---- */
+  clickButton,
+  clickButtonNth,
+  clickChunkButton,
+  openLangCombo,
+  pickLangOption,
+
+  /* ---- whole-surface snapshot, used by the design-time calibration leg only ---- */
+  snapshot: (): Record<string, unknown> => {
+    // The drivers are deliberately EXCLUDED: snapshot() is a read, and openLangCombo() takes no
+    // argument, so iterating every zero-arity member used to toggle the language dropdown open at
+    // the end of every reading. That is invisible for the click drivers (they dispatch on the
+    // element itself) but it breaks any sequence that opens the dropdown on purpose, because the
+    // next openLangCombo() call then closes it again.
+    const DRIVERS = new Set(['clickButton', 'clickButtonNth', 'clickChunkButton', 'openLangCombo', 'pickLangOption']);
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(bridge) as (keyof typeof bridge)[]) {
+      if (k === 'snapshot') continue;
+      if (DRIVERS.has(String(k))) continue;
+      const fn = bridge[k];
+      if (typeof fn !== 'function') continue;
+      try {
+        if ((fn as (...a: unknown[]) => unknown).length > 0) continue;
+        out[String(k)] = (fn as () => unknown)();
+      } catch (e) {
+        out[String(k)] = 'bridge-error:' + String((e as Error)?.message ?? e).slice(0, 60);
+      }
+    }
+    return out;
+  },
+};
+
+try {
+  (window as unknown as Record<string, unknown>)['__CE__'] = bridge;
+} catch {
+  /* nothing to do if the global cannot be published */
+}
+
+export type CeBridge = typeof bridge;

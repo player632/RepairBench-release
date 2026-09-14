@@ -1,0 +1,36 @@
+name: Release
+on:
+    push:
+        tags:
+            - 'v*'
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            id-token: write
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+                  cache: 'yarn'
+            - name: Install Dependencies
+              run: yarn install --frozen-lockfile
+            - name: Lint
+              run: yarn lint
+            - name: Typecheck
+              run: yarn tsc
+            - name: Test
+              run: yarn test
+            - name: Build Library
+              run: yarn build:lib
+            - name: Check package types
+              run: npx attw --pack . --profile esm-only --exclude-entrypoints ./style.css
+            - name: Consumer smoke test of packed tarball (no peer auto-install)
+              run: node scripts/pack-smoke.mjs
+            - name: Publish to npm (OIDC trusted publishing, no token)
+              # npx runs npm 11 (OIDC needs >= 11.5.1) from its own cache — Node 22
+              # bundles npm 10, and self-updating npm in place corrupts the install
+              run: npx -y npm@11 publish --provenance --access public

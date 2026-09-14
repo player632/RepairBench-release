@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ESP32 Pin Configuration Simulator - Configure pins, write code, and test without hardware">
+    <meta name="author" content="Matthew Shannon">
+    <title>ESP32 Simulator - Pin Configuration & Code Testing</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ESP32 Simulator</h1>
+            <p>Configure pins, write code, and test without hardware</p>
+            <!-- Board selector will be dynamically inserted here by JavaScript -->
+        </div>
+
+        <div class="main-grid">
+            <!-- Left Panel: Pin Configuration -->
+            <div class="panel">
+                <h2>ESP32 Pin Configuration</h2>
+                <div class="esp32-diagram" id="pinDiagram" data-testid="rb-diagram">
+                    <!-- Pins will be generated dynamically by JavaScript -->
+                </div>
+                <div class="pin-config" id="pinConfig" data-testid="rb-pinconfig">
+                    <p>Select a pin to configure its settings</p>
+                </div>
+            </div>
+
+            <!-- Right Panel: Code Editor -->
+            <div class="panel">
+                <h2>Arduino Code</h2>
+                <textarea 
+                    class="code-editor" 
+                    id="codeEditor" data-testid="rb-code-editor" 
+                    placeholder="// Write your Arduino code here
+void setup() {
+  Serial.begin(115200);
+  // Your setup code here
+}
+
+void loop() {
+  // Your main code here
+  delay(1000);
+}"
+                     spellcheck="false"
+                ></textarea>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" data-testid="rb-btn-validate" onclick="validateCode()" title="Check code for errors">
+                        Validate Code
+                    </button>
+                    <button class="btn btn-secondary" data-testid="rb-btn-generate" onclick="generateTemplate()" title="Generate code template from pin configuration">
+                        Generate Template
+                    </button>
+                    <button class="btn btn-success" data-testid="rb-btn-save" onclick="saveCodeToFile()" title="Save code to .ino file">
+                        Save File
+                    </button>
+                    <button class="btn btn-warning" id="flashBtn" data-testid="rb-flash-btn" onclick="flashToESP32()" title="Connect to ESP32 via Web Serial">
+                        Flash / Connect
+                    </button>
+                    <button class="btn btn-flash-continue" id="continueFlashBtn" data-testid="rb-continue-flash-btn" onclick="continueFlash()" title="Send code in editor to connected ESP32 terminal">
+                        &#9654; Continue Flash
+                    </button>
+                    <button class="btn btn-upload" id="uploadBtn" data-testid="rb-upload-btn" onclick="openUploadDialog()" title="Upload code from file or URL">
+                        Upload Code ⬆️ 
+                    </button>
+                    <button class="btn btn-info" data-testid="rb-btn-shortcuts" onclick="openShortcutsPanel()" title="Serial/Terminal shortcuts reference">
+                        Serial Shortcuts
+                    </button>
+                    <button class="btn btn-secondary" data-testid="rb-btn-clear-code" onclick="clearCode()" title="Clear code editor">
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panel: Output / Terminal -->
+        <div class="panel output-panel">
+            <div class="output-header">
+                <h2 id="outputPanelTitle" data-testid="rb-output-title">📋 Output</h2>
+                <div class="output-toggle">
+                    <button class="toggle-btn active" id="btnOutput" data-testid="rb-btn-tab-output" onclick="switchTab('output')">Output</button>
+                    <button class="toggle-btn" id="btnTerminal" data-testid="rb-btn-tab-terminal" onclick="switchTab('terminal')">Terminal</button>
+                </div>
+                <button class="btn btn-sm btn-secondary" data-testid="rb-btn-clear-output" onclick="clearOutput()" title="Clear output panel">Clear</button>
+            </div>
+
+            <!-- Output Tab -->
+            <div id="tabOutput" data-testid="rb-tab-output" class="tab-content active">
+                <div class="output" id="output" data-testid="rb-output">Ready to validate your code...</div>
+            </div>
+
+            <!-- Terminal Tab -->
+            <div id="tabTerminal" data-testid="rb-tab-terminal" class="tab-content">
+                <div class="output terminal-output" id="terminalOutput" data-testid="rb-terminal-output">Terminal inactive. Connect via Flash / Connect button first...</div>
+                <div class="terminal-input-row">
+                    <span class="terminal-prompt">&#x276F;</span>
+                    <input type="text" class="terminal-input" id="terminalInput" data-testid="rb-terminal-input" placeholder="Type command and press Enter..." />
+                    <button class="btn btn-sm btn-primary" data-testid="rb-btn-send" onclick="sendTerminalCommand()">Send</button>
+                    <button class="btn btn-sm btn-secondary" data-testid="rb-btn-disconnect" onclick="disconnectSerial()" title="Disconnect serial port">Disconnect</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Shortcuts Modal -->
+        <div class="modal-overlay" id="shortcutsModal" data-testid="rb-shortcuts-modal" onclick="closeShortcutsModal(event)">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <span>&#9881; Serial / Terminal Shortcuts</span>
+                    <button class="modal-close" data-testid="rb-shortcuts-close" onclick="closeShortcutsPanel()">&#10005;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="shortcut-group">
+                        <div class="shortcut-group-title">Connection</div>
+                        <div class="shortcut-row"><kbd>Ctrl+Shift+C</kbd><span>Connect / Open Serial Port</span></div>
+                        <div class="shortcut-row"><kbd>Ctrl+Shift+D</kbd><span>Disconnect Serial Port</span></div>
+                        <div class="shortcut-row"><kbd>Ctrl+Shift+F</kbd><span>Continue Flash (send code)</span></div>
+                    </div>
+                    <div class="shortcut-group">
+                        <div class="shortcut-group-title">Terminal Commands</div>
+                        <div class="shortcut-row"><kbd>Enter</kbd><span>Send command</span></div>
+                        <div class="shortcut-row"><kbd>&#8593; / &#8595;</kbd><span>Navigate command history</span></div>
+                        <div class="shortcut-row"><kbd>Ctrl+L</kbd><span>Clear terminal</span></div>
+                        <div class="shortcut-row"><kbd>Ctrl+C</kbd><span>Send interrupt signal (0x03)</span></div>
+                    </div>
+                    <div class="shortcut-group">
+                        <div class="shortcut-group-title">Common ESP32 Serial Commands</div>
+                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-rst" onclick="pasteCommand('rst')"><kbd>rst</kbd><span>Soft reset ESP32</span></div>
+                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-at" onclick="pasteCommand('AT')"><kbd>AT</kbd><span>AT command test (if AT firmware)</span></div>
+                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-atgmr" onclick="pasteCommand('AT')"><kbd>AT+GMR</kbd><span>Get firmware version</span></div>
+                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-help" onclick="pasteCommand('help')"><kbd>help</kbd><span>Show available commands (if IDF)</span></div>
+                    </div>
+                    <div class="shortcut-group">
+                        <div class="shortcut-group-title">Baud Rates</div>
+                        <div class="shortcut-row"><span>115200</span><span>Default / Arduino</span></div>
+                        <div class="shortcut-row"><span>9600</span><span>Legacy / slow devices</span></div>
+                        <div class="shortcut-row"><span>921600</span><span>High-speed flashing</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="uploadModal" data-testid="rb-upload-modal" onclick="closeUploadModal(event)">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span>⬆️ Upload Code</span>
+            <button class="modal-close" data-testid="rb-upload-close" onclick="closeUploadModal(event)">✕</button>
+        </div>
+        <div class="modal-body">
+            <!-- Tab Buttons -->
+            <div class="upload-tabs">
+                <button class="upload-tab-btn active" data-testid="rb-upload-tab-file" onclick="switchUploadTab('url')">📁 File Upload</button>
+                <button class="upload-tab-btn" data-testid="rb-upload-tab-url" onclick="switchUploadTab('file')">🔗 Load from URL</button>
+            </div>
+            
+            <!-- File Upload Tab -->
+            <div id="uploadFileTab" data-testid="rb-upload-file-tab" class="upload-tab-content active">
+                <div class="input-group">
+                    <label>Select file to upload:</label>
+                    <input type="file" id="uploadFileInput" data-testid="rb-upload-file-input" accept=".ino,.cpp,.c,.txt,.bin" />
+                </div>
+                <div class="upload-info">
+                    📄 Code: .ino, .cpp, .c, .txt<br>
+                    🔧 Binary: .bin (ESP32 firmware)
+                </div>
+                <button class="btn btn-success" data-testid="rb-btn-load-file" onclick="loadFromFile()" style="width: 100%; margin-top: 12px;">
+                    Load File
+                </button>
+            </div>
+            
+            <!-- URL Tab -->
+            <div id="uploadUrlTab" data-testid="rb-upload-url-tab" class="upload-tab-content">
+                <div class="input-group">
+                    <label>Enter file URL:</label>
+                    <input type="url" id="urlInput" data-testid="rb-url-input" placeholder="https://example.com/sketch.ino" />
+                </div>
+                <div class="upload-info">
+                    Paste a direct link to a .ino, .cpp, or .bin file (CORS must be enabled)
+                </div>
+                <button class="btn btn-success" data-testid="rb-btn-load-url" onclick="loadFromURL()" style="width: 100%; margin-top: 12px;">
+                    Load from URL
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- Load JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>

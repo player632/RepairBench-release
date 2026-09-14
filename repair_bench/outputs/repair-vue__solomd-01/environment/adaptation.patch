@@ -1,0 +1,93 @@
+diff --git a/src/lib/check-update.ts b/src/lib/check-update.ts
+index ecc9daf..581897c 100644
+--- a/src/lib/check-update.ts
++++ b/src/lib/check-update.ts
+@@ -52,31 +52,16 @@ export const isMasBuild = (): boolean => MAS_BUILD;
+ const RELEASES_PAGE = 'https://github.com/zhitongblog/solomd/releases';
+ 
+ async function fetchFromStatsProxy(): Promise<{ tag: string; url: string } | null> {
+-  try {
+-    const res = await fetch(STATS_URL, { cache: 'no-store' });
+-    if (!res.ok) return null;
+-    const data = (await res.json()) as { latest_tag?: string | null; latest_url?: string | null };
+-    if (!data.latest_tag) return null;
+-    return {
+-      tag: data.latest_tag,
+-      url: data.latest_url || RELEASES_PAGE,
+-    };
+-  } catch {
+-    return null;
+-  }
++  // Repair-bench adaptation AD-2: update checks reach solomd.app / GitHub and
++  // are stripped for offline runs — report "no release info" without network.
++  void STATS_URL;
++  return null;
+ }
+ 
+ async function fetchFromGitHubDirect(): Promise<{ tag: string; url: string } | null> {
+-  try {
+-    const res = await fetch(GITHUB_FALLBACK_URL, { cache: 'no-store' });
+-    if (!res.ok) return null;
+-    const data = (await res.json()) as { tag_name?: string; html_url?: string };
+-    const tag = (data.tag_name || '').replace(/^v/, '');
+-    if (!tag) return null;
+-    return { tag, url: data.html_url || RELEASES_PAGE };
+-  } catch {
+-    return null;
+-  }
++  // AD-2 (offline adaptation): GitHub fallback stripped — no network.
++  void GITHUB_FALLBACK_URL;
++  return null;
+ }
+ 
+ export async function checkForUpdate(): Promise<UpdateResult> {
+diff --git a/src/lib/telemetry.ts b/src/lib/telemetry.ts
+index ab1abb0..a2fc76f 100644
+--- a/src/lib/telemetry.ts
++++ b/src/lib/telemetry.ts
+@@ -104,23 +104,11 @@ async function getAppVersion(): Promise<string | null> {
+ }
+ 
+ async function postEvent(payload: Record<string, unknown>): Promise<void> {
+-  const ctrl = new AbortController();
+-  const timer = setTimeout(() => ctrl.abort(), POST_TIMEOUT_MS);
+-  try {
+-    await fetch(ENDPOINT, {
+-      method: 'POST',
+-      body: JSON.stringify(payload),
+-      // No Content-Type header — keeps the request simple-CORS so it
+-      // never triggers a preflight, even when the endpoint origin
+-      // changes for testing. The Pages Function accepts any body.
+-      signal: ctrl.signal,
+-      keepalive: true,
+-    });
+-  } catch (err) {
+-    if (TELEMETRY_DEBUG) console.warn('[telemetry] post failed', err);
+-  } finally {
+-    clearTimeout(timer);
+-  }
++  // Repair-bench adaptation AD-1: the analytics endpoint (solomd.app/api/track)
++  // is stripped for offline runs — events are dropped with no network traffic.
++  void payload;
++  void ENDPOINT;
++  void POST_TIMEOUT_MS;
+ }
+ 
+ /** Fire-and-forget — never await, never throw into callers. */
+diff --git a/src/stores/themes.ts b/src/stores/themes.ts
+index 9e2d7ec..f932dc1 100644
+--- a/src/stores/themes.ts
++++ b/src/stores/themes.ts
+@@ -104,6 +104,12 @@ export const useThemesStore = defineStore('themes', {
+         await this.refreshInstalled();
+         return;
+       }
++      // Repair-bench adaptation AD-3: the community-theme manifest lives at
++      // solomd.app/themes/index.json — stripped for offline runs; serve an
++      // empty gallery instead of fetching.
++      this.manifest = { version: 0, themes: [] };
++      this.manifestFetchedAt = Date.now();
++      return;
+       this.loading = true;
+       this.error = '';
+       try {

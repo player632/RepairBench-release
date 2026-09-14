@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>REGOLITH — The Silence at Anaxagoras</title>
+<meta name="description" content="A lunar rover survey sim. 1/6 g, deformable regolith, ground-penetrating radar, and something under the basin floor." />
+<meta name="theme-color" content="#05060a" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23cfc6b8'/><circle cx='11' cy='12' r='3.4' fill='%23a79c8c'/><circle cx='20' cy='19' r='4.6' fill='%23a79c8c'/><circle cx='22' cy='9' r='2' fill='%23a79c8c'/></svg>" />
+<!-- ?v= is a cache buster: GitHub Pages serves assets with max-age=600, so a
+     returning player keeps the old layout for ten minutes after a deploy.
+     Bump this whenever styles.css changes in a way players must see. -->
+<link rel="stylesheet" href="src/ui/styles.css?v=4" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="stage" aria-label="Game viewport" data-testid="stage-canvas"></canvas>
+
+<!-- ============ BOOT / LOADING ============ -->
+<div id="boot" class="overlay boot" data-testid="boot-overlay">
+  <div class="boot-inner">
+    <div class="crest" aria-hidden="true">
+      <svg viewBox="0 0 120 120" width="88" height="88">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="1" opacity=".35"/>
+        <circle cx="60" cy="60" r="40" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+        <path d="M60 8 v14 M60 98 v14 M8 60 h14 M98 60 h14" stroke="currentColor" stroke-width="1" opacity=".6"/>
+        <circle cx="60" cy="60" r="26" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="49" cy="52" r="6" fill="currentColor" opacity=".28"/>
+        <circle cx="69" cy="68" r="8.5" fill="currentColor" opacity=".28"/>
+        <circle cx="72" cy="47" r="3.5" fill="currentColor" opacity=".28"/>
+      </svg>
+    </div>
+    <h1 class="title">REGOLITH</h1>
+    <p class="subtitle">The Silence at Anaxagoras</p>
+    <div class="loadbar"><i id="loadfill" data-testid="boot-bar-fill"></i></div>
+    <p class="loadtext" id="loadtext" data-testid="boot-status-text">initialising telemetry link…</p>
+    <p class="legal">SELENE DIRECTORATE · FAR-SIDE SURVEY DIVISION · MU-7 “CASSIOPEIA”</p>
+  </div>
+</div>
+
+<!-- ============ MAIN MENU ============ -->
+<div id="menu" class="overlay menu hidden" data-testid="menu-overlay">
+  <div class="menu-grid">
+    <div class="menu-left">
+      <h1 class="title big">REGOLITH</h1>
+      <p class="subtitle">The Silence at Anaxagoras</p>
+      <div class="brief" id="menuBrief" data-testid="menu-brief"></div>
+      <div class="menu-actions">
+        <button class="btn primary" id="btnPlay" data-testid="menu-begin">BEGIN DESCENT</button>
+        <button class="btn" id="btnContinue" hidden data-testid="menu-resume-survey">RESUME SURVEY</button>
+        <button class="btn ghost" id="btnFreeRoam" data-testid="menu-free-survey">FREE SURVEY</button>
+        <button class="btn ghost" id="btnControls" data-testid="menu-controls">CONTROLS</button>
+        <button class="btn ghost" id="btnSettings" data-testid="menu-systems">SYSTEMS</button>
+      </div>
+      <p class="hint">WebGL2 · GPU accelerated · headphones recommended</p>
+    </div>
+    <div class="menu-right">
+      <div class="dossier" data-testid="menu-dossier">
+        <div class="dossier-row"><span>OPERATION</span><b>ANAXAGORAS</b></div>
+        <div class="dossier-row"><span>BODY</span><b>LUNA · FAR SIDE</b></div>
+        <div class="dossier-row"><span>GRAVITY</span><b>1.62 m/s²</b></div>
+        <div class="dossier-row"><span>ATMOSPHERE</span><b>NONE</b></div>
+        <div class="dossier-row"><span>SURFACE TEMP</span><b>−173 … +117 °C</b></div>
+        <div class="dossier-row"><span>LAST CONTACT</span><b>D+214</b></div>
+        <div class="dossier-row alert"><span>STATUS</span><b>SILENT</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hud hidden" data-testid="hud-root">
+  <!-- ── row 1 ─────────────────────────────────────────────── -->
+  <div class="z-mission">
+    <section class="panel mission" id="missionBox" data-testid="mission-box">
+      <header><span id="missionTag" data-testid="mission-tag">MISSION 01</span></header>
+      <h3 id="missionName" data-testid="mission-name">COLD START</h3>
+      <div class="mission-obj" id="missionObj" data-testid="mission-objectives">—</div>
+    </section>
+  </div>
+
+  <div class="z-compass"><canvas id="compass" width="660" height="42" data-testid="instrument-compass"></canvas></div>
+
+  <div class="z-clock">
+    <section class="panel clock">
+      <div class="row"><span>SOL PHASE</span><b id="sunPhase" data-testid="clock-sun-phase">—</b></div>
+      <div class="row"><span>MET</span><b id="met" data-testid="clock-met">00:00:00</b></div>
+      <div class="row"><span>RANGE · SLED</span><b id="rangeHome" data-testid="clock-range">—</b></div>
+    </section>
+  </div>
+
+  <!-- ── row 2 ─────────────────────────────────────────────── -->
+  <div class="z-log"><div class="logfeed" id="logfeed" data-testid="log-feed"></div></div>
+
+  <div class="z-rail">
+    <section class="panel map">
+      <header><span>ANAXAGORAS BASIN</span><b id="mapScale" data-testid="map-scale">400 m</b></header>
+      <canvas id="minimap" width="300" height="300" data-testid="instrument-minimap"></canvas>
+    </section>
+    <section class="panel bay">
+      <header><span>SAMPLE BAY</span><b id="bayCount" data-testid="sample-bay-count">0/6</b></header>
+      <div class="baygrid" id="baygrid" data-testid="sample-bay-grid"></div>
+    </section>
+  </div>
+
+  <!-- ── row 3 ─────────────────────────────────────────────── -->
+  <div class="z-bottom">
+    <section class="panel sys">
+      <header><span>SYSTEMS</span></header>
+      <div class="gauge" id="gBatt" data-testid="gauge-power"><label>POWER</label><b>100%</b><div class="bar"><i></i></div></div>
+      <div class="gauge" id="gHeat" data-testid="gauge-thermal"><label>THERMAL</label><b>+18°</b><div class="bar"><i></i></div></div>
+      <div class="gauge" id="gHull" data-testid="gauge-integrity"><label>INTEGRITY</label><b>100%</b><div class="bar"><i></i></div></div>
+      <div class="chips" id="sysChips" data-testid="system-chips"></div>
+    </section>
+
+    <section class="panel inst drive"><canvas id="speedo" width="150" height="150" data-testid="instrument-speedo"></canvas></section>
+
+    <section class="panel inst wheels">
+      <header><span>WHEEL LOAD / SLIP</span></header>
+      <canvas id="wheelmon" width="236" height="112" data-testid="instrument-wheel-load"></canvas>
+    </section>
+
+    <section class="panel inst gpr">
+      <header><span>GROUND PENETRATING RADAR</span><b id="gprState" data-testid="radar-state">IDLE</b></header>
+      <canvas id="gprscope" width="290" height="112" data-testid="instrument-radar-scope"></canvas>
+    </section>
+  </div>
+
+  <!-- centre reticle / context prompt -->
+  <div class="reticle" id="reticle" data-testid="aim-reticle"></div>
+  <div class="prompt hidden" id="prompt" data-testid="context-prompt"></div>
+
+  <!-- damage / discovery flashes -->
+  <div class="vig" id="vig" data-testid="damage-vignette"></div>
+  <div class="discovery hidden" id="discovery" data-testid="discovery-banner"><div class="d-kicker">SUBSURFACE RETURN</div><div class="d-name"></div><div class="d-sub"></div></div>
+</div>
+
+<!-- ============ CODEX ============ -->
+<div id="codex" class="overlay sheet hidden" data-testid="codex-overlay">
+  <div class="panel-head"><h2>FIELD CODEX</h2><button class="x" data-close="codex">ESC</button></div>
+  <div class="codex-body">
+    <ul class="codex-list" id="codexList" data-testid="codex-list"></ul>
+    <article class="codex-read" id="codexRead" data-testid="codex-read"><h3>SELECT AN ENTRY</h3><p>Recovered fragments, sample analyses and Directorate telemetry appear here as you survey the basin.</p></article>
+  </div>
+</div>
+
+<!-- ============ PAUSE / SETTINGS ============ -->
+<div id="pause" class="overlay sheet hidden" data-testid="systems-overlay">
+  <div class="panel-head"><h2 id="pauseTitle">SYSTEMS</h2><button class="x" data-close="pause">ESC</button></div>
+  <div class="settings" id="settingsBody" data-testid="systems-settings"></div>
+  <div class="panel-foot">
+    <button class="btn" id="btnResume" data-testid="systems-resume">RESUME</button>
+    <button class="btn ghost" id="btnCodexFromPause" data-testid="systems-codex">CODEX</button>
+    <button class="btn ghost" id="btnHelp" data-testid="systems-controls">CONTROLS</button>
+    <button class="btn ghost danger" id="btnAbort" data-testid="systems-abort">ABORT TO MENU</button>
+  </div>
+</div>
+
+<!-- ============ CONTROLS ============ -->
+<div id="help" class="overlay sheet hidden" data-testid="controls-overlay">
+  <div class="panel-head"><h2>ROVER CONTROL SCHEME</h2><button class="x" data-close="help">ESC</button></div>
+  <div class="keys" id="keysBody" data-testid="controls-keys"></div>
+</div>
+
+<!-- ============ MISSION CARD ============ -->
+<div id="cardOverlay" class="overlay card hidden" data-testid="briefing-overlay">
+  <div class="card-inner">
+    <div class="card-kicker" id="cardKicker" data-testid="briefing-kicker">MISSION 01</div>
+    <h2 class="card-title" id="cardTitle" data-testid="briefing-title"></h2>
+    <p class="card-text" id="cardText" data-testid="briefing-text"></p>
+    <div class="card-obj" id="cardObj" data-testid="briefing-objectives"></div>
+    <button class="btn primary" id="cardGo" data-testid="briefing-acknowledge">ACKNOWLEDGE</button>
+  </div>
+</div>
+
+<noscript><div class="overlay boot"><div class="boot-inner"><h1 class="title">REGOLITH</h1><p class="subtitle">JavaScript is required.</p></div></div></noscript>
+
+<script type="module" src="src/main.js"></script>
+<!-- RepairBench harness bridge: pure-read scalar snapshot (window.__RGQ__) plus a
+     setup-only command surface (window.__RGX__). Instrumentation only; it restates
+     no game rule and is not part of the shipped application. -->
+<script type="module" src="probe.js"></script>
+</body>
+</html>

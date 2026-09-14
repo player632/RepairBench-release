@@ -1,0 +1,110 @@
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index eb3d44f..8e22b63 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -55,10 +55,9 @@
+     const routeData = this.routes[path];
+     if (!routeData) {
+       // Fallback route
+-      return this.navigate('/tasks/all');
++      return this.navigate('/tasks/completed');
+     }
+   
+-    document.title = `Todo - ${routeData.title}`;
+ 
+     switch (path) {
+       case '/tasks/active':
+@@ -76,7 +75,7 @@
+   }
+ 
+   navigate(path: string) {
+-    window.history.pushState({}, path, window.location.origin + path);
++    window.history.replaceState({}, path, window.location.origin + path);
+     this.updateRoute();
+   }
+ 
+diff --git a/src/app/task-add.component.ts b/src/app/task-add.component.ts
+index 4a74a8f..90cc973 100644
+--- a/src/app/task-add.component.ts
++++ b/src/app/task-add.component.ts
+@@ -41,8 +41,8 @@
+ 
+   addTask(event: Event) {
+     const input = event.target as HTMLInputElement;
+-    const description = input.value;
+-    input.value = '';
++    input.value = '';
++    const description = input.value;
+     this.added.emit(description);
+   }
+ }
+diff --git a/src/app/task-filter.component.ts b/src/app/task-filter.component.ts
+index 06c15e3..39fc148 100644
+--- a/src/app/task-filter.component.ts
++++ b/src/app/task-filter.component.ts
+@@ -8,7 +8,7 @@
+   imports: [CommonModule],
+   template: `
+     <label for="filter">Show tasks:</label>
+-    <select id="filter" [value]="filter" (change)="filterTasks($event)">
++    <select id="filter" (change)="filterTasks($event)">
+       <option value="all">All</option>
+       <option value="active">Active</option>
+       <option value="completed">Completed</option>
+@@ -39,6 +39,6 @@
+   filterTasks(event: Event) {
+     const select = event.target as HTMLSelectElement;
+     const filter = select.value as TaskFilter;
+-    this.filterChange.emit(filter);
++    this.filterChange.emit(TaskFilter.All);
+   }
+ }
+diff --git a/src/app/task-item.component.ts b/src/app/task-item.component.ts
+index 29a9bd3..dea3844 100644
+--- a/src/app/task-item.component.ts
++++ b/src/app/task-item.component.ts
+@@ -9,7 +9,7 @@
+   imports: [CommonModule],
+   template: `
+     <label>
+-      <input type="checkbox" [checked]="task.completed" (change)="toggleCompleted.emit(!task.completed)" />
++      <input type="checkbox" [checked]="task.completed" />
+       {{ task.description }}
+     </label>
+   `,
+diff --git a/src/app/task.service.ts b/src/app/task.service.ts
+index 9eeb911..e5f157c 100644
+--- a/src/app/task.service.ts
++++ b/src/app/task.service.ts
+@@ -25,11 +25,9 @@
+ 
+   switch (filter) {
+     case TaskFilter.Active:
+-      return tasks.filter(task => !task.completed);
++      return tasks.filter(task => task.completed);
+-    case TaskFilter.Completed:
+-      return tasks.filter(task => task.completed);
+     default:
+-      return [...tasks];
++      return [...tasks].sort((a, b) => a.description.localeCompare(b.description));
+   }
+ }
+ 
+@@ -38,8 +36,7 @@
+     method: 'POST',
+     body: JSON.stringify({ description })
+   });
+-  const task = await response.json() as Task;
+-  tasks?.push(task);
++  await response.json();
+ }
+ 
+ export async function setTaskCompleted(task: Task, completed: boolean) {
+@@ -46,6 +43,6 @@
+   task.completed = completed;
+   await rbFetch(`${apiUrl}/tasks/${task.id}`, {
+     method: 'PATCH',
+-    body: JSON.stringify({ completed })
++    body: JSON.stringify({ done: completed })
+   });
+ }

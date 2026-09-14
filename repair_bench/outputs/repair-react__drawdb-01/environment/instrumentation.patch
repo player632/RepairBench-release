@@ -1,0 +1,828 @@
+diff --git a/src/components/EditorCanvas/Canvas.jsx b/src/components/EditorCanvas/Canvas.jsx
+index 976dcd3..00c7ef1 100644
+--- a/src/components/EditorCanvas/Canvas.jsx
++++ b/src/components/EditorCanvas/Canvas.jsx
+@@ -730,6 +730,7 @@ export default function Canvas() {
+       >
+         <svg
+           id="diagram"
++          data-testid="canvas-root"
+           ref={canvasRef}
+           onPointerMove={handlePointerMove}
+           onPointerDown={handlePointerDown}
+@@ -787,13 +788,14 @@ export default function Canvas() {
+               }}
+             />
+           ))}
+-          {relationships.map((e) => (
+-            <Relationship key={e.id} data={e} />
++          {relationships.map((e, relIdx) => (
++            <Relationship key={e.id} data={e} relIndex={relIdx} />
+           ))}
+-          {tables.map((table) => (
++          {tables.map((table, tableIdx) => (
+             <Table
+               key={table.id}
+               tableData={table}
++              tableIndex={tableIdx}
+               setHoveredTable={setHoveredTable}
+               handleGripField={handleGripField}
+               setLinkingLine={setLinkingLine}
+@@ -807,6 +809,7 @@ export default function Canvas() {
+           ))}
+           {linking && (
+             <path
++              data-testid="linking-line"
+               d={`M ${linkingLine.startX} ${linkingLine.startY} L ${linkingLine.endX} ${linkingLine.endY}`}
+               stroke="red"
+               strokeDasharray="8,8"
+diff --git a/src/components/EditorCanvas/Relationship.jsx b/src/components/EditorCanvas/Relationship.jsx
+index ddc227d..0a9b961 100644
+--- a/src/components/EditorCanvas/Relationship.jsx
++++ b/src/components/EditorCanvas/Relationship.jsx
+@@ -13,7 +13,7 @@ import {
+ 
+ const labelFontSize = 16;
+ 
+-export default function Relationship({ data }) {
++export default function Relationship({ data, relIndex }) {
+   const { settings } = useSettings();
+   const { tables, relationships } = useDiagram();
+   const { layout } = useLayout();
+@@ -191,6 +191,7 @@ export default function Relationship({ data }) {
+         />
+         <path
+           ref={pathRef}
++          data-testid={"canvas-rel-" + relIndex}
+           d={
+             composite
+               ? composite.path
+@@ -209,6 +210,7 @@ export default function Relationship({ data }) {
+           <text
+             x={labelX}
+             y={labelY}
++            data-testid={"rel-label-" + relIndex}
+             fill={settings.mode === "dark" ? "lightgrey" : "#333"}
+             fontSize={labelFontSize}
+             fontWeight={500}
+@@ -224,11 +226,13 @@ export default function Relationship({ data }) {
+               x={cardinalityStartX}
+               y={cardinalityStartY}
+               text={cardinalityStart}
++              testid={"rel-card-" + relIndex + "-start"}
+             />
+             <CardinalityLabel
+               x={cardinalityEndX}
+               y={cardinalityEndY}
+               text={cardinalityEnd}
++              testid={"rel-card-" + relIndex + "-end"}
+             />
+           </>
+         )}
+@@ -258,7 +262,7 @@ export default function Relationship({ data }) {
+   );
+ }
+ 
+-function CardinalityLabel({ x, y, text, r = 12, padding = 14 }) {
++function CardinalityLabel({ x, y, text, r = 12, padding = 14, testid }) {
+   const [textWidth, setTextWidth] = useState(0);
+   const textRef = useRef(null);
+ 
+@@ -270,7 +274,7 @@ function CardinalityLabel({ x, y, text, r = 12, padding = 14 }) {
+   }, [text]);
+ 
+   return (
+-    <g>
++    <g data-testid={testid}>
+       <rect
+         x={x - textWidth / 2 - padding / 2}
+         y={y - r}
+diff --git a/src/components/EditorCanvas/Table.jsx b/src/components/EditorCanvas/Table.jsx
+index 7c82560..080e0e6 100644
+--- a/src/components/EditorCanvas/Table.jsx
++++ b/src/components/EditorCanvas/Table.jsx
+@@ -54,6 +54,7 @@ export default function Table({
+   setHoveredTable,
+   handleGripField,
+   setLinkingLine,
++  tableIndex,
+ }) {
+   const [hoveredField, setHoveredField] = useState(null);
+   const { layout } = useLayout();
+@@ -249,6 +250,7 @@ export default function Table({
+       >
+         <div
+           onDoubleClick={openEditor}
++          data-testid={"canvas-table-" + tableIndex}
+           className={`border-2 hover:border-dashed hover:border-blue-500
+                select-none rounded-lg w-full ${
+                  settings.mode === "light"
+@@ -273,7 +275,10 @@ export default function Table({
+             <div
+               className={`overflow-hidden font-bold h-[40px] flex justify-between items-center gap-2`}
+             >
+-              <div className="px-3 overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
++              <div
++                className="px-3 overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1"
++                data-testid={"table-name-" + tableIndex}
++              >
+                 {tableData.name}
+               </div>
+               <div className="hidden group-hover:flex items-center shrink-0 pe-2">
+@@ -286,6 +291,7 @@ export default function Table({
+                     size="small"
+                     type="tertiary"
+                     title={tableData.locked ? "Unlock table" : "Lock table"}
++                    data-testid={"table-lock-" + tableIndex}
+                     icon={
+                       tableData.locked ? (
+                         <IconLock size="small" />
+@@ -299,6 +305,7 @@ export default function Table({
+                   <Button
+                     size="small"
+                     type="tertiary"
++                    data-testid={"table-collapse-" + tableIndex}
+                     icon={
+                       tableData.collapsed ? (
+                         <IconChevronDown size="small" />
+@@ -349,6 +356,7 @@ export default function Table({
+                         <Button
+                           icon={<IconDeleteStroked />}
+                           type="danger"
++                          data-testid={"table-delete-" + tableIndex}
+                           theme="borderless"
+                           block
+                           style={{ justifyContent: "flex-start" }}
+@@ -367,6 +375,7 @@ export default function Table({
+                     <Button
+                       size="small"
+                       type="tertiary"
++                      data-testid={"table-more-" + tableIndex}
+                       icon={<IconMore size="small" />}
+                       title="See more"
+                     />
+@@ -487,7 +496,7 @@ export default function Table({
+         style={{ paddingBottom: "16px" }}
+       >
+         <div className="sidesheet-theme">
+-          <TableInfo data={tableData} />
++          <TableInfo data={tableData} index={tableIndex} />
+         </div>
+       </SideSheet>
+     </>
+@@ -498,6 +507,7 @@ export default function Table({
+     const showFieldComment = fieldData.comment && settings.showComments;
+     return (
+       <div
++        data-testid={"table-row-" + tableIndex + "-" + index}
+         className={`${
+           index === visibleFields.length - 1 ? "" : "border-b border-gray-400"
+         } group w-full overflow-hidden`}
+@@ -564,7 +574,10 @@ export default function Table({
+                 }));
+               }}
+             />
+-            <span className="overflow-hidden text-ellipsis whitespace-nowrap">
++            <span
++              className="overflow-hidden text-ellipsis whitespace-nowrap"
++              data-testid={"table-field-name-" + tableIndex + "-" + index}
++            >
+               {fieldData.name}
+             </span>
+           </div>
+@@ -573,6 +586,7 @@ export default function Table({
+               <Button
+                 theme="solid"
+                 size="small"
++                data-testid={"table-field-delete-" + tableIndex + "-" + index}
+                 style={{
+                   backgroundColor: "#d42020b3",
+                 }}
+@@ -588,6 +602,7 @@ export default function Table({
+                 {fieldData.primary && <IconKeyStroked />}
+                 {!fieldData.notNull && <span className="font-mono">?</span>}
+                 <span
++                  data-testid={"table-field-type-" + tableIndex + "-" + index}
+                   className={
+                     "font-mono " +
+                     (fieldResolved.isCustom ? "" : fieldResolved.color)
+diff --git a/src/components/EditorHeader/ControlPanel.jsx b/src/components/EditorHeader/ControlPanel.jsx
+index d395a0a..0535858 100644
+--- a/src/components/EditorHeader/ControlPanel.jsx
++++ b/src/components/EditorHeader/ControlPanel.jsx
+@@ -1761,6 +1761,18 @@ export default function ControlPanel({
+   useHotkeys("mod+alt+w", fitWindow, { preventDefault: true });
+   useHotkeys("alt+e", toggleDBMLEditor, { preventDefault: true });
+ 
++  const MENU_ITEM_TESTID_ALIASES = {
++    "file/new": "cp-new",
++    "file/open": "cp-open",
++    "file/import_from": "cp-import",
++    "file/import_from_source": "cp-import-src",
++    "file/export_source": "cp-export-sql",
++    "view/show_cardinality": "setting-cardinality",
++  };
++  const menuItemTestId = (category, item) =>
++    MENU_ITEM_TESTID_ALIASES[category + "/" + item] ||
++    "cp-item-" + category + "-" + item;
++
+   return (
+     <>
+       <div>
+@@ -1826,6 +1838,7 @@ export default function ControlPanel({
+           <Divider layout="vertical" margin="8px" />
+           <Tooltip content={t("zoom_out")} position="bottom">
+             <button
++              data-testid="zoom-out"
+               className="py-1 px-2 hover-2 rounded-sm text-lg"
+               onClick={() =>
+                 setTransform((prev) => ({ ...prev, zoom: prev.zoom / 1.2 }))
+@@ -1879,7 +1892,7 @@ export default function ControlPanel({
+             trigger="click"
+           >
+             <div className="py-1 px-2 hover-2 rounded-sm flex items-center justify-center">
+-              <div className="w-[40px]">
++              <div className="w-[40px]" data-testid="zoom-value">
+                 {Math.floor(transform.zoom * 100)}%
+               </div>
+               <div>
+@@ -1889,6 +1902,7 @@ export default function ControlPanel({
+           </Dropdown>
+           <Tooltip content={t("zoom_in")} position="bottom">
+             <button
++              data-testid="zoom-in"
+               className="py-1 px-2 hover-2 rounded-sm text-lg"
+               onClick={() =>
+                 setTransform((prev) => ({ ...prev, zoom: prev.zoom * 1.2 }))
+@@ -1900,6 +1914,7 @@ export default function ControlPanel({
+           <Divider layout="vertical" margin="8px" />
+           <Tooltip content={t("undo")} position="bottom">
+             <button
++              data-testid="cp-undo"
+               className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
+               disabled={undoStack.length === 0 || layout.readOnly}
+               onClick={undo}
+@@ -1909,6 +1924,7 @@ export default function ControlPanel({
+           </Tooltip>
+           <Tooltip content={t("redo")} position="bottom">
+             <button
++              data-testid="cp-redo"
+               className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
+               disabled={redoStack.length === 0 || layout.readOnly}
+               onClick={redo}
+@@ -1919,6 +1935,7 @@ export default function ControlPanel({
+           <Divider layout="vertical" margin="8px" />
+           <Tooltip content={t("add_table")} position="bottom">
+             <button
++              data-testid="cp-add-table-toolbar"
+               className="flex items-center py-1 px-2 hover-2 rounded-sm disabled:opacity-50"
+               onClick={() => addTable()}
+               disabled={layout.readOnly}
+@@ -2005,6 +2022,7 @@ export default function ControlPanel({
+     }
+   }
+ 
++
+   function header() {
+     return (
+       <nav
+@@ -2037,6 +2055,7 @@ export default function ControlPanel({
+               <Slot name="diagram-title-prefix" />
+               <div
+                 className="text-xl flex items-center gap-1 me-1"
++                data-testid="cp-title"
+                 onPointerEnter={(e) => e.isPrimary && setShowEditName(true)}
+                 onPointerLeave={(e) => e.isPrimary && setShowEditName(false)}
+                 onPointerDown={(e) => {
+@@ -2048,7 +2067,7 @@ export default function ControlPanel({
+               >
+                 <span>{(isTemplate ? "Templates" : "Diagrams")}</span>
+                 <span className="select-none text-zinc-400 dark:text-zinc-500 mx-1">/</span>
+-                <span>{title}</span>
++                <span data-testid="diagram-title">{title}</span>
+                 {version && (
+                   <Tag className="mt-1" color="blue" size="small">
+                     {version.substring(0, 7)}
+@@ -2115,6 +2134,7 @@ export default function ControlPanel({
+                                 }
+                               >
+                                 <Dropdown.Item
++                                  data-testid={menuItemTestId(category, item)}
+                                   style={{
+                                     display: "flex",
+                                     justifyContent: "space-between",
+@@ -2147,13 +2167,18 @@ export default function ControlPanel({
+                                 okText={t("confirm")}
+                                 cancelText={t("cancel")}
+                               >
+-                                <Dropdown.Item>{t(item)}</Dropdown.Item>
++                                <Dropdown.Item
++                                  data-testid={menuItemTestId(category, item)}
++                                >
++                                  {t(item)}
++                                </Dropdown.Item>
+                               </Popconfirm>
+                             );
+                           }
+                           return (
+                             <Dropdown.Item
+                               key={index}
++                              data-testid={menuItemTestId(category, item)}
+                               disabled={menu[category][item].disabled}
+                               onClick={menu[category][item].function}
+                               style={
+@@ -2182,7 +2207,10 @@ export default function ControlPanel({
+                       </Dropdown.Menu>
+                     }
+                   >
+-                    <div className="px-3 py-1 hover-2 rounded-sm">
++                    <div
++                      className="px-3 py-1 hover-2 rounded-sm"
++                      data-testid={"cp-menu-" + category}
++                    >
+                       {t(category)}
+                     </div>
+                   </Dropdown>
+@@ -2193,6 +2221,7 @@ export default function ControlPanel({
+                 <Tag
+                   size="small"
+                   type="light"
++                  data-testid="save-state"
+                   prefixIcon={
+                     saveState === State.LOADING ||
+                     saveState === State.SAVING ? (
+diff --git a/src/components/EditorHeader/Modal/ImportSource.jsx b/src/components/EditorHeader/Modal/ImportSource.jsx
+index 3ca4871..5892eee 100644
+--- a/src/components/EditorHeader/Modal/ImportSource.jsx
++++ b/src/components/EditorHeader/Modal/ImportSource.jsx
+@@ -17,6 +17,7 @@ export default function ImportSource({
+         <TabPane tab={t("insert_sql")} itemKey="text-import">
+           <CodeEditor
+             height={224}
++            data-testid="import-src-code"
+             language="sql"
+             onChange={(value) => {
+               setImportData((prev) => ({ ...prev, src: value }));
+diff --git a/src/components/EditorHeader/Modal/Modal.jsx b/src/components/EditorHeader/Modal/Modal.jsx
+index 84097b5..bde620a 100644
+--- a/src/components/EditorHeader/Modal/Modal.jsx
++++ b/src/components/EditorHeader/Modal/Modal.jsx
+@@ -285,6 +285,7 @@ export default function Modal({
+               ) : (
+                 <CodeEditor
+                   height={360}
++                  data-testid="export-code"
+                   value={exportData.data}
+                   language={extensionToLanguage[exportData.extension]}
+                   options={{ readOnly: true }}
+@@ -363,6 +364,14 @@ export default function Modal({
+       closeOnEsc={true}
+       okText={getOkText(modal)}
+       okButtonProps={{
++        "data-testid":
++          modal === MODAL.CODE
++            ? "export-ok"
++            : modal === MODAL.IMPORT_SRC
++              ? "import-src-ok"
++              : modal === MODAL.RENAME
++                ? "rename-ok"
++                : undefined,
+         disabled:
+           (error && error?.type === STATUS.ERROR) ||
+           (modal === MODAL.IMPORT &&
+diff --git a/src/components/EditorHeader/Modal/Rename.jsx b/src/components/EditorHeader/Modal/Rename.jsx
+index 3a8861e..3c7250d 100644
+--- a/src/components/EditorHeader/Modal/Rename.jsx
++++ b/src/components/EditorHeader/Modal/Rename.jsx
+@@ -9,6 +9,7 @@ export default function Rename({ title, setTitle }) {
+   return (
+     <Input
+       placeholder={t("name")}
++      data-testid="rename-input"
+       defaultValue={title}
+       onChange={(v) => setTitle(v)}
+       readonly={layout.readOnly}
+diff --git a/src/components/EditorHeader/SideSheet/Migration.jsx b/src/components/EditorHeader/SideSheet/Migration.jsx
+index dc5a7db..363a71a 100644
+--- a/src/components/EditorHeader/SideSheet/Migration.jsx
++++ b/src/components/EditorHeader/SideSheet/Migration.jsx
+@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
+ import { Tabs, TabPane, Modal, Input, Tag, Spin } from "@douyinfe/semi-ui";
+ import { useEffect } from "react";
+ import { useTranslation } from "react-i18next";
+-import { useSettings } from "../../../hooks";
+ import { compare, VERSION_FILENAME } from "../../../api/gists";
+ import { deepDiff } from "../../../utils/diff";
+ import { DateTime } from "luxon";
+@@ -18,7 +17,6 @@ export default function Migration({
+   setSelectedVersion,
+ }) {
+   const { t } = useTranslation();
+-  const { settings } = useSettings();
+   const [loading, setLoading] = useState(false);
+   const [contentA, setContentA] = useState("");
+   const [contentB, setContentB] = useState("");
+diff --git a/src/components/EditorSidePanel/DBMLEditor.jsx b/src/components/EditorSidePanel/DBMLEditor.jsx
+index 0994e4e..c9a3fbb 100644
+--- a/src/components/EditorSidePanel/DBMLEditor.jsx
++++ b/src/components/EditorSidePanel/DBMLEditor.jsx
+@@ -16,6 +16,7 @@ export default function DBMLEditor() {
+   return (
+     <CodeEditor
+       showCopyButton
++      data-testid="dbml-editor"
+       value={value}
+       language="dbml"
+       onChange={setValue}
+diff --git a/src/components/EditorSidePanel/RelationshipsTab/RelationshipInfo.jsx b/src/components/EditorSidePanel/RelationshipsTab/RelationshipInfo.jsx
+index 095c92b..a00a097 100644
+--- a/src/components/EditorSidePanel/RelationshipsTab/RelationshipInfo.jsx
++++ b/src/components/EditorSidePanel/RelationshipsTab/RelationshipInfo.jsx
+@@ -204,6 +204,7 @@ export default function RelationshipInfo({ data }) {
+         <div className="text-md font-semibold break-keep">{t("name")}: </div>
+         <Input
+           value={data.name}
++          data-testid="rel-name"
+           validateStatus={data.name.trim() === "" ? "error" : "default"}
+           placeholder={t("name")}
+           className="ms-2"
+@@ -252,9 +253,11 @@ export default function RelationshipInfo({ data }) {
+ 
+       <div className="font-semibold my-1">{t("cardinality")}:</div>
+       <Select
++        data-testid="rel-card-end"
+         optionList={Object.values(Cardinality).map((v) => ({
+           label: t(v),
+           value: v,
++          "data-testid": "rel-card-option-" + v,
+         }))}
+         value={data.cardinality}
+         className="w-full"
+@@ -391,6 +394,7 @@ export default function RelationshipInfo({ data }) {
+         block
+         type="danger"
+         disabled={layout.readOnly}
++        data-testid="rel-delete-action"
+         icon={<IconDeleteStroked />}
+         onClick={() => deleteRelationship(data.id)}
+       >
+diff --git a/src/components/EditorSidePanel/RelationshipsTab/RelationshipsTab.jsx b/src/components/EditorSidePanel/RelationshipsTab/RelationshipsTab.jsx
+index 537db7c..958c084 100644
+--- a/src/components/EditorSidePanel/RelationshipsTab/RelationshipsTab.jsx
++++ b/src/components/EditorSidePanel/RelationshipsTab/RelationshipsTab.jsx
+@@ -48,8 +48,12 @@ export default function RelationshipsTab() {
+             items={relationships}
+             onChange={(newRelationships) => setRelationships(newRelationships)}
+             afterChange={() => setSaveState(State.SAVING)}
+-            renderItem={(item) => (
+-              <div id={`scroll_ref_${item.id}`} key={"relationship_" + item.id}>
++            renderItem={(item, i) => (
++              <div
++                id={`scroll_ref_${item.id}`}
++                key={"relationship_" + item.id}
++                data-testid={"rel-item-" + i}
++              >
+                 <Collapse.Panel
+                   className="relative"
+                   header={
+diff --git a/src/components/EditorSidePanel/SidePanel.jsx b/src/components/EditorSidePanel/SidePanel.jsx
+index 4f145bb..11253c8 100644
+--- a/src/components/EditorSidePanel/SidePanel.jsx
++++ b/src/components/EditorSidePanel/SidePanel.jsx
+@@ -40,22 +40,38 @@ export default function SidePanel({ width, resize, setResize }) {
+   const tabList = useMemo(() => {
+     const tabs = [
+       {
+-        tab: `${t("tables")} (${tablesCount})`,
++        tab: (
++          <span data-testid="side-tab-tables">
++            {t("tables")} ({tablesCount})
++          </span>
++        ),
+         itemKey: Tab.TABLES,
+         component: <TablesTab />,
+       },
+       {
+-        tab: `${t("relationships")} (${relationshipsCount})`,
++        tab: (
++          <span data-testid="side-tab-relationships">
++            {t("relationships")} ({relationshipsCount})
++          </span>
++        ),
+         itemKey: Tab.RELATIONSHIPS,
+         component: <RelationshipsTab />,
+       },
+       {
+-        tab: `${t("subject_areas")} (${areasCount})`,
++        tab: (
++          <span data-testid="side-tab-areas">
++            {t("subject_areas")} ({areasCount})
++          </span>
++        ),
+         itemKey: Tab.AREAS,
+         component: <AreasTab />,
+       },
+       {
+-        tab: `${t("notes")} (${notesCount})`,
++        tab: (
++          <span data-testid="side-tab-notes">
++            {t("notes")} ({notesCount})
++          </span>
++        ),
+         itemKey: Tab.NOTES,
+         component: <NotesTab />,
+       },
+@@ -63,7 +79,11 @@ export default function SidePanel({ width, resize, setResize }) {
+ 
+     if (databases[database].hasTypes) {
+       tabs.push({
+-        tab: `${t("types")} (${typesCount})`,
++        tab: (
++          <span data-testid="side-tab-types">
++            {t("types")} ({typesCount})
++          </span>
++        ),
+         itemKey: Tab.TYPES,
+         component: <TypesTab />,
+       });
+@@ -71,7 +91,11 @@ export default function SidePanel({ width, resize, setResize }) {
+ 
+     if (databases[database].hasEnums) {
+       tabs.push({
+-        tab: `${t("enums")} (${enumsCount})`,
++        tab: (
++          <span data-testid="side-tab-enums">
++            {t("enums")} ({enumsCount})
++          </span>
++        ),
+         itemKey: Tab.ENUMS,
+         component: <EnumsTab />,
+       });
+diff --git a/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx b/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
+index 0f4a91d..a706b41 100644
+--- a/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
++++ b/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
+@@ -30,6 +30,7 @@ export default function FieldDetails({ data, tid }) {
+       <Input
+         className="my-2"
+         placeholder={t("default_value")}
++        data-testid="field-default"
+         value={data.default}
+         readonly={layout.readOnly}
+         disabled={resolved.noDefault || data.increment}
+@@ -107,6 +108,7 @@ export default function FieldDetails({ data, tid }) {
+           <InputNumber
+             className="my-2 w-full"
+             placeholder={t("size")}
++            data-testid="field-size"
+             value={data.size}
+             readonly={layout.readOnly}
+             onChange={(value) => updateField(tid, data.id, { size: value })}
+@@ -354,6 +356,7 @@ export default function FieldDetails({ data, tid }) {
+       <TextArea
+         className="my-2"
+         placeholder={t("comment")}
++        data-testid="field-comment"
+         value={data.comment}
+         readonly={layout.readOnly}
+         autosize
+@@ -385,6 +388,7 @@ export default function FieldDetails({ data, tid }) {
+         icon={<IconDeleteStroked />}
+         type="danger"
+         block
++        data-testid="field-delete"
+         disabled={layout.readOnly}
+         onClick={() => deleteField(data, tid)}
+       >
+diff --git a/src/components/EditorSidePanel/TablesTab/TableField.jsx b/src/components/EditorSidePanel/TablesTab/TableField.jsx
+index bdad924..e9eaad2 100644
+--- a/src/components/EditorSidePanel/TablesTab/TableField.jsx
++++ b/src/components/EditorSidePanel/TablesTab/TableField.jsx
+@@ -33,6 +33,7 @@ export default function TableField({ data, tid, index, inherited }) {
+       <div className="min-w-20 flex-1/3">
+         <Input
+           value={data.name}
++          data-testid={"field-name-" + index}
+           id={`scroll_table_${tid}_input_${index}`}
+           validateStatus={
+             data.name.trim() === "" || inherited ? "error" : "default"
+@@ -67,22 +68,27 @@ export default function TableField({ data, tid, index, inherited }) {
+       <div className="min-w-24 flex-1/3">
+         <Select
+           className="w-full"
++          data-testid={"field-type-" + index}
+           optionList={[
+             ...Object.keys(dbToTypes[database]).map((value) => ({
+               label: value,
+               value,
++              "data-testid": "field-type-option-" + value,
+             })),
+             ...Object.keys(getCustomTypesForDb(database)).map((value) => ({
+               label: value,
+               value,
++              "data-testid": "field-type-option-" + value,
+             })),
+             ...types.map((type) => ({
+               label: type.name.toUpperCase(),
+               value: type.name.toUpperCase(),
++              "data-testid": "field-type-option-" + type.name.toUpperCase(),
+             })),
+             ...enums.map((type) => ({
+               label: type.name.toUpperCase(),
+               value: type.name.toUpperCase(),
++              "data-testid": "field-type-option-" + type.name.toUpperCase(),
+             })),
+           ]}
+           filter
+@@ -226,7 +232,11 @@ export default function TableField({ data, tid, index, inherited }) {
+           position="right"
+           showArrow
+         >
+-          <Button type="tertiary" icon={<IconMore />} />
++          <Button
++            type="tertiary"
++            icon={<IconMore />}
++            data-testid={"field-more-" + index}
++          />
+         </Popover>
+       </div>
+     </div>
+diff --git a/src/components/EditorSidePanel/TablesTab/TableInfo.jsx b/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
+index c02a73c..dd160ee 100644
+--- a/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
++++ b/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
+@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
+ import { SortableList } from "../../SortableList/SortableList";
+ import { nanoid } from "nanoid";
+ 
+-export default function TableInfo({ data }) {
++export default function TableInfo({ data, index = 0 }) {
+   const { tables, database } = useDiagram();
+   const { t } = useTranslation();
+   const [indexActiveKey, setIndexActiveKey] = useState("");
+@@ -153,6 +153,7 @@ export default function TableInfo({ data }) {
+         <div className="text-md font-semibold break-keep">{t("name")}:</div>
+         <Input
+           value={data.name}
++          data-testid="info-name"
+           validateStatus={data.name.trim() === "" ? "error" : "default"}
+           placeholder={t("name")}
+           className="ms-2"
+@@ -318,6 +319,7 @@ export default function TableInfo({ data }) {
+             <Collapse.Panel header={t("comment")} itemKey="1">
+               <TextArea
+                 field="comment"
++                data-testid="info-comment"
+               value={data.comment}
+               readonly={layout.readOnly}
+               autosize
+@@ -366,13 +368,16 @@ export default function TableInfo({ data }) {
+             trigger="click"
+             render={
+               <Dropdown.Menu>
+-                <Dropdown.Item onClick={addComment}>
++                <Dropdown.Item onClick={addComment} data-testid="table-add-comment">
+                   {t("add_comment")}
+                 </Dropdown.Item>
+-                <Dropdown.Item onClick={addUniqueConstraint}>
++                <Dropdown.Item
++                  onClick={addUniqueConstraint}
++                  data-testid="table-add-unique"
++                >
+                   {t("add_unique_constraint")}
+                 </Dropdown.Item>
+-                <Dropdown.Item onClick={addIndex}>
++                <Dropdown.Item onClick={addIndex} data-testid="table-add-index">
+                   {t("add_index")}
+                 </Dropdown.Item>
+               </Dropdown.Menu>
+@@ -382,11 +387,13 @@ export default function TableInfo({ data }) {
+               icon={<IconPlus />}
+               disabled={layout.readOnly}
+               title={t("add")}
++              data-testid={"table-add-menu-" + index}
+             />
+           </Dropdown>
+           <Button
+             block
+             disabled={layout.readOnly}
++            data-testid={"table-add-field-" + index}
+             onClick={() => {
+               const id = nanoid();
+               setUndoStack((prev) => [
+@@ -428,6 +435,7 @@ export default function TableInfo({ data }) {
+           <Button
+             type="danger"
+             disabled={layout.readOnly}
++            data-testid={"table-item-delete-" + index}
+             icon={<IconDeleteStroked />}
+             onClick={() => deleteTable(data.id)}
+           />
+diff --git a/src/components/EditorSidePanel/TablesTab/TablesTab.jsx b/src/components/EditorSidePanel/TablesTab/TablesTab.jsx
+index b1b2fa1..4cb57dc 100644
+--- a/src/components/EditorSidePanel/TablesTab/TablesTab.jsx
++++ b/src/components/EditorSidePanel/TablesTab/TablesTab.jsx
+@@ -30,6 +30,7 @@ export default function TablesTab() {
+         <div>
+           <Button
+             block
++            data-testid="add-table"
+             icon={<IconPlus />}
+             onClick={() => addTable()}
+             disabled={layout.readOnly}
+@@ -42,6 +43,7 @@ export default function TablesTab() {
+         <Empty title={t("no_tables")} text={t("no_tables_text")} />
+       ) : (
+         <Collapse
++          data-testid="tables-list"
+           activeKey={
+             selectedElement.open && selectedElement.element === ObjectType.TABLE
+               ? `${selectedElement.id}`
+@@ -64,7 +66,7 @@ export default function TablesTab() {
+             items={tables}
+             onChange={(newTables) => setTables(newTables)}
+             afterChange={() => setSaveState(State.SAVING)}
+-            renderItem={(item) => <TableListItem table={item} />}
++            renderItem={(item, i) => <TableListItem table={item} index={i} />}
+           />
+         </Collapse>
+       )}
+@@ -72,7 +74,7 @@ export default function TablesTab() {
+   );
+ }
+ 
+-function TableListItem({ table }) {
++function TableListItem({ table, index }) {
+   const { layout } = useLayout();
+   const { updateTable } = useDiagram();
+   const { setUndoStack, setRedoStack } = useUndoRedo();
+@@ -100,7 +102,7 @@ function TableListItem({ table }) {
+   };
+ 
+   return (
+-    <div id={`scroll_table_${table.id}`}>
++    <div id={`scroll_table_${table.id}`} data-testid={"table-item-" + index}>
+       <Collapse.Panel
+         className="relative"
+         header={
+diff --git a/src/components/Workspace.jsx b/src/components/Workspace.jsx
+index 2d86daa..9fbb1a8 100644
+--- a/src/components/Workspace.jsx
++++ b/src/components/Workspace.jsx
+@@ -604,12 +604,13 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
+           setDatabase(selectedDb);
+           setShowSelectDbModal(false);
+         }}
+-        okButtonProps={{ disabled: selectedDb === "" }}
++        okButtonProps={{ disabled: selectedDb === "", "data-testid": "db-confirm" }}
+       >
+         <div className="grid grid-cols-3 gap-4 place-content-center">
+           {Object.values(databases).map((x) => (
+             <div
+               key={x.name}
++              data-testid={"db-card-" + x.label}
+               onClick={() => setSelectedDb(x.label)}
+               className={`space-y-3 p-3 rounded-md border-2 select-none ${
+                 settings.mode === "dark"
+diff --git a/src/pages/LandingPage.jsx b/src/pages/LandingPage.jsx
+index a5155ef..b990281 100644
+--- a/src/pages/LandingPage.jsx
++++ b/src/pages/LandingPage.jsx
+@@ -25,7 +25,7 @@ function shortenNumber(number) {
+ }
+ 
+ export default function LandingPage() {
+-  const [stats, setStats] = useState({ stars: 18000, forks: 1200 });
++  const [stats] = useState({ stars: 18000, forks: 1200 });
+ 
+   useEffect(() => {
+     document.body.setAttribute("theme-mode", "light");
+diff --git a/src/pages/Templates.jsx b/src/pages/Templates.jsx
+index b542a8e..04ab632 100644
+--- a/src/pages/Templates.jsx
++++ b/src/pages/Templates.jsx
+@@ -66,6 +66,7 @@ export default function Templates() {
+                 {defaultTemplates?.map((t, i) => (
+                   <div
+                     key={t.id}
++                    data-testid={"tpl-card-" + i}
+                     className="bg-gray-100 hover:translate-y-[-6px] transition-all duration-300 border rounded-md"
+                   >
+                     <div className="h-48">
+@@ -78,11 +79,15 @@ export default function Templates() {
+                     </div>
+                     <div className="px-4 py-3">
+                       <div className="flex justify-between">
+-                        <div className="text-lg font-bold text-zinc-700">
++                        <div
++                          className="text-lg font-bold text-zinc-700"
++                          data-testid={"tpl-title-" + i}
++                        >
+                           {t.title}
+                         </div>
+                         <button
+                           className="border rounded-sm px-2 py-1 bg-white hover:bg-gray-200 transition-all duration-300"
++                          data-testid={"tpl-fork-" + i}
+                           onClick={() => forkTemplate(t.templateId)}
+                         >
+                           <i className="fa-solid fa-code-fork"></i>

@@ -1,0 +1,157 @@
+import { Injectable } from '@angular/core';
+import { AudioExportOptions } from '../../../domain/export-options/audio-export-options';
+import { Track } from '../../../domain/track';
+import { IAudioExport } from '../../../domain/ports/i-audio-export';
+import { TempoAdapterService } from '../tempo-control/tempo-adapter.service';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AudioExportAdapter implements IAudioExport {
+  constructor(private readonly tempoService: TempoAdapterService) {}
+
+  async exportBeat(
+    tracks: readonly Track[],
+    options: AudioExportOptions
+  ): Promise<Blob> {
+    const barDurationSeconds = this.tempoService.barDuration;
+    const totalDurationSeconds = barDurationSeconds;
+    const sampleRate = 44100;
+
+    const rawBuffers = await this.loadAllBuffers(tracks);
+    const maxBufferDuration = this.getMaxBufferDuration(rawBuffers);
+    const total = totalDurationSeconds + ((options.exportWithTail) ? maxBufferDuration * 2 : 0);
+    const totalSamples = Math.ceil(total * sampleRate);
+
+    const offlineContext = new OfflineAudioContext(2, totalSamples, sampleRate);
+    const stepDurationSeconds = this.tempoService.stepDuration;
+
+    const audioBuffers = await this.loadAllTracks(tracks, offlineContext);
+
+    for (const track of tracks) {
+      const audioBuffer = audioBuffers.get(track.filename);
+      if (!audioBuffer) continue;
+
+      for (let loop = 0; loop < options.loopCount; loop++) {
+        const loopStartTime = loop * barDurationSeconds;
+
+        for (let stepIndex = 0; stepIndex < track.steps.steps.length; stepIndex++) {
+          if (track.steps.steps[stepIndex]) {
+            const source = offlineContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineContext.destination);
+
+            const when = loopStartTime + (stepIndex * stepDurationSeconds);
+            source.start(when);
+          }
+        }
+      }
+    }
+
+    const renderedBuffer = await offlineContext.startRendering();
+    return this.bufferToWav(renderedBuffer);
+  }
+
+  private async loadAllBuffers(
+    tracks: readonly Track[]
+  ): Promise<Map<string, ArrayBuffer>> {
+    const buffers = new Map<string, ArrayBuffer>();
+
+    const loadPromises = tracks.map(async (track) => {
+      try {
+        const response = await fetch(`/assets/sounds/${track.filename}`);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          buffers.set(track.filename, arrayBuffer);
+        }
+      } catch (error) {
+        console.warn(`Failed to load ${track.filename}:`, error);
+      }
+    });
+
+    await Promise.all(loadPromises);
+    return buffers;
+  }
+
+  private getMaxBufferDuration(buffers: ReadonlyMap<string, ArrayBuffer>): number {
+    return Array.from(buffers.values()).reduce((max, arrayBuffer) => {
+      const duration = arrayBuffer.byteLength / (44100 * 2 * 2);
+      return Math.max(max, duration);
+    }, 0);
+  }
+
+  private async loadAllTracks(
+    tracks: readonly Track[],
+    context: OfflineAudioContext
+  ): Promise<Map<string, AudioBuffer>> {
+    const buffers = new Map<string, AudioBuffer>();
+
+    const loadPromises = tracks.map(async (track) => {
+      try {
+        const response = await fetch(`/assets/sounds/${track.filename}`);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          const audioBuffer = await context.decodeAudioData(arrayBuffer);
+          buffers.set(track.filename, audioBuffer);
+        }
+      } catch (error) {
+        console.warn(`Failed to load ${track.filename}:`, error);
+      }
+    });
+
+    await Promise.all(loadPromises);
+    return buffers;
+  }
+
+  private bufferToWav(buffer: AudioBuffer): Blob {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const bitDepth = 16;
+
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = buffer.length * blockAlign;
+    const headerSize = 44;
+    const totalSize = headerSize + dataSize;
+
+    const arrayBuffer = new ArrayBuffer(totalSize);
+    const view = new DataView(arrayBuffer);
+
+    this.writeString(view, 0, 'RIFF');
+    view.setUint32(4, totalSize - 8, true);
+    this.writeString(view, 8, 'WAVE');
+    this.writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    this.writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    const channels: Float32Array[] = [];
+    for (let i = 0; i < numChannels; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    let offset = headerSize; // eslint-disable-line functional/no-let
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  }
+
+  private writeString(view: DataView, offset: number, string: string): void {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  }
+}

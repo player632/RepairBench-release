@@ -1,0 +1,227 @@
+diff --git a/src/SiteStore.jsx b/src/SiteStore.jsx
+index 6dd32c61a10c7c8e04a83fa744486f84718213e6..c5c5750d9557f842f4f431af8e11c5e3408fa03d 100644
+--- a/src/SiteStore.jsx
++++ b/src/SiteStore.jsx
+@@ -161,6 +161,22 @@ const SiteProvider = (props) => {
+     },
+   };
+   //
++  // ---- RepairBench instrumentation: read-only observation bridge (no behaviour change) ----
++  try {
++    const w = globalThis;
++    if (!w.__rb) w.__rb = {};
++    if (!w.__rb.store) {
++      w.__rb.store = {
++        get theme() { return getTheme(); },
++        get active() { return getActive(); },
++        get loaded() { return !!(site() && Array.isArray(site().themes) && site().themes.length > 0); },
++        get themeCount() { return site() && Array.isArray(site().themes) ? site().themes.length : -1; },
++        get menuMainCount() { return site() && site().menu && Array.isArray(site().menu.main) ? site().menu.main.length : -1; },
++        get menuMobileCount() { return site() && site().menu && Array.isArray(site().menu.mobile) ? site().menu.mobile.length : -1; },
++        get experimentCount() { return site() && Array.isArray(site().experiments) ? site().experiments.length : -1; },
++      };
++    }
++  } catch (err) { /* instrumentation must never break the app */ }
+   return (
+     <SiteContext.Provider value={SiteFacade}>
+       {props.children}
+diff --git a/src/components/About.jsx b/src/components/About.jsx
+index 67101877fb7a542d169f945613cff09a5315a9b8..d5c06fe7d1f571fed77dbdafad0f639c3ef16a11 100644
+--- a/src/components/About.jsx
++++ b/src/components/About.jsx
+@@ -52,19 +52,19 @@ const AboutPage = () => {
+             <div class="w-full lg:w-4/12 px-4 lg:order-1">
+               <div class="flex justify-center py-4 lg:pt-4 sm:pt-8 pt-0 -ml-8 sm">
+                 <div class="mr-4 p-3 text-center">
+-                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary">
++                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary" data-testid="rb-stat-demos">
+                     {Site.data().sections.demos.cards.length}
+                   </span>
+                   <span class="text-sm text-accent-focus font-bold">Demos</span>
+                 </div>
+                 <div class="mr-4 p-3 text-center">
+-                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary">
++                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary" data-testid="rb-stat-repos">
+                     {Site.data().sections.repos.cards.length}
+                   </span>
+                   <span class="text-sm text-accent-focus font-bold">Repositories</span>
+                 </div>
+                 <div class="lg:mr-4 p-3 text-center">
+-                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary">
++                  <span class="text-xl font-bold block uppercase tracking-wide text-secondary" data-testid="rb-stat-projects">
+                     {Site.data().sections.projects.cards.length}
+                   </span>
+                   <span class="text-sm text-accent-focus font-bold">Projects</span>
+@@ -74,14 +74,14 @@ const AboutPage = () => {
+           </div>
+           <div class="text-center">
+             <a id="about" href="#" class="py-1">
+-              <h3 class="text-primary-focus text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl 2xl:text-10xl font-extrabold text-center drop-shadow-md">
++              <h3 class="text-primary-focus text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl 2xl:text-10xl font-extrabold text-center drop-shadow-md" data-testid="rb-about-header">
+                 {Site.data().sections.about.header}
+               </h3>
+             </a>
+-            <div class="text-secondary-focus font-bold text-xl md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl mt-4">
++            <div class="text-secondary-focus font-bold text-xl md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl mt-4" data-testid="rb-about-subheader">
+               {Site.data().sections.about.subheader}
+             </div>
+-            <div class="text-accent-focus font-bold uppercase text-lg md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl mt-4">
++            <div class="text-accent-focus font-bold uppercase text-lg md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl mt-4" data-testid="rb-about-aside">
+               {Site.data().sections.about.aside}
+             </div>
+             <div class="py-4 flex justify-center shields">
+@@ -392,6 +392,7 @@ const AboutPage = () => {
+           <div class="flex flex-wrap justify-center my-10">
+             <article 
+               class="prose prose-xl sm:prose-sm md:prose-md lg:prose-lg xl:prose-xl 2xl:prose-2xl max-w-none text-neutral font-medium"
++              data-testid="rb-about-content"
+               innerHTML={Site.data().sections.about.content}
+             />
+           </div>
+diff --git a/src/components/Code.jsx b/src/components/Code.jsx
+index 716be8c89ac8c381b5736155ac05941127fa95c9..a752fff9949b371aa058162d07cf4d7e2ab3df87 100644
+--- a/src/components/Code.jsx
++++ b/src/components/Code.jsx
+@@ -4,7 +4,7 @@ import { onMount } from "solid-js";
+ const CodePage = () => {
+   const CodeCard = (props) => {
+     return (
+-      <div class="card bg-neutral glass w-full h-full p-2 shadow-lg">
++      <div class="card bg-neutral glass w-full h-full p-2 shadow-lg" data-rb-card={props.title}>
+         <div
+           class="card shadow-lg w-full h-full"
+           style={`background:#${statsBg()}`}
+diff --git a/src/components/ContentCard.jsx b/src/components/ContentCard.jsx
+index 74356cc674de4843bb407a0627f83d6ea6fdc1ec..67afd2b8461a32b129907033af6c04c6e2a93b8e 100644
+--- a/src/components/ContentCard.jsx
++++ b/src/components/ContentCard.jsx
+@@ -7,7 +7,7 @@ const ContentCard = (props) => {
+   };
+ 
+   return (
+-    <div class="card">
++    <div class="card" data-rb-card-title={props.card.title} data-rb-section={props.section || 'unknown'}>
+       <figure class="sm:h-96 md:h-60 lg:h-48 xl:h-72 2xl:h-96 w-full" style="aspect-ratio: 5/3;">
+         <img
+           width="320"
+@@ -41,7 +41,7 @@ const ContentCard = (props) => {
+         <div class="tech_stack flex flex-wrap self-center gap-1 float-right">
+           <For each={props.card.tags}>
+             {(tag, i) => (
+-              <span class="badge badge-accent badge-sm hover:bg-accent-focus shadow-xl float-right">
++              <span class="badge badge-accent badge-sm hover:bg-accent-focus shadow-xl float-right" data-rb-tag={tag.name}>
+                 <a href={tag.link} target="_blank">
+                   {tag.name}
+                 </a>
+diff --git a/src/components/DrawerSide.jsx b/src/components/DrawerSide.jsx
+index 3d45beada38adac0913bf4c9c6e0e542e299d2ad..364ddbbfb617b9f3a1a980aa43eca1f6c18f5a14 100644
+--- a/src/components/DrawerSide.jsx
++++ b/src/components/DrawerSide.jsx
+@@ -11,6 +11,7 @@ const DrawerSide = () => {
+         {(menu, i) => (
+           <li>
+             <a
++              data-testid={`rb-drawer-${menu.id}`}
+               onClick={() => {
+                 Site.setActiveLink(menu.id);
+               }}
+diff --git a/src/components/Experiment.jsx b/src/components/Experiment.jsx
+index b958d04ea581772d0414d435eb5c5956c7016160..7db5369a862eb538be62cd9e56e2da89473dfc9d 100644
+--- a/src/components/Experiment.jsx
++++ b/src/components/Experiment.jsx
+@@ -59,7 +59,7 @@ const ExperimentItem = (props) => {
+               <div class="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/20 to-accent/20 flex items-center justify-center">
+                 <div class="text-center p-8">
+                   <div class="loading loading-spinner loading-lg text-primary mb-4"></div>
+-                  <h3 class="text-2xl font-bold text-base-content mb-2">{props.exp.title}</h3>
++                  <h3 class="text-2xl font-bold text-base-content mb-2" data-testid="rb-hero-poster">{props.exp.title}</h3>
+                   <p class="text-base-content/70">Loading interactive demo...</p>
+                 </div>
+               </div>
+@@ -68,6 +68,7 @@ const ExperimentItem = (props) => {
+             {/* Iframe - injected after paint */}
+             <Show when={iframeLoaded()}>
+               <iframe
++                data-testid="rb-hero-iframe"
+                 height="100%"
+                 width="100%"
+                 class="absolute top-[-68px] w-full h-[calc(100%+68px)] border-none overflow-hidden overscroll-none"
+@@ -82,9 +83,10 @@ const ExperimentItem = (props) => {
+         
+         <div class="absolute top-2 left-5 right-6 flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+           <kbd class="text-white text-sm kbd glass shadow-md flex-1 justify-start">
+-            <span class="drop-shadow-md text-left">{props.exp.title}</span>
++            <span class="drop-shadow-md text-left" data-testid="rb-hero-title">{props.exp.title}</span>
+           </kbd>
+           <button
++            data-testid="rb-shuffle"
+             onClick={props.onShuffle}
+             class="btn btn-sm glass shadow-md bg-base-100/80 hover:bg-base-100 border-base-300"
+             title="Load another random experiment"
+@@ -92,6 +94,7 @@ const ExperimentItem = (props) => {
+             🎲 Shuffle
+           </button>
+           <a 
++            data-testid="rb-hero-source"
+             href={props.exp.link} 
+             target="_blank"
+             class="btn btn-sm glass shadow-md bg-base-100/80 hover:bg-base-100 border-base-300"
+@@ -111,6 +114,34 @@ const ExperimentItem = (props) => {
+ const Experiment = () => {
+   const Site = useSite();
+   const [getExperiment, setExperiment] = createSignal({});
++  // ---- RepairBench instrumentation: read-only hero bridge (no behaviour change) ----
++  try {
++    const w = globalThis;
++    if (!w.__rb) w.__rb = {};
++    if (!w.__rb.hero) {
++      w.__rb.hero = {
++        get title() { const e = getExperiment(); return e && e.title != null ? String(e.title) : ''; },
++        get type() { const e = getExperiment(); return e && e.type != null ? String(e.type) : ''; },
++        get url() { const e = getExperiment(); return e && e.url != null ? String(e.url) : ''; },
++        get link() { const e = getExperiment(); return e && e.link != null ? String(e.link) : ''; },
++        // picks = how many DISTINCT experiments the hero signal has published since load: 1 after the
++        // load-time pick, 2 after one shuffle. It is the only face that separates D07 (the handler was
++        // passed as an invocation RESULT, so the button is inert and the store never moves) from D08
++        // (the store moves but the hero DOM was frozen by a setup-time props destructure).
++        get picks() { return w.__rb_heroPicks == null ? 0 : w.__rb_heroPicks; },
++      };
++    }
++  } catch (err) { /* instrumentation must never break the app */ }
++  try {
++    createEffect(() => {
++      try {
++        const e = getExperiment();
++        const t = e && e.title != null ? String(e.title) : '';
++        const w = globalThis;
++        if (t && t !== w.__rb_heroLastTitle) { w.__rb_heroLastTitle = t; w.__rb_heroPicks = (w.__rb_heroPicks || 0) + 1; }
++      } catch (err) { /* a probe must never throw into the app */ }
++    });
++  } catch (err) { /* instrumentation must never break the app */ }
+   let hasPickedExperiment = false;
+ 
+   /**
+diff --git a/src/components/Nav.jsx b/src/components/Nav.jsx
+index 3603cd1377cbd139bc5a581733da6df6da0fe6ba..a5613c8b0efe880b20f9ce47ebe733243d6c6159 100644
+--- a/src/components/Nav.jsx
++++ b/src/components/Nav.jsx
+@@ -72,6 +72,7 @@ const Nav = () => {
+               {(menu, i) => (
+                 <li>
+                   <a
++                    data-testid={`rb-nav-${menu.id}`}
+                     onClick={() => {
+                       Site.setActiveLink(menu.id);
+                     }}
+diff --git a/src/components/Repos.jsx b/src/components/Repos.jsx
+index ba325de6afa94c443df7946a82981cafe5dbddd9..4fcf482390d469525a0e1de7c11b2fb8e4f5626d 100644
+--- a/src/components/Repos.jsx
++++ b/src/components/Repos.jsx
+@@ -53,6 +53,7 @@ const ReposPage = () => {
+                       onClick={() => trackCardLaunch({ title: repo, link: `/offline/out.html?repo=${repo}` }, 'repos')}
+                     >
+                       <img
++                        data-rb-repo={repo}
+                         width="400"
+                         height="120"
+                         decoding="async"

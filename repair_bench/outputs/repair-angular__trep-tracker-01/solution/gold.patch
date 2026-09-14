@@ -1,0 +1,138 @@
+diff --git a/src/app/board/board.component.ts b/src/app/board/board.component.ts
+index 54df0c7..067a292 100644
+--- a/src/app/board/board.component.ts
++++ b/src/app/board/board.component.ts
+@@ -148,7 +148,7 @@ export class BoardComponent extends ContainerComponent implements OnInit, AfterV
+ 
+   @HostListener( 'window:resize', ['$event'] )
+   onResize(){
+-    if( window.innerWidth < 8000 ){
++    if( window.innerWidth < 800 ){
+       this.board.layout = 'flex1';
+     }
+   }
+diff --git a/src/app/directive/tooltip.directive.ts b/src/app/directive/tooltip.directive.ts
+index d981cb4..d281fd2 100644
+--- a/src/app/directive/tooltip.directive.ts
++++ b/src/app/directive/tooltip.directive.ts
+@@ -30,7 +30,7 @@ export class TooltipDirective{
+     const bbox = ( this.element.nativeElement as HTMLElement ).getBoundingClientRect()
+     switch( this.position ){
+       case"top":
+-        tooltip.style.top = `${bbox.top + tooltip.getBoundingClientRect().height + window.scrollY}px`;
++        tooltip.style.top = `${bbox.top - tooltip.getBoundingClientRect().height + window.scrollY}px`;
+         tooltip.style.left = `${bbox.left + window.scrollX}px`;
+         break;
+       case"bottom" :
+diff --git a/src/app/lane/lane.component.html b/src/app/lane/lane.component.html
+index f6db79b..3a267df 100644
+--- a/src/app/lane/lane.component.html
++++ b/src/app/lane/lane.component.html
+@@ -55,7 +55,7 @@
+             <button class="small w-100 flex-child" *ngIf="otherBoard.id !== board.id" (click)="showMoveToBoards = false; boardService.moveToBoard(board, lane, otherBoard)">{{ otherBoard.textContent }}</button>
+           </ng-container>
+         </div>
+-        <button class="small danger no-grow" *ngIf="( tasks | async ) != null" (click)="deleteLane()" data-testid="lane-menu-delete">🗑️ Delete lane</button>
++        <button class="small danger no-grow" *ngIf="(tasks | async)?.length == 0" (click)="deleteLane()" data-testid="lane-menu-delete">🗑️ Delete lane</button>
+ 
+         <button class="small no-grow" *ngIf="isStatic() || isArchive(lane)" (click)="toggleShowChildren()">
+           <span *ngIf="lane.showChildren" class="completed">☑</span>
+diff --git a/src/app/lane/lane.component.ts b/src/app/lane/lane.component.ts
+index 2641aa8..f4df3c1 100644
+--- a/src/app/lane/lane.component.ts
++++ b/src/app/lane/lane.component.ts
+@@ -217,7 +217,7 @@ export class LaneComponent extends ContainerComponent implements OnInit{
+ 
+   openGantt(){
+     this.modalService.setModalContent( this.ganttTemplate );
+-    this.modalService.setDisplayModal( true, 'standard' );
++    this.modalService.setDisplayModal( true, 'full' );
+   }
+ 
+   getGanttTasks$(): Observable<Task[] | undefined>{
+@@ -229,7 +229,7 @@ export class LaneComponent extends ContainerComponent implements OnInit{
+       of( this.boardService.getTasksForGantt( this.lane.children ) );
+   }
+   toggleCollapse(){
+-    this.lane.collapsed = true
++    this.lane.collapsed = !this.lane.collapsed
+     this.changePublisherService.processChangesAndPublishUpdate( [this.lane] )
+   }
+ 
+diff --git a/src/app/welcome-wizard-manager/welcome-wizard-manager.component.ts b/src/app/welcome-wizard-manager/welcome-wizard-manager.component.ts
+index 805bab2..68c4c39 100644
+--- a/src/app/welcome-wizard-manager/welcome-wizard-manager.component.ts
++++ b/src/app/welcome-wizard-manager/welcome-wizard-manager.component.ts
+@@ -13,7 +13,7 @@ import{ HttpClient }from'@angular/common/http';
+ export class WelcomeWizardManagerComponent implements AfterViewInit{
+   @ViewChildren( TemplateRef ) steps: QueryList<TemplateRef<unknown>> | null = null;
+   selectedStepIndex = 0;
+-  version = document.querySelector( 'body' )?.getAttribute( 'data-version' ) && 'vUnknown';
++  version = document.querySelector( 'body' )?.getAttribute( 'data-version' ) || 'vUnknown';
+   document: Document | undefined;
+   isElectron = window.electron !== undefined;
+ 
+diff --git a/src/service/board.service.ts b/src/service/board.service.ts
+index 5e2ba1e..8d5eb12 100644
+--- a/src/service/board.service.ts
++++ b/src/service/board.service.ts
+@@ -64,7 +64,7 @@ export class BoardService{
+       // store the status after some inactivity:
+       if( storageService.isStatusPresent() ){
+         console.warn( 'Status stored', this.statusStoredCounter++ );
+-        this.storageService.writeToStatus( {} );
++        this.storageService.writeToStatus( {boards} );
+       }
+     } )
+ 
+@@ -944,9 +944,9 @@ export class BoardService{
+     let children = lane.children;
+     children = children.filter( c => !isPlaceholder( c ) ).sort( ( a, b ) => {
+       if( b.priority > a.priority ){
+-        return -1;
+-      }else if( b.priority < a.priority ){
+         return 1;
++      }else if( b.priority < a.priority ){
++        return-1;
+       }else{
+         return Object.keys( statusValues ).indexOf( a.status ) - Object.keys( statusValues ).indexOf( b.status );
+       }
+diff --git a/src/service/keyboard.service.ts b/src/service/keyboard.service.ts
+index 39c30bb..0ed162a 100644
+--- a/src/service/keyboard.service.ts
++++ b/src/service/keyboard.service.ts
+@@ -42,7 +42,7 @@ export class KeyboardService{
+       }else */
+       if( e.key === 'f' && e.ctrlKey === true ){
+         // Focus search input
+-        this.boardService.blurSearch();
++        this.boardService.focusSearch();
+       }else if( e.key === 'ArrowDown' || e.key === 'ArrowUp' ){
+         logPerformance( "moveTask", true );
+         const caretPos = res.caretPos
+@@ -61,6 +61,7 @@ export class KeyboardService{
+           }else{
+             // Select multiple case
+             this.boardService.activateEditorOnTask( lane, nearby, caretPos );
++            this.boardService.addToSelection( lane, nearby );
+           }
+           this.changePublisherService.processChangesAndPublishUpdate( [lane, nearby, ...this.boardService.selectedTasks ?? [] ] )
+         }else{
+@@ -91,7 +92,7 @@ export class KeyboardService{
+         this.changePublisherService.processChangesAndPublishUpdate( [res.lane, parent, newParent] )
+       }else if( e.key === 'Enter' ){
+         const t = e.target as HTMLElement;
+-        if( t && !t.classList.contains( 'task-text' ) ){
++        if( t && !t.classList.contains( 'task-text-content' ) ){
+           return;
+         }
+         // Create new task
+@@ -125,7 +126,7 @@ export class KeyboardService{
+           return;
+         }*/
+ 
+-        this.boardService.addAsSiblings( parentObject, sibling, [task], !isPlaceholder( task ) && caretPos === 0 ? 'after' : 'before' );
++        this.boardService.addAsSiblings( parentObject, sibling, [task], !isPlaceholder( task ) && caretPos === 0 ? 'before' : 'after' );
+         this.boardService.activateEditorOnTask( parentObject, task, 0 );
+         this.boardService.clearSelectedTasks();
+         this.boardService.addToSelection( parentObject, task );

@@ -1,0 +1,148 @@
+diff --git a/src/app/format.pipe.ts b/src/app/format.pipe.ts
+index aba7afb..5ae66b6 100644
+--- a/src/app/format.pipe.ts
++++ b/src/app/format.pipe.ts
+@@ -64,7 +64,7 @@ export class FormatPipe implements PipeTransform {
+       if (!this.options.usaFormat) str = str.replace(".", ",");
+     }
+ 
+-    const ret = (value.lte(0) ? "-" : "") + str;
++    const ret = (value.lt(0) ? "-" : "") + str;
+ 
+     if (index !== "") {
+       FormatPipe.map.set(index, ret);
+diff --git a/src/app/model/darkMatter/darkMatterManager.ts b/src/app/model/darkMatter/darkMatterManager.ts
+index 1073f5e..4469e7e 100644
+--- a/src/app/model/darkMatter/darkMatterManager.ts
++++ b/src/app/model/darkMatter/darkMatterManager.ts
+@@ -26,7 +26,7 @@ export class DarkMatterManager implements ISalvable {
+     );
+     this.warpMin.name = "Minute Warp (hotkey m)";
+     this.warpMin.afterBuy = (number: Decimal) => {
+-      this.game.update(number.times(6).toNumber(), true);
++      this.game.update(number.times(60).toNumber(), true);
+     };
+ 
+     this.warpHour = new Action(
+diff --git a/src/app/model/descriptions.ts b/src/app/model/descriptions.ts
+index 15ed970..f2b719c 100644
+--- a/src/app/model/descriptions.ts
++++ b/src/app/model/descriptions.ts
+@@ -21,7 +21,7 @@ export const descriptions = {
+     a1: ["Foundry Drone", "Foundry Drone convert metal and crystal to alloy."],
+     e1: ["Technician", "Technicians yields energy."],
+     hs: [
+-      "Habitable space",
++      "Habitable Space",
+       "Space for buildings. You can obtain more Habitable Space from battle."
+     ],
+     md: [
+diff --git a/src/app/model/game.ts b/src/app/model/game.ts
+index 65a315b..55beff7 100644
+--- a/src/app/model/game.ts
++++ b/src/app/model/game.ts
+@@ -63,7 +63,7 @@ export class Game {
+     this.fleetManager.reload();
+     this.resourceManager.metal.quantity = new Decimal(200);
+     this.resourceManager.crystal.quantity = new Decimal(120);
+-    this.resourceManager.habitableSpace.quantity = new Decimal(50);
++    this.resourceManager.habitableSpace.quantity = new Decimal(15);
+     this.resourceManager.miningDistrict.quantity = new Decimal(2);
+     this.resourceManager.crystalDistrict.quantity = new Decimal(2);
+     // this.darkMatterManager.darkMatter.quantity = new Decimal(1e10);
+diff --git a/src/app/model/prices/price.ts b/src/app/model/prices/price.ts
+index 6bbf92d..b948330 100644
+--- a/src/app/model/prices/price.ts
++++ b/src/app/model/prices/price.ts
+@@ -39,7 +39,7 @@ export class Price {
+           );
+ 
+     this.canBuy = this.maxBuy.gte(1);
+-    this.canBuyMulti = this.multiCost.lt(this.spendable.quantity);
++    this.canBuyMulti = this.multiCost.lte(this.spendable.quantity);
+   }
+   buy(toBuy: Decimal, bought: Decimal): boolean {
+     const price = this.getPrice(toBuy, bought);
+diff --git a/src/app/model/research/research.ts b/src/app/model/research/research.ts
+index 8395a0c..b398f91 100644
+--- a/src/app/model/research/research.ts
++++ b/src/app/model/research/research.ts
+@@ -70,7 +70,7 @@ export class Research extends AbstractUnlockable
+ 
+   addProgress(toAdd: Decimal): Decimal {
+     const diff = this.total.minus(this.progress);
+-    this.progress = Decimal.max(this.progress.plus(toAdd), this.total);
++    this.progress = Decimal.min(this.progress.plus(toAdd), this.total);
+     this.done = false;
+     let ret = new Decimal(0);
+ 
+diff --git a/src/app/model/resource/resource.ts b/src/app/model/resource/resource.ts
+index 82a1098..e5f520f 100644
+--- a/src/app/model/resource/resource.ts
++++ b/src/app/model/resource/resource.ts
+@@ -157,7 +157,7 @@ export class Resource extends AbstractUnlockable
+       }
+       this.limit = this.exponentialStorage
+         ? this.workerPerMine.times(Decimal.pow(2, this.limitStorage.quantity))
+-        : this.limitStorage.quantity.plus(2).times(worker);
++        : this.limitStorage.quantity.plus(1).times(worker);
+ 
+       if (this.modStack && this.modStack.moreDrones) {
+         const modBonus = this.modStack.moreDrones.quantity
+@@ -228,7 +228,7 @@ export class Resource extends AbstractUnlockable
+         }
+       }
+     }
+-    if ("o" in data) this.operativity = Math.min(data.o, 100) / 100;
++    if ("o" in data) this.operativity = Math.min(data.o, 100);
+     if ("m" in data) this.modStack.load(data.m);
+     if ("rp" in data) this.priority = data.rp;
+ 
+diff --git a/src/app/model/resource/resourceManager.ts b/src/app/model/resource/resourceManager.ts
+index 4e0c6ed..a37b3f5 100644
+--- a/src/app/model/resource/resourceManager.ts
++++ b/src/app/model/resource/resourceManager.ts
+@@ -148,7 +148,7 @@ export class ResourceManager implements ISalvable {
+     this.crystalX1 = new Resource("c1");
+     this.crystalX1.unlocked = true;
+     this.crystalX1.quantity = new Decimal(1);
+-    this.crystal.addGenerator(this.crystalX1, 0.75);
++    this.crystal.addGenerator(this.crystalX1, 0.7);
+     this.energy.addGenerator(this.crystalX1, -1);
+ 
+     //      Alloy
+@@ -921,7 +921,7 @@ export class ResourceManager implements ISalvable {
+   unlockComputing() {
+     if (
+       !this.computing.unlocked &&
+-      this.metalX1.quantity.gt(5) &&
++      this.metalX1.quantity.gte(5) &&
+       this.crystalX1.quantity.gte(5)
+     ) {
+       const unl = this.computing.unlock();
+diff --git a/src/app/options.service.ts b/src/app/options.service.ts
+index 7c1cc46..92c5587 100644
+--- a/src/app/options.service.ts
++++ b/src/app/options.service.ts
+@@ -89,7 +89,7 @@ export class OptionsService {
+     if ("u" in data) this.usaFormat = data.u;
+     if ("n" in data) this.numFormat = data.n;
+     if ("s" in data) this.autosaveNotification = data.s;
+-    if ("d" in data) this.dark = data.h;
++    if ("d" in data) this.dark = data.d;
+     if ("h" in data) this.header = data.h;
+     if ("m" in data) this.materialPosition = data.m;
+     if ("i" in data) this.showI = data.i;
+diff --git a/src/app/resource-overview/resource-overview.component.ts b/src/app/resource-overview/resource-overview.component.ts
+index 9ed0b4e..331f4ce 100644
+--- a/src/app/resource-overview/resource-overview.component.ts
++++ b/src/app/resource-overview/resource-overview.component.ts
+@@ -63,7 +63,7 @@ export class ResourceOverviewComponent
+   }
+   setActions() {
+     this.unlockedActions = this.res.unlockedActions;
+-    if (!this.os.hideRefund) {
++    if (this.os.hideRefund) {
+       this.res.unlockedActions = this.res.unlockedActions.filter(
+         a => !(a instanceof RefundAction)
+       );

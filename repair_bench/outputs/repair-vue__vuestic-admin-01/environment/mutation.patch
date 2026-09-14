@@ -1,0 +1,179 @@
+diff --git a/src/pages/admin/dashboard/cards/RegionRevenue.vue b/src/pages/admin/dashboard/cards/RegionRevenue.vue
+index 1614afc..ee5546b 100644
+--- a/src/pages/admin/dashboard/cards/RegionRevenue.vue
++++ b/src/pages/admin/dashboard/cards/RegionRevenue.vue
+@@ -29,7 +29,7 @@
+           <span :data-testid="'region-name-' + rowIndex">{{ rowData.name }}</span>
+         </template>
+         <template #cell(revenue)="{ rowData, rowIndex }">
+-          <span :data-testid="'region-rev-' + rowIndex">${{ rowData[`revenue${selectedPeriod}`] }}</span>
++          <span :data-testid="'region-rev-' + rowIndex">${{ rowData.revenueToday }}</span>
+         </template>
+       </VaDataTable>
+     </VaCardContent>
+diff --git a/src/pages/faq/widgets/Questions.vue b/src/pages/faq/widgets/Questions.vue
+index d777121..4426749 100644
+--- a/src/pages/faq/widgets/Questions.vue
++++ b/src/pages/faq/widgets/Questions.vue
+@@ -4,6 +4,7 @@
+       <h2 class="va-h5">Popular questions</h2>
+       <VaAccordion
+         v-model="accordionState"
++        :stateful="false"
+         :style="{ '--va-collapse-padding': '1rem 0' }"
+         class="mb-1"
+         data-testid="faq-accordion"
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue b/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
+index cf6fa3b..11b97eb 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
+@@ -80,7 +80,7 @@ const submit = () => {
+   if (validate()) {
+     emits('save', {
+       ...paymentCardLocal.value,
+-      cardNumberMasked: paymentCardLocal.value.cardNumberMasked.replace(/\d{12}(.*)/g, '****$1'),
++      cardNumberMasked: paymentCardLocal.value.cardNumberMasked.replace(/\d{4}(.*)/g, '****$1'),
+     })
+   }
+ }
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardList.vue b/src/pages/payments/widgets/my-cards/PaymentCardList.vue
+index 061b384..e1b076d 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardList.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardList.vue
+@@ -57,7 +57,7 @@ import PaymentCardUpdateModal from './PaymentCardUpdateModal.vue'
+ 
+ const store = usePaymentCardsStore()
+ 
+-const list = computed(() => store.allPaymentCards)
++const list = store.allPaymentCards
+ const loading = computed(() => store.loading)
+ const { confirm } = useModal()
+ 
+diff --git a/src/pages/preferences/preferences-header/PreferencesHeader.vue b/src/pages/preferences/preferences-header/PreferencesHeader.vue
+index 472ec0d..fac2b0e 100644
+--- a/src/pages/preferences/preferences-header/PreferencesHeader.vue
++++ b/src/pages/preferences/preferences-header/PreferencesHeader.vue
+@@ -1,15 +1,15 @@
+ <template>
+   <VaAvatar size="large" color="warning" data-testid="pref-avatar"><span class="text-4xl"> 😍 </span></VaAvatar>
+   <div class="flex flex-col justify-center">
+-    <h2 class="text-[28px] md:text-[32px] leading-10 font-bold" data-testid="pref-name">{{ store.userName }}</h2>
++    <h2 class="text-[28px] md:text-[32px] leading-10 font-bold" data-testid="pref-name">{{ userName }}</h2>
+     <div class="flex space-x-1 text-[13px] leading-4">
+       <p>Member since</p>
+-      <p data-testid="pref-member-since">{{ store.memberSince }}</p>
++      <p data-testid="pref-member-since">{{ memberSince }}</p>
+     </div>
+   </div>
+ </template>
+ <script lang="ts" setup>
+ import { useUserStore } from '../../../stores/user-store'
+ 
+-const store = useUserStore()
++const { userName, memberSince } = useUserStore()
+ </script>
+diff --git a/src/pages/projects/ProjectsPage.vue b/src/pages/projects/ProjectsPage.vue
+index 24e1078..375b354 100644
+--- a/src/pages/projects/ProjectsPage.vue
++++ b/src/pages/projects/ProjectsPage.vue
+@@ -125,7 +125,7 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+         v-else
+         v-model:sort-by="sorting.sortBy"
+         v-model:sorting-order="sorting.sortingOrder"
+-        v-model:pagination="pagination"
++        :pagination="{ ...pagination }"
+         :projects="projects"
+         :loading="isLoading"
+         @edit="editProject"
+diff --git a/src/pages/projects/composables/useProjects.ts b/src/pages/projects/composables/useProjects.ts
+index f1e8271..980391c 100644
+--- a/src/pages/projects/composables/useProjects.ts
++++ b/src/pages/projects/composables/useProjects.ts
+@@ -53,10 +53,10 @@ export const useProjects = (options?: { sorting?: Ref<Sorting>; pagination?: Ref
+         b = getSortItem(b, sorting.value.sortBy!)
+ 
+         if (a < b) {
+-          return sorting.value.sortingOrder === 'asc' ? -1 : 1
++          return sorting.value.sortingOrder === 'asc' ? 1 : -1
+         }
+         if (a > b) {
+-          return sorting.value.sortingOrder === 'asc' ? 1 : -1
++          return sorting.value.sortingOrder === 'asc' ? -1 : 1
+         }
+         return 0
+       })
+diff --git a/src/pages/settings/language-switcher/LanguageSwitcher.vue b/src/pages/settings/language-switcher/LanguageSwitcher.vue
+index 2e2acdf..04ec236 100644
+--- a/src/pages/settings/language-switcher/LanguageSwitcher.vue
++++ b/src/pages/settings/language-switcher/LanguageSwitcher.vue
+@@ -40,7 +40,7 @@ const model = computed({
+     return languageCodes[locale.value]
+   },
+   set(value) {
+-    locale.value = languageName[value]
++    locale.value = value
+   },
+ })
+ </script>
+diff --git a/src/pages/users/UsersPage.vue b/src/pages/users/UsersPage.vue
+index 266861c..f777541 100644
+--- a/src/pages/users/UsersPage.vue
++++ b/src/pages/users/UsersPage.vue
+@@ -102,8 +102,8 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+             color="background-element"
+             border-color="background-element"
+             :options="[
+-              { label: 'Active', value: true },
+-              { label: 'Inactive', value: false },
++              { label: 'Active', value: 'true' },
++              { label: 'Inactive', value: 'false' },
+             ]"
+             data-testid="users-active-toggle"
+           />
+diff --git a/src/pages/users/composables/useUsers.ts b/src/pages/users/composables/useUsers.ts
+index becfb84..cca4f46 100644
+--- a/src/pages/users/composables/useUsers.ts
++++ b/src/pages/users/composables/useUsers.ts
+@@ -40,7 +40,6 @@ export const useUsers = (options?: {
+       pagination.value.page = 1
+       fetch()
+     },
+-    { deep: true },
+   )
+ 
+   fetch()
+diff --git a/src/pages/users/widgets/EditUserForm.vue b/src/pages/users/widgets/EditUserForm.vue
+index 33a35ea..7a3d90a 100644
+--- a/src/pages/users/widgets/EditUserForm.vue
++++ b/src/pages/users/widgets/EditUserForm.vue
+@@ -49,7 +49,7 @@ defineExpose({
+ const { projects } = useProjects({ pagination: ref({ page: 1, perPage: 9999, total: 10 }) })
+ 
+ watch(
+-  [() => props.user, projects],
++  [() => props.user],
+   () => {
+     if (!props.user) {
+       return
+@@ -61,7 +61,6 @@ watch(
+       avatar: props.user.avatar || '',
+     }
+   },
+-  { immediate: true },
+ )
+ 
+ const avatar = ref<File>()
+diff --git a/src/stores/payment-cards.ts b/src/stores/payment-cards.ts
+index aadae17..5d66531 100644
+--- a/src/stores/payment-cards.ts
++++ b/src/stores/payment-cards.ts
+@@ -48,6 +48,9 @@ export const usePaymentCardsStore = defineStore({
+   actions: {
+     async load() {
+       this.loading = true
++      if (this.paymentCards.length) {
++        return
++      }
+       this.paymentCards = await fetchPaymentCards()
+       this.loading = false
+     },

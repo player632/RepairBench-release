@@ -1,0 +1,348 @@
+diff --git a/src/components/Desktop/BootupScreen.svelte b/src/components/Desktop/BootupScreen.svelte
+index 0b1cee6..b05907b 100644
+--- a/src/components/Desktop/BootupScreen.svelte
++++ b/src/components/Desktop/BootupScreen.svelte
+@@ -18,7 +18,7 @@
+ </script>
+ 
+ {#if !(hidden_splash_screen || import.meta.env.DEV)}
+-	<div out:fade_out={{ duration: 500 }} class="splash-screen" use:elevation={'bootup-screen'}>
++	<div data-testid="boot-splash" out:fade_out={{ duration: 500 }} class="splash-screen" use:elevation={'bootup-screen'}>
+ 		<AppleIcon />
+ 
+ 		<div
+diff --git a/src/components/Desktop/ContextMenu.svelte b/src/components/Desktop/ContextMenu.svelte
+index 0c3637b..bc0ae63 100644
+--- a/src/components/Desktop/ContextMenu.svelte
++++ b/src/components/Desktop/ContextMenu.svelte
+@@ -41,6 +41,7 @@
+ 
+ {#if is_menu_visible}
+ 	<div
++		data-testid="context-menu"
+ 		class="container"
+ 		class:dark={preferences.theme.scheme === 'dark'}
+ 		style:transform="translate({x_pos}px, {y_pos}px)"
+diff --git a/src/components/Desktop/Desktop.svelte b/src/components/Desktop/Desktop.svelte
+index 2cbd4fc..15b104e 100644
+--- a/src/components/Desktop/Desktop.svelte
++++ b/src/components/Desktop/Desktop.svelte
+@@ -4,6 +4,10 @@
+ 	import Wallpaper from '../apps/WallpaperApp/Wallpaper.svelte';
+ 	import BootupScreen from './BootupScreen.svelte';
+ 	import ContextMenu from './ContextMenu.svelte';
++	import { apps } from '🍎/state/apps.svelte.ts';
++	import { is_dock_hidden } from '🍎/state/dock.svelte.ts';
++	import { menubar_state } from '🍎/state/menubar.svelte.ts';
++	import { preferences } from '🍎/state/preferences.svelte.ts';
+ 	import SystemUpdate from './SystemUpdate.svelte';
+ 	import WindowsArea from './Window/WindowsArea.svelte';
+ 
+@@ -33,6 +37,16 @@
+ 	<SystemUpdate />
+ 
+ 	<ContextMenu target_element={mainEl} />
++
++	<div data-testid="wlb-probes" aria-hidden="true" style="position:absolute;left:-9999px;top:0;pointer-events:none;">
++		<span data-testid="probe-apps-active">{apps.active}</span>
++		<span data-testid="probe-apps-fullscreen-calendar">{String(apps.fullscreen.calendar)}</span>
++		<span data-testid="probe-dock-hidden">{String(is_dock_hidden.value)}</span>
++		<span data-testid="probe-wallpaper-id">{preferences.wallpaper.id}</span>
++		<span data-testid="probe-scheme">{preferences.theme.scheme}</span>
++		<span data-testid="probe-primary">{preferences.theme.primaryColor}</span>
++		<span data-testid="probe-menu-active">{menubar_state.active}</span>
++	</div>
+ </div>
+ 
+ <style>
+diff --git a/src/components/Desktop/Window/TrafficLights.svelte b/src/components/Desktop/Window/TrafficLights.svelte
+index d99a5e5..a20144c 100644
+--- a/src/components/Desktop/Window/TrafficLights.svelte
++++ b/src/components/Desktop/Window/TrafficLights.svelte
+@@ -12,10 +12,10 @@
+ 	}: { app_id: AppID; on_close_app: () => void; on_maximize_click: () => void } = $props();
+ </script>
+ 
+-<div class="container" class:unfocused={apps.active !== app_id}>
+-	<button class="close-light" onclick={on_close_app}> <CloseIcon /> </button>
+-	<button class="minimize-light"> <MinimizeSvg /> </button>
+-	<button class="stretch-light" onclick={on_maximize_click}>
++<div data-testid={'tl-' + app_id} class="container" class:unfocused={apps.active !== app_id}>
++	<button data-testid={'close-light-' + app_id} class="close-light" onclick={on_close_app}> <CloseIcon /> </button>
++	<button data-testid={'minimize-light-' + app_id} class="minimize-light"> <MinimizeSvg /> </button>
++	<button data-testid={'stretch-light-' + app_id} class="stretch-light" onclick={on_maximize_click}>
+ 		<GreenLight expandable={apps_config[app_id].expandable} />
+ 	</button>
+ </div>
+diff --git a/src/components/Desktop/Window/Window.svelte b/src/components/Desktop/Window/Window.svelte
+index a30d4d7..e96b1e3 100644
+--- a/src/components/Desktop/Window/Window.svelte
++++ b/src/components/Desktop/Window/Window.svelte
+@@ -120,6 +120,7 @@
+ 
+ <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+ <section
++	data-testid={'window-' + app_id}
+ 	role="application"
+ 	class="container"
+ 	class:dark={preferences.theme.scheme === 'dark'}
+diff --git a/src/components/Desktop/Window/WindowsArea.svelte b/src/components/Desktop/Window/WindowsArea.svelte
+index 5e398e4..f170140 100644
+--- a/src/components/Desktop/Window/WindowsArea.svelte
++++ b/src/components/Desktop/Window/WindowsArea.svelte
+@@ -30,7 +30,7 @@
+ 	});
+ </script>
+ 
+-<section id="windows-area">
++<section id="windows-area" data-testid="windows-area">
+ 	{#each Object.keys(apps_config) as app_id}
+ 		{#if apps.open[app_id] && apps_config[app_id].should_open_window}
+ 			{#await import('./Window.svelte') then { default: Window }}
+diff --git a/src/components/Dock/Dock.svelte b/src/components/Dock/Dock.svelte
+index e4db7ec..4493ddd 100644
+--- a/src/components/Dock/Dock.svelte
++++ b/src/components/Dock/Dock.svelte
+@@ -54,6 +54,7 @@
+ >
+ 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+ 	<div
++		data-testid="dock-bar"
+ 		class="dock-el"
+ 		class:hidden={is_dock_hidden.value}
+ 		onmousemove={(event) => (dock_mouse_x = event.x)}
+diff --git a/src/components/Dock/DockItem.svelte b/src/components/Dock/DockItem.svelte
+index a30a352..8849543 100644
+--- a/src/components/Dock/DockItem.svelte
++++ b/src/components/Dock/DockItem.svelte
+@@ -131,7 +131,7 @@
+ 	});
+ </script>
+ 
+-<button onclick={openApp} aria-label="Launch {title} app" class="dock-open-app-button {app_id}">
++<button data-testid={'dock-item-' + app_id} onclick={openApp} aria-label="Launch {title} app" class="dock-open-app-button {app_id}">
+ 	<p
+ 		class="tooltip"
+ 		class:tooltip-enabled={!apps.is_being_dragged}
+@@ -153,7 +153,7 @@
+ 		/>
+ 	</span>
+ 
+-	<div class="dot" style:--opacity={+apps.open[app_id]}></div>
++	<div data-testid={'dock-dot-' + app_id} class="dot" style:--opacity={+apps.open[app_id]}></div>
+ 
+ 	{#if show_pwa_badge}
+ 		<div class="pwa-badge" style:transform="scale({$width_px / baseWidth})">1</div>
+diff --git a/src/components/TopBar/ActionCenter.svelte b/src/components/TopBar/ActionCenter.svelte
+index dedea10..8614ace 100644
+--- a/src/components/TopBar/ActionCenter.svelte
++++ b/src/components/TopBar/ActionCenter.svelte
+@@ -51,6 +51,7 @@
+ 
+ <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+ <section
++	data-testid="action-center"
+ 	class="container"
+ 	class:dark={preferences.theme.scheme === 'dark'}
+ 	tabindex={-1}
+@@ -64,7 +65,7 @@
+ 		]}
+ 	>
+ 		<ActionCenterTile grid={[1, 1]} onclick={toggleTheme}>
+-			<span class="toggle-icon" class:filled={preferences.theme.scheme === 'dark'}>
++						<span data-testid="tile-dark-mode" class="toggle-icon" class:filled={preferences.theme.scheme === 'dark'}>
+ 				<DarkMode />
+ 			</span>
+ 			Dark mode
+@@ -78,7 +79,7 @@
+ 		]}
+ 	>
+ 		<ActionCenterTile grid={[1, 1]} onclick={toggleMotionPreference}>
+-			<span class="toggle-icon" class:filled={!preferences.reduced_motion}>
++						<span data-testid="tile-animations" class="toggle-icon" class:filled={!preferences.reduced_motion}>
+ 				<TransitionMaskedIcon />
+ 			</span>
+ 			Animations
+@@ -99,6 +100,7 @@
+ 						{@const { contrastHsl, hsl } = colors[colorID][preferences.theme.scheme]}
+ 
+ 						<button
++							data-testid={'color-swatch-' + colorID}
+ 							style:--color-hsl={hsl}
+ 							style:--color-contrast-hsl={contrastHsl}
+ 							onclick={() => (preferences.theme.primaryColor = colorID)}
+@@ -120,7 +122,7 @@
+ 		]}
+ 	>
+ 		<ActionCenterTile grid={[1, 1]} onclick={openWallpapersApp}>
+-			<div class="wallpaper-tile">
++			<div data-testid="tile-wallpaper" class="wallpaper-tile">
+ 				<img
+ 					class="wallpaper-thumbnail"
+ 					src={wallpapers_config[preferences.wallpaper.id].thumbnail}
+@@ -142,7 +144,7 @@
+ 		]}
+ 	>
+ 		<ActionCenterTile grid={[1, 1]} onclick={toggleNotch}>
+-			<div class="notch-tile">
++			<div data-testid="tile-notch" class="notch-tile">
+ 				<span class="toggle-icon" class:filled={should_show_notch.value}>
+ 					<NotchIcon />
+ 				</span>
+diff --git a/src/components/TopBar/ActionCenterToggle.svelte b/src/components/TopBar/ActionCenterToggle.svelte
+index a36bd46..12060a0 100644
+--- a/src/components/TopBar/ActionCenterToggle.svelte
++++ b/src/components/TopBar/ActionCenterToggle.svelte
+@@ -31,7 +31,7 @@
+ </script>
+ 
+ <div class="container" use:click_outside={hide} use:focus_outside={hide}>
+-	<button style:--scale={visible ? 1 : 0} onclick={show} onfocus={show}>
++	<button data-testid="action-center-toggle" style:--scale={visible ? 1 : 0} onclick={show} onfocus={show}>
+ 		<SwitchSvg />
+ 	</button>
+ 
+@@ -51,7 +51,7 @@
+ 	bind:this={theme_warning_dialog}
+ 	on_close={() => (is_theme_warning_dialog_open = false)}
+ >
+-	<section class="theme-warning-section">
++	<section data-testid="theme-warning" class="theme-warning-section">
+ 		<img height="100" width="100" src="/app-icons/wallpapers/256.webp" alt="Wallpapers app logo" />
+ 
+ 		<h3>Current Wallpaper Settings prevent changing theme</h3>
+diff --git a/src/components/TopBar/Menu.svelte b/src/components/TopBar/Menu.svelte
+index eba0485..723ed9d 100644
+--- a/src/components/TopBar/Menu.svelte
++++ b/src/components/TopBar/Menu.svelte
+@@ -5,8 +5,8 @@
+ </script>
+ 
+ <section class="container" class:dark={preferences.theme.scheme === 'dark'}>
+-	{#each Object.entries(menu) as Array<[any, any]> as [_, val]}
+-		<button class="menu-item" disabled={val.disabled}>{val.title}</button>
++	{#each Object.entries(menu) as Array<[any, any]> as [menuItemKey, val]}
++		<button data-testid={'menu-item-' + menuItemKey} class="menu-item" disabled={val.disabled}>{val.title}</button>
+ 		{#if val.breakAfter}
+ 			<div class="divider"></div>
+ 		{/if}
+diff --git a/src/components/TopBar/MenuBar.svelte b/src/components/TopBar/MenuBar.svelte
+index b35f26b..492018d 100644
+--- a/src/components/TopBar/MenuBar.svelte
++++ b/src/components/TopBar/MenuBar.svelte
+@@ -14,6 +14,7 @@
+ 		<div>
+ 			<div style:height="100%">
+ 				<button
++					data-testid={'menu-btn-' + menuID}
+ 					class="menu-button"
+ 					class:default-menu={menuID === 'default'}
+ 					class:apple-icon-button={menuID === 'apple'}
+@@ -31,6 +32,7 @@
+ 			</div>
+ 
+ 			<div
++				data-testid={'menu-panel-' + menuID}
+ 				class="menu-parent"
+ 				style:visibility={menubar_state.active === menuID ? 'visible' : 'hidden'}
+ 				use:elevation={'menubar-menu-parent'}
+diff --git a/src/components/TopBar/TopBar.svelte b/src/components/TopBar/TopBar.svelte
+index 7183141..4602e6b 100644
+--- a/src/components/TopBar/TopBar.svelte
++++ b/src/components/TopBar/TopBar.svelte
+@@ -9,13 +9,13 @@
+ 	import TopBarTime from './TopBarTime.svelte';
+ </script>
+ 
+-<header>
++<header data-testid="topbar">
+ 	<MenuBar />
+ 
+ 	<span style:flex="1 1 auto"></span>
+ 
+ 	{#if should_show_notch.value}
+-		<div class="notch" in:fade={{ duration: 150, easing: sineIn }} out:fade_out>
++		<div data-testid="topbar-notch" class="notch" in:fade={{ duration: 150, easing: sineIn }} out:fade_out>
+ 			<span> <img src="/emojis/wink.png" alt="Wink emoji" class="emoji" /> </span>
+ 		</div>
+ 	{/if}
+diff --git a/src/components/TopBar/TopBarTime.svelte b/src/components/TopBar/TopBarTime.svelte
+index 035a6a7..efc3218 100644
+--- a/src/components/TopBar/TopBarTime.svelte
++++ b/src/components/TopBar/TopBarTime.svelte
+@@ -5,6 +5,7 @@
+ 	const time = create_interval(1000);
+ </script>
+ 
+-<div style:margin="0 0.5rem">
++<div data-testid="probe-clock" style:margin="0 0.5rem">
+ 	{format(time.value, 'EEE MMM dd')}&nbsp; {format(time.value, 'h:mm aa')}
+ </div>
++<span data-testid="probe-clock-raw" aria-hidden="true" style="position:absolute;left:-9999px;">{time.value}</span>
+diff --git a/src/components/apps/Calendar/Calendar.svelte b/src/components/apps/Calendar/Calendar.svelte
+index 97364ba..22a587a 100644
+--- a/src/components/apps/Calendar/Calendar.svelte
++++ b/src/components/apps/Calendar/Calendar.svelte
+@@ -23,6 +23,7 @@
+ </script>
+ 
+ <section class="container" class:dark={preferences.theme.scheme === 'dark'}>
++	<span data-testid="probe-cal-month" aria-hidden="true" style="position:absolute;left:-9999px;">{format(selected_date, 'yyyy-MM')}</span>
+ 	<header class="app-window-drag-handle titlebar"></header>
+ 
+ 	<section class="main-area">
+@@ -33,7 +34,7 @@
+ 			</div>
+ 
+ 			<div class="control-buttons">
+-				<button onclick={goPreviousMonth}>
++				<button data-testid="cal-prev-btn" onclick={goPreviousMonth}>
+ 					<LeftArrow />
+ 				</button>
+ 				<button onclick={goToToday}>Today</button>
+diff --git a/src/components/apps/Calendar/MonthView.svelte b/src/components/apps/Calendar/MonthView.svelte
+index ce6d82b..822c6c4 100644
+--- a/src/components/apps/Calendar/MonthView.svelte
++++ b/src/components/apps/Calendar/MonthView.svelte
+@@ -24,6 +24,7 @@
+ </script>
+ 
+ <div class="container" class:dark={preferences.theme.scheme === 'dark'}>
++	<span data-testid="probe-cal-days-count" aria-hidden="true" style="position:absolute;left:-9999px;">{display_days.days_in_this_month.length}</span>
+ 	{#each DAYS_OF_THE_WEEK as day, i}
+ 		<div class="weekday" class:weekend={[5, 6].includes(i)}>{day}</div>
+ 	{/each}
+diff --git a/src/components/apps/WallpaperApp/Wallpaper.svelte b/src/components/apps/WallpaperApp/Wallpaper.svelte
+index a673fbb..b26e808 100644
+--- a/src/components/apps/WallpaperApp/Wallpaper.svelte
++++ b/src/components/apps/WallpaperApp/Wallpaper.svelte
+@@ -86,6 +86,7 @@
+ <img src={preferences.wallpaper.image} aria-hidden="true" alt="" onload={previewImageOnLoad} />
+ 
+ <div
++	data-testid="wallpaper-bg"
+ 	class="background-cover"
+ 	style:background-image="url({visible_background_image})"
+ 	use:elevation={'wallpaper'}
+diff --git a/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte b/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
+index 5af0886..4d6bce4 100644
+--- a/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
++++ b/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
+@@ -61,7 +61,7 @@
+ 			<div class="wallpapers">
+ 				{#each dynamic_wallpapers as [id, { thumbnail, name, image }]}
+ 					<div class="wallpaper-button">
+-						<button onclick={() => change_wallpaper(id)} onpointerenter={() => preload(image)}>
++						<button data-testid={'wallpaper-tile-' + id} onclick={() => change_wallpaper(id)} onpointerenter={() => preload(image)}>
+ 							<img src={thumbnail} alt="MacOS {name} Wallpapers, dynamic" />
+ 						</button>
+ 						<p>{name}</p>
+@@ -78,7 +78,7 @@
+ 			<div class="wallpapers">
+ 				{#each standalone_wallpapers as [id, { thumbnail, name, image }]}
+ 					<div class="wallpaper-button">
+-						<button onclick={() => change_wallpaper(id)} onpointerenter={() => preload(image)}>
++						<button data-testid={'wallpaper-tile-' + id} onclick={() => change_wallpaper(id)} onpointerenter={() => preload(image)}>
+ 							<img src={thumbnail} alt="MacOS {name} Wallpapers, dynamic" />
+ 						</button>
+ 						<p>{name}</p>

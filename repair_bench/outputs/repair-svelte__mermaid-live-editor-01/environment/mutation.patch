@@ -1,0 +1,192 @@
+diff --git a/src/lib/components/Editor.svelte b/src/lib/components/Editor.svelte
+index 2b80dc2..9721a65 100644
+--- a/src/lib/components/Editor.svelte
++++ b/src/lib/components/Editor.svelte
+@@ -8,7 +8,7 @@
+   import { env } from '$/util/env';
+   import { updateCode, updateConfig, urls, validatedState } from '$lib/util/state.svelte';
+   import { logMermaidChartClick } from '$lib/util/stats';
+-  import { debounce } from 'lodash-es';
++  import { throttle } from 'lodash-es';
+   import ExclamationCircleIcon from '~icons/material-symbols/error-outline-rounded';
+ 
+   const { isMobile } = $props<{ isMobile: boolean }>();
+@@ -22,7 +22,7 @@
+ 
+   let showError = $state(false);
+ 
+-  const showErrorDebounced = debounce(() => {
++  const showErrorDebounced = throttle(() => {
+     showError = true;
+   }, 3000);
+ 
+diff --git a/src/lib/components/History/History.svelte b/src/lib/components/History/History.svelte
+index 6681e56..e181e9d 100644
+--- a/src/lib/components/History/History.svelte
++++ b/src/lib/components/History/History.svelte
+@@ -63,8 +63,8 @@
+ 
+   const emptyMessage = $derived(
+     historyState.mode === 'auto'
+-      ? 'No timeline snapshots yet.\nThe Timeline is saved automatically every minute.'
+-      : 'No saved states yet.\nClick the Save button to bookmark the current diagram and restore it later.'
++      ? 'No saved states yet.\nClick the Save button to bookmark the current diagram and restore it later.'
++      : 'No timeline snapshots yet.\nThe Timeline is saved automatically every minute.'
+   );
+ 
+   const tabSelectHandler = (tab: Tab) => {
+@@ -100,7 +100,7 @@
+   };
+ 
+   const saveHistory = () => {
+-    if (!addManualEntry($state.snapshot(inputState))) {
++    if (addManualEntry($state.snapshot(inputState))) {
+       notify('State already saved.');
+     }
+   };
+diff --git a/src/lib/components/History/historyState.svelte.ts b/src/lib/components/History/historyState.svelte.ts
+index f076def..c39c3ac 100644
+--- a/src/lib/components/History/historyState.svelte.ts
++++ b/src/lib/components/History/historyState.svelte.ts
+@@ -75,7 +75,8 @@ const addEntry = (
+   }
+   const trimmed =
+     maxLength && entries.length >= maxLength ? entries.slice(0, maxLength - 1) : entries;
+-  slot.value = [createEntry(state, type), ...trimmed];
++  slot.value = trimmed;
++  slot.value.unshift(createEntry(state, type));
+   logEvent('history', { action: 'save', type });
+   return true;
+ };
+diff --git a/src/lib/components/Share.svelte b/src/lib/components/Share.svelte
+index c308bfd..17c5939 100644
+--- a/src/lib/components/Share.svelte
++++ b/src/lib/components/Share.svelte
+@@ -49,7 +49,7 @@
+       theme
+     })
+   );
+-  const snippets = $derived(buildEmbedSnippets(embedUrls, { height, width }));
++  const snippets = buildEmbedSnippets(embedUrls, { height, width });
+   const snippet = $derived(format === 'webComponent' ? snippets.webComponent : snippets.iframe);
+ </script>
+ 
+diff --git a/src/lib/components/View.svelte b/src/lib/components/View.svelte
+index ad08742..0174e93 100644
+--- a/src/lib/components/View.svelte
++++ b/src/lib/components/View.svelte
+@@ -55,7 +55,6 @@
+         if (
+           code === state.code &&
+           config === state.mermaid &&
+-          rough === state.rough &&
+           panZoom === state.panZoom
+         ) {
+           return;
+diff --git a/src/lib/util/promos/promo.svelte.ts b/src/lib/util/promos/promo.svelte.ts
+index b5d729e..09be70f 100644
+--- a/src/lib/util/promos/promo.svelte.ts
++++ b/src/lib/util/promos/promo.svelte.ts
+@@ -57,7 +57,7 @@ export const getActivePromotion = (): (Promotion & { id: string }) | undefined =
+         (!hidePromotionsUntil[id] || dayjs(hidePromotionsUntil[id]).isBefore(now))
+     )
+     .sort(([, a], [, b]) => dayjs(b.endDate).diff(dayjs(a.endDate)))
+-    .pop();
++    .shift();
+ 
+   if (!promotionWithID) {
+     return;
+diff --git a/src/lib/util/redirect.ts b/src/lib/util/redirect.ts
+index b54fd00..ede6ac2 100644
+--- a/src/lib/util/redirect.ts
++++ b/src/lib/util/redirect.ts
+@@ -9,7 +9,7 @@ export const buildRedirectUrl = (location: Location): string => {
+   const parts = location.hash.split('/');
+   let path = 'edit';
+   let fragment = '';
+-  if (parts.length > 2) {
++  if (parts.length > 3) {
+     path = parts[1];
+     fragment = `#${parts[2]}`;
+   }
+diff --git a/src/lib/util/state.svelte.ts b/src/lib/util/state.svelte.ts
+index fb25f0d..d7d9cfd 100644
+--- a/src/lib/util/state.svelte.ts
++++ b/src/lib/util/state.svelte.ts
+@@ -1,7 +1,7 @@
+ import { defaultState } from '$/constants';
+ import type { ErrorHash, MarkerData, State, ValidatedState } from '$/types';
+ import { resolve } from '$app/paths';
+-import { debounce, get as lodashGet } from 'lodash-es';
++import { get as lodashGet, throttle } from 'lodash-es';
+ import type { MermaidConfig } from 'mermaid';
+ import { untrack } from 'svelte';
+ import { env } from './env';
+@@ -176,7 +176,7 @@ const urlsCurrent = $derived.by(() => {
+         ...(campaign ? { utm_campaign: campaign } : {})
+       }).toString();
+       return {
+-        save: `${MCBaseURL}/app/plugin/save?state=${serialized}&${params}`,
++        save: `${MCBaseURL}/play?${params}#${serialized}`,
+         playground: `${MCBaseURL}/play?${params}#${serialized}`,
+         plugins: `${MCBaseURL}/plugins?${params}`,
+         home: `${MCBaseURL}/?${params}`
+@@ -302,9 +302,9 @@ export const replaceInputState = (next: State): void => {
+ };
+ 
+ export const initURLSubscription = (): void => {
+-  updateHash = debounce((serialized: string) => {
++  updateHash = throttle((serialized: string) => {
+     history.replaceState(undefined, '', `#${serialized}`);
+-  }, 250);
++  }, 250, { trailing: false });
+   updateHash(validatedCurrent.serialized);
+ };
+ 
+diff --git a/src/lib/util/util.ts b/src/lib/util/util.ts
+index 49dfa90..ead62f2 100644
+--- a/src/lib/util/util.ts
++++ b/src/lib/util/util.ts
+@@ -4,7 +4,7 @@ import { loadDataFromUrl } from './fileLoaders/loader';
+ import { initLoading } from './loading.svelte';
+ import { isOnMermaidAI } from './migration/domainMigration';
+ import { applyMigrations } from './migrations.svelte';
+-import { initURLSubscription, loadState, updateCodeStore, verifyState } from './state.svelte';
++import { loadState, updateCodeStore, verifyState } from './state.svelte';
+ import { getAnalyticsSafeUrl, initAnalytics, plausible } from './stats';
+ 
+ export const getDomain = (url?: string): string => {
+@@ -28,7 +28,6 @@ export const initHandler = async (): Promise<void> => {
+   loadStateFromURL();
+   await initLoading('Loading Gist...', loadDataFromUrl().catch(console.error));
+   syncDiagram();
+-  initURLSubscription();
+   await initAnalytics();
+   plausible?.trackPageview({
+     url: getAnalyticsSafeUrl()
+diff --git a/src/routes/(app)/+layout.svelte b/src/routes/(app)/+layout.svelte
+index 74fd0f2..4f0c342 100644
+--- a/src/routes/(app)/+layout.svelte
++++ b/src/routes/(app)/+layout.svelte
+@@ -33,7 +33,7 @@
+   });
+ 
+   $effect(() => {
+-    toggleDarkTheme(mode.current === 'dark');
++    queueMicrotask(() => toggleDarkTheme(mode.current === 'dark'));
+   });
+ </script>
+ 
+diff --git a/src/routes/(app)/edit/+page.svelte b/src/routes/(app)/edit/+page.svelte
+index c545063..a2cae90 100644
+--- a/src/routes/(app)/edit/+page.svelte
++++ b/src/routes/(app)/edit/+page.svelte
+@@ -91,7 +91,7 @@
+   {/snippet}
+ 
+   <Navbar mobileToggle={isMobile ? mobileToggle : undefined}>
+-    <Toggle data-testid="history-toggle" bind:pressed={isHistoryOpen} size="sm" title="History" aria-label="History">
++    <Toggle data-testid="history-toggle" pressed={isHistoryOpen} size="sm" title="History" aria-label="History">
+       <HistoryIcon />
+     </Toggle>
+     <Share />

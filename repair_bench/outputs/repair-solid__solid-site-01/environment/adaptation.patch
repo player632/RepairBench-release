@@ -1,0 +1,384 @@
+diff --git a/public/rb-inert-avatar.svg b/public/rb-inert-avatar.svg
+new file mode 100644
+index 0000000..3062e96
+--- /dev/null
++++ b/public/rb-inert-avatar.svg
+@@ -0,0 +1,5 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="inert placeholder">
++  <rect width="64" height="64" rx="32" fill="#e5e7eb"/>
++  <circle cx="32" cy="25" r="10" fill="#9ca3af"/>
++  <path d="M12 56c2-11 10-16 20-16s18 5 20 16z" fill="#9ca3af"/>
++</svg>
+diff --git a/public/rb-inert-endpoint.json b/public/rb-inert-endpoint.json
+new file mode 100644
+index 0000000..2db8405
+--- /dev/null
++++ b/public/rb-inert-endpoint.json
+@@ -0,0 +1 @@
++{ "rb_inert": true, "note": "repair-bench adaptation: a same-origin inert stand-in for a cross-origin endpoint. It carries no application data." }
+diff --git a/public/rb-inert-page.html b/public/rb-inert-page.html
+new file mode 100644
+index 0000000..3ec2e0d
+--- /dev/null
++++ b/public/rb-inert-page.html
+@@ -0,0 +1,10 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <title>Inert stand-in</title>
++  </head>
++  <body>
++    <p data-rb-inert="">This document is a same-origin inert stand-in installed by the repair-bench adaptation. The original destination was an external host and is not reachable on this face.</p>
++  </body>
++</html>
+diff --git a/src/components/Newsletter.tsx b/src/components/Newsletter.tsx
+index 9defb0c..3bbea23 100644
+--- a/src/components/Newsletter.tsx
++++ b/src/components/Newsletter.tsx
+@@ -21,7 +21,12 @@ export const Newsletter: Component<NewsletterProps> = (props) => {
+     evt.preventDefault();
+     setState(NewsletterState.SENDING);
+     try {
+-      await fetch('https://newsletter.solidjs.com', {
++      // repair-bench adaptation (environment/adaptation.patch): the address a visitor typed was
++      // posted to a hosted list endpoint. Ruling G3 requires a runtime-fetched external resource
++      // to be neutralised, so the post goes to a same-origin inert document instead. The method,
++      // the headers, the body, the SENDING/SENT/ERROR state machine and the field reset are all
++      // verbatim - only the destination changes.
++      await fetch('/rb-inert-endpoint.json', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+diff --git a/src/main.tsx b/src/main.tsx
+index 322dbf5..9b481ee 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -2,8 +2,15 @@ import { render } from 'solid-js/web';
+ import './assets/main.css';
+ 
+ // import { registerSW } from 'virtual:pwa-register';
++import { installNetFence } from './rbNetFence';
+ import { App } from './App';
+ 
++// repair-bench adaptation (environment/adaptation.patch): install the same-origin request fence
++// BEFORE the application renders, so no module of the app can reach a cross-origin endpoint. See
++// src/rbNetFence.ts for the full ledger of what it covers and why each channel is redirected
++// rather than blocked.
++installNetFence();
++
+ render(() => <App />, document.getElementById('app')!);
+ 
+ // Register service worker
+diff --git a/src/pages/Contributors.tsx b/src/pages/Contributors.tsx
+index 9c7bd0f..69c06dd 100644
+--- a/src/pages/Contributors.tsx
++++ b/src/pages/Contributors.tsx
+@@ -101,7 +101,7 @@ const Contributors: Component<{ data: ContributorsDataProps }> = (props) => {
+                 {t('contributors.contributors')}
+               </h2>
+               <a target="_blank" href="https://github.com/solidjs/solid/graphs/contributors" rel="noreferrer">
+-                <img src="https://camo.githubusercontent.com/c2d6e18c0cf67d82e51738442d4082326b7cf63a1552e9d27f773eafe0d3d3be/68747470733a2f2f6f70656e636f6c6c6563746976652e636f6d2f736f6c69642f636f6e7472696275746f72732e7376673f77696474683d38393026627574746f6e3d66616c7365" />
++                <img src="/rb-inert-avatar.svg?u=camo.githubusercontent.com/c2d6e18c0cf67d82e51738442d4082326b7cf63a1552e9d27f773eafe0d3d3be/68747470733a2f2f6f70656e636f6c6c6563746976652e636f6d2f736f6c69642f636f6e7472696275746f72732e7376673f77696474683d38393026627574746f6e3d66616c7365" />
+               </a>
+             </div>
+             <h2 class="text-2xl font-semibold text-solid-default dark:text-solid-darkdefault">
+@@ -137,37 +137,37 @@ const Contributors: Component<{ data: ContributorsDataProps }> = (props) => {
+               </div>
+               <div class="grid grid-cols-8 gap-4">
+                 <a href="https://opencollective.com/solid/backer/0/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/0/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/0/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/1/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/1/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/1/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/2/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/2/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/2/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/3/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/3/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/3/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/4/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/4/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/4/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/5/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/5/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/5/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/6/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/6/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/6/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/7/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/7/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/7/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/8/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/8/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/8/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/9/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/9/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/9/avatar.svg" />
+                 </a>
+                 <a href="https://opencollective.com/solid/backer/10/website" target="_blank">
+-                  <img class="w-22" src="https://opencollective.com/solid/backer/10/avatar.svg" />
++                  <img class="w-22" src="/rb-inert-avatar.svg?u=opencollective.com/solid/backer/10/avatar.svg" />
+                 </a>
+               </div>
+             </div>
+diff --git a/src/pages/Store.data.ts b/src/pages/Store.data.ts
+index 6e9577e..c4fc628 100644
+--- a/src/pages/Store.data.ts
++++ b/src/pages/Store.data.ts
+@@ -1,39 +1,54 @@
+-import { createEffect, on } from 'solid-js';
+ import type { RouteLoadFunc } from '@solidjs/router';
+-import { createCookieStorage } from '@solid-primitives/storage';
+-import { createCollection, createCart } from '../utils/shopify';
+ 
+-const settings = {
+-  token: '98a442cbab63cb1697002bfae7dc648a',
+-  domain: 'solidjs.myshopify.com',
++// repair-bench adaptation (environment/adaptation.patch).
++// This module built a hosted storefront client and issued GraphQL requests to a shop domain the
++// moment the shop route loaded, and it read a cart identifier back out of a cookie to retrieve a
++// real checkout. Ruling G3 classifies a runtime-fetched external resource as something to
++// neutralise or vendor; a hosted storefront cannot be vendored under the 0-network rule, so the
++// route now resolves to a same-origin inert stand-in. The returned SHAPE is the one the page
++// already consumes (commerce.cart.{id,lines,totalItems,total,subtotal,tax,checkoutURL,attributes,
++// note}, commerce.loading(), commerce.{retrieve,add,update,remove,formatTotal,setAttribute,
++// updateAttributes}, loading, products), every collection is empty and every mutation resolves
++// without doing anything, so the page renders its own empty state and its own disabled controls
++// through the same code paths it always used. Nothing else in this file's contract changes: the
++// route still returns synchronously, still exposes the same three getters, and the shopify
++// primitive module is left byte-identical on disk (it is simply no longer reached from here).
++const formatTotal = (total: number | string) => `$${Number(total || 0).toFixed(2)}`;
++const noop = async () => undefined;
++
++const inertCommerce = {
++  cart: {
++    cart: null,
++    id: null as string | number | null,
++    attributes: [] as unknown[],
++    note: '',
++    lines: [] as unknown[],
++    totalItems: 0,
++    tax: 0,
++    checkoutURL: '/rb-inert-page.html?checkout=1',
++    subtotal: 0,
++    total: 0,
++  },
++  loading: () => false,
++  retrieve: noop,
++  add: noop,
++  update: noop,
++  remove: noop,
++  formatTotal,
++  setAttribute: noop,
++  updateAttributes: noop,
+ };
+ 
+ export const StoreData: RouteLoadFunc = () => {
+-  const [collection] = createCollection(() => 'gid://shopify/Collection/285612933298', settings);
+-  const [cookie, setCookie] = createCookieStorage();
+-  const id: string | null =
+-    !cookie.cartId || cookie.cartId === '' ? null : (cookie.cartId as string);
+-  const commerce = createCart(id, settings);
+-  createEffect(
+-    on(
+-      () => [commerce.loading(), commerce.cart.id, commerce.cart.id],
+-      () => {
+-        if (commerce.loading() === true) return;
+-        if (commerce.cart.id !== cookie.cartId) {
+-          setCookie('cartId', commerce.cart.id);
+-        }
+-      },
+-    ),
+-  );
+   return {
+     get commerce() {
+-      return commerce;
++      return inertCommerce;
+     },
+     get loading() {
+-      return collection.loading;
++      return false;
+     },
+     get products() {
+-      return collection()?.products;
++      return [];
+     },
+   };
+ };
+diff --git a/src/rbNetFence.ts b/src/rbNetFence.ts
+new file mode 100644
+index 0000000..8ae861d
+--- /dev/null
++++ b/src/rbNetFence.ts
+@@ -0,0 +1,143 @@
++// rbNetFence.ts - repair-bench adaptation (environment/adaptation.patch). NOT application code.
++//
++// Ruling G3: a runtime-fetched external resource is neutralised or vendored, and this face must be
++// self-sufficient at runtime with zero network egress. Three sites in this seed reach the public
++// internet while the app runs, and one of them (a storefront client) is built by a third-party
++// library, so it cannot be repointed by editing a URL literal:
++//   1. src/pages/Store.data.ts builds a storefront client that issues GraphQL requests to a hosted
++//      shop domain as soon as the shop route is loaded;
++//   2. src/components/Newsletter.tsx posts the address a visitor typed at a hosted list endpoint;
++//   3. src/routes.ts sends the whole page to an external host for one legacy shortcut route.
++// Site 3 is repointed by editing the route table. Sites 1 and 2 go through globalThis.fetch, and
++// images that a library or a template assigns through the src property go through
++// HTMLImageElement.prototype.src, so this module installs a same-origin fence over exactly those
++// three request channels BEFORE the application renders.
++//
++// The fence is a redirect, not a block: every request still happens, still returns a Response and
++// still resolves the caller's promise, so no application code path is shortened and no error
++// branch is provoked that would not otherwise run. Only the DESTINATION changes, and only for a
++// URL that is cross-origin. Same-origin URLs, data: URLs and blob: URLs pass through untouched.
++// Statically templated <img src="https://..."> literals are compiled into a template string and
++// never touch a patched channel, so those are repointed in the markup itself; this fence is the
++// belt-and-braces layer for everything assigned at runtime.
++//
++// Every redirect is recorded on window.__RB_NET__ so the adaptation is auditable from the page.
++
++type Record_ = { channel: string; from: string; to: string; at: number };
++
++const INERT_DOC = "/rb-inert-page.html";
++const INERT_JSON = "/rb-inert-endpoint.json";
++const INERT_IMG = "/rb-inert-avatar.svg";
++
++const ledger: Record_[] = [];
++
++const publish = () => {
++  (window as any).__RB_NET__ = {
++    blocked: ledger.length,
++    entries: ledger.slice(0, 50),
++    inert: { doc: INERT_DOC, json: INERT_JSON, img: INERT_IMG },
++  };
++};
++
++const isInert = (u: string) => u.indexOf("/rb-inert-") !== -1;
++
++/** true only for an absolute http(s) URL that points at a different origin than this page */
++const crossOrigin = (raw: unknown): string | null => {
++  if (typeof raw !== "string" || raw === "") return null;
++  if (isInert(raw)) return null;
++  let u: URL;
++  try {
++    u = new URL(raw, window.location.href);
++  } catch (e) {
++    return null;
++  }
++  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
++  if (u.origin === window.location.origin) return null;
++  return u.href;
++};
++
++const note = (channel: string, from: string, to: string) => {
++  ledger.push({ channel, from, to, at: Date.now() });
++  publish();
++};
++
++export const installNetFence = () => {
++  publish();
++
++  // ---- channel 1: fetch ----
++  const realFetch = window.fetch.bind(window);
++  (window as any).fetch = (input: any, init?: any) => {
++    const raw = typeof input === "string" ? input : input && input.url ? String(input.url) : null;
++    const cross = crossOrigin(raw);
++    if (cross) {
++      note("fetch", cross, INERT_JSON);
++      return realFetch(INERT_JSON, init);
++    }
++    return realFetch(input, init);
++  };
++
++  // ---- channel 2: XMLHttpRequest ----
++  const realOpen = XMLHttpRequest.prototype.open;
++  XMLHttpRequest.prototype.open = function (method: string, url: any, ...rest: any[]) {
++    const cross = crossOrigin(url);
++    if (cross) {
++      note("xhr", cross, INERT_JSON);
++      return (realOpen as any).call(this, method, INERT_JSON, ...rest);
++    }
++    return (realOpen as any).call(this, method, url, ...rest);
++  } as any;
++
++  // ---- channel 3: WebSocket (nothing in this seed opens one; fenced so the face stays closed) ----
++  const RealSocket = window.WebSocket;
++  const FencedSocket: any = function (url: any, protocols?: any) {
++    const cross = crossOrigin(url);
++    if (cross) {
++      note("websocket", cross, INERT_DOC);
++      throw new Error("repair-bench adaptation: a cross-origin socket is not opened on this face");
++    }
++    return protocols === undefined ? new RealSocket(url) : new RealSocket(url, protocols);
++  };
++  FencedSocket.prototype = RealSocket.prototype;
++  FencedSocket.CONNECTING = RealSocket.CONNECTING;
++  FencedSocket.OPEN = RealSocket.OPEN;
++  FencedSocket.CLOSING = RealSocket.CLOSING;
++  FencedSocket.CLOSED = RealSocket.CLOSED;
++  (window as any).WebSocket = FencedSocket;
++
++  // ---- channel 4: an image address assigned at runtime (property or attribute) ----
++  const localizeImage = (raw: any) => {
++    const cross = crossOrigin(raw);
++    if (!cross) return raw;
++    let u: URL;
++    try {
++      u = new URL(cross);
++    } catch (e) {
++      return INERT_IMG;
++    }
++    note("img", cross, INERT_IMG);
++    return `${INERT_IMG}?h=${encodeURIComponent(u.host)}&p=${encodeURIComponent(u.pathname)}`;
++  };
++  const imgDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
++  if (imgDesc && imgDesc.set && imgDesc.get) {
++    Object.defineProperty(HTMLImageElement.prototype, "src", {
++      configurable: true,
++      enumerable: imgDesc.enumerable,
++      get: imgDesc.get,
++      set(value: any) {
++        (imgDesc.set as any).call(this, localizeImage(value));
++      },
++    });
++  }
++  const MEDIA = { IMG: 1, SCRIPT: 1, IFRAME: 1, SOURCE: 1, EMBED: 1, VIDEO: 1, AUDIO: 1, IMAGE: 1 };
++  const realSetAttribute = Element.prototype.setAttribute;
++  Element.prototype.setAttribute = function (name: string, value: string) {
++    if (name === "src" && MEDIA[(this.tagName || "").toUpperCase()]) {
++      return realSetAttribute.call(this, name, localizeImage(value) as string);
++    }
++    return realSetAttribute.call(this, name, value);
++  };
++
++  return true;
++};
++
++export default installNetFence;
+diff --git a/src/routes.ts b/src/routes.ts
+index 49e1a7d..ce6fdee 100644
+--- a/src/routes.ts
++++ b/src/routes.ts
+@@ -28,7 +28,11 @@ export const routes: RouteDefinition[] = [
+   {
+     path: '/hack',
+     component: () => {
+-      typeof window !== 'undefined' && (window.location.href = 'https://hack.solidjs.com');
++      // repair-bench adaptation (environment/adaptation.patch): this legacy shortcut handed the
++      // whole page to an external host. The face must be self-sufficient at runtime with zero
++      // network egress (ruling G3), so the shortcut now resolves to a same-origin inert document
++      // that says what it is. The route, its guard and its null render are otherwise verbatim.
++      typeof window !== 'undefined' && (window.location.href = '/rb-inert-page.html?hack=1');
+       return null;
+     },
+   },

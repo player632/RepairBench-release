@@ -1,0 +1,1415 @@
+diff --git a/src/components/navbar/AppNavbar.vue b/src/components/navbar/AppNavbar.vue
+index 16bd9ec..16d1964 100644
+--- a/src/components/navbar/AppNavbar.vue
++++ b/src/components/navbar/AppNavbar.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaNavbar class="app-layout-navbar py-2 px-0">
++  <VaNavbar class="app-layout-navbar py-2 px-0" data-testid="app-navbar">
+     <template #left>
+       <div class="left">
+         <Transition v-if="isMobile" name="icon-fade" mode="out-in">
+@@ -11,7 +11,7 @@
+             @click="isSidebarMinimized = !isSidebarMinimized"
+           />
+         </Transition>
+-        <RouterLink to="/" aria-label="Visit home page">
++        <RouterLink to="/" aria-label="Visit home page" data-testid="navbar-logo">
+           <VuesticLogo />
+         </RouterLink>
+       </div>
+diff --git a/src/components/sidebar/AppSidebar.vue b/src/components/sidebar/AppSidebar.vue
+index c6d6e98..f1e6362 100644
+--- a/src/components/sidebar/AppSidebar.vue
++++ b/src/components/sidebar/AppSidebar.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaSidebar v-model="writableVisible" :width="sidebarWidth" :color="color" minimized-width="0">
++  <VaSidebar v-model="writableVisible" :width="sidebarWidth" :color="color" minimized-width="0" data-testid="app-sidebar">
+     <VaAccordion v-model="value" multiple>
+       <VaCollapse v-for="(route, index) in navigationRoutes.routes" :key="index">
+         <template #header="{ value: isCollapsed }">
+@@ -11,6 +11,7 @@
+             :aria-label="`${route.children ? 'Open category ' : 'Visit'} ${t(route.displayName)}`"
+             role="button"
+             hover-opacity="0.10"
++            :data-testid="'sb-' + route.name"
+           >
+             <VaSidebarItemContent class="py-3 pr-2 pl-4">
+               <VaIcon
+@@ -36,6 +37,7 @@
+               :text-color="textColor(childRoute)"
+               :aria-label="`Visit ${t(route.displayName)}`"
+               hover-opacity="0.10"
++              :data-testid="'sbsub-' + childRoute.name"
+             >
+               <VaSidebarItemContent class="py-3 pr-2 pl-11">
+                 <VaSidebarItemTitle class="leading-5 font-semibold">
+diff --git a/src/pages/404.vue b/src/pages/404.vue
+index 24dc1fd..6ea2bea 100644
+--- a/src/pages/404.vue
++++ b/src/pages/404.vue
+@@ -4,7 +4,10 @@ import NotFoundImage from '../components/NotFoundImage.vue'
+ </script>
+ 
+ <template>
+-  <div class="flex flex-col justify-between h-screen items-center bg-[var(--va-background-secondary)]">
++  <div
++    class="flex flex-col justify-between h-screen items-center bg-[var(--va-background-secondary)]"
++    data-testid="not-found-page"
++  >
+     <RouterLink to="/">
+       <VuesticLogo :gradient="false" class="my-8 h-5" />
+     </RouterLink>
+diff --git a/src/pages/admin/dashboard/Dashboard.vue b/src/pages/admin/dashboard/Dashboard.vue
+index 4bb1d19..cde09e1 100644
+--- a/src/pages/admin/dashboard/Dashboard.vue
++++ b/src/pages/admin/dashboard/Dashboard.vue
+@@ -10,7 +10,7 @@ import Timeline from './cards/Timeline.vue'
+ </script>
+ 
+ <template>
+-  <h1 class="page-title font-bold">Dashboard</h1>
++  <h1 class="page-title font-bold" data-testid="dashboard-title">Dashboard</h1>
+   <section class="flex flex-col gap-4">
+     <div class="flex flex-col sm:flex-row gap-4">
+       <RevenueUpdates class="w-full sm:w-[70%]" />
+diff --git a/src/pages/admin/dashboard/DataSection.vue b/src/pages/admin/dashboard/DataSection.vue
+index 635c69f..5969b34 100644
+--- a/src/pages/admin/dashboard/DataSection.vue
++++ b/src/pages/admin/dashboard/DataSection.vue
+@@ -3,6 +3,7 @@
+     <DataSectionItem
+       v-for="metric in dashboardMetrics"
+       :key="metric.id"
++      :data-testid="'metric-' + metric.id"
+       :title="metric.title"
+       :value="metric.value"
+       :change-text="metric.changeText"
+diff --git a/src/pages/admin/dashboard/cards/MonthlyEarnings.vue b/src/pages/admin/dashboard/cards/MonthlyEarnings.vue
+index d9f7e2c..19cbf68 100644
+--- a/src/pages/admin/dashboard/cards/MonthlyEarnings.vue
++++ b/src/pages/admin/dashboard/cards/MonthlyEarnings.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaCard>
++  <VaCard data-testid="monthly-earnings">
+     <VaCardTitle>
+       <h1 class="card-title text-tag text-secondary font-bold uppercase">Monthly Earnings</h1>
+     </VaCardTitle>
+diff --git a/src/pages/admin/dashboard/cards/ProjectTable.vue b/src/pages/admin/dashboard/cards/ProjectTable.vue
+index 5296b4f..b39cb1e 100644
+--- a/src/pages/admin/dashboard/cards/ProjectTable.vue
++++ b/src/pages/admin/dashboard/cards/ProjectTable.vue
+@@ -22,7 +22,7 @@ const { getTeamOptions, getUserById } = useProjectUsers()
+ </script>
+ 
+ <template>
+-  <VaCard>
++  <VaCard data-testid="dash-projects">
+     <VaCardTitle class="flex items-start justify-between">
+       <h1 class="card-title text-secondary font-bold uppercase">Projects</h1>
+       <VaButton preset="primary" size="small" to="/projects">View all projects</VaButton>
+diff --git a/src/pages/admin/dashboard/cards/RegionRevenue.vue b/src/pages/admin/dashboard/cards/RegionRevenue.vue
+index acc17be..1614afc 100644
+--- a/src/pages/admin/dashboard/cards/RegionRevenue.vue
++++ b/src/pages/admin/dashboard/cards/RegionRevenue.vue
+@@ -5,20 +5,32 @@
+     </VaCardTitle>
+     <VaCardContent class="flex flex-col gap-1">
+       <div class="flex justify-between">
+-        <VaButtonToggle v-model="selectedPeriod" :options="periods" color="background-element" size="small" />
++        <VaButtonToggle
++          v-model="selectedPeriod"
++          :options="periods"
++          color="background-element"
++          size="small"
++          data-testid="region-period"
++        />
+ 
+-        <VaButton preset="primary" size="small" @click="exportAsCSV"> Export </VaButton>
++        <VaButton preset="primary" size="small" data-testid="region-export" @click="exportAsCSV"> Export </VaButton>
+       </div>
+ 
+       <VaDataTable
+         class="region-revenue-table"
++        data-testid="region-table"
+         :columns="[
+           { key: 'name', label: 'Top Region' },
+           { key: 'revenue', label: 'Revenue', align: 'right' },
+         ]"
+         :items="data"
+       >
+-        <template #cell(revenue)="{ rowData }"> ${{ rowData[`revenue${selectedPeriod}`] }} </template>
++        <template #cell(name)="{ rowData, rowIndex }">
++          <span :data-testid="'region-name-' + rowIndex">{{ rowData.name }}</span>
++        </template>
++        <template #cell(revenue)="{ rowData, rowIndex }">
++          <span :data-testid="'region-rev-' + rowIndex">${{ rowData[`revenue${selectedPeriod}`] }}</span>
++        </template>
+       </VaDataTable>
+     </VaCardContent>
+   </VaCard>
+diff --git a/src/pages/admin/dashboard/cards/RevenueByLocationMap.vue b/src/pages/admin/dashboard/cards/RevenueByLocationMap.vue
+index 9c6fee9..fd68e78 100644
+--- a/src/pages/admin/dashboard/cards/RevenueByLocationMap.vue
++++ b/src/pages/admin/dashboard/cards/RevenueByLocationMap.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaCard class="flex flex-col">
++  <VaCard class="flex flex-col" data-testid="dashboard-map">
+     <VaCardTitle class="flex items-center justify-between">
+       <h1 class="card-title text-secondary font-bold uppercase">Revenue by location</h1>
+     </VaCardTitle>
+diff --git a/src/pages/admin/dashboard/cards/RevenueReport.vue b/src/pages/admin/dashboard/cards/RevenueReport.vue
+index 7d98622..665c401 100644
+--- a/src/pages/admin/dashboard/cards/RevenueReport.vue
++++ b/src/pages/admin/dashboard/cards/RevenueReport.vue
+@@ -1,16 +1,24 @@
+ <template>
+-  <VaCard class="flex flex-col">
++  <VaCard class="flex flex-col" data-testid="revenue-report">
+     <VaCardTitle class="flex items-start justify-between">
+       <h1 class="card-title text-secondary font-bold uppercase">Revenue Report</h1>
+       <div class="flex gap-2">
+-        <VaSelect v-model="selectedMonth" preset="small" :options="monthsWithCurrentYear" class="w-24" />
+-        <VaButton class="h-2" size="small" preset="primary" @click="exportAsCSV">Export</VaButton>
++        <VaSelect
++          v-model="selectedMonth"
++          preset="small"
++          :options="monthsWithCurrentYear"
++          class="w-24"
++          data-testid="revenue-month-select"
++        />
++        <VaButton class="h-2" size="small" preset="primary" data-testid="revenue-export" @click="exportAsCSV"
++          >Export</VaButton
++        >
+       </div>
+     </VaCardTitle>
+     <VaCardContent class="flex flex-col-reverse md:flex-row md:items-center justify-between gap-5 h-full">
+       <section class="flex flex-col items-start w-full sm:w-1/3 md:w-2/5 lg:w-1/4 gap-2 md:gap-8 pl-4">
+         <div>
+-          <p class="text-xl font-semibold">{{ formatMoney(totalEarnings) }}</p>
++          <p class="text-xl font-semibold" data-testid="revenue-total">{{ formatMoney(totalEarnings) }}</p>
+           <p class="whitespace-nowrap mt-2">Total earnings</p>
+         </div>
+         <div class="flex flex-col sm:flex-col gap-2 md:gap-8 w-full">
+@@ -19,14 +27,18 @@
+               <span class="inline-block w-2 h-2 mr-2 -ml-4" :style="{ backgroundColor: earningsColor }"></span>
+               <span class="text-secondary">Earnings this month</span>
+             </div>
+-            <div class="mt-2 text-xl font-semibold">{{ formatMoney(earningsForSelectedMonth.earning) }}</div>
++            <div class="mt-2 text-xl font-semibold" data-testid="revenue-month-earning">
++              {{ formatMoney(earningsForSelectedMonth.earning) }}
++            </div>
+           </div>
+           <div>
+             <div class="flex items-center">
+               <span class="inline-block w-2 h-2 mr-2 -ml-4" :style="{ backgroundColor: expensesColor }"></span>
+               <span class="text-secondary">Expense this month</span>
+             </div>
+-            <div class="mt-2 text-xl font-semibold">{{ formatMoney(earningsForSelectedMonth.expenses) }}</div>
++            <div class="mt-2 text-xl font-semibold" data-testid="revenue-month-expense">
++              {{ formatMoney(earningsForSelectedMonth.expenses) }}
++            </div>
+           </div>
+         </div>
+       </section>
+diff --git a/src/pages/admin/dashboard/cards/Timeline.vue b/src/pages/admin/dashboard/cards/Timeline.vue
+index 9b622bf..e13a3f2 100644
+--- a/src/pages/admin/dashboard/cards/Timeline.vue
++++ b/src/pages/admin/dashboard/cards/Timeline.vue
+@@ -3,7 +3,7 @@ import VaTimelineItem from '../../../../components/va-timeline-item.vue'
+ </script>
+ 
+ <template>
+-  <VaCard>
++  <VaCard data-testid="dash-timeline">
+     <VaCardTitle class="flex justify-between">
+       <h1 class="card-title text-secondary font-bold uppercase">Timeline</h1>
+     </VaCardTitle>
+diff --git a/src/pages/admin/dashboard/cards/YearlyBreakup.vue b/src/pages/admin/dashboard/cards/YearlyBreakup.vue
+index ab32be1..3ef8ae9 100644
+--- a/src/pages/admin/dashboard/cards/YearlyBreakup.vue
++++ b/src/pages/admin/dashboard/cards/YearlyBreakup.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaCard>
++  <VaCard data-testid="yearly-breakup">
+     <VaCardTitle class="pb-0!">
+       <h1 class="card-title text-secondary font-bold uppercase">Yearly Breakup</h1>
+     </VaCardTitle>
+diff --git a/src/pages/auth/Login.vue b/src/pages/auth/Login.vue
+index 006d47a..761956f 100644
+--- a/src/pages/auth/Login.vue
++++ b/src/pages/auth/Login.vue
+@@ -10,7 +10,9 @@
+       :rules="[validators.required, validators.email]"
+       class="mb-4"
+       label="Email"
++      input-aria-label="Email"
+       type="email"
++      data-testid="login-email"
+     />
+     <VaValue v-slot="isPasswordVisible" :default-value="false">
+       <VaInput
+@@ -19,6 +21,8 @@
+         :type="isPasswordVisible.value ? 'text' : 'password'"
+         class="mb-4"
+         label="Password"
++        input-aria-label="Password"
++        data-testid="login-password"
+         @clickAppendInner.stop="isPasswordVisible.value = !isPasswordVisible.value"
+       >
+         <template #appendInner>
+@@ -32,14 +36,19 @@
+     </VaValue>
+ 
+     <div class="auth-layout__options flex flex-col sm:flex-row items-start sm:items-center justify-between">
+-      <VaCheckbox v-model="formData.keepLoggedIn" class="mb-2 sm:mb-0" label="Keep me signed in on this device" />
++      <VaCheckbox
++        v-model="formData.keepLoggedIn"
++        class="mb-2 sm:mb-0"
++        label="Keep me signed in on this device"
++        data-testid="login-keep"
++      />
+       <RouterLink :to="{ name: 'recover-password' }" class="mt-2 sm:mt-0 sm:ml-1 font-semibold text-primary">
+         Forgot password?
+       </RouterLink>
+     </div>
+ 
+     <div class="flex justify-center mt-4">
+-      <VaButton class="w-full" @click="submit"> Login</VaButton>
++      <VaButton class="w-full" data-testid="login-submit" @click="submit"> Login</VaButton>
+     </div>
+   </VaForm>
+ </template>
+diff --git a/src/pages/auth/RecoverPassword.vue b/src/pages/auth/RecoverPassword.vue
+index e6f1274..30115a9 100644
+--- a/src/pages/auth/RecoverPassword.vue
++++ b/src/pages/auth/RecoverPassword.vue
+@@ -11,8 +11,9 @@
+       class="mb-4"
+       label="Enter your email"
+       type="email"
++      data-testid="recover-email"
+     />
+-    <VaButton class="w-full mb-2" @click="submit">Send password</VaButton>
++    <VaButton class="w-full mb-2" data-testid="recover-submit" @click="submit">Send password</VaButton>
+     <VaButton :to="{ name: 'login' }" class="w-full" preset="secondary" @click="submit">Go back</VaButton>
+   </VaForm>
+ </template>
+diff --git a/src/pages/auth/Signup.vue b/src/pages/auth/Signup.vue
+index a8864ec..60c0d4f 100644
+--- a/src/pages/auth/Signup.vue
++++ b/src/pages/auth/Signup.vue
+@@ -11,6 +11,7 @@
+       class="mb-4"
+       label="Email"
+       type="email"
++      data-testid="signup-email"
+     />
+     <VaValue v-slot="isPasswordVisible" :default-value="false">
+       <VaInput
+@@ -20,7 +21,9 @@
+         :type="isPasswordVisible.value ? 'text' : 'password'"
+         class="mb-4"
+         label="Password"
++        input-aria-label="Password"
+         messages="Password should be 8+ characters: letters, numbers, and special characters."
++        data-testid="signup-password"
+         @clickAppendInner.stop="isPasswordVisible.value = !isPasswordVisible.value"
+       >
+         <template #appendInner>
+@@ -41,6 +44,8 @@
+         :type="isPasswordVisible.value ? 'text' : 'password'"
+         class="mb-4"
+         label="Repeat Password"
++        input-aria-label="Repeat Password"
++        data-testid="signup-repeat"
+         @clickAppendInner.stop="isPasswordVisible.value = !isPasswordVisible.value"
+       >
+         <template #appendInner>
+@@ -54,7 +59,7 @@
+     </VaValue>
+ 
+     <div class="flex justify-center mt-4">
+-      <VaButton class="w-full" @click="submit"> Create account</VaButton>
++      <VaButton class="w-full" data-testid="signup-submit" @click="submit"> Create account</VaButton>
+     </div>
+   </VaForm>
+ </template>
+diff --git a/src/pages/billing/BillingPage.vue b/src/pages/billing/BillingPage.vue
+index 42493ae..45a6654 100644
+--- a/src/pages/billing/BillingPage.vue
++++ b/src/pages/billing/BillingPage.vue
+@@ -1,16 +1,16 @@
+ <template>
+   <h1 class="h1">Billing information</h1>
+ 
+-  <VaSkeletonGroup v-if="cardStore.loading">
++  <VaSkeletonGroup v-if="cardStore.loading" data-testid="billing-skeleton">
+     <VaSkeleton class="mb-4" height="160px" variant="squared" />
+     <VaSkeleton class="mb-4" height="160px" variant="squared" />
+     <VaSkeleton height="360px" variant="squared" />
+   </VaSkeletonGroup>
+ 
+   <template v-else>
+-    <MembeshipTier />
+-    <PaymentInfo />
+-    <Invoices />
++    <MembeshipTier data-testid="membership-tier" />
++    <PaymentInfo data-testid="payment-info" />
++    <Invoices data-testid="invoices-list" />
+   </template>
+ </template>
+ 
+diff --git a/src/pages/faq/widgets/Categories.vue b/src/pages/faq/widgets/Categories.vue
+index 5d6c467..6c8ff3f 100644
+--- a/src/pages/faq/widgets/Categories.vue
++++ b/src/pages/faq/widgets/Categories.vue
+@@ -1,10 +1,20 @@
+ <template>
+-  <VaInput v-model="searchValue" class="mb-4" placeholder="Search">
++  <VaInput
++    v-model="searchValue"
++    class="mb-4"
++    placeholder="Search"
++    data-testid="faq-search"
++    input-aria-label="Search categories"
++  >
+     <template #appendInner>
+       <VaIcon color="secondary" name="mso-search" />
+     </template>
+   </VaInput>
+-  <section v-if="filteredCategories.length" class="grid grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
++  <section
++    v-if="filteredCategories.length"
++    class="grid grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5"
++    data-testid="faq-categories"
++  >
+     <template v-for="category in filteredCategories" :key="category.id">
+       <VaCard class="col-span-3 md:col-span-1 min-h-[146px]" href="#">
+         <VaCardContent class="leading-5 text-sm">
+diff --git a/src/pages/faq/widgets/Navigation.vue b/src/pages/faq/widgets/Navigation.vue
+index 1ba9043..01fcc89 100644
+--- a/src/pages/faq/widgets/Navigation.vue
++++ b/src/pages/faq/widgets/Navigation.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <VaCard class="mb-4 p-6">
++  <VaCard class="mb-4 p-6" data-testid="faq-nav">
+     <section class="grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 lg:gap-9">
+       <div v-for="section in navSections" :key="section" class="mb-6 md:mb-0">
+         <h3 class="h5 mb-4">{{ section }}</h3>
+diff --git a/src/pages/faq/widgets/Questions.vue b/src/pages/faq/widgets/Questions.vue
+index d596206..d777121 100644
+--- a/src/pages/faq/widgets/Questions.vue
++++ b/src/pages/faq/widgets/Questions.vue
+@@ -2,9 +2,14 @@
+   <VaCard class="mb-4">
+     <VaCardContent>
+       <h2 class="va-h5">Popular questions</h2>
+-      <VaAccordion v-model="accordionState" :style="{ '--va-collapse-padding': '1rem 0' }" class="mb-1">
+-        <VaCollapse header="How do I reload a page?">
+-          <article class="max-w-3xl leading-5">
++      <VaAccordion
++        v-model="accordionState"
++        :style="{ '--va-collapse-padding': '1rem 0' }"
++        class="mb-1"
++        data-testid="faq-accordion"
++      >
++        <VaCollapse header="How do I reload a page?" data-testid="faq-q-0">
++          <article class="max-w-3xl leading-5" data-testid="faq-q-body-0">
+             <p class="mb-2">
+               Get ready for some page-refreshing wisdom! We're about to dive into the magical world of reloading web
+               pages. Here are some techniques:
+@@ -22,8 +27,8 @@
+           </article>
+         </VaCollapse>
+ 
+-        <VaCollapse header="What is a Secure Key?">
+-          <article class="max-w-3xl text-sm">
++        <VaCollapse header="What is a Secure Key?" data-testid="faq-q-1">
++          <article class="max-w-3xl text-sm" data-testid="faq-q-body-1">
+             <p class="mb-4">
+               A Secure Key is an extra layer of security that helps look after you and your money by generating a
+               unique, single use security code every time you log on or authorise a payment. There are two types of
+@@ -43,8 +48,8 @@
+           </article>
+         </VaCollapse>
+ 
+-        <VaCollapse header="How do I report fraud?">
+-          <article class="max-w-3xl text-sm">
++        <VaCollapse header="How do I report fraud?" data-testid="faq-q-2">
++          <article class="max-w-3xl text-sm" data-testid="faq-q-body-2">
+             <p class="mb-3">
+               Reporting fraud is a serious matter, and it's important to take appropriate steps to address and prevent
+               fraudulent activities. The specific process for reporting fraud may vary based on your location and the
+@@ -77,8 +82,12 @@
+           </article>
+         </VaCollapse>
+ 
+-        <VaCollapse :style="{ '--va-background-border': 'transparent' }" header="How to download statements?">
+-          <article class="max-w-3xl text-sm">
++        <VaCollapse
++          :style="{ '--va-background-border': 'transparent' }"
++          header="How to download statements?"
++          data-testid="faq-q-3"
++        >
++          <article class="max-w-3xl text-sm" data-testid="faq-q-body-3">
+             <p class="mb-3">
+               Downloading statements can vary depending on the type of statements you're referring to (e.g., bank
+               statements, credit card statements, utility statements). Below are general steps to download statements
+diff --git a/src/pages/payments/PaymentsPage.vue b/src/pages/payments/PaymentsPage.vue
+index 000978b..7203669 100644
+--- a/src/pages/payments/PaymentsPage.vue
++++ b/src/pages/payments/PaymentsPage.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <h1 class="page-title">Payment methods</h1>
++  <h1 class="page-title" data-testid="payments-title">Payment methods</h1>
+ 
+   <VaCard class="mb-6">
+     <VaCardContent>
+diff --git a/src/pages/payments/widgets/billing-address/BillingAddressCreateModal.vue b/src/pages/payments/widgets/billing-address/BillingAddressCreateModal.vue
+index 0431604..684eaf4 100644
+--- a/src/pages/payments/widgets/billing-address/BillingAddressCreateModal.vue
++++ b/src/pages/payments/widgets/billing-address/BillingAddressCreateModal.vue
+@@ -1,5 +1,12 @@
+ <template>
+-  <VaModal hide-default-actions model-value size="small" close-button @cancel="emits('close')">
++  <VaModal
++    hide-default-actions
++    model-value
++    size="small"
++    close-button
++    data-testid="address-modal"
++    @cancel="emits('close')"
++  >
+     <h3 class="va-h4 mb-4">Add Billing Address</h3>
+     <BillingAddressEdit
+       :billing-address="billingAddress"
+diff --git a/src/pages/payments/widgets/billing-address/BillingAddressEdit.vue b/src/pages/payments/widgets/billing-address/BillingAddressEdit.vue
+index 18109e8..0641062 100644
+--- a/src/pages/payments/widgets/billing-address/BillingAddressEdit.vue
++++ b/src/pages/payments/widgets/billing-address/BillingAddressEdit.vue
+@@ -5,41 +5,54 @@
+       :rules="[(v) => !!v || 'Name field is required']"
+       class="mb-4"
+       label="Name"
++      data-testid="address-form-name"
++    />
++    <VaCheckbox
++      v-model="localBillingAddress.isPrimary"
++      class="mb-4"
++      label="Primary Address"
++      data-testid="address-form-primary"
+     />
+-    <VaCheckbox v-model="localBillingAddress.isPrimary" class="mb-4" label="Primary Address" />
+     <VaInput
+       v-model="localBillingAddress.street"
+       :rules="[(v) => !!v || 'Street field is required']"
+       class="mb-4"
+       label="Street"
++      data-testid="address-form-street"
+     />
+     <VaInput
+       v-model="localBillingAddress.city"
+       :rules="[(v) => !!v || 'City field is required']"
+       class="mb-4"
+       label="City"
++      data-testid="address-form-city"
+     />
+     <VaInput
+       v-model="localBillingAddress.state"
+       :rules="[(v) => !!v || 'State field is required']"
+       class="mb-4"
+       label="State"
++      data-testid="address-form-state"
+     />
+     <VaInput
+       v-model="localBillingAddress.postalCode"
+       :rules="[(v) => !!v || 'Postal Code field is required']"
+       class="mb-4"
+       label="Postal Code"
++      data-testid="address-form-postal"
+     />
+     <VaInput
+       v-model="localBillingAddress.country"
+       :rules="[(v) => !!v || 'Country field is required']"
+       class="mb-4"
+       label="Country"
++      data-testid="address-form-country"
+     />
+     <div class="flex justify-end gap-3">
+-      <VaButton color="secondary" preset="secondary" @click="emits('cancel')">Cancel</VaButton>
+-      <VaButton @click="submit">{{ submitText }}</VaButton>
++      <VaButton color="secondary" preset="secondary" data-testid="address-form-cancel" @click="emits('cancel')"
++        >Cancel</VaButton
++      >
++      <VaButton data-testid="address-form-save" @click="submit">{{ submitText }}</VaButton>
+     </div>
+   </VaForm>
+ </template>
+diff --git a/src/pages/payments/widgets/billing-address/BillingAddressList.vue b/src/pages/payments/widgets/billing-address/BillingAddressList.vue
+index 3c44f76..a41d185 100644
+--- a/src/pages/payments/widgets/billing-address/BillingAddressList.vue
++++ b/src/pages/payments/widgets/billing-address/BillingAddressList.vue
+@@ -1,9 +1,10 @@
+ <template>
+-  <div class="grid md:grid-cols-2 grid-cols-1 gap-4">
++  <div class="grid md:grid-cols-2 grid-cols-1 gap-4" data-testid="addresses-grid">
+     <template v-if="loading">
+       <div
+         v-for="i in 4"
+         :key="i"
++        :data-testid="'addresses-loading-' + i"
+         class="min-h-[114px] p-4 rounded-lg border border-dashed border-backgroundBorder flex flex-row items-center gap-6"
+       >
+         <div class="flex flex-col gap-2 flex-grow">
+@@ -20,6 +21,7 @@
+         v-for="billingAddress in list"
+         :key="billingAddress.id"
+         :billing-address="billingAddress"
++        :data-testid="'address-item-' + billingAddress.id"
+         @edit="addressToEdit = billingAddress"
+         @remove="remove(billingAddress)"
+       />
+@@ -34,7 +36,9 @@
+             to avoid any processing delays.
+           </div>
+         </div>
+-        <VaButton class="flex-none w-full sm:w-auto" @click="showCreate = true">New address</VaButton>
++        <VaButton class="flex-none w-full sm:w-auto" data-testid="address-add-btn" @click="showCreate = true"
++          >New address</VaButton
++        >
+       </div>
+     </template>
+   </div>
+diff --git a/src/pages/payments/widgets/billing-address/BillingAddressListItem.vue b/src/pages/payments/widgets/billing-address/BillingAddressListItem.vue
+index 5fdb44b..45382be 100644
+--- a/src/pages/payments/widgets/billing-address/BillingAddressListItem.vue
++++ b/src/pages/payments/widgets/billing-address/BillingAddressListItem.vue
+@@ -4,8 +4,14 @@
+   >
+     <div class="flex flex-col gap-2 flex-grow">
+       <div class="flex items-center">
+-        <div class="text-lg font-bold">{{ billingAddress.name }}</div>
+-        <VaBadge v-if="billingAddress.isPrimary" class="ml-2" color="danger" text="Primary" />
++        <div class="text-lg font-bold" data-testid="address-name">{{ billingAddress.name }}</div>
++        <VaBadge
++          v-if="billingAddress.isPrimary"
++          class="ml-2"
++          color="danger"
++          text="Primary"
++          data-testid="address-primary-badge"
++        />
+       </div>
+       <div class="text-secondary leading-5">
+         <div>{{ billingAddress.street }}</div>
+@@ -14,8 +20,16 @@
+       </div>
+     </div>
+     <div class="w-full sm:w-auto flex-none flex sm:block">
+-      <VaButton class="mr-2 flex-grow" preset="primary" @click="emits('edit')">Edit</VaButton>
+-      <VaButton icon="mso-delete" preset="primary" aria-label="Remove" @click="emits('remove')" />
++      <VaButton class="mr-2 flex-grow" preset="primary" data-testid="address-edit-btn" @click="emits('edit')"
++        >Edit</VaButton
++      >
++      <VaButton
++        icon="mso-delete"
++        preset="primary"
++        aria-label="Remove"
++        data-testid="address-delete-btn"
++        @click="emits('remove')"
++      />
+     </div>
+   </div>
+ </template>
+diff --git a/src/pages/payments/widgets/billing-address/BillingAddressUpdateModal.vue b/src/pages/payments/widgets/billing-address/BillingAddressUpdateModal.vue
+index d483da6..071c5e8 100644
+--- a/src/pages/payments/widgets/billing-address/BillingAddressUpdateModal.vue
++++ b/src/pages/payments/widgets/billing-address/BillingAddressUpdateModal.vue
+@@ -1,5 +1,12 @@
+ <template>
+-  <VaModal hide-default-actions model-value size="small" close-button @cancel="emits('close')">
++  <VaModal
++    hide-default-actions
++    model-value
++    size="small"
++    close-button
++    data-testid="address-modal"
++    @cancel="emits('close')"
++  >
+     <h3 class="va-h4 mb-4">Add Billing Address</h3>
+     <AddressEdit
+       :billing-address="billingAddress"
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardCreateModal.vue b/src/pages/payments/widgets/my-cards/PaymentCardCreateModal.vue
+index 7124892..a8abb0d 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardCreateModal.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardCreateModal.vue
+@@ -1,5 +1,12 @@
+ <template>
+-  <VaModal hide-default-actions model-value size="small" close-button @cancel="emits('close')">
++  <VaModal
++    hide-default-actions
++    model-value
++    size="small"
++    close-button
++    data-testid="card-modal"
++    @cancel="emits('close')"
++  >
+     <h3 class="va-h4 mb-4">Add payment card</h3>
+     <PaymentCardEdit :payment-card="paymentCard" submit-text="Add Card" @cancel="emits('close')" @save="updateCard" />
+   </VaModal>
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue b/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
+index 29ea1b3..cf6fa3b 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardEdit.vue
+@@ -5,25 +5,31 @@
+       :rules="[(v) => !!v || 'Card Name field is required']"
+       class="mb-4"
+       label="Card Name"
++      input-aria-label="Card Name"
++      data-testid="card-form-name"
+     />
+-    <VaCheckbox v-model="paymentCardLocal.isPrimary" class="mb-4" label="Primary Card" />
++    <VaCheckbox v-model="paymentCardLocal.isPrimary" class="mb-4" label="Primary Card" data-testid="card-form-primary" />
+     <VaSelect
+       v-model="paymentCardLocal.paymentSystem"
+       :options="paymentSystemTypeOptions"
+       :rules="[(v) => !!v || 'Payment System field is required']"
+       class="mb-4"
+       label="Payment System"
++      data-testid="card-form-system"
+     />
+     <VaInput
+       v-model="paymentCardLocal.cardNumberMasked"
+       :rules="[(v) => !!v || 'Card Number field is required']"
+       class="mb-4"
+       label="Card Number"
++      input-aria-label="Card Number"
+       mask="creditCard"
+       placeholder="#### #### #### ####"
++      data-testid="card-form-number"
+     />
+     <VaInput
+       v-model="paymentCardLocal.expirationDate"
++      data-testid="card-form-expiry"
+       :mask="{
+         date: true,
+         datePattern: ['m', 'y'],
+@@ -34,11 +40,14 @@
+       ]"
+       class="mb-4"
+       label="Expiration Date"
++      input-aria-label="Expiration Date"
+     />
+ 
+     <div class="flex justify-end gap-3">
+-      <VaButton color="secondary" preset="secondary" @click="emits('cancel')">Cancel</VaButton>
+-      <VaButton @click="submit">{{ submitText }}</VaButton>
++      <VaButton color="secondary" preset="secondary" data-testid="card-form-cancel" @click="emits('cancel')"
++        >Cancel</VaButton
++      >
++      <VaButton data-testid="card-form-save" @click="submit">{{ submitText }}</VaButton>
+     </div>
+   </VaForm>
+ </template>
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardList.vue b/src/pages/payments/widgets/my-cards/PaymentCardList.vue
+index eb7a150..061b384 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardList.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardList.vue
+@@ -1,9 +1,10 @@
+ <template>
+-  <div class="grid md:grid-cols-2 grid-cols-1 gap-4">
++  <div class="grid md:grid-cols-2 grid-cols-1 gap-4" data-testid="cards-grid">
+     <template v-if="loading">
+       <div
+         v-for="i in 4"
+         :key="i"
++        :data-testid="'cards-loading-' + i"
+         class="min-h-[114px] p-4 rounded-lg border border-dashed border-backgroundBorder flex flex-row items-center gap-6"
+       >
+         <div class="flex flex-col gap-2 flex-grow">
+@@ -20,6 +21,7 @@
+         v-for="paymentCard in list"
+         :key="paymentCard.id"
+         :card="paymentCard"
++        :data-testid="'card-item-' + paymentCard.id"
+         @edit="cardToEdit = paymentCard"
+         @remove="remove(paymentCard)"
+       />
+@@ -33,7 +35,9 @@
+             Please carefully read Product Terms before adding your new payment card
+           </div>
+         </div>
+-        <VaButton class="flex-none w-full sm:w-auto" @click="showCreate = true">Add card</VaButton>
++        <VaButton class="flex-none w-full sm:w-auto" data-testid="card-add-btn" @click="showCreate = true"
++          >Add card</VaButton
++        >
+       </div>
+     </template>
+   </div>
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardListItem.vue b/src/pages/payments/widgets/my-cards/PaymentCardListItem.vue
+index 8d486b9..7f53529 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardListItem.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardListItem.vue
+@@ -4,20 +4,28 @@
+   >
+     <div class="flex flex-col gap-2 flex-grow">
+       <div class="flex items-center">
+-        <div class="text-lg font-bold">{{ card.name }}</div>
+-        <VaBadge v-if="card.isPrimary" class="ml-2" color="danger" text="Primary" />
++        <div class="text-lg font-bold" data-testid="card-name">{{ card.name }}</div>
++        <VaBadge v-if="card.isPrimary" class="ml-2" color="danger" text="Primary" data-testid="card-primary-badge" />
+       </div>
+       <div class="flex gap-4 items-center">
+         <PaymentSystem :type="card.paymentSystem" />
+         <div>
+-          <div class="text-[15px] font-bold mb-2 capitalize">{{ card.paymentSystem }} {{ card.cardNumberMasked }}</div>
+-          <div class="text-secondary">Card expires at {{ expirationDateString }}</div>
++          <div class="text-[15px] font-bold mb-2 capitalize" data-testid="card-number">
++            {{ card.paymentSystem }} {{ card.cardNumberMasked }}
++          </div>
++          <div class="text-secondary" data-testid="card-expiry">Card expires at {{ expirationDateString }}</div>
+         </div>
+       </div>
+     </div>
+     <div class="w-full sm:w-auto flex-none flex sm:block">
+-      <VaButton class="mr-2 flex-grow" preset="primary" @click="emits('edit')">Edit</VaButton>
+-      <VaButton icon="mso-delete" preset="primary" aria-label="Remove" @click="emits('remove')" />
++      <VaButton class="mr-2 flex-grow" preset="primary" data-testid="card-edit-btn" @click="emits('edit')">Edit</VaButton>
++      <VaButton
++        icon="mso-delete"
++        preset="primary"
++        aria-label="Remove"
++        data-testid="card-delete-btn"
++        @click="emits('remove')"
++      />
+     </div>
+   </div>
+ </template>
+diff --git a/src/pages/payments/widgets/my-cards/PaymentCardUpdateModal.vue b/src/pages/payments/widgets/my-cards/PaymentCardUpdateModal.vue
+index 8f8bfd2..fc997eb 100644
+--- a/src/pages/payments/widgets/my-cards/PaymentCardUpdateModal.vue
++++ b/src/pages/payments/widgets/my-cards/PaymentCardUpdateModal.vue
+@@ -1,5 +1,12 @@
+ <template>
+-  <VaModal hide-default-actions model-value size="small" close-button @cancel="emits('close')">
++  <VaModal
++    hide-default-actions
++    model-value
++    size="small"
++    close-button
++    data-testid="card-modal"
++    @cancel="emits('close')"
++  >
+     <h3 class="va-h4 mb-4">Add payment card</h3>
+     <PaymentCardEdit :payment-card="paymentCard" submit-text="Save Card" @cancel="emits('close')" @save="updateCard" />
+   </VaModal>
+diff --git a/src/pages/preferences/modals/EditNameModal.vue b/src/pages/preferences/modals/EditNameModal.vue
+index ded50c0..ad04282 100644
+--- a/src/pages/preferences/modals/EditNameModal.vue
++++ b/src/pages/preferences/modals/EditNameModal.vue
+@@ -6,14 +6,32 @@
+     max-width="380px"
+     model-value
+     close-button
++    data-testid="pref-name-modal"
+     @update:modelValue="emits('cancel')"
+   >
+     <h1 class="va-h5 mb-4">Reset password</h1>
+     <VaForm ref="form" @submit.prevent="submit">
+-      <VaInput v-model="Name" class="mb-4" label="Name" placeholder="Name" />
++      <VaInput v-model="Name" class="mb-4" label="Name"
++      input-aria-label="Name" placeholder="Name" data-testid="pref-name-input" />
+       <div class="flex flex-col-reverse md:flex-row md:items-center md:justify-end md:space-x-4">
+-        <VaButton :style="buttonStyles" preset="secondary" color="secondary" @click="emits('cancel')"> Cancel</VaButton>
+-        <VaButton :style="buttonStyles" class="mb-4 md:mb-0" type="submit" @click="submit"> Save</VaButton>
++        <VaButton
++          :style="buttonStyles"
++          preset="secondary"
++          color="secondary"
++          data-testid="pref-name-cancel"
++          @click="emits('cancel')"
++        >
++          Cancel</VaButton
++        >
++        <VaButton
++          :style="buttonStyles"
++          class="mb-4 md:mb-0"
++          type="submit"
++          data-testid="pref-name-save"
++          @click="submit"
++        >
++          Save</VaButton
++        >
+       </div>
+     </VaForm>
+   </VaModal>
+diff --git a/src/pages/preferences/preferences-header/PreferencesHeader.vue b/src/pages/preferences/preferences-header/PreferencesHeader.vue
+index d650f50..472ec0d 100644
+--- a/src/pages/preferences/preferences-header/PreferencesHeader.vue
++++ b/src/pages/preferences/preferences-header/PreferencesHeader.vue
+@@ -1,10 +1,10 @@
+ <template>
+-  <VaAvatar size="large" color="warning"><span class="text-4xl"> 😍 </span></VaAvatar>
++  <VaAvatar size="large" color="warning" data-testid="pref-avatar"><span class="text-4xl"> 😍 </span></VaAvatar>
+   <div class="flex flex-col justify-center">
+-    <h2 class="text-[28px] md:text-[32px] leading-10 font-bold">{{ store.userName }}</h2>
++    <h2 class="text-[28px] md:text-[32px] leading-10 font-bold" data-testid="pref-name">{{ store.userName }}</h2>
+     <div class="flex space-x-1 text-[13px] leading-4">
+       <p>Member since</p>
+-      <p>{{ store.memberSince }}</p>
++      <p data-testid="pref-member-since">{{ store.memberSince }}</p>
+     </div>
+   </div>
+ </template>
+diff --git a/src/pages/preferences/settings/Settings.vue b/src/pages/preferences/settings/Settings.vue
+index 825a5d4..7e812a2 100644
+--- a/src/pages/preferences/settings/Settings.vue
++++ b/src/pages/preferences/settings/Settings.vue
+@@ -6,7 +6,13 @@
+         {{ store.userName }}
+       </div>
+     </div>
+-    <VaButton :style="buttonStyles" class="w-fit h-fit" preset="primary" @click="emits('openNameModal')">
++    <VaButton
++      :style="buttonStyles"
++      class="w-fit h-fit"
++      preset="primary"
++      data-testid="pref-edit-name"
++      @click="emits('openNameModal')"
++    >
+       Edit
+     </VaButton>
+   </div>
+@@ -24,7 +30,13 @@
+     <div class="flex-1">
+       <div class="max-w-[748px]">•••••••••••••</div>
+     </div>
+-    <VaButton :style="buttonStyles" class="w-fit h-fit" preset="primary" @click="emits('openResetPasswordModal')">
++    <VaButton
++      :style="buttonStyles"
++      class="w-fit h-fit"
++      preset="primary"
++      data-testid="pref-reset-password"
++      @click="emits('openResetPasswordModal')"
++    >
+       Reset Password
+     </VaButton>
+   </div>
+@@ -33,10 +45,17 @@
+     <p class="font-bold w-[200px]">Two-factor authentication</p>
+     <div class="flex-1">
+       <div class="max-w-[748px]">
+-        {{ twoFA.content }}
++        <div data-testid="pref-2fa-content">{{ twoFA.content }}</div>
+       </div>
+     </div>
+-    <VaButton :style="buttonStyles" class="w-fit h-fit" preset="primary" :color="twoFA.color" @click="toggle2FA">
++    <VaButton
++      :style="buttonStyles"
++      class="w-fit h-fit"
++      preset="primary"
++      :color="twoFA.color"
++      data-testid="pref-2fa-btn"
++      @click="toggle2FA"
++    >
+       {{ twoFA.button }}
+     </VaButton>
+   </div>
+diff --git a/src/pages/projects/ProjectsPage.vue b/src/pages/projects/ProjectsPage.vue
+index 10c8875..24e1078 100644
+--- a/src/pages/projects/ProjectsPage.vue
++++ b/src/pages/projects/ProjectsPage.vue
+@@ -94,7 +94,7 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+ </script>
+ 
+ <template>
+-  <h1 class="page-title">Projects</h1>
++  <h1 class="page-title" data-testid="projects-title">Projects</h1>
+ 
+   <VaCard>
+     <VaCardContent>
+@@ -108,9 +108,10 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+               { label: 'Cards', value: true },
+               { label: 'Table', value: false },
+             ]"
++            data-testid="projects-view-toggle"
+           />
+         </div>
+-        <VaButton icon="add" @click="createNewProject">Project</VaButton>
++        <VaButton icon="add" data-testid="projects-add-btn" @click="createNewProject">Project</VaButton>
+       </div>
+ 
+       <ProjectCards
+@@ -140,6 +141,7 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+       close-button
+       stateful
+       hide-default-actions
++      data-testid="project-modal"
+       :before-cancel="beforeEditFormModalClose"
+     >
+       <h1 v-if="projectToEdit === null" class="va-h5 mb-4">Add project</h1>
+diff --git a/src/pages/projects/widgets/EditProjectForm.vue b/src/pages/projects/widgets/EditProjectForm.vue
+index 09d4076..8b3c841 100644
+--- a/src/pages/projects/widgets/EditProjectForm.vue
++++ b/src/pages/projects/widgets/EditProjectForm.vue
+@@ -68,12 +68,19 @@ const teamFiltersSearch = ref('')
+ 
+ <template>
+   <VaForm v-slot="{ validate }" class="flex flex-col gap-2">
+-    <VaInput v-model="newProject.project_name" label="Project name" :rules="[required]" />
++    <VaInput
++      v-model="newProject.project_name"
++      label="Project name"
++      input-aria-label="Project name"
++      :rules="[required]"
++      data-testid="project-form-name"
++    />
+     <VaSelect
+       v-model="newProject.project_owner"
+       v-model:search="ownerFiltersSearch"
+       searchable
+       label="Owner"
++      data-testid="project-form-owner"
+       text-by="fullname"
+       track-by="id"
+       value-by="id"
+@@ -91,6 +98,7 @@ const teamFiltersSearch = ref('')
+       v-model="newProject.team"
+       v-model:search="teamFiltersSearch"
+       label="Team"
++      data-testid="project-form-team"
+       text-by="fullname"
+       track-by="id"
+       value-by="id"
+@@ -111,6 +119,7 @@ const teamFiltersSearch = ref('')
+     <VaSelect
+       v-model="newProject.status"
+       label="Status"
++      data-testid="project-form-status"
+       :rules="[required]"
+       track-by="value"
+       value-by="value"
+@@ -126,8 +135,12 @@ const teamFiltersSearch = ref('')
+       </template>
+     </VaSelect>
+     <div class="flex justify-end flex-col-reverse sm:flex-row mt-4 gap-2">
+-      <VaButton preset="secondary" color="secondary" @click="$emit('close')">Cancel</VaButton>
+-      <VaButton @click="validate() && $emit('save', newProject as Project)">{{ saveButtonLabel }}</VaButton>
++      <VaButton preset="secondary" color="secondary" data-testid="project-form-cancel" @click="$emit('close')"
++        >Cancel</VaButton
++      >
++      <VaButton data-testid="project-form-save" @click="validate() && $emit('save', newProject as Project)">{{
++        saveButtonLabel
++      }}</VaButton>
+     </div>
+   </VaForm>
+ </template>
+diff --git a/src/pages/projects/widgets/ProjectCards.vue b/src/pages/projects/widgets/ProjectCards.vue
+index 5f52a2c..6ca8386 100644
+--- a/src/pages/projects/widgets/ProjectCards.vue
++++ b/src/pages/projects/widgets/ProjectCards.vue
+@@ -26,18 +26,23 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+   <VaInnerLoading
+     v-if="projects.length > 0 || loading"
+     :loading="loading"
++    data-testid="projects-cards"
+     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[4rem]"
+   >
+     <VaCard
+-      v-for="project in projects"
++      v-for="(project, index) in projects"
+       :key="project.project_name"
++      :data-testid="'project-card-' + index"
+       :style="{ '--va-card-outlined-border': '1px solid var(--va-background-element)' }"
+       outlined
+     >
+       <VaCardContent class="flex flex-col h-full">
+         <div class="text-[var(--va-secondary)]">{{ new Date(project.created_at).toLocaleDateString() }}</div>
+         <div class="flex flex-col items-center gap-4 grow">
+-          <h4 class="va-h4 text-center self-stretch overflow-hidden line-clamp-2 text-ellipsis">
++          <h4
++            class="va-h4 text-center self-stretch overflow-hidden line-clamp-2 text-ellipsis"
++            :data-testid="'project-card-name-' + index"
++          >
+             {{ project.project_name }}
+           </h4>
+           <p>
+@@ -45,7 +50,7 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+             <span v-if="getUserById(project.project_owner)">{{ getUserById(project.project_owner)!.fullname }}</span>
+           </p>
+           <VaAvatarGroup class="my-4" :options="getTeamOptions(project.team)" :max="5" />
+-          <ProjectStatusBadge :status="project.status" />
++          <ProjectStatusBadge :status="project.status" :data-testid="'project-card-status-' + index" />
+         </div>
+         <VaDivider class="my-6" />
+         <div class="flex justify-between">
+diff --git a/src/pages/projects/widgets/ProjectsTable.vue b/src/pages/projects/widgets/ProjectsTable.vue
+index 7c91fda..c29b021 100644
+--- a/src/pages/projects/widgets/ProjectsTable.vue
++++ b/src/pages/projects/widgets/ProjectsTable.vue
+@@ -56,13 +56,14 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+     <VaDataTable
+       v-model:sort-by="sortByVModel"
+       v-model:sorting-order="sortingOrderVModel"
++      data-testid="projects-table"
+       :items="projects"
+       :columns="columns"
+       :loading="loading"
+     >
+-      <template #cell(project_name)="{ rowData }">
++      <template #cell(project_name)="{ rowData, rowIndex }">
+         <div class="ellipsis max-w-[230px] lg:max-w-[450px]">
+-          {{ rowData.project_name }}
++          <span :data-testid="'proj-name-' + rowIndex">{{ rowData.project_name }}</span>
+         </div>
+       </template>
+       <template #cell(project_owner)="{ rowData }">
+@@ -74,15 +75,15 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+       <template #cell(team)="{ rowData: project }">
+         <VaAvatarGroup size="small" :options="getTeamOptions(project.team)" :max="5" />
+       </template>
+-      <template #cell(status)="{ rowData: project }">
+-        <ProjectStatusBadge :status="project.status" />
++      <template #cell(status)="{ rowData: project, rowIndex }">
++        <ProjectStatusBadge :status="project.status" :data-testid="'proj-status-' + rowIndex" />
+       </template>
+ 
+-      <template #cell(created_at)="{ rowData: project }">
+-        {{ new Date(project.created_at).toLocaleDateString() }}
++      <template #cell(created_at)="{ rowData: project, rowIndex }">
++        <span :data-testid="'proj-date-' + rowIndex">{{ new Date(project.created_at).toLocaleDateString() }}</span>
+       </template>
+ 
+-      <template #cell(actions)="{ rowData: project }">
++      <template #cell(actions)="{ rowData: project, rowIndex }">
+         <div class="flex gap-2 justify-end">
+           <VaButton
+             preset="primary"
+@@ -90,6 +91,7 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+             color="primary"
+             icon="mso-edit"
+             aria-label="Edit project"
++            :data-testid="'proj-edit-' + rowIndex"
+             @click="$emit('edit', project as Project)"
+           />
+           <VaButton
+@@ -98,6 +100,7 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+             icon="mso-delete"
+             color="danger"
+             aria-label="Delete project"
++            :data-testid="'proj-delete-' + rowIndex"
+             @click="$emit('delete', project as Project)"
+           />
+         </div>
+@@ -105,9 +108,14 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+     </VaDataTable>
+     <div class="flex flex-col-reverse md:flex-row gap-2 justify-between items-center py-2">
+       <div>
+-        <b>{{ $props.pagination.total }} results.</b>
++        <span data-testid="proj-total"><b>{{ $props.pagination.total }} results.</b></span>
+         Results per page
+-        <VaSelect v-model="$props.pagination.perPage" class="!w-20" :options="[10, 50, 100]" />
++        <VaSelect
++          v-model="$props.pagination.perPage"
++          class="!w-20"
++          :options="[10, 50, 100]"
++          data-testid="proj-perpage"
++        />
+       </div>
+ 
+       <div v-if="totalPages > 1" class="flex">
+@@ -115,6 +123,7 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+           preset="secondary"
+           icon="va-arrow-left"
+           aria-label="Previous page"
++          data-testid="proj-prev"
+           :disabled="$props.pagination.page === 1"
+           @click="$props.pagination.page--"
+         />
+@@ -123,12 +132,14 @@ const { getUserById, getTeamOptions } = inject<any>('ProjectsPage')
+           preset="secondary"
+           icon="va-arrow-right"
+           aria-label="Next page"
++          data-testid="proj-next"
+           :disabled="$props.pagination.page === totalPages"
+           @click="$props.pagination.page++"
+         />
+         <VaPagination
+           v-model="$props.pagination.page"
+           buttons-preset="secondary"
++          data-testid="proj-pagination"
+           :pages="totalPages"
+           :visible-pages="5"
+           :boundary-links="false"
+diff --git a/src/pages/settings/Settings.vue b/src/pages/settings/Settings.vue
+index 07d18ba..8193dbb 100644
+--- a/src/pages/settings/Settings.vue
++++ b/src/pages/settings/Settings.vue
+@@ -1,15 +1,15 @@
+ <template>
+   <div class="flex flex-col space-y-6 md:space-y-4">
+-    <h1 class="page-title">Settings</h1>
++    <h1 class="page-title" data-testid="settings-title">Settings</h1>
+     <div class="flex flex-col p-4 space-y-4 bg-backgroundSecondary rounded-lg">
+       <h3 class="h3">Theme</h3>
+-      <ThemeSwitcher />
++      <ThemeSwitcher data-testid="theme-toggle" />
+     </div>
+     <div class="flex flex-col p-4 space-y-4 bg-backgroundSecondary rounded-lg">
+       <h3 class="h3">General preferences</h3>
+       <LanguageSwitcher />
+     </div>
+-    <VaAlert class="rounded-lg p-4 m-0" closeable color="info">
++    <VaAlert class="rounded-lg p-4 m-0" closeable color="info" data-testid="settings-alert">
+       <template #icon>
+         <VaIcon size="26px" name="mso-notifications_active" />
+       </template>
+@@ -18,7 +18,7 @@
+         <p class="text-regularMedium">Your previous setting choices aren't changed.</p>
+       </div>
+     </VaAlert>
+-    <Notifications />
++    <Notifications data-testid="notifications-list" />
+   </div>
+ </template>
+ <script lang="ts" setup>
+diff --git a/src/pages/settings/language-switcher/LanguageSwitcher.vue b/src/pages/settings/language-switcher/LanguageSwitcher.vue
+index 7e31cca..2e2acdf 100644
+--- a/src/pages/settings/language-switcher/LanguageSwitcher.vue
++++ b/src/pages/settings/language-switcher/LanguageSwitcher.vue
+@@ -2,7 +2,7 @@
+   <div class="flex items-center justify-between">
+     <p>Language</p>
+     <div class="w-40">
+-      <VaSelect v-model="model" :options="options" />
++      <VaSelect v-model="model" :options="options" data-testid="language-select" />
+     </div>
+   </div>
+ </template>
+diff --git a/src/pages/settings/notifications/Notifications.vue b/src/pages/settings/notifications/Notifications.vue
+index 64719a4..4ed9e72 100644
+--- a/src/pages/settings/notifications/Notifications.vue
++++ b/src/pages/settings/notifications/Notifications.vue
+@@ -1,12 +1,12 @@
+ <template>
+-  <div class="flex flex-col p-4 bg-backgroundSecondary rounded-lg">
++  <div class="flex flex-col p-4 bg-backgroundSecondary rounded-lg" data-testid="notifications-root">
+     <h3 class="h3 mb-6">Notifications you receive</h3>
+-    <div v-for="notification in notifications" :key="notification.name" class="group">
++    <div v-for="(notification, index) in notifications" :key="notification.name" class="group">
+       <div class="flex items-center justify-between overflow-x-hidden">
+         <p class="text-regularLarge">
+           {{ notification.name }}
+         </p>
+-        <VaSwitch v-model="notification.isEnabled" size="small" />
++        <VaSwitch v-model="notification.isEnabled" size="small" :data-testid="'notif-switch-' + index" />
+       </div>
+       <VaDivider class="py-4 group-last:hidden" />
+     </div>
+diff --git a/src/pages/users/UsersPage.vue b/src/pages/users/UsersPage.vue
+index 429aeb3..266861c 100644
+--- a/src/pages/users/UsersPage.vue
++++ b/src/pages/users/UsersPage.vue
+@@ -91,7 +91,7 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+ </script>
+ 
+ <template>
+-  <h1 class="page-title">Users</h1>
++  <h1 class="page-title" data-testid="users-title">Users</h1>
+ 
+   <VaCard>
+     <VaCardContent>
+@@ -105,14 +105,20 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+               { label: 'Active', value: true },
+               { label: 'Inactive', value: false },
+             ]"
++            data-testid="users-active-toggle"
+           />
+-          <VaInput v-model="filters.search" placeholder="Search">
++          <VaInput
++            v-model="filters.search"
++            placeholder="Search"
++            data-testid="users-search"
++            input-aria-label="Search users"
++          >
+             <template #prependInner>
+               <VaIcon name="search" color="secondary" size="small" />
+             </template>
+           </VaInput>
+         </div>
+-        <VaButton @click="showAddUserModal">Add User</VaButton>
++        <VaButton data-testid="users-add-btn" @click="showAddUserModal">Add User</VaButton>
+       </div>
+ 
+       <UsersTable
+@@ -135,6 +141,7 @@ const beforeEditFormModalClose = async (hide: () => unknown) => {
+     mobile-fullscreen
+     close-button
+     hide-default-actions
++    data-testid="user-modal"
+     :before-cancel="beforeEditFormModalClose"
+   >
+     <h1 class="va-h5">{{ userToEdit ? 'Edit user' : 'Add user' }}</h1>
+diff --git a/src/pages/users/widgets/EditUserForm.vue b/src/pages/users/widgets/EditUserForm.vue
+index 2954189..33a35ea 100644
+--- a/src/pages/users/widgets/EditUserForm.vue
++++ b/src/pages/users/widgets/EditUserForm.vue
+@@ -116,9 +116,11 @@ const roleSelectOptions: { text: Capitalize<Lowercase<UserRole>>; value: UserRol
+         <VaInput
+           v-model="newUser.fullname"
+           label="Full name"
++          input-aria-label="Full name"
+           class="w-full sm:w-1/2"
+           :rules="[validators.required]"
+           name="fullName"
++          data-testid="user-form-fullname"
+         />
+         <VaInput
+           v-model="newUser.username"
+@@ -126,6 +128,7 @@ const roleSelectOptions: { text: Capitalize<Lowercase<UserRole>>; value: UserRol
+           class="w-full sm:w-1/2"
+           :rules="[validators.required]"
+           name="username"
++          data-testid="user-form-username"
+         />
+       </div>
+       <div class="flex gap-4 flex-col sm:flex-row w-full">
+@@ -135,11 +138,13 @@ const roleSelectOptions: { text: Capitalize<Lowercase<UserRole>>; value: UserRol
+           class="w-full sm:w-1/2"
+           :rules="[validators.required, validators.email]"
+           name="email"
++          data-testid="user-form-email"
+         />
+         <VaSelect
+           v-model="newUser.projects"
+           label="Projects"
+           class="w-full sm:w-1/2"
++          data-testid="user-form-projects"
+           :options="projects"
+           value-by="id"
+           text-by="project_name"
+@@ -160,18 +165,21 @@ const roleSelectOptions: { text: Capitalize<Lowercase<UserRole>>; value: UserRol
+             :rules="[validators.required]"
+             name="role"
+             value-by="value"
++            data-testid="user-form-role"
+           />
+         </div>
+ 
+         <div class="flex items-center w-1/2 mt-4">
+-          <VaCheckbox v-model="newUser.active" label="Active" class="w-full" name="active" />
++          <VaCheckbox v-model="newUser.active" label="Active" class="w-full" name="active" data-testid="user-form-active" />
+         </div>
+       </div>
+ 
+-      <VaTextarea v-model="newUser.notes" label="Notes" class="w-full" name="notes" />
++      <VaTextarea v-model="newUser.notes" label="Notes" class="w-full" name="notes" data-testid="user-form-notes" />
+       <div class="flex gap-2 flex-col-reverse items-stretch justify-end w-full sm:flex-row sm:items-center">
+-        <VaButton preset="secondary" color="secondary" @click="$emit('close')">Cancel</VaButton>
+-        <VaButton :disabled="!isValid" @click="onSave">{{ saveButtonLabel }}</VaButton>
++        <VaButton preset="secondary" color="secondary" data-testid="user-form-cancel" @click="$emit('close')"
++          >Cancel</VaButton
++        >
++        <VaButton :disabled="!isValid" data-testid="user-form-save" @click="onSave">{{ saveButtonLabel }}</VaButton>
+       </div>
+     </div>
+   </VaForm>
+diff --git a/src/pages/users/widgets/UsersTable.vue b/src/pages/users/widgets/UsersTable.vue
+index af16681..2a8edac 100644
+--- a/src/pages/users/widgets/UsersTable.vue
++++ b/src/pages/users/widgets/UsersTable.vue
+@@ -98,14 +98,15 @@ const formatProjectNames = (projects: Project['id'][]) => {
+   <VaDataTable
+     v-model:sort-by="sortByVModel"
+     v-model:sorting-order="sortingOrderVModel"
++    data-testid="users-table"
+     :columns="columns"
+     :items="users"
+     :loading="$props.loading"
+   >
+-    <template #cell(fullname)="{ rowData }">
++    <template #cell(fullname)="{ rowData, rowIndex }">
+       <div class="flex items-center gap-2 max-w-[230px] ellipsis">
+         <UserAvatar :user="rowData as User" size="small" />
+-        {{ rowData.fullname }}
++        <span :data-testid="'user-name-' + rowIndex">{{ rowData.fullname }}</span>
+       </div>
+     </template>
+ 
+@@ -115,9 +116,9 @@ const formatProjectNames = (projects: Project['id'][]) => {
+       </div>
+     </template>
+ 
+-    <template #cell(email)="{ rowData }">
++    <template #cell(email)="{ rowData, rowIndex }">
+       <div class="ellipsis max-w-[230px]">
+-        {{ rowData.email }}
++        <span :data-testid="'user-email-' + rowIndex">{{ rowData.email }}</span>
+       </div>
+     </template>
+ 
+@@ -131,13 +132,14 @@ const formatProjectNames = (projects: Project['id'][]) => {
+       </div>
+     </template>
+ 
+-    <template #cell(actions)="{ rowData }">
++    <template #cell(actions)="{ rowData, rowIndex }">
+       <div class="flex gap-2 justify-end">
+         <VaButton
+           preset="primary"
+           size="small"
+           icon="mso-edit"
+           aria-label="Edit user"
++          :data-testid="'user-edit-' + rowIndex"
+           @click="$emit('edit-user', rowData as User)"
+         />
+         <VaButton
+@@ -146,6 +148,7 @@ const formatProjectNames = (projects: Project['id'][]) => {
+           icon="mso-delete"
+           color="danger"
+           aria-label="Delete user"
++          :data-testid="'user-delete-' + rowIndex"
+           @click="onUserDelete(rowData as User)"
+         />
+       </div>
+@@ -154,9 +157,9 @@ const formatProjectNames = (projects: Project['id'][]) => {
+ 
+   <div class="flex flex-col-reverse md:flex-row gap-2 justify-between items-center py-2">
+     <div>
+-      <b>{{ $props.pagination.total }} results.</b>
++      <span data-testid="users-total"><b>{{ $props.pagination.total }} results.</b></span>
+       Results per page
+-      <VaSelect v-model="$props.pagination.perPage" class="!w-20" :options="[10, 50, 100]" />
++      <VaSelect v-model="$props.pagination.perPage" class="!w-20" :options="[10, 50, 100]" data-testid="users-perpage" />
+     </div>
+ 
+     <div v-if="totalPages > 1" class="flex">
+@@ -164,6 +167,7 @@ const formatProjectNames = (projects: Project['id'][]) => {
+         preset="secondary"
+         icon="va-arrow-left"
+         aria-label="Previous page"
++        data-testid="users-prev"
+         :disabled="$props.pagination.page === 1"
+         @click="$props.pagination.page--"
+       />
+@@ -172,12 +176,14 @@ const formatProjectNames = (projects: Project['id'][]) => {
+         preset="secondary"
+         icon="va-arrow-right"
+         aria-label="Next page"
++        data-testid="users-next"
+         :disabled="$props.pagination.page === totalPages"
+         @click="$props.pagination.page++"
+       />
+       <VaPagination
+         v-model="$props.pagination.page"
+         buttons-preset="secondary"
++        data-testid="users-pagination"
+         :pages="totalPages"
+         :visible-pages="5"
+         :boundary-links="false"

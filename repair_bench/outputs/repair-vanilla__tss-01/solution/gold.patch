@@ -1,0 +1,139 @@
+diff --git a/css/style.css b/css/style.css
+index c25e58d..270e45a 100644
+--- a/css/style.css
++++ b/css/style.css
+@@ -194,8 +194,8 @@ body>* {
+     display: none;
+ }
+ 
+-[data-current-tack="starboard"] .starboard-forward-btn,
+-[data-current-tack="starboard"] .starboard-tack-btn {
++[data-current-tack="starboard"] .port-forward-btn,
++[data-current-tack="starboard"] .port-tack-btn {
+     display: none;
+ }
+ 
+diff --git a/js/controls.js b/js/controls.js
+index 17191f1..41cfacd 100644
+--- a/js/controls.js
++++ b/js/controls.js
+@@ -24,7 +24,7 @@ function apply() {
+         } else {
+             player.nameText.innerText = player.nameInput.value;
+             player.nameTextFinish.innerText = player.nameInput.value;
+-            player.name = getText("player-x") + (i + 1);
++            player.name = player.nameInput.value;
+         }
+ 
+         player.apply();
+diff --git a/js/game.js b/js/game.js
+index d1ba763..1871ab7 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -59,6 +59,10 @@ function turn() {
+         game.players[i].turn();
+     }
+ 
++    setTimeout(() => {
++        redrawTracks();
++    }, 200);
++
+     drawAll();
+ }
+ 
+@@ -560,8 +564,10 @@ function init() {
+             return;
+         }
+         if (e.code == "KeyA") {
+-            addPlayer();
+-            drawAll();
++            if (game.isStart) {
++                addPlayer();
++                drawAll();
++            }
+         }
+         if (!game.isStart) {
+             if (e.code == "Digit1" && e.ctrlKey) {
+@@ -805,7 +811,7 @@ function wmUpdate() {
+                     }
+                 }
+             } else {
+-                const index = wind.findIndex((v) => v.type == "Presets") + 1;
++                const index = wind.findLastIndex((v) => v.type == "Presets") + 1;
+                 const toAdd = [];
+                 for (const w of pack.winds) {
+                     toAdd.push({
+@@ -1253,7 +1259,7 @@ function sortCup(cup) {
+             }
+         }
+         exPos.sort(function (a, b) {
+-            return a.pos - b.pos;
++            return b.pos - a.pos;
+         });
+         console.log(exPos);
+ 
+diff --git a/js/gamestate.js b/js/gamestate.js
+index bb1d46d..4e9a4db 100644
+--- a/js/gamestate.js
++++ b/js/gamestate.js
+@@ -77,7 +77,7 @@ class Boat {
+         var moveDist = 1;
+ 
+         if (this.turntype == turnTupes.tack) {
+-            this.tack = true;
++            this.tack = !this.tack;
+ 
+             if (this.tack) {
+                 this.rotation = 45 + game.getwind(game.turncount);
+@@ -256,6 +256,8 @@ class Boat {
+             this.startPos = newStartPos;
+             this.startPriority = game.currentStartPriority++;
+         }
++
++        game.placeBoatsOnStart();
+     }
+ }
+ 
+diff --git a/js/settings.js b/js/settings.js
+index 59a075f..c05bd5b 100644
+--- a/js/settings.js
++++ b/js/settings.js
+@@ -45,7 +45,7 @@ function settingsInit() {
+ 
+ function saveSettings() {
+     localStorage.setItem(localStorageNames.settingsShowBoats, settings.showBoats)
+-    localStorage.setItem(localStorageNames.settingsShowTracks, settings.showBoats)
++    localStorage.setItem(localStorageNames.settingsShowTracks, settings.showTracks)
+     localStorage.setItem(localStorageNames.settingsShowLanelines, settings.showLanelines);
+     localStorage.setItem(localStorageNames.settingsShowEqualLines, settings.showEqualLines);
+ }
+@@ -70,7 +70,7 @@ function loadSettings() {
+ 
+ function readBoolSettings(settingName, defaultValue) {
+     var val = localStorage.getItem(settingName);
+-    if (val) {
++    if (val === "true") {
+         return true;
+     } else if (val === "false") {
+         return false;
+diff --git a/js/windeditor.js b/js/windeditor.js
+index 13eba0c..be3c9ba 100644
+--- a/js/windeditor.js
++++ b/js/windeditor.js
+@@ -154,7 +154,7 @@ function updatePreview() {
+     }
+ 
+     console.log(averageWind)
+-    averageWind = averageWind / windtmp.length;
++    averageWind = averageWind / size;
+ 
+     var size = Math.round((parseInt(mapHeight.value) - 4) / Math.sin(Math.PI / 4));
+ 
+@@ -203,6 +203,7 @@ function editorSaveClick() {
+     newwind = formatWind(newwind);
+     if (editIndex == -1) {
+         wind.splice(wind.length, 0, newwind);
++        windscenario = wind.length - 1;
+     } else {
+         wind[windIndex] = newwind;
+         windscenario = windIndex;

@@ -1,0 +1,280 @@
+import { SequencerComponent } from './sequencer.component';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { By } from '@angular/platform-browser';
+import { IManageBeatsToken } from '../../../infrastructure/injection-tokens/i-manage-beat.token';
+import { AUDIO_ENGINE } from '../../../infrastructure/injection-tokens/audio-engine.token';
+import {
+  AudioEngineAdapterFake
+} from '../../../infrastructure/adapters/audio-engine/audio-engine.adapter.fake';
+import { provideTranslateService } from '@ngx-translate/core';
+import { Effect, Option } from 'effect';
+import { IMIDI } from '../../../infrastructure/injection-tokens/i-midi.token';
+import { MidiExportService } from '../../../infrastructure/adapters/midi-export/midi-exporter.service';
+import { AUDIO_EXPORT } from '../../../infrastructure/injection-tokens/audio-export.token';
+import { AudioExportAdapter } from '../../../infrastructure/adapters/audio-export/audio-export.adapter';
+import { MidiExportOptions } from '../../../domain/export-options/midi-export-options';
+import { AudioExportOptions } from '../../../domain/export-options/audio-export-options';
+import { SequencerService } from '../../services/sequencer/sequencer.service';
+import { Beat } from '../../../domain/beat';
+import { BPM } from '../../../domain/bpm';
+import { Steps } from '../../../domain/steps';
+import { MidiDrumType } from '../../../domain/midi-drum-type';
+
+declare let SequencerEngine: any;
+declare let BeatLibrary: any;
+
+describe('SequencerComponent', () => {
+  let fixture: ComponentFixture<SequencerComponent>;
+  let component: SequencerComponent;
+  let service: SequencerService;
+
+  const beatMetaData = { label: "techno", genre: "techno", filename: "techno" }
+  const secondBeatMetaData = { label: "techno2", genre: "techno", filename: "techno" }
+
+  beforeEach(async () => {
+    spyOn(BeatLibrary, 'loadBeatsManifest').and.returnValue(
+      Promise.resolve([
+        beatMetaData,
+        secondBeatMetaData
+      ])
+    );
+
+    SequencerEngine.reset();
+
+    const beatsMock = {
+      getBeatByFileName: jasmine.createSpy('getBeatByFileName').and.returnValue(
+        Effect.succeed({
+          label: beatMetaData.label,
+          genre: beatMetaData.genre,
+          bpm: BPM(128),
+          beatsPerBar: 4,
+          subdivisionsPerBeat: 4,
+          numberOfBar: 1,
+          tracks: [
+            {
+              name: 'Snare',
+              filename: 'metal/snare.mp3',
+              steps: new Steps([true, true, true, true]),
+              isMuted: false,
+              midiNote: Option.some(MidiDrumType.ACOUSTIC_SNARE)
+            }
+          ]
+        } as Beat)
+      )
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [SequencerComponent],
+      providers: [
+        { provide: IManageBeatsToken, useValue: beatsMock },
+        { provide: AUDIO_ENGINE, useClass: AudioEngineAdapterFake },
+        { provide: AUDIO_EXPORT, useClass: AudioExportAdapter },
+        { provide: IMIDI, useClass: MidiExportService },
+        provideTranslateService({
+          lang: 'en',
+          fallbackLang: 'en'
+        }),
+        provideHttpClient()
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(SequencerComponent);
+    component = fixture.componentInstance;
+    service = TestBed.inject(SequencerService);
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+
+  //TODO fix test
+  xit('should toggle a step when clicked', async () => {
+    let stepButtons = fixture.debugElement.queryAll(By.css('button.step'));
+    const firstStepButton = stepButtons[0];
+
+    expect(
+      firstStepButton.nativeElement.classList.contains('active')
+    ).toBeFalse();
+
+    firstStepButton.nativeElement.dispatchEvent(
+      new MouseEvent('mousedown')
+    );
+
+    firstStepButton.nativeElement.dispatchEvent(
+      new MouseEvent('mouseup')
+    );
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    stepButtons = fixture.debugElement.queryAll(By.css('button.step'));
+
+    expect(
+      stepButtons[0].nativeElement.classList.contains('active')
+    ).toBeTrue();
+  });
+
+  //TODO fix the test
+  xit('step change should not be kept in memory after selected beat change', async () => {
+    const stepButtons = fixture.debugElement.queryAll(By.css('button.step'));
+
+    for (let i = 0; i < 4; i++) {
+      stepButtons[i].nativeElement.dispatchEvent(
+        new MouseEvent('mousedown')
+      );
+      stepButtons[i].nativeElement.dispatchEvent(
+        new MouseEvent('mouseup')
+      );
+    }
+
+    fixture.detectChanges();
+
+    const modifiedActiveCount = stepButtons.filter(btn =>
+      btn.nativeElement.classList.contains('active')
+    ).length;
+
+    component.beatChange(secondBeatMetaData.label);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.beatChange(beatMetaData.label);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const stepButtonsAfter = fixture.debugElement.queryAll(
+      By.css('button.step')
+    );
+
+    const resetActiveCount = stepButtonsAfter.filter(btn =>
+      btn.nativeElement.classList.contains('active')
+    ).length;
+
+    expect(resetActiveCount).not.toEqual(modifiedActiveCount);
+  });
+
+  //TODO fix the test
+  xit('should apply the range change when mouseup happens outside the grid', () => {
+    const track = component.beat.tracks[0];
+
+    component.onStepMouseDown(track, 0);
+    component.onStepMouseEnter(track.name, 1);
+    component.onStepMouseEnter(track.name, 2);
+    component.onStepMouseEnter(track.name, 3);
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    fixture.detectChanges();
+
+    const stepButtons = fixture.debugElement.queryAll(By.css('button.step'));
+
+    expect(
+      stepButtons[0].nativeElement.classList.contains('active')
+    ).toBeTrue();
+
+    expect(
+      stepButtons[1].nativeElement.classList.contains('active')
+    ).toBeTrue();
+
+    expect(
+      stepButtons[2].nativeElement.classList.contains('active')
+    ).toBeTrue();
+
+    expect(
+      stepButtons[3].nativeElement.classList.contains('active')
+    ).toBeTrue();
+  });
+
+  it('Should call export midi service on modal validation', async () => {
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:test');
+    spyOn(URL, 'revokeObjectURL');
+
+    const spy = spyOn(
+      component.midiExportService,
+      'exportBeat'
+    );
+
+    await component.onMidiExport({} as MidiExportOptions);
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('Should call export audio adapter on modal validation', async () => {
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:test');
+    spyOn(URL, 'revokeObjectURL');
+
+    const spy = spyOn(
+      component.audioExportAdapter,
+      'exportBeat'
+    );
+
+    await component.onAudioExport({} as AudioExportOptions);
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('Should disable the undo button when there is no command history', () => {
+    const undoButton = fixture.debugElement.query(
+      By.css('button.undo')
+    );
+
+    expect(undoButton).toBeTruthy();
+    expect(undoButton.nativeElement.disabled).toBeTrue();
+  });
+
+  it('Should enable the undo button when past commands have been done', async () => {
+    await service.dispatch({
+      type: 'SELECT_BEAT',
+      payload: {
+        genre: beatMetaData.genre,
+        beat: beatMetaData.label
+      }
+    });
+
+    fixture.detectChanges();
+
+    const undoButton = fixture.debugElement.query(
+      By.css('button.undo')
+    );
+
+    expect(undoButton).toBeTruthy();
+    expect(undoButton.nativeElement.disabled).toBeFalse();
+  });
+
+  //TODO fix test
+  xit('Should disable the redo button when there are no future commands to apply', () => {
+    const redoButton = fixture.debugElement.query(
+      By.css('button.redo')
+    );
+
+    expect(redoButton).toBeTruthy();
+    expect(redoButton.nativeElement.disabled).toBeTrue();
+  });
+
+  it('Should enable the redo button when there are future commands to apply', async () => {
+    await service.dispatch({
+      type: 'SELECT_BEAT',
+      payload: {
+        genre: beatMetaData.genre,
+        beat: beatMetaData.label
+      }
+    });
+
+    await service.dispatch({
+      type: 'UNDO'
+    });
+
+    fixture.detectChanges();
+
+    const redoButton = fixture.debugElement.query(
+      By.css('button.redo')
+    );
+
+    expect(redoButton).toBeTruthy();
+    expect(redoButton.nativeElement.disabled).toBeFalse();
+  });
+});

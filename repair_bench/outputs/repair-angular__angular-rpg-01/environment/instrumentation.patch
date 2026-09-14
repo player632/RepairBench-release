@@ -1,0 +1,181 @@
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index 00588f7..34ce2d6 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -2,12 +2,14 @@ import { Component } from '@angular/core';
+ import { Store } from '@ngrx/store';
+ import { AppState } from './app.model';
+ import { NotificationService } from './components/notification/notification.service';
++import * as selectors from './models/selectors';
+ import { GameWorld } from './services/game-world';
+ 
+ @Component({
+   selector: 'app-root',
+   templateUrl: './app.component.html',
+   styleUrls: ['./app.component.scss'],
++  host: { 'data-testid': 'app-root' },
+ })
+ export class AppComponent {
+   title = 'angular-rpg';
+@@ -29,5 +31,12 @@ export class AppComponent {
+     // use setTimeout rather than rAF updates.
+     this.world.time.addObject(notifications);
+     this.world.mark(notifications);
++    // [repair-bench instrumentation] export ngrx store + world for state probes
++    store.subscribe((s: AppState) => {
++      (window as any).__RPG_STATE__ = s;
++    });
++    (window as any).__RPG_STORE__ = store;
++    (window as any).__RPG_WORLD__ = world;
++    (window as any).__RPG_SELECTORS__ = selectors;
+   }
+ }
+diff --git a/src/app/components/debug-menu/debug-menu.component.html b/src/app/components/debug-menu/debug-menu.component.html
+index dbbd27f..199998a 100644
+--- a/src/app/components/debug-menu/debug-menu.component.html
++++ b/src/app/components/debug-menu/debug-menu.component.html
+@@ -1,13 +1,13 @@
+-<mat-toolbar class="mat-elevation-z4" *ngIf="open == true" [@toolbar]="open">
+-  <mat-select (selectionChange)="travel($event)" [value]="gameMap$ | async">
++<mat-toolbar class="mat-elevation-z4" data-testid="debug-menu" *ngIf="open == true" [@toolbar]="open">
++  <mat-select data-testid="debug-travel" (selectionChange)="travel($event)" [value]="gameMap$ | async">
+     <mat-option *ngFor="let loc of locations" [value]="loc.map">
+       {{ loc.map }}
+     </mat-option>
+   </mat-select>
+   <span></span>
+ 
+-  <button mat-button (click)="giveGold()">Gain Gold</button>
+-  <button mat-button (click)="levelUp()">Level Up</button>
++  <button mat-button data-testid="debug-gold" (click)="giveGold()">Gain Gold</button>
++  <button mat-button data-testid="debug-levelup" (click)="levelUp()">Level Up</button>
+ </mat-toolbar>
+ 
+ <section *ngIf="open" [@table]="open">
+diff --git a/src/app/components/loading/loading.component.ts b/src/app/components/loading/loading.component.ts
+index 38a16ff..1253f46 100644
+--- a/src/app/components/loading/loading.component.ts
++++ b/src/app/components/loading/loading.component.ts
+@@ -5,7 +5,7 @@ import { LoadingService } from './loading.service';
+   selector: 'loading',
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   styleUrls: ['./loading.component.scss'],
+-  template: ` <div class="loading fade" *ngIf="loadingService.loading$ | async">
++  template: ` <div class="loading fade" data-testid="loading-overlay" *ngIf="loadingService.loading$ | async">
+     <div class="loading-wrapper">
+       <div class="loading-wrapper-inner hero-container">
+         <h1>
+diff --git a/src/app/components/notification/notification.component.ts b/src/app/components/notification/notification.component.ts
+index 173314d..40dde43 100644
+--- a/src/app/components/notification/notification.component.ts
++++ b/src/app/components/notification/notification.component.ts
+@@ -7,6 +7,7 @@ import { NotificationService } from './notification.service';
+   styleUrls: ['./notification.component.scss'],
+   template: `<span
+     class="message"
++    data-testid="notification"
+     [innerText]="notify.message"
+     [class.loading]="loadingService.loading$ | async"
+   >
+diff --git a/src/app/components/party-menu/party-menu.component.html b/src/app/components/party-menu/party-menu.component.html
+index 46f8ef5..2577b4a 100644
+--- a/src/app/components/party-menu/party-menu.component.html
++++ b/src/app/components/party-menu/party-menu.component.html
+@@ -1,6 +1,7 @@
+ <mat-toolbar
+   color="primary"
+   class="mat-elevation-z4"
++  data-testid="party-toolbar"
+   *ngIf="open == true"
+   [@toolbar]="open"
+ >
+@@ -9,11 +10,12 @@
+   </h1>
+   <rpg-sprite height="32" width="32" name="longSword.png"></rpg-sprite>
+   <span></span>
+-  <button mat-button (click)="page = 'party'" [ngClass]="{ active: page == 'party' }">
++  <button mat-button data-testid="page-party" (click)="page = 'party'" [ngClass]="{ active: page == 'party' }">
+     Party
+   </button>
+   <button
+     mat-button
++    data-testid="page-inventory"
+     (click)="page = 'inventory'"
+     [ngClass]="{ active: page == 'inventory' }"
+   >
+@@ -21,6 +23,7 @@
+   </button>
+   <button
+     mat-button
++    data-testid="page-settings"
+     (click)="page = 'settings'"
+     [ngClass]="{ active: page == 'settings' }"
+   >
+@@ -28,29 +31,30 @@
+   </button>
+ </mat-toolbar>
+ 
+-<mat-card class="mat-elevation-z3" [@card]="open" *ngIf="open == true">
++<mat-card class="mat-elevation-z3" data-testid="party-card" [@card]="open" *ngIf="open == true">
+   <mat-card-title>
+     <span class="flex" *ngIf="page == 'party'">Party</span>
+     <span class="flex" *ngIf="page == 'inventory'">Settings</span>
+     <span class="flex" *ngIf="page == 'settings'">Inventory</span>
+-    <span>Party Gold: {{ partyGold$ | async }}</span>
++    <span data-testid="party-gold">Party Gold: {{ partyGold$ | async }}</span>
+   </mat-card-title>
+ 
+   <party-inventory
+     *ngIf="page == 'inventory'"
+     class="inventory-content"
++    data-testid="party-inventory"
+   ></party-inventory>
+   <mat-card-content *ngIf="page == 'party'" class="party-content">
+     <player-card *ngFor="let member of party$ | async" [model]="member"></player-card>
+   </mat-card-content>
+   <mat-card-content *ngIf="page == 'settings'" class="settings-content">
+-    <button mat-button color="warn" (click)="resetGame()">Reset Game</button>
+-    <mat-slide-toggle [checked]="isChecked" (change)="onSlideToggle($event)"
++    <button mat-button data-testid="btn-reset" color="warn" (click)="resetGame()">Reset Game</button>
++    <mat-slide-toggle data-testid="toggle-autosave" [checked]="isChecked" (change)="onSlideToggle($event)"
+       >Auto Save</mat-slide-toggle
+     >
+-    <button mat-button (click)="saveGame()">Save Game</button>
++    <button mat-button data-testid="btn-save" (click)="saveGame()">Save Game</button>
+   </mat-card-content>
+ </mat-card>
+-<button mat-fab color="accent" (click)="open = !open" [@fab]="open">
++<button mat-fab color="accent" data-testid="menu-fab" (click)="open = !open" [@fab]="open">
+   <mat-icon>{{ open ? "close" : "menu" }}</mat-icon>
+ </button>
+diff --git a/src/app/components/player-card/player-card.component.html b/src/app/components/player-card/player-card.component.html
+index 6bca725..ec1d7ee 100644
+--- a/src/app/components/player-card/player-card.component.html
++++ b/src/app/components/player-card/player-card.component.html
+@@ -1,5 +1,6 @@
+ <section
+   class="hero-card"
++  data-testid="player-card"
+   *ngFor="let model of [model$ | async]"
+   [class.dead]="(model?.hp || 0) <= 0"
+ >
+diff --git a/src/app/routes/world/world.component.html b/src/app/routes/world/world.component.html
+index 2fa37a0..a9c059f 100644
+--- a/src/app/routes/world/world.component.html
++++ b/src/app/routes/world/world.component.html
+@@ -102,6 +102,7 @@
+ </section>
+ <world-player
+   #player
++  data-testid="world-player"
+   *ngIf="notTraveling$ | async"
+   [map]="map"
+   [scene]="scene"
+@@ -109,6 +110,6 @@
+   [model]="partyLeader$ | async"
+ ></world-player>
+ 
+-<canvas #worldCanvas [hidden]="loadingService.loading$ | async">
++<canvas #worldCanvas data-testid="world-canvas" [hidden]="loadingService.loading$ | async">
+   Your browser doesn't support this.
+ </canvas>

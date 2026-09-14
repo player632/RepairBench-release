@@ -1,0 +1,77 @@
+import { useSite } from "../SiteStore";
+import { createEffect, createSignal, For } from "solid-js";
+import { trackCardLaunch } from "../lib/analytics";
+//
+const ReposPage = () => {
+  let statsBgs;
+  // obtain our site store
+  const Site = useSite();
+  // obtain signal to read the current's site theme
+  let siteTheme = Site.getThemeSignal();
+  // create a signal to store the current page theme
+  const [pageTheme, setPageTheme] = createSignal("default");
+  const [statsBg, setStatsBg] = createSignal("000000");
+  const [cards, setCards] = createSignal([]);
+  
+  // React to site data changes (local load + API hydration)
+  createEffect(() => {
+    const siteData = Site.data();
+    if (siteData && siteData.sections && siteData.sections.repos) {
+      setCards(siteData.sections.repos.cards || []);
+    }
+  });
+  
+  // Since the theme names from the site are different from the page, we need to map them;
+  const changePageTheme = (newTheme) => {
+    statsBgs = Site.data().statsBg;
+    const statsTheme = Site.data().statsTheme;
+    setPageTheme(statsTheme);
+    if (statsBgs) setStatsBg(statsBgs[newTheme]);
+  };
+  // create an effect subscribing to the site theme signal
+  createEffect(() => changePageTheme(siteTheme()));
+  //
+  return (
+    <section id="section_repos" class="bg-base-300 pt-2 pb-16">
+      <div class="container mx-auto mt-2">
+        <a id="repos" href="#" class="text-info">
+          <h1 class="py-8 sm:py-8 md:py-8 lg:py-8 xl:py-12 2xl:py-16 text-5xl md:text-6xl lg:text-7xl xl:text-8xl 2xl:text-10xl font-extrabold text-center drop-shadow-md">
+            Github Repos
+          </h1>
+        </a>
+        <div class="flex flex-wrap">
+          <For each={cards()}>
+            {(repo, i) => (
+              <div class="card w-full sm:w-1/2 md:w-1/2 lg:w-1/3 xl:w-1/3 pl-2 pr-2 py-2">
+                <div class="card bg-neutral glass w-full h-full p-1.5 shadow-lg">
+                  <div
+                    class="card shadow-lg w-full h-full"
+                    style={`background:#${statsBg()}`}
+                  >
+                    <a
+                      href={`/offline/out.html?to=github.com%2Fguinetik%2F${repo}`}
+                      onClick={() => trackCardLaunch({ title: repo, link: `/offline/out.html?repo=${repo}` }, 'repos')}
+                    >
+                      <img
+                        data-rb-repo={repo}
+                        width="400"
+                        height="120"
+                        decoding="async"
+                        loading="lazy"
+                        class="w-full h-full rounded"
+                        style="aspect-ratio: 400/120;"
+                        src={`/offline/card.svg?username=guinetik&repo=${repo}&theme=${pageTheme()}&show_owner=true&hide_border=true`}
+                        alt={repo}
+                      />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
+    </section>
+  );
+};
+export default ReposPage;

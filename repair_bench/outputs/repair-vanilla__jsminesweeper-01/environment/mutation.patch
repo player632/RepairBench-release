@@ -1,0 +1,152 @@
+diff --git a/Minesweeper/client/Board.js b/Minesweeper/client/Board.js
+index c2bc58e..7f3ce28 100644
+--- a/Minesweeper/client/Board.js
++++ b/Minesweeper/client/Board.js
+@@ -137,7 +137,7 @@ class Board {
+ 			}
+ 		}
+ 		
+-		return (flagCount == tile.getValue()) && (coveredCount > 0);
++		return (flagCount >= tile.getValue()) && (coveredCount > 0);
+ 		
+ 	}
+ 
+diff --git a/Minesweeper/client/EfficiencyHelper.js b/Minesweeper/client/EfficiencyHelper.js
+index fe3a672..56c19ef 100644
+--- a/Minesweeper/client/EfficiencyHelper.js
++++ b/Minesweeper/client/EfficiencyHelper.js
+@@ -81,7 +81,7 @@ class EfficiencyHelper {
+                     }                       
+                 }
+ 
+-                var benefit = this.board.adjacentCoveredCount(tile);
++                var benefit = this.board.adjacentFlagsPlaced(tile);
+                 var cost = tile.getValue() - this.board.adjacentFlagsPlaced(tile);
+                 if (tile.getValue() != 0) {  // if the witness isn't a zero then add the cost of chording - zero can only really happen in the analyser
+                     cost++;
+diff --git a/Minesweeper/client/MinesweeperGame.js b/Minesweeper/client/MinesweeperGame.js
+index 8afda65..606f1fa 100644
+--- a/Minesweeper/client/MinesweeperGame.js
++++ b/Minesweeper/client/MinesweeperGame.js
+@@ -936,7 +936,7 @@ class ServerGame {
+ 		if (this.tilesLeft == 0) {
+ 			for (let i=0; i < this.tiles.length; i++) {
+ 				const tile = this.tiles[i];
+-				if (tile.isBomb() && !tile.isFlagged()) {
++				if (tile.isBomb()) {
+ 					tile.toggleFlag();
+ 					reply.tiles.push({"action" : 2, "index" : i, "flag" : tile.isFlagged()});    // auto set remaining flags
+ 				}
+@@ -1144,9 +1144,8 @@ class ServerGame {
+ 
+ 							if (!adjTile.used3BV) {
+ 
+-								adjTile.used3BV = true;
+-
+ 								if (!adjTile.isBomb() && adjTile.getValue() == 0) {  // if also a zero add to ties to be exploded
++									adjTile.used3BV = true;
+ 									toReveal.push(adjTile);
+ 								}
+                             }
+diff --git a/Minesweeper/client/Tile.js b/Minesweeper/client/Tile.js
+index 813e3c3..30c6ffd 100644
+--- a/Minesweeper/client/Tile.js
++++ b/Minesweeper/client/Tile.js
+@@ -102,9 +102,9 @@ class Tile {
+         this.hasHint = true;
+ 
+ 		if (prob == 1) {
+-			this.hintText = "Safe";
+-		} else if (prob == 0) {
+ 			this.hintText = "Mine";
++		} else if (prob == 0) {
++			this.hintText = "Safe";
+ 		} else if (progress == null) {
+ 			this.hintText = "\n" + (prob * 100).toFixed(2) + "% safe";
+ 		} else {
+@@ -132,7 +132,6 @@ class Tile {
+ 
+     clearHint() {
+         this.onEdge = false;
+-        this.hasHint = false;
+ 		this.hintText = "";
+ 		this.efficiencyValue = null;
+ 		this.efficiencyProbability = 0;
+diff --git a/Minesweeper/client/main.js b/Minesweeper/client/main.js
+index 20fe911..65c9d1f 100644
+--- a/Minesweeper/client/main.js
++++ b/Minesweeper/client/main.js
+@@ -495,11 +495,7 @@ async function propertiesClose() {
+ 
+     SolverGlobal.REUSE_BRUTE_FORCE_ANALYSIS = document.getElementById("reuseBruteForce").checked;
+ 
+-    if (document.getElementById("saveSettings").checked) {
+-        saveSettings();
+-    } else {
+-        localStorage.removeItem("settings");
+-    }
++    saveSettings();
+ 
+     await updateHints(true);
+ 
+@@ -823,7 +819,7 @@ async function switchToAnalysis(doAnalysis) {
+ 
+         switchButton.innerHTML = "Switch to Player";
+     } else {
+-        analysisBoard = board;
++        analysisBoard = gameBoard;
+         board = gameBoard;
+ 
+         if (exportParms != null) {
+@@ -2085,12 +2081,12 @@ async function updateHints(analyse) {
+ 
+ async function changeTileSize(analyse) {
+ 
+-    TILE_SIZE = parseInt(docTileSize.value);
+-
+     //console.log("Changing tile size to " + TILE_SIZE);
+ 
+     resizeCanvas(board.width, board.height);  // resize the canvas
+ 
++    TILE_SIZE = parseInt(docTileSize.value);
++
+     browserResized();  // do we need scroll bars?
+ 
+     renderTiles(board.tiles); // draw the board
+@@ -2905,12 +2901,12 @@ async function checkBoard() {
+  
+     const currentBoardHash = board.getHashValue();
+ 
++    previousBoardHash = currentBoardHash;
++
+     if (currentBoardHash == previousBoardHash) {
+         return;
+     } 
+ 
+-    previousBoardHash = currentBoardHash;
+-
+     // build the analysis URL Query string
+     placeAnalysisQuery();
+ 
+@@ -3833,7 +3829,7 @@ async function sendActionsMessage(message) {
+             efficiency = (100 * value3BV / actionsMade).toFixed(2) + "%";
+             document.getElementById("newGameSmiley").src = 'resources/images/face_win.svg';
+         } else {
+-            efficiency = (100 * solved3BV / actionsMade).toFixed(2) + "%";
++            efficiency = (100 * value3BV / actionsMade).toFixed(2) + "%";
+             document.getElementById("newGameSmiley").src = 'resources/images/face_lose.svg';
+         }
+ 
+diff --git a/Minesweeper/client/solver_main.js b/Minesweeper/client/solver_main.js
+index f8ac526..47d274f 100644
+--- a/Minesweeper/client/solver_main.js
++++ b/Minesweeper/client/solver_main.js
+@@ -200,7 +200,7 @@ async function solver(board, options) {
+         const witnessed = [];
+         const unflaggedMines = [];
+ 
+-        let minesLeft = board.num_bombs;
++        let minesLeft = board.bombs_left;
+         let squaresLeft = 0;
+ 
+         let deadTiles = [];  // used to hold the tiles which have been determined to be dead by either the probability engine or deep analysis

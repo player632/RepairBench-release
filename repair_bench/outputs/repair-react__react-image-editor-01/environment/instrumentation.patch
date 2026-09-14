@@ -1,0 +1,811 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 5dd8ab7..df40134 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -33,6 +33,8 @@ import useHotkeyFunc from "./hook/useHotkeyFunc";
+ import useWorkHistory from "./hook/useWorkHistory";
+ import useI18n from "./hook/usei18n";
+ import { initialStageDataList } from "./redux/initilaStageDataList";
++import { useStore } from "react-redux";
++import { installRieBridge } from "./bridge";
+ 
+ export type FileKind = {
+   "file-id": string;
+@@ -84,6 +86,16 @@ function App() {
+       children: [],
+     };
+   };
++  const rieStore = useStore();
++  useEffect(() => {
++    installRieBridge({
++      getStore: () => rieStore,
++      getSel: () => selectedItems,
++      getTabs: () => tabList,
++      getHist: () => ({ past: past.length, future: future.length, clip: clipboard.length }),
++    });
++  });
++
+   const { getClickCallback } = useTool(
+     stage,
+     modal,
+diff --git a/src/bridge.ts b/src/bridge.ts
+new file mode 100644
+index 0000000..8b4eae3
+--- /dev/null
++++ b/src/bridge.ts
+@@ -0,0 +1,171 @@
++import Konva from "konva";
++import { stageDataAction } from "./redux/currentStageData";
++
++export type RieBridgeHooks = {
++  getStore: () => any;
++  getSel: () => any[];
++  getTabs: () => { id: string; active: boolean }[];
++  getHist: () => { past: number; future: number; clip: number };
++};
++
++// WLB instrumentation bridge for react-image-editor.
++// App reinstalls it on EVERY render (useEffect without deps), so every
++// function closes over the freshest store/selection/tab/history values.
++// DSL consumers must re-read window.__RIE__ on every access - never cache it.
++// All read accessors return scalars (number/string/boolean/null) so DSL
++// js_eval asserts can compare them directly.
++export const installRieBridge = (hooks: RieBridgeHooks) => {
++  const items = (): any[] => {
++    try {
++      const cs = hooks.getStore().getState().currentStageData;
++      return cs.ids.map((id: string) => cs.entities[id]).filter(Boolean);
++    } catch (e) {
++      return [];
++    }
++  };
++
++  const stage = (): any => (Konva.stages && Konva.stages.length > 0 ? Konva.stages[0] : null);
++
++  const node = (id: string | null): any => {
++    const s = stage();
++    if (!s || !id) return null;
++    try {
++      return s.findOne(`#${id}`);
++    } catch (e) {
++      return null;
++    }
++  };
++
++  const api = {
++    // boot gate: stage mounted, tutorial items loaded, navbar rendered
++    ready: (): boolean => {
++      const s = stage();
++      return (
++        !!s
++        && !!s.container()
++        && items().length > 0
++        && !!document.querySelector('[data-navbar-id="zoom-in"]')
++      );
++    },
++    count: (): number => items().length,
++    countType: (t: string): number => items().filter((i) => i.attrs["data-item-type"] === t).length,
++    findId: (t: string, idx: number): string | null => {
++      const f = items().filter((i) => i.attrs["data-item-type"] === t);
++      return f[idx] ? f[idx].id : null;
++    },
++    attrOf: (id: string | null, k: string): any => {
++      if (!id) return null;
++      const it = items().find((i) => i.id === id);
++      return it && it.attrs[k] !== undefined ? it.attrs[k] : null;
++    },
++    itemType: (id: string | null): string | null => {
++      if (!id) return null;
++      const it = items().find((i) => i.id === id);
++      return it ? it.attrs["data-item-type"] : null;
++    },
++    // rendered Konva text (not redux) - this is what the user sees
++    textOf: (id: string | null): string | null => {
++      const n = node(id);
++      return n && typeof n.text === "function" ? n.text() : null;
++    },
++    // render order of stage items as Konva layer children (comma-joined ids)
++    zOrder: (): string => {
++      const s = stage();
++      if (!s) return "";
++      const layer = s.getChildren()[0];
++      if (!layer) return "";
++      return layer
++        .getChildren((c: any) => c.name() === "label-target")
++        .map((c: any) => c.id())
++        .join(",");
++    },
++    scale: (): number | null => {
++      const s = stage();
++      return s ? s.scaleX() : null;
++    },
++    selCount: (): number => hooks.getSel().length,
++    tabs: (): string => hooks.getTabs().map((t) => t.id).join(","),
++    activeTab: (): string | null => {
++      const el = document.querySelector('[data-file-id][data-active="true"]');
++      return el ? el.getAttribute("data-file-id") : null;
++    },
++    absOffX: (): number | null => {
++      const s = stage();
++      return s ? Math.round(s.container().getBoundingClientRect().x) : null;
++    },
++    absOffY: (): number | null => {
++      const s = stage();
++      return s ? Math.round(s.container().getBoundingClientRect().y) : null;
++    },
++    konvaAttr: (id: string, k: string): any => {
++      const n = node(id);
++      if (!n) return null;
++      if (typeof n[k] === "function") return n[k]();
++      return n.getAttr(k) ?? null;
++    },
++    konvaImgSrc: (id: string): string => {
++      const n = node(id);
++      if (!n || typeof n.image !== "function") return "";
++      const img = n.image();
++      return img ? String(img.src || "") : "";
++    },
++    lsHas: (k: string): boolean => {
++      try {
++        return window.localStorage.getItem(k) !== null;
++      } catch (e) {
++        return false;
++      }
++    },
++    histPast: (): number => hooks.getHist().past,
++    // actuators -----------------------------------------------------------
++    seed: (newItems: any[]): number => {
++      const st = hooks.getStore();
++      st.dispatch(stageDataAction.clearItems({}));
++      st.dispatch(stageDataAction.addItem(newItems));
++      return newItems.length;
++    },
++    create: (item: any): boolean => {
++      hooks.getStore().dispatch(stageDataAction.addItem(item));
++      return true;
++    },
++    // HTML5 drag&drop actuator: fires the widget's React dragstart, then
++    // dragover+drop on the Konva stage container with a real DataTransfer.
++    drop: (testid: string, clientX: number, clientY: number): string => {
++      try {
++        const s = stage();
++        if (!s) return "no-stage";
++        const src = document.querySelector(`[data-testid="${testid}"]`);
++        if (!src) return "no-src";
++        const container = s.container();
++        const dt = new DataTransfer();
++        src.dispatchEvent(
++          new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }),
++        );
++        container.dispatchEvent(
++          new DragEvent("dragover", {
++            bubbles: true,
++            cancelable: true,
++            dataTransfer: dt,
++            clientX,
++            clientY,
++          }),
++        );
++        container.dispatchEvent(
++          new DragEvent("drop", {
++            bubbles: true,
++            cancelable: true,
++            dataTransfer: dt,
++            clientX,
++            clientY,
++          }),
++        );
++        return "ok";
++      } catch (e: any) {
++        return `err:${String(e && e.message ? e.message : e)}`;
++      }
++    },
++  };
++
++  (window as any).__RIE__ = api;
++  return api;
++};
+diff --git a/src/settingBar/widgetList/ShapeWidget.tsx b/src/settingBar/widgetList/ShapeWidget.tsx
+index 6ce353e..1c5129b 100644
+--- a/src/settingBar/widgetList/ShapeWidget.tsx
++++ b/src/settingBar/widgetList/ShapeWidget.tsx
+@@ -41,7 +41,10 @@ const ShapeThumbnail: React.FC<{
+         trigger: TRIGGER.INSERT.SHAPE,
+         ...data,
+       }}>
+-      <i className={[`bi-${data.icon}`].join(" ")} style={{ fontSize: 20, width: 25 }} />
++      <i
++        data-testid={`rie-shape-drag-${data.id}`}
++        className={[`bi-${data.icon}`].join(" ")}
++        style={{ fontSize: 20, width: 25 }} />
+     </Drag>
+     {/* <Figure.Caption
+         className={[
+diff --git a/src/settingBar/widgetList/TextWidget.tsx b/src/settingBar/widgetList/TextWidget.tsx
+index 347bf1f..57e8354 100644
+--- a/src/settingBar/widgetList/TextWidget.tsx
++++ b/src/settingBar/widgetList/TextWidget.tsx
+@@ -40,6 +40,7 @@ const TextThumbnail: React.FC<{ maxPx: number; data: TextItemKind }> = ({ data,
+         ...data,
+       }}>
+       <h6
++        data-testid={`rie-text-drag-${data.id}`}
+         style={{
+           width: "100%",
+           fontFamily: data.fontFamily,
+diff --git a/src/tab/index.tsx b/src/tab/index.tsx
+index b840ba0..b9b0e66 100644
+--- a/src/tab/index.tsx
++++ b/src/tab/index.tsx
+@@ -23,6 +23,7 @@ const TabGroup: React.FC<TabGroupProps> = ({ onClickTab, onCreateTab, onDeleteTa
+       <Tab key={`tab-${data.id}`} onClickTab={onClickTab} data={data} onDeleteTab={onDeleteTab} />
+     ))}
+     <Button
++      data-testid="rie-tab-add"
+       className={[colorStyles.transparentTheme, borderStyles.none].join(" ")}
+       onClick={onCreateTab}>
+       <i className="bi-plus-circle" />
+diff --git a/tests/example.test.ts b/tests/example.test.ts
+deleted file mode 100644
+index d884ff1..0000000
+--- a/tests/example.test.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import { expect, test } from "vitest";
+-
+-test("this is test example", () => {
+-  expect(1).toBe(1);
+-});
+diff --git a/tests/hook/useWorkHistory.test.tsx b/tests/hook/useWorkHistory.test.tsx
+deleted file mode 100644
+index 4a3b138..0000000
+--- a/tests/hook/useWorkHistory.test.tsx
++++ /dev/null
+@@ -1,78 +0,0 @@
+-import React, { act, useState } from "react";
+-import { Provider } from "react-redux";
+-import { renderHook, waitFor } from "@testing-library/react";
+-import { describe, expect, test } from "vitest";
+-
+-import { StageData } from "../../src/redux/currentStageData";
+-import configureKonvaEditorStore from "../../src/redux/store";
+-import { initialStageDataList } from "../../src/redux/initilaStageDataList";
+-import useWorkHistory from "../../src/hook/useWorkHistory";
+-
+-describe("Test hook - useWorkHistory", () => {
+-  const store = configureKonvaEditorStore();
+-  const wrapper = ({ children }) => (
+-    <Provider store={store}>{children}</Provider>
+-  );
+-  const {
+-    result: {
+-      current: [past, setPast],
+-    },
+-  } = renderHook(() => useState<StageData[][]>([]), { wrapper });
+-  const {
+-    result: {
+-      current: [future, setFuture],
+-    },
+-  } = renderHook(() => useState<StageData[][]>([]), { wrapper });
+-  const {
+-    result: {
+-      current: { goToPast, goToFuture, recordPast, clearHistory, current },
+-    },
+-  } = renderHook(() => useWorkHistory(past, future, setPast, setFuture), {
+-    wrapper,
+-  });
+-
+-  test("should return null current", () => {
+-    expect(current).toEqual(null);
+-  });
+-
+-  test("should record past correctly", async () => {
+-    act(() => {
+-      recordPast(initialStageDataList[0].data);
+-    });
+-
+-    waitFor(() => {
+-      expect(past[past.length - 1]).toEqual(initialStageDataList[0].data);
+-    });
+-  });
+-
+-  test("should go to past correctly", () => {
+-    act(() => {
+-      goToPast();
+-    });
+-
+-    waitFor(() => {
+-      expect(current).toEqual(initialStageDataList[0].data);
+-      expect(future[future.length - 1]).toEqual(initialStageDataList[0].data);
+-    });
+-  });
+-
+-  test("should go to future correctly", async () => {
+-    act(() => {
+-      goToFuture();
+-    });
+-    waitFor(() => {
+-      expect(current).toEqual(initialStageDataList[0].data);
+-      expect(past[past.length - 1]).toEqual(initialStageDataList[0].data);
+-    });
+-  });
+-
+-  test("should clear history correctly", async () => {
+-    act(() => {
+-      clearHistory();
+-    });
+-    waitFor(() => {
+-      expect(past).toEqual([]);
+-      expect(future).toEqual([]);
+-    });
+-  });
+-});
+diff --git a/tests/redux/currentStageData.test.ts b/tests/redux/currentStageData.test.ts
+deleted file mode 100644
+index bead246..0000000
+--- a/tests/redux/currentStageData.test.ts
++++ /dev/null
+@@ -1,130 +0,0 @@
+-import { expect, test, describe, assertType } from "vitest";
+-
+-import reducer, {
+-  StageData,
+-  stageDataAction,
+-} from "../../src/redux/currentStageData";
+-import { EntityState } from "@reduxjs/toolkit";
+-
+-const testItem = {
+-  id: "QxiYE-HAI311pw98Nqtx9",
+-  attrs: {
+-    name: "label-target",
+-    "data-item-type": "text",
+-    width: 120,
+-    height: 36,
+-    fill: "#00000",
+-    x: 544.1693780910495,
+-    y: 158.73013128325812,
+-    fontSize: 30,
+-    fontFamily: "'Jua', sans-serif",
+-    text: "이용방법",
+-    textAlign: "left",
+-    verticalAlign: "top",
+-    zIndex: 0,
+-    brightness: 0,
+-    updatedAt: 1648466614233,
+-    "data-frame-type": "text",
+-    id: "QxiYE-HAI311pw98Nqtx9",
+-    align: "center",
+-    opacity: 1,
+-    rotation: 0,
+-    draggable: true,
+-    visible: true,
+-    scaleX: 0.7511177030169971,
+-    scaleY: 0.7511177030169944,
+-    offsetX: 0,
+-    offsetY: 0,
+-    skewX: 0,
+-    skewY: 0,
+-  },
+-  className: "Shape",
+-  children: [],
+-};
+-
+-describe("Test Redux - CurrentStageData", () => {
+-  const emptyStageData: EntityState<StageData> = {
+-    entities: {},
+-    ids: [],
+-  };
+-
+-  const baseStageData: EntityState<StageData> = {
+-    entities: {
+-      [testItem.id]: {
+-        ...testItem,
+-      },
+-    },
+-    ids: [testItem.id],
+-  };
+-
+-  test("should return EntityState<StageData> instance", () => {
+-    assertType<EntityState<StageData>>(reducer(undefined, { type: "unknown" }));
+-  });
+-
+-  test("should return initial EntityState<StageData> instance", () => {
+-    const targetInitialStageData: EntityState<StageData> = emptyStageData;
+-
+-    expect(reducer(undefined, { type: "unknown" })).toEqual(
+-      targetInitialStageData
+-    );
+-  });
+-
+-  test("should add 1 item instance", () => {
+-    const prevStageData: EntityState<StageData> = emptyStageData;
+-
+-    const targetStageData: EntityState<StageData> = baseStageData;
+-
+-    const action = stageDataAction.addItem(testItem);
+-
+-    expect(reducer(prevStageData, action)).toEqual(targetStageData);
+-  });
+-
+-  test("should update 1 item instance", () => {
+-    const prevStageData: EntityState<StageData> = baseStageData;
+-
+-    const targetStageData: EntityState<StageData> = {
+-      entities: {
+-        [testItem.id]: {
+-          ...testItem,
+-          attrs: {
+-            ...testItem.attrs,
+-            text: "수정된 이용방법",
+-          },
+-        },
+-      },
+-      ids: [testItem.id],
+-    };
+-
+-    const action = stageDataAction.updateItem({
+-      ...testItem,
+-      attrs: {
+-        ...testItem.attrs,
+-        text: "수정된 이용방법",
+-      },
+-    });
+-
+-    expect(reducer(prevStageData, action)).toEqual(targetStageData);
+-  });
+-
+-  test("should remove 1 item instance", () => {
+-    const prevStageData: EntityState<StageData> = baseStageData;
+-
+-    const targetStageData: EntityState<StageData> = emptyStageData;
+-
+-    const action = stageDataAction.removeItem({
+-      id: testItem.id,
+-    });
+-
+-    expect(reducer(prevStageData, action)).toEqual(targetStageData);
+-  });
+-
+-  test("should clear all items", () => {
+-    const prevStageData: EntityState<StageData> = baseStageData;
+-
+-    const targetStageData: EntityState<StageData> = emptyStageData;
+-
+-    const action = stageDataAction.clearItems(null);
+-
+-    expect(reducer(prevStageData, action)).toEqual(targetStageData);
+-  });
+-});
+diff --git a/tests/redux/fileMeta.test.ts b/tests/redux/fileMeta.test.ts
+deleted file mode 100644
+index 93b082a..0000000
+--- a/tests/redux/fileMeta.test.ts
++++ /dev/null
+@@ -1,63 +0,0 @@
+-import { expect, test, describe, assertType } from "vitest";
+-
+-import reducer, { FileMeta, fileMetaAction } from "../../src/redux/fileMeta";
+-
+-describe("Test Redux - FileMeta", () => {
+-  test("should return FileMeta instance", () => {
+-    assertType<FileMeta>(reducer(undefined, { type: "unknown" }));
+-  });
+-
+-  test("should return initial FileMeta instance", () => {
+-    const targetInitialFileMeta: FileMeta = {
+-      scale: {
+-        x: 1,
+-        y: 1,
+-      },
+-      position: {
+-        x: 0,
+-        y: 0,
+-      },
+-    };
+-
+-    expect(reducer(undefined, { type: "unknown" })).toEqual(
+-      targetInitialFileMeta
+-    );
+-  });
+-
+-  test("should return updated FileMeta instance", () => {
+-    const prevFileMeta: FileMeta = {
+-      scale: {
+-        x: 1,
+-        y: 1,
+-      },
+-      position: {
+-        x: 0,
+-        y: 0,
+-      },
+-    };
+-
+-    const targetFileMeta: FileMeta = {
+-      scale: {
+-        x: 1.2,
+-        y: 1.5,
+-      },
+-      position: {
+-        x: 100,
+-        y: 50,
+-      },
+-    };
+-
+-    const action = fileMetaAction.setFileMeta({
+-      scale: {
+-        x: 1.2,
+-        y: 1.5,
+-      },
+-      position: {
+-        x: 100,
+-        y: 50,
+-      },
+-    });
+-
+-    expect(reducer(prevFileMeta, action)).toEqual(targetFileMeta);
+-  });
+-});
+diff --git a/tests/redux/imageAssetList.test.ts b/tests/redux/imageAssetList.test.ts
+deleted file mode 100644
+index 82ccf2a..0000000
+--- a/tests/redux/imageAssetList.test.ts
++++ /dev/null
+@@ -1,114 +0,0 @@
+-import { expect, test, describe, assertType } from "vitest";
+-
+-import reducer, {
+-  ImageAssetListItem,
+-  imageAssetListAction,
+-} from "../../src/redux/imageAssetList";
+-import { EntityState } from "@reduxjs/toolkit";
+-
+-describe("Test Redux - ImageAssetList", () => {
+-  test("should return EntityState<ImageAssetList> instance", () => {
+-    assertType<EntityState<ImageAssetListItem>>(
+-      reducer(undefined, { type: "unknown" })
+-    );
+-  });
+-
+-  test("should return initial Entity<ImageAssetList> instance", () => {
+-    const targetInitialImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {},
+-      ids: [],
+-    };
+-
+-    expect(reducer(undefined, { type: "unknown" })).toEqual(
+-      targetInitialImageAssetList
+-    );
+-  });
+-
+-  test("should add 1 ImageAssetListItem instance", () => {
+-    const prevImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {},
+-      ids: [],
+-    };
+-
+-    const targetImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {
+-        "1234": {
+-          type: "image-type",
+-          id: "1234",
+-          name: "dummy-image",
+-          src: "abcdefg",
+-        },
+-      },
+-      ids: ["1234"],
+-    };
+-
+-    const action = imageAssetListAction.addItem({
+-      type: "image-type",
+-      id: "1234",
+-      name: "dummy-image",
+-      src: "abcdefg",
+-    });
+-
+-    expect(reducer(prevImageAssetList, action)).toEqual(targetImageAssetList);
+-  });
+-
+-  test("should update 1 ImageAssetListItem instance", () => {
+-    const prevImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {
+-        "1234": {
+-          type: "image-type",
+-          id: "1234",
+-          name: "dummy-image",
+-          src: "abcdefg",
+-        },
+-      },
+-      ids: ["1234"],
+-    };
+-
+-    const targetImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {
+-        "1234": {
+-          type: "image-type",
+-          id: "1234",
+-          name: "dummy-image",
+-          src: "abcdefghigklmnop",
+-        },
+-      },
+-      ids: ["1234"],
+-    };
+-
+-    const action = imageAssetListAction.updateItem({
+-      type: "image-type",
+-      id: "1234",
+-      name: "dummy-image",
+-      src: "abcdefghigklmnop",
+-    });
+-
+-    expect(reducer(prevImageAssetList, action)).toEqual(targetImageAssetList);
+-  });
+-
+-  test("should remove 1 ImageAssetListItem instance", () => {
+-    const prevImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {
+-        "1234": {
+-          type: "image-type",
+-          id: "1234",
+-          name: "dummy-image",
+-          src: "abcdefg",
+-        },
+-      },
+-      ids: ["1234"],
+-    };
+-
+-    const targetImageAssetList: EntityState<ImageAssetListItem> = {
+-      entities: {},
+-      ids: [],
+-    };
+-
+-    const action = imageAssetListAction.removeItem({
+-      id: "1234",
+-    });
+-
+-    expect(reducer(prevImageAssetList, action)).toEqual(targetImageAssetList);
+-  });
+-});
+diff --git a/tests/redux/stageDataList.test.ts b/tests/redux/stageDataList.test.ts
+deleted file mode 100644
+index 4d06928..0000000
+--- a/tests/redux/stageDataList.test.ts
++++ /dev/null
+@@ -1,120 +0,0 @@
+-import { expect, test, describe, assertType } from "vitest";
+-
+-import { EntityState } from "@reduxjs/toolkit";
+-
+-import reducer, {
+-  StageDataListItem,
+-  stageDataListAction,
+-} from "../../src/redux/stageDataList";
+-import { initialStageDataList } from "../../src/redux/initilaStageDataList";
+-
+-const testItem = {
+-  id: "12345",
+-  attrs: {
+-    name: "label-target",
+-    "data-item-type": "text",
+-    width: 120,
+-    height: 36,
+-    fill: "#00000",
+-    x: 544.1693780910495,
+-    y: 158.73013128325812,
+-    fontSize: 30,
+-    fontFamily: "'Jua', sans-serif",
+-    text: "이용방법",
+-    textAlign: "left",
+-    verticalAlign: "top",
+-    zIndex: 0,
+-    brightness: 0,
+-    updatedAt: 1648466614233,
+-    "data-frame-type": "text",
+-    id: "QxiYE-HAI311pw98Nqtx9",
+-    align: "center",
+-    opacity: 1,
+-    rotation: 0,
+-    draggable: true,
+-    visible: true,
+-    scaleX: 0.7511177030169971,
+-    scaleY: 0.7511177030169944,
+-    offsetX: 0,
+-    offsetY: 0,
+-    skewX: 0,
+-    skewY: 0,
+-  },
+-  className: "Shape",
+-  children: [],
+-};
+-
+-describe("Test Redux - StageDataList", () => {
+-  const emptyStageDataList: EntityState<StageDataListItem> = {
+-    entities: {},
+-    ids: [],
+-  };
+-
+-  const baseStageDataList: EntityState<StageDataListItem> = {
+-    entities: {
+-      [initialStageDataList[0].id]: initialStageDataList[0],
+-    },
+-    ids: [initialStageDataList[0].id],
+-  };
+-
+-  test("should return EntityState<StageDataListItem> instance", () => {
+-    assertType<EntityState<StageDataListItem>>(
+-      reducer(undefined, { type: "unknown" })
+-    );
+-  });
+-
+-  test("should return initial EntityState<StageData> instance", () => {
+-    const targetInitialStageDataList: EntityState<StageDataListItem> =
+-      emptyStageDataList;
+-
+-    expect(reducer(undefined, { type: "unknown" })).toEqual(
+-      targetInitialStageDataList
+-    );
+-  });
+-
+-  test("should add 1 StageDataListItem instance", () => {
+-    const prevStageDataList: EntityState<StageDataListItem> =
+-      emptyStageDataList;
+-
+-    const targetStageDataList: EntityState<StageDataListItem> =
+-      baseStageDataList;
+-
+-    const action = stageDataListAction.addItem(initialStageDataList);
+-
+-    expect(reducer(prevStageDataList, action)).toEqual(targetStageDataList);
+-  });
+-
+-  test("should update 1 item instance", () => {
+-    const prevStageDataList: EntityState<StageDataListItem> = baseStageDataList;
+-
+-    const targetStageDataList: EntityState<StageDataListItem> = {
+-      entities: {
+-        [initialStageDataList[0].id]: {
+-          ...initialStageDataList[0],
+-          data: [...initialStageDataList[0].data, testItem],
+-        },
+-      },
+-      ids: [initialStageDataList[0].id],
+-    };
+-
+-    const action = stageDataListAction.updateItem({
+-      ...initialStageDataList[0],
+-      data: [...initialStageDataList[0].data, testItem],
+-    });
+-
+-    expect(reducer(prevStageDataList, action)).toEqual(targetStageDataList);
+-  });
+-
+-  test("should remove 1 item instance", () => {
+-    const prevStageDataList: EntityState<StageDataListItem> = baseStageDataList;
+-
+-    const targetStageDataList: EntityState<StageDataListItem> =
+-      emptyStageDataList;
+-
+-    const action = stageDataListAction.removeItem({
+-      id: initialStageDataList[0].id,
+-    });
+-
+-    expect(reducer(prevStageDataList, action)).toEqual(targetStageDataList);
+-  });
+-});
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index f944f3c..0000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { defineConfig, mergeConfig } from "vitest/config";
+-
+-import viteConfig from "./vite.config";
+-
+-export default mergeConfig(
+-  viteConfig,
+-  defineConfig({
+-    test: {
+-      environment: "happy-dom",
+-    },
+-  })
+-);

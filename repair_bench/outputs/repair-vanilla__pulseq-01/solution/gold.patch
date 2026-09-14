@@ -1,0 +1,166 @@
+diff --git a/js/alerts.js b/js/alerts.js
+index 13ebfedb9fc2df4291264c3286274fd589d1e9e6..05bab42c12525d83ba766fc934c486ca9a20d74f 100644
+--- a/js/alerts.js
++++ b/js/alerts.js
+@@ -206,10 +206,10 @@
+ 		toastBox.appendChild(document.createTextNode(text));
+ 		toastAlert.classList.remove("nodisplay");
+ 
++		clearTimeout(timeout);
+ 		timeout = setTimeout(() => {
+ 			toastAlert.classList.add("nodisplay");
+ 			timeout = null;
+ 		}, 2000);
+-		clearTimeout(timeout);
+ 	}
+ }
+\ No newline at end of file
+diff --git a/js/arrange-ui.js b/js/arrange-ui.js
+index 23ac4aeb1b598032e998e0f9e58b780d08ec2ba4..22b90d5a08ef5bde457ed50158da86e6437ae7e6 100644
+--- a/js/arrange-ui.js
++++ b/js/arrange-ui.js
+@@ -238,7 +238,7 @@ function ArrangeUi(songObj, onPatternSelectCallback, defaults) {
+ 	function pointerdownListener(event) {
+ 		cancelClick = false;
+ 		let tgtId = event.target.id;
+-		if (tgtId.includes("header"))
++		if (!tgtId.includes("header"))
+ 			return;
+ 
+ 		pressTimeout = setTimeout(() => {
+diff --git a/js/menu-init.js b/js/menu-init.js
+index 452bbbe140e64e6beb3213f994975712e6d229c4..12ce0ef85e034e71e77cfff793d2d320aa46054f 100644
+--- a/js/menu-init.js
++++ b/js/menu-init.js
+@@ -79,7 +79,7 @@ function menuInit(songObj, onSongChangeCallback, loadSynthCallback, renderCallba
+ 				item.appendChild(document.createTextNode(data[i].name));
+ 				item.classList.add("startup-menu-entry");
+ 				item.classList.add("js-demo-entry");
+-				item.dataset.src = data[i].file;
++				item.dataset.file = data[i].file;
+ 				container.appendChild(item);
+ 			}
+ 		}).catch(() => {
+@@ -225,14 +225,14 @@ function menuInit(songObj, onSongChangeCallback, loadSynthCallback, renderCallba
+ 			return;
+ 
+ 		if (songObj.isSongEmpty())
++			setBarLength();
++		else
+ 			showConfirm("This will delete all patterns! Proceed?", isOk => {
+ 				if (isOk)
+ 					setBarLength();
+ 				else
+ 					barStepsInput.value = songObj.barSteps;
+ 			});
+-		else
+-			setBarLength();
+ 
+ 		function setBarLength() {
+ 			if (stepsValue > 32) {
+@@ -485,7 +485,7 @@ function menuInit(songObj, onSongChangeCallback, loadSynthCallback, renderCallba
+ 		let value = event.target.value || "";
+ 		songObj.currentPattern.name = value;
+ 		patternNameArea.textContent = value;
+-		onSongChangeCallback(false, null, true);
++		onSongChangeCallback(false);
+ 	};
+ 
+ 	patternLengthInput.addEventListener("input", () => {
+@@ -1175,7 +1175,7 @@ function menuInit(songObj, onSongChangeCallback, loadSynthCallback, renderCallba
+ 			});
+ 
+ 			if (expObj.patternLengths)
+-				ptrn.length = expObj.patternLengths[0];
++				ptrn.length = expObj.patternLengths[i];
+ 
+ 			if (expObj.patternColors)
+ 				ptrn.colorIndex = expObj.patternColors[i];
+diff --git a/js/misc.js b/js/misc.js
+index ff7aa493b406468d904e53182f260166d5679154..5ec4228ab8784d7eb31b3c068ff41d0f2a2056e3 100644
+--- a/js/misc.js
++++ b/js/misc.js
+@@ -31,7 +31,7 @@
+ 			appSettings = {};
+ 
+ 		appSettings[key] = value;
+-		localStorage.setItem(settingsStorage, JSON.stringify(value));
++		localStorage.setItem(settingsStorage, JSON.stringify(appSettings));
+ 	}
+ }
+ 
+diff --git a/js/pattern-ui.js b/js/pattern-ui.js
+index 61f0306e26ea50a2dba7819861af03f68ad136fc..e9932b85fb82eb911afa65e124723c4fbf765314 100644
+--- a/js/pattern-ui.js
++++ b/js/pattern-ui.js
+@@ -827,7 +827,7 @@ function PatternUi(songObj, assignSynthCallback, onSongChangeCallback) {
+ 		barLength = songObj.barSteps;
+ 		let style = document.getElementById("bar-separator-style");
+ 		style.innerText = `
+-			#pattern-main td:nth-child(${barLength}n) {
++			#pattern-main td:nth-child(${barLength}n+1) {
+ 				border-right: 1px solid #6a6a6a;
+ 			}`;
+ 	}
+@@ -956,10 +956,9 @@ function PatternUi(songObj, assignSynthCallback, onSongChangeCallback) {
+ 			activeLayerTab.classList.remove("tab--active");
+ 
+ 		event.target.classList.add("tab--active");
++		songObj.currentPattern.activeIndex = index;
+ 
+ 		this.redrawPattern();
+-
+-		songObj.currentPattern.activeIndex = index;
+ 	}
+ 
+ 	this.rebuildPatternSynthList = function () {
+diff --git a/js/pattern.js b/js/pattern.js
+index 0ca7ec51e987c2d6da89fa7ee4d03c4bb0c5543d..9d53ff86f8a007ceba5884c7e7660ec57fbd2d6c 100644
+--- a/js/pattern.js
++++ b/js/pattern.js
+@@ -95,12 +95,14 @@ class Pattern {
+ 		this.addLayer();
+ 		let newLayer = this.patternData[this.activeIndex];
+ 
+-		newLayer.notes = layer.notes;
+-		newLayer.lengths = layer.lengths;
+-		newLayer.volumes = layer.volumes;
+-		newLayer.filtF = layer.filtF;
+-		newLayer.filtQ = layer.filtQ;
+-		newLayer.fxWet = layer.fxWet;
++		for (let i = 0; i < this.length; i++) {
++			newLayer.notes[i] = layer.notes[i];
++			newLayer.lengths[i] = layer.lengths[i];
++			newLayer.volumes[i] = layer.volumes[i];
++			newLayer.filtF[i] = layer.filtF[i];
++			newLayer.filtQ[i] = layer.filtQ[i];
++			newLayer.fxWet[i] = layer.fxWet[i];
++		}
+ 	}
+ 
+ 	shiftActiveLayer(steps, isShiftAutomation) {
+diff --git a/js/song-object.js b/js/song-object.js
+index 59f6ceb9041299a365367e1f54227f9aad382c6f..f9606f995fa479f292d44c33aaf5b21e8cbed4b9 100644
+--- a/js/song-object.js
++++ b/js/song-object.js
+@@ -350,7 +350,7 @@ function SongObject() {
+ 			this.setCurrentPattern(indexOne)
+ 
+ 		for (let i = 0; i < this.song.length; i++)
+-			switchElements(this.song, indexOne, indexTwo);
++			switchElements(this.song[i], indexOne, indexTwo);
+ 
+ 		function switchElements(array, indexO, indexT) {
+ 			let tmp = array[indexO] || null;
+diff --git a/js/synth-helper.js b/js/synth-helper.js
+index 788586e834523898547a23665f4502c9241973ce..bdde7fe8fb5d8f6ff07a5a2230abd4f33d48eea3 100644
+--- a/js/synth-helper.js
++++ b/js/synth-helper.js
+@@ -364,6 +364,7 @@ function SynthHelper(songObj, synthUi, rebuildPatternSynthListCallback) {
+ 
+ 	this.rebuildSynthList = function () {
+ 		let container = document.getElementById("synth-list-main");
++		container.innerHTML = "";
+ 
+ 		for (let i = 0; i < songObj.synthNames.length; i++) {
+ 			let entry = createSynthEntry(songObj.synthNames[i], songObj.synths[i].isMuted);

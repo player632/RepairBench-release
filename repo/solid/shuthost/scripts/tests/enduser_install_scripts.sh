@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Test installation scripts on Alpine Linux using OpenRC
+
+set -e
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+# Only change into the repository root during local testing when the
+# repository marker exists adjacent to this script.
+if [ -f "$SCRIPT_DIR/../helpers.sh" ] || [ -f "$SCRIPT_DIR/helpers.sh" ]; then
+  cd "$SCRIPT_DIR/../.."
+fi
+
+docker build --pull -f scripts/tests/Containerfile.systemd -t shuthost-test-systemd .
+
+docker build --pull -f scripts/tests/Containerfile.alpine -t shuthost-test-alpine .
+
+alpine_test() {
+    docker run --rm -t -v "$(pwd)":/repo --env-file scripts/tests/coverage.env shuthost-test-alpine /bin/sh -c "cd /repo; $1"
+}
+
+systemd_test() {
+    docker run --rm -t --privileged -v "$(pwd)":/repo --env-file scripts/tests/coverage.env shuthost-test-systemd /bin/sh -c "cd /repo; $1"
+}
+
+set +e
+
+pids=()
+logs=()
+
+for init in alpine systemd; do
+  for embed in "target/" ""; do
+    for script in coordinator host_agent; do
+      path="./${embed}scripts/enduser_installers/${script}.sh"
+      log_name="${init}_${embed%/}_${script}"
+      log_file="/tmp/${log_name}.log"
+      if [ "$init" = "alpine" ]; then
+        alpine_test "$path" > "$log_file" 2>&1 &
+      else
+        systemd_test "$path" > "$log_file" 2>&1 &
+      fi
+      pids+=($!)
+      logs+=("$log_file")
+    done
+  done
+done
+
+failed=false
+failed_tests=()
+
+for i in "${!pids[@]}"; do
+  if ! wait "${pids[$i]}"; then
+    failed=true
+    failed_tests+=("${logs[$i]}")
+  fi
+done
+
+if $failed; then
+  echo "Failed tests: ${failed_tests[*]}"
+  exit 1
+fi

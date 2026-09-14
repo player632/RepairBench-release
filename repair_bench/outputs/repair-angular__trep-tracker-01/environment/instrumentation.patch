@@ -1,0 +1,1088 @@
+diff --git a/playwright.config.ts b/playwright.config.ts
+deleted file mode 100644
+index 7972fa8..0000000
+--- a/playwright.config.ts
++++ /dev/null
+@@ -1,78 +0,0 @@
+-import { defineConfig, devices } from '@playwright/test';
+-
+-/**
+- * Read environment variables from file.
+- * https://github.com/motdotla/dotenv
+- */
+-// import dotenv from 'dotenv';
+-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+-
+-/**
+- * See https://playwright.dev/docs/test-configuration.
+- */
+-export default defineConfig({
+-  testDir: './tests',
+-  /* Run tests in files in parallel */
+-  fullyParallel: true,
+-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+-  forbidOnly: !!process.env.CI,
+-  /* Retry on CI only */
+-  retries: process.env.CI ? 2 : 0,
+-  /* Opt out of parallel tests on CI. */
+-  workers: process.env.CI ? 1 : undefined,
+-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+-  reporter: 'html',
+-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+-  use: {
+-    /* Base URL to use in actions like `await page.goto('/')`. */
+-    // baseURL: 'http://127.0.0.1:3000',
+-
+-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+-    trace: 'on-first-retry',
+-  },
+-
+-  /* Configure projects for major browsers */
+-  projects: [
+-    {
+-      name: 'chromium',
+-      use: { ...devices['Desktop Chrome'] },
+-    },
+-    /*
+-    {
+-      name: 'firefox',
+-      use: { ...devices['Desktop Firefox'] },
+-    },
+-
+-    {
+-      name: 'webkit',
+-      use: { ...devices['Desktop Safari'] },
+-    },
+-    */
+-    /* Test against mobile viewports. */
+-    // {
+-    //   name: 'Mobile Chrome',
+-    //   use: { ...devices['Pixel 5'] },
+-    // },
+-    // {
+-    //   name: 'Mobile Safari',
+-    //   use: { ...devices['iPhone 12'] },
+-    // },
+-
+-    /* Test against branded browsers. */
+-    // {
+-    //   name: 'Microsoft Edge',
+-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
+-    // },
+-    // {
+-    //   name: 'Google Chrome',
+-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+-    // },
+-  ],
+-
+-  /* Run your local dev server before starting the tests */
+-  // webServer: {
+-  //   command: 'npm run start',
+-  //   url: 'http://127.0.0.1:3000',
+-  //   reuseExistingServer: !process.env.CI,
+-  // },
+-});
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index feaea1f..4174b59 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -1,8 +1,8 @@
+ <!-- <ai-advisor *ngIf="board" [board]="board"></ai-advisor> -->
+-<main *ngIf="boardService.selectedBoard$ | async as board" class="main flex" ondragover="event.preventDefault()">
++<main *ngIf="boardService.selectedBoard$ | async as board" class="main flex" ondragover="event.preventDefault()" data-testid="app-main">
+   <div class="column-1 flex column relative">
+-    <board *ngIf="board && board.layout !== 'absolute'" [board]="board"></board>
+-    <board *ngIf="board && board.layout === 'absolute'" [board]="board" [droppable]="10" [container]="board" [executeOnDropReceived]="receiveDrop.bind(this)"></board>
++    <board *ngIf="board && board.layout !== 'absolute'" [board]="board" data-testid="board"></board>
++    <board *ngIf="board && board.layout === 'absolute'" [board]="board" [droppable]="10" [container]="board" [executeOnDropReceived]="receiveDrop.bind(this)" data-testid="board"></board>
+ 
+     <div class="bottom-bar flex g-1 absolute b-0 r-0 justify-content-end align-items-end">
+       <keyboard-listener></keyboard-listener>
+@@ -10,9 +10,9 @@
+   </div>
+   <board-selection-menu class="column-2 flex"></board-selection-menu>
+ </main>
+-<welcome-wizard-manager *ngIf="!isStatusPresent()"></welcome-wizard-manager>
++<welcome-wizard-manager *ngIf="!isStatusPresent()" data-testid="wizard"></welcome-wizard-manager>
+ <ng-container *ngIf="modalService.displayModal$ | async as displayModal">
+-  <modal *ngIf="displayModal.show"></modal>
++  <modal *ngIf="displayModal.show" data-testid="modal-host"></modal>
+ </ng-container>
+ <click></click>
+ <update-checker></update-checker>
+diff --git a/src/app/board-selection-menu/board-selection-menu.component.html b/src/app/board-selection-menu/board-selection-menu.component.html
+index a93d2eb..5f0d709 100644
+--- a/src/app/board-selection-menu/board-selection-menu.component.html
++++ b/src/app/board-selection-menu/board-selection-menu.component.html
+@@ -1,9 +1,9 @@
+ <div class="flex column g-1 p-x-05" *ngIf="open">
+-  <div *ngFor="let board of boardService.boards$ | async" class="board-selection flex column">
++  <div *ngFor="let board of boardService.boards$ | async; let i = index" class="board-selection flex column">
+     <div [class.translucent]="!this.boardService.isSelected(board)" class="priorities flex justify-content-end">
+       <ng-container *ngFor="let priority of availablePriorities">
+         @if (boardService.getTasksHavingPriorityCount$(board, priority) | async; as taskCount) {
+-          <div *ngIf="taskCount > 0" class="flex-child priority-{{ priority }} flex column align-items-center">
++          <div *ngIf="taskCount > 0" class="flex-child priority-{{ priority }} flex column align-items-center" [attr.data-testid]="'prio-count-' + priority">
+             <div>{{ taskCount }}</div>
+             <div>●</div>
+           </div>
+@@ -16,8 +16,8 @@
+       </ng-container>
+     </div>
+ 
+-    <button (click)="selectBoard(board)" class="board-selection available-board" [class.active]="this.boardService.isSelected(board)" [innerHTML]="board.textContent"></button>
++    <button (click)="selectBoard(board)" class="board-selection available-board" [attr.data-testid]="'board-select-' + i" [class.active]="this.boardService.isSelected(board)" [innerHTML]="board.textContent"></button>
+   </div>
+ 
+-  <button (click)="addBoard()" class="add-board m-t-1">Add board +</button>
++  <button (click)="addBoard()" class="add-board m-t-1" data-testid="add-board">Add board +</button>
+ </div>
+diff --git a/src/app/board-toolbar/board-toolbar.component.html b/src/app/board-toolbar/board-toolbar.component.html
+index dcdf314..d2b631a 100644
+--- a/src/app/board-toolbar/board-toolbar.component.html
++++ b/src/app/board-toolbar/board-toolbar.component.html
+@@ -1,8 +1,8 @@
+ <div [class.open]="menuOpen" class="board-menu inline-flex column g-05 align-items-end justify-content-center">
+   <div class="flex g-05 justify-content-center align-items-center">
+     <label class="translucent">Board</label>
+-    <div contenteditable="true" [(ngModel)]="board.textContent" [board]="board" (ngModelChange)="publishChange()" (onTagsChange)="updateBoardTags($event)" class="board-label colored-title"></div>
+-    <span (click)="menuOpen = !menuOpen" [tooltip]="!menuOpen ? 'Open board menu' : ''" [position]="'bottom'" class="board-menu-tab pointer">
++    <div contenteditable="true" [(ngModel)]="board.textContent" [board]="board" (ngModelChange)="publishChange()" (onTagsChange)="updateBoardTags($event)" class="board-label colored-title" data-testid="board-label"></div>
++    <span (click)="menuOpen = !menuOpen" [tooltip]="!menuOpen ? 'Open board menu' : ''" [position]="'bottom'" class="board-menu-tab pointer" data-testid="board-menu-tab">
+       <span *ngIf="!menuOpen">☰</span>
+       <span *ngIf="menuOpen">×</span>
+     </span>
+@@ -20,7 +20,7 @@
+     <div class="flex column g-05" [class.h-0]="!showActions">
+       <label class="translucent m-t-05">Set layout:</label>
+       <div class="flex g-025 align-items-center">
+-        <button class="layout l-{{ layout }}" *ngFor="let layout of getLayouts()" (click)="setLayout(layout)" [class.active]="board.layout === layout" position="top" [tooltip]="layout + ' layout'">{{ getLayoutSymbol(layout) }}</button>
++        <button class="layout l-{{ layout }}" *ngFor="let layout of getLayouts()" (click)="setLayout(layout)" [attr.data-testid]="'layout-' + layout" [class.active]="board.layout === layout" position="top" [tooltip]="layout + ' layout'">{{ getLayoutSymbol(layout) }}</button>
+       </div>
+       <!--
+       <label class="translucent m-t-05">Search:</label>
+@@ -29,7 +29,7 @@
+ -->
+       <div class="flex g-025 align-items-center m-t-1">
+         <!--<button class="show-board-gantt" [tooltip]="'Shows a Gantt chart for the whole board'" position="top" (click)="openGantt()">📊 Show board gantt..</button> -->
+-        <button (click)="addLane()" class="add-lane">➕ Add lane</button>
++        <button (click)="addLane()" class="add-lane" data-testid="add-lane">➕ Add lane</button>
+       </div>
+     </div>
+     <hr class="translucent m-t-1 m-b-1" />
+diff --git a/src/app/board/board.component.html b/src/app/board/board.component.html
+index a9dc0d4..a3aa1f4 100644
+--- a/src/app/board/board.component.html
++++ b/src/app/board/board.component.html
+@@ -3,7 +3,7 @@
+ </div>
+ @if (board.layout === 'absolute') {
+   @for (lane of lanes$ | async; track hashCode($index, lane)) {
+-    <lane class="absolute" [lane]="lane" [board]="this.board" [draggableDir]="lane" [containerEl]="el.nativeElement" [layout]="board.layout"></lane>
++    <lane class="absolute" [lane]="lane" [board]="this.board" [draggableDir]="lane" [containerEl]="el.nativeElement" [layout]="board.layout" [attr.data-testid]="'lane-' + lane.id"></lane>
+   }
+ } @else {
+   <div class="flex column board-column flex-child g-05" *ngFor="let colIndex of getColumnIndexes(board.layout); let last = last">
+@@ -14,7 +14,7 @@
+     <div [droppable]="7" [container]="board" [executeOnDropReceived]="receiveDrop.bind(this, colIndex, board.layout, undefined)" [class.grow]="((getLanesByColumn$(colIndex) | async) ?? []).length == 0" class="dumb-dropzone m-x-1"></div>
+ 
+     <ng-container *ngFor="let lane of getLanesByColumn$(colIndex) | async; trackBy: hashCode; let lastLane = last">
+-      <lane [displayedInFixedLayout]="true" [lane]="lane" [board]="this.board" [draggableDir]="lane" [containerEl]="el.nativeElement" [layout]="board.layout"></lane>
++      <lane [displayedInFixedLayout]="true" [lane]="lane" [board]="this.board" [draggableDir]="lane" [containerEl]="el.nativeElement" [layout]="board.layout" [attr.data-testid]="'lane-' + lane.id"></lane>
+ 
+       <div [droppable]="7" [container]="board" [executeOnDropReceived]="receiveDrop.bind(this, colIndex, board.layout, lane)" class="dumb-dropzone m-x-1" [class.grow]="lastLane"></div>
+     </ng-container>
+diff --git a/src/app/charts/charts.component.html b/src/app/charts/charts.component.html
+index 8398929..0a2f25d 100644
+--- a/src/app/charts/charts.component.html
++++ b/src/app/charts/charts.component.html
+@@ -1,5 +1,5 @@
+ <div class="charts-wrapper" [class.w-100]="chartsOpen">
+-  <div (click)="chartsOpen = !chartsOpen" [tooltip]="!chartsOpen ? 'Open board charts' : ''" [position]="'bottom'" class="pointer flex g-05 justify-content-end">
++  <div (click)="chartsOpen = !chartsOpen" [tooltip]="!chartsOpen ? 'Open board charts' : ''" [position]="'bottom'" class="pointer flex g-05 justify-content-end" data-testid="charts-toggle">
+     <label class="half-translucent pointer">Charts</label>
+     <span *ngIf="!chartsOpen">📈</span>
+     <span *ngIf="chartsOpen">×</span>
+diff --git a/src/app/gantt-button/gantt-button.component.html b/src/app/gantt-button/gantt-button.component.html
+index d0868e4..037a358 100644
+--- a/src/app/gantt-button/gantt-button.component.html
++++ b/src/app/gantt-button/gantt-button.component.html
+@@ -1,4 +1,4 @@
+-<span (click)="openGantt()" [tooltip]="'Shows a Gantt chart for the whole board'" class="pointer"> <span class="half-translucent">Gantt</span>&nbsp;<span>📊</span> </span>
++<span (click)="openGantt()" [tooltip]="'Shows a Gantt chart for the whole board'" class="pointer" data-testid="gantt-open"> <span class="half-translucent">Gantt</span>&nbsp;<span>📊</span> </span>
+ <ng-template #gantt>
+   <gantt [tasks]="getGanttTasks$() | async" [board]="board"></gantt>
+ </ng-template>
+diff --git a/src/app/gantt/gantt.component.html b/src/app/gantt/gantt.component.html
+index 7151045..10f299a 100644
+--- a/src/app/gantt/gantt.component.html
++++ b/src/app/gantt/gantt.component.html
+@@ -10,9 +10,9 @@
+ <div class="lines grow flex column">
+   <div class="flex g-05 align-items-center">
+     <label class="translucent">View</label>
+-    <button (click)="selectView('months')" [class.active]="selectedView === 'months'">Months</button>
+-    <button (click)="selectView('days')" [class.active]="selectedView === 'days'">Days</button>
+-    <button (click)="selectView('hours')" [class.active]="selectedView === 'hours'">Hours</button>
++    <button (click)="selectView('months')" [class.active]="selectedView === 'months'" data-testid="gantt-view-months">Months</button>
++    <button (click)="selectView('days')" [class.active]="selectedView === 'days'" data-testid="gantt-view-days">Days</button>
++    <button (click)="selectView('hours')" [class.active]="selectedView === 'hours'" data-testid="gantt-view-hours">Hours</button>
+   </div>
+ 
+   <div id="gantt" class="gantt-target dark"></div>
+diff --git a/src/app/lane/lane.component.html b/src/app/lane/lane.component.html
+index 671e14b..3a267df 100644
+--- a/src/app/lane/lane.component.html
++++ b/src/app/lane/lane.component.html
+@@ -8,9 +8,9 @@
+   <div class="lane-toolbar flex align-items-center g-05">
+     <div class="grow no-wrap flex align-items-center g-05">
+       @if (lane.searchTextContent) {
+-        <div class="colored-title no-wrap" innerHTML="{{ lane.searchTextContent }}"></div>
++        <div class="colored-title no-wrap" innerHTML="{{ lane.searchTextContent }}" data-testid="lane-title"></div>
+       } @else {
+-        <div class="colored-title no-wrap" contenteditable="true" [(ngModel)]="this.lane.textContent" [board]="board" (ngModelChange)="publishChange()" (onTagsChange)="updateLaneTags($event)"></div>
++        <div class="colored-title no-wrap" contenteditable="true" [(ngModel)]="this.lane.textContent" [board]="board" (ngModelChange)="publishChange()" (onTagsChange)="updateLaneTags($event)" data-testid="lane-title"></div>
+       }
+ 
+       <prioritizer [container]="lane" [allowEmpty]="true" [multipleSelectable]="true" (onPrioritySelected)="togglePriority($event)" [tooltip]="'Set priority filter'"> </prioritizer>
+@@ -19,7 +19,7 @@
+         <span [tooltip]="'Set timeframe filter'" [position]="'top'">📅 </span>
+         <date-picker *ngIf="showDatePicker" [dateDisplayConfig]="board.datesConfig" [showTimeframes]="true" [hideCalendar]="true" [selectedTimeframe]="[lane.startTimeframe, lane.endTimeframe]" (onSetClicked)="setTimeframe($event)" (onCancel)="setTimeframe(undefined)"></date-picker>
+       </span>
+-      <div class="task-count translucent">
++      <div class="task-count translucent" data-testid="lane-count">
+         @if (!isStatic()) {
+           {{ tasksCount | async }} tasks
+         }
+@@ -29,12 +29,12 @@
+     <div class="grow"></div>
+     <div class="task-count translucent m-r-05">
+       @if (isStatic()) {
+-        <span [tooltip]="'This lane is a view'" class="pill pointer">static</span>
++        <span [tooltip]="'This lane is a view'" class="pill pointer" data-testid="static-pill">static</span>
+       }
+     </div>
+ 
+-    <span *ngIf="lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Expand tasks'" class="pointer expand">▼</span>
+-    <span *ngIf="!lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Collapse tasks'" class="pointer expand">▲</span>
++    <span *ngIf="lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Expand tasks'" class="pointer expand" data-testid="lane-collapse">▼</span>
++    <span *ngIf="!lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Collapse tasks'" class="pointer expand" data-testid="lane-collapse">▲</span>
+ 
+     <span [position]="'top'" [tooltip]="'Show child tasks'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" class="small no-grow" *ngIf="isStatic()" (click)="toggleShowChildren()">
+       <span *ngIf="lane.showChildren" class="completed">☑</span>
+@@ -42,11 +42,11 @@
+     </span>
+ 
+     <div class="no-grow relative flex align-items-center">
+-      <div [position]="'top'" [tooltip]="'Open lane menu'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" class="small no-grow" (click)="toggleLaneMenu(); $event.stopPropagation()">☰</div>
++      <div [position]="'top'" [tooltip]="'Open lane menu'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" class="small no-grow" (click)="toggleLaneMenu(); $event.stopPropagation()" data-testid="lane-menu-toggle">☰</div>
+       <lane-menu *ngIf="menuOpen" [lane]="lane" (onClose)="menuOpen = false">
+-        <button class="small no-grow" *ngIf="!isStatic() && !isArchive(lane)" (click)="autoSort()">✨ Auto-sort tasks</button>
++        <button class="small no-grow" *ngIf="!isStatic() && !isArchive(lane)" (click)="autoSort()" data-testid="lane-menu-autosort">✨ Auto-sort tasks</button>
+ 
+-        <button class="small no-grow" *ngIf="getGanttTasks$() | async" (click)="openGantt()">📊 Show lane Gantt..</button>
++        <button class="small no-grow" *ngIf="getGanttTasks$() | async" (click)="openGantt()" data-testid="lane-menu-gantt">📊 Show lane Gantt..</button>
+ 
+         <button class="small no-grow" *ngIf="!isStatic() && !isArchive(lane)" (click)="archiveDones()">📁 Archive dones</button>
+         <button class="small no-grow" *ngIf="!isStatic()" (click)="showMoveToBoards = !showMoveToBoards">🚛 Move to board..</button>
+@@ -55,7 +55,7 @@
+             <button class="small w-100 flex-child" *ngIf="otherBoard.id !== board.id" (click)="showMoveToBoards = false; boardService.moveToBoard(board, lane, otherBoard)">{{ otherBoard.textContent }}</button>
+           </ng-container>
+         </div>
+-        <button class="small danger no-grow" *ngIf="(tasks | async)?.length == 0" (click)="deleteLane()">🗑️ Delete lane</button>
++        <button class="small danger no-grow" *ngIf="(tasks | async)?.length == 0" (click)="deleteLane()" data-testid="lane-menu-delete">🗑️ Delete lane</button>
+ 
+         <button class="small no-grow" *ngIf="isStatic() || isArchive(lane)" (click)="toggleShowChildren()">
+           <span *ngIf="lane.showChildren" class="completed">☑</span>
+@@ -68,7 +68,7 @@
+           <span *ngIf="!lane.collapsed">▲ Collapse tasks</span>
+         </button>
+ 
+-        <button *ngIf="!isStatic() && !isArchive(lane)" class="small no-grow new-task" (click)="createNewTask()">➕ New task</button>
++        <button *ngIf="!isStatic() && !isArchive(lane)" class="small no-grow new-task" (click)="createNewTask()" data-testid="lane-menu-new-task">➕ New task</button>
+ 
+         <div [@fadeInOut] class="charts flex">
+           <chart [chartType]="'tasksByStatus'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" [showLegend]="true" class="flex-child"></chart>
+@@ -125,8 +125,8 @@
+     <div [class.non-static-island]="isStatic()" class="lane-task-container flex column">
+       <div [droppable]="5" [container]="lane" [executeOnDropReceived]="receiveDropToDumb.bind(this, undefined)" *ngIf="((tasks | async) ?? []).length > 0" class="dumb-dropzone"></div>
+ 
+-      <ng-container *ngFor="let task of tasks | async; trackBy: trackBy">
+-        <task [task]="task" [parent]="lane" [board]="board" [lane]="lane" [draggableDir]="task" [containerEl]="el.nativeElement" [layout]="board.layout" (onDragStart)="interactingWithChildTasks = true" (onDragEnd)="interactingWithChildTasks = false" (onToggleShowNotes)="interactingWithChildTasks = $event" (createNewTask)="createNewTask()" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''"></task>
++      <ng-container *ngFor="let task of tasks | async; trackBy: trackBy; let i = index">
++        <task [attr.data-testid]="'lane-task-' + i" [task]="task" [parent]="lane" [board]="board" [lane]="lane" [draggableDir]="task" [containerEl]="el.nativeElement" [layout]="board.layout" (onDragStart)="interactingWithChildTasks = true" (onDragEnd)="interactingWithChildTasks = false" (onToggleShowNotes)="interactingWithChildTasks = $event" (createNewTask)="createNewTask()" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''"></task>
+ 
+         <div *ngIf="!isPlaceholder(task)" [droppable]="5" [container]="lane" [executeOnDropReceived]="receiveDropToDumb.bind(this, task)" class="dumb-dropzone"></div>
+       </ng-container>
+@@ -134,7 +134,7 @@
+ 
+     <div *ngIf="isStatic()">
+       <div class="static-view flex column">
+-        <task *ngFor="let task of staticTasks | async; trackBy: trackBy" [staticView]="true" [showChildren]="lane.showChildren" [task]="task" (onToggleShowNotes)="interactingWithChildTasks = $event" [parent]="lane" [board]="board" [lane]="lane" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''" [@fadeInOut]></task>
++        <task *ngFor="let task of staticTasks | async; trackBy: trackBy; let i = index" [attr.data-testid]="'lane-task-' + i" [staticView]="true" [showChildren]="lane.showChildren" [task]="task" (onToggleShowNotes)="interactingWithChildTasks = $event" [parent]="lane" [board]="board" [lane]="lane" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''" [@fadeInOut]></task>
+       </div>
+     </div>
+ 
+@@ -142,13 +142,13 @@
+ 
+     <div *ngIf="!isStatic()" class="lane-toolbar flex g-05">
+       <div class="grow"></div>
+-      <button class="small no-grow new-task" (click)="createNewTask()">
++      <button class="small no-grow new-task" (click)="createNewTask()" data-testid="new-task-bottom">
+         <span *ngIf="lane.priority" class="warning">⚠</span>
+         ➕ New task
+       </button>
+     </div>
+   } @else {
+-    <span (click)="toggleCollapse()" class="inline-block pointer" [tooltip]="'Expand'">...</span>
++    <span (click)="toggleCollapse()" class="inline-block pointer" [tooltip]="'Expand'" data-testid="lane-collapse">...</span>
+   }
+ </div>
+ 
+diff --git a/src/app/modal/modal.component.html b/src/app/modal/modal.component.html
+index 7ba84bc..589be31 100644
+--- a/src/app/modal/modal.component.html
++++ b/src/app/modal/modal.component.html
+@@ -1,4 +1,4 @@
+-<div class="modal-content flex column" [class]="size">
+-  <span class="close pointer absolute top right big p-05" (click)="closeModal()">×</span>
++<div class="modal-content flex column" [class]="size" data-testid="modal-content">
++  <span class="close pointer absolute top right big p-05" (click)="closeModal()" data-testid="modal-close">×</span>
+   <ng-container *ngTemplateOutlet="modalService.modalContent$ | async"></ng-container>
+ </div>
+diff --git a/src/app/notes/notes.component.html b/src/app/notes/notes.component.html
+index daa21af..8d23b89 100644
+--- a/src/app/notes/notes.component.html
++++ b/src/app/notes/notes.component.html
+@@ -1,3 +1,3 @@
+ <div class="notes">
+-  <textarea rows="5" class="w-100" [ngModel]="notes" (ngModelChange)="emitNotes($event)" placeholder="Add notes"></textarea>
++  <textarea rows="5" class="w-100" data-testid="notes-area" [ngModel]="notes" (ngModelChange)="emitNotes($event)" placeholder="Add notes"></textarea>
+ </div>
+diff --git a/src/app/search/search.component.html b/src/app/search/search.component.html
+index 02d1a5d..f0af70f 100644
+--- a/src/app/search/search.component.html
++++ b/src/app/search/search.component.html
+@@ -1,5 +1,5 @@
+ <div class="flex column">
+-  <input #input [(ngModel)]="searchPhrase" (ngModelChange)="change()" (click)="change()" (focus)="onFocus()" (blur)="onBlur()" placeholder="Search tasks.." class="search-input" />
++  <input #input [(ngModel)]="searchPhrase" (ngModelChange)="change()" (click)="change()" (focus)="onFocus()" (blur)="onBlur()" placeholder="Search tasks.." class="search-input" data-testid="search-input" />
+ 
+-  <span *ngIf="matchNumber" class="search-matches"> {{ matchNumber }} match{{ matchNumber !== 1 ? 'es' : '' }} </span>
++  <span *ngIf="matchNumber" class="search-matches" data-testid="search-matches"> {{ matchNumber }} match{{ matchNumber !== 1 ? 'es' : '' }} </span>
+ </div>
+diff --git a/src/app/task/task.component.html b/src/app/task/task.component.html
+index a86da1d..22a50b4 100644
+--- a/src/app/task/task.component.html
++++ b/src/app/task/task.component.html
+@@ -1,4 +1,4 @@
+-<div class="task-wrapper g-05" [droppable]="3" [container]="task" [executeOnDropReceived]="receiveDrop.bind(this)" [class.editor-active]="this.editorActive" [class.selected]="this.selected" [class]="this.task.status" [class.recurrence-child]="isRecurringTaskChild(task)" [class.project]="isProject(task)" [style]="this.task.priority === 4 ? 'font-weight: bolder' : ''" (click)="clickTask()">
++<div class="task-wrapper g-05" [attr.data-testid]="'task-' + task.id" [droppable]="3" [container]="task" [executeOnDropReceived]="receiveDrop.bind(this)" [class.editor-active]="this.editorActive" [class.selected]="this.selected" [class]="this.task.status" [class.recurrence-child]="isRecurringTaskChild(task)" [class.project]="isProject(task)" [style]="this.task.priority === 4 ? 'font-weight: bolder' : ''" (click)="clickTask()">
+   <div class="task-main-controls flex g-05 align-items-center">
+     <div [tooltip]="'Drag'" *ngIf="!isStaticView() && !isPlaceholder() && !isRecurringTaskChild(task)" class="drag-handle translucent" drag-on-this="true" draggable="true">⋮</div>
+ 
+@@ -20,7 +20,7 @@
+     } @else if (task.searchTextContent) {
+       <div class="task-text-content" innerHTML="{{ task.searchTextContent }}"></div>
+     } @else {
+-      <div class="task-text-content grow" [class.placeholder]="isPlaceholder()" #editor contenteditable="true" [preventEvents]="!editorActive" [board]="board" [(ngModel)]="task.textContent" (ngModelChange)="publishChange()" (onTagsChange)="updateTaskTags($event)"></div>
++      <div class="task-text-content grow" [class.placeholder]="isPlaceholder()" #editor contenteditable="true" data-testid="task-text" [preventEvents]="!editorActive" [board]="board" [(ngModel)]="task.textContent" (ngModelChange)="publishChange()" (onTagsChange)="updateTaskTags($event)"></div>
+     }
+ 
+     <div class="grow"></div>
+@@ -29,14 +29,14 @@
+     </span>
+     <similar-arrows *ngIf="showArrows" [source]="this" [destinations]="getSimilarTasksComponents(task)"></similar-arrows>
+     <div *ngIf="!enableGanttView" class="task-toolbar relative flex align-items-center g-025">
+-      <span class="task-archive pointer" *ngIf="!isPlaceholder()" [tooltip]="'Archive this task'" [position]="'top'" (click)="archive(task)"> 📁 </span>
+-      <span *ngIf="!isPlaceholder() && task.children.length === 0" [class.selected]="(task.gantt?.startDate || task.gantt?.endDate) && task.gantt?.showData !== false" class="select-dates pointer" (click)="openDatePicker()">
++      <span class="task-archive pointer" *ngIf="!isPlaceholder()" [tooltip]="'Archive this task'" data-testid="task-archive" [position]="'top'" (click)="archive(task)"> 📁 </span>
++      <span *ngIf="!isPlaceholder() && task.children.length === 0" [class.selected]="(task.gantt?.startDate || task.gantt?.endDate) && task.gantt?.showData !== false" class="select-dates pointer" data-testid="task-dates" (click)="openDatePicker()">
+         <span [tooltip]="'Set start/end dated'" [position]="'top'">📅</span>
+         <date-picker *ngIf="showDatePicker" [dateDisplayConfig]="board.datesConfig" [showRecurrences]="true" [startDate]="fromIsoString(task.gantt?.startDate)" [endDate]="fromIsoString(task.gantt?.endDate)" [selectedRecurrence]="task.gantt?.recurrence" (onSetClicked)="setDates($event)" (onCancel)="setDates(undefined)" (onClose)="showDatePicker = false"></date-picker>
+       </span>
+ 
+       <!-- <span *ngIf="!isPlaceholder() && !isRecurringTaskChild(task)" [tooltip]="'Toggle show in Gantt chart'" [position]="'top'" [class.selected]="task.includeInGantt" (click)="toggleShowInGantt()" class="show-in-gantter pointer"> 📊 </span> -->
+-      <span class="task-notes pointer" *ngIf="!isPlaceholder()" [tooltip]="task.notes && task.notes.length > 0 ? task.notes : 'Create task notes'" [position]="'top'" (click)="toggleShowNotes()" [class.selected]="task.notes && task.notes.length > 0" [class.open]="showNotes"> 🗒️ </span>
++      <span class="task-notes pointer" *ngIf="!isPlaceholder()" data-testid="task-notes-toggle" [tooltip]="task.notes && task.notes.length > 0 ? task.notes : 'Create task notes'" [position]="'top'" (click)="toggleShowNotes()" [class.selected]="task.notes && task.notes.length > 0" [class.open]="showNotes"> 🗒️ </span>
+       <notes [notes]="task.notes" (onNoteChanged)="storeNotes($event)" *ngIf="showNotes"></notes>
+     </div>
+   </div>
+diff --git a/src/app/update-checker/update-checker.component.html b/src/app/update-checker/update-checker.component.html
+index c88db63..11a2ac5 100644
+--- a/src/app/update-checker/update-checker.component.html
++++ b/src/app/update-checker/update-checker.component.html
+@@ -1,4 +1,4 @@
+-<div *ngIf="response && response.needsUpdate" class="flex column m-b-2">
++<div *ngIf="response && response.needsUpdate" class="flex column m-b-2" data-testid="update-toaster">
+   <div class="flex align-items-center g-1">
+     <logo [size]="2"></logo>
+     <span
+diff --git a/src/app/welcome-wizard-manager/welcome-wizard-manager.component.html b/src/app/welcome-wizard-manager/welcome-wizard-manager.component.html
+index bd5dd8b..eb0741f 100644
+--- a/src/app/welcome-wizard-manager/welcome-wizard-manager.component.html
++++ b/src/app/welcome-wizard-manager/welcome-wizard-manager.component.html
+@@ -2,9 +2,9 @@
+   <div class="m-b-1">
+     <div class="title flex align-items-center justify-content-center g-1">
+       <logo></logo>
+-      <h1>Welcome to trep-tracker</h1>
++      <h1 data-testid="wiz-title">Welcome to trep-tracker</h1>
+     </div>
+-    <h3 class="text-center">{{ version }}</h3>
++    <h3 class="text-center" data-testid="wiz-version">{{ version }}</h3>
+   </div>
+ 
+   <div class="body">
+@@ -26,10 +26,10 @@
+                 Choose existing status file
+             </button>-->
+       <h2 class="flex justify-content-center m-y-1">
+-        <button (click)="setupDemoBoard()">Try with a demo board</button>
++        <button data-testid="wiz-demo" (click)="setupDemoBoard()">Try with a demo board</button>
+       </h2>
+       <h4 class="flex justify-content-center">
+-        <button (click)="createNewStatusFile()">Create a new status file</button>
++        <button data-testid="wiz-new" (click)="createNewStatusFile()">Create a new status file</button>
+       </h4>
+ 
+       <input id="status-chooser" type="file" #fileInput (change)="openStatusFile($event)" accept=".trptrk" hidden />
+diff --git a/tests/trep-tracker.spec.ts b/tests/trep-tracker.spec.ts
+deleted file mode 100644
+index 5976a5c..0000000
+--- a/tests/trep-tracker.spec.ts
++++ /dev/null
+@@ -1,611 +0,0 @@
+-import{ test, expect, Locator, Page }from'@playwright/test';
+-import{ statusValues }from'../src/types/constants';
+-import Chart from'chart.js/auto';
+-
+-const text = 'Hello World!';
+-const mention = 'mention';
+-let lanes;
+-
+-let firstLane: Locator | undefined ;
+-let firstTask: Locator | undefined;
+-let menu
+-let board
+-let boardMenu: Locator | undefined;
+-
+-const nOfTasks = 2;
+-const writeDelay = 5;
+-
+-test.describe.configure( { mode: 'parallel' } );
+-
+-test.beforeEach( async( { page } ) => {
+-  // setup the board, create some tasks
+-  await page.goto( 'http://localhost:4200' ); 
+-
+-  board = page.locator( 'board' );
+-  lanes = page.locator( 'lane' );
+-
+-  firstLane = lanes.first();
+-  firstTask = page.locator( 'task', {hasText: new RegExp( `${text} 0` ) } ).first();
+-  menu = page.locator( 'board-selection-menu' );
+-
+-  boardMenu = page.locator( '.board-menu-tab' )
+-  const modal = page.locator( 'modal' );
+-  // Assert that the modal is visible
+-  await expect( modal ).toBeVisible();
+-  await page.click( 'text=Create a new status file' );
+-  
+-  // there is a lane
+-  await page.waitForSelector( 'lane' );
+-  expect( await lanes.count() ).toBe( 1 );
+-
+-  // Drag lane to center
+-  await drag( page, firstLane!.locator( '.lane.drag-handle' ), 300, 400, false )
+-
+-  for( let k=0; k<nOfTasks; k++ ){
+-    await addTask( page, k )
+-  }
+-  expect( await page.locator( 'task' ).count() ).toBe( nOfTasks )
+-} );
+-
+-test.describe.parallel( 'Trep Tracker Tasks & lanes - ', () => {
+-  test( 'Task move, indent, outdent', async( { page } ) => {
+-
+-    // switch position
+-    await page.keyboard.press( 'Control+Shift+ArrowDown' );
+-    await expect( page.locator( 'task' ).nth( 1 ) ).toHaveText( new RegExp( text ) );
+-    await page.keyboard.press( 'Control+Shift+ArrowUp' );
+-    await expect( page.locator( 'task' ).nth( 0 ) ).toHaveText( new RegExp( text ) );
+-    await page.keyboard.press( 'Control+Shift+ArrowDown' );
+-
+-    // Child + remove
+-    await page.keyboard.press( 'Control+ArrowRight', {delay:200} );
+-    await expect( page.locator( '.child' ) ).toHaveText( new RegExp( text ) );
+-    await page.keyboard.press( 'Control+ArrowLeft' );
+-    expect( await page.locator( '.child' ).count() ).toBe( 0 )
+-
+-    await page.keyboard.press( 'Control+Shift+ArrowUp' );
+-  } );
+-
+-  test( 'Task drag & Lane resize', async( { page } ) => {
+-    const handle = getTaskByContent( page, 0 ).locator( '[draggable="true"]' ).first();
+-    await drag( page, handle, 100, 100, true );
+-    expect( await lanes.count() ).toBe( 2 )
+-    expect( await firstLane!.locator( 'task' ).count() ).toBe( nOfTasks - 1 )
+-
+-    const handle2 = getTaskByContent( page, 1 ).locator( '[draggable="true"]' ).first();
+-    await drag( page, handle2, -200, -100, true );
+-    expect( await lanes.count() ).toBe( 3 )
+-
+-    // drag second over first one
+-    const handle3 = getTaskByContent( page, 0 ).locator( '[draggable="true"]' ).first();
+-    await drag( page, handle3, -200, -100, true, getTaskByContent( page, 1 ) );
+-    expect( await lanes.count() ).toBe( 3 )
+-    expect( await page.locator( '.child' ).count() ).toBe( 1 )
+-    // remove child
+-    await getTaskByContent( page, 0 ).click()
+-    await page.keyboard.press( 'Control+ArrowLeft' );
+-    expect( await page.locator( '.child' ).count() ).toBe( 0 )
+-
+-    // resize
+-    const l = page.locator( 'lane' ).nth( 2 );
+-    const bb = await l.boundingBox()
+-    if( !bb )return;
+-
+-    const curWidth = bb?.width ;
+-    page.mouse.move( bb?.x + bb?.width - 3, bb?.y + bb?.height - 3 )
+-    page.mouse.down();
+-    await page.mouse.move( bb?.x + bb?.width + 100, bb?.y + bb?.height - 3 );
+-    const bb2 = await l.boundingBox();
+-    if( !bb2 ){ return }
+-    expect( bb2.width ).toBeGreaterThan( curWidth )
+-
+-  } )
+-
+-  test( 'Task notes', async( { page } ) => {
+-    // Notes
+-    const notesToggle = firstTask!.locator( '.task-notes' ).first();
+-    await notesToggle.click();
+-    const notes = firstTask!.locator( 'notes' );
+-    await expect( notes ).toBeVisible();
+-    await notes.click();
+-    await page.keyboard.type( text, {delay:writeDelay} );
+-    const toCkech = await notes.locator( 'textarea' ).inputValue();
+-    expect( toCkech ).toContain( text );
+-    await notesToggle.click();
+-    await expect( notes ).toBeHidden();
+-    await notesToggle.click();
+-    await expect( notes ).toBeVisible();
+-    const toCkech2 = await notes.locator( 'textarea' ).inputValue();
+-    expect( toCkech2 ).toContain( text );
+-  } );
+-  test( 'Task priority', async() => {
+-    // priority
+-    expect( await firstTask!.locator( '.priority-1' ).count() ).toBe( 1 )
+-    const prioritizer = firstTask!.locator( 'prioritizer' ).first();
+-    await prioritizer.click(); // expand
+-    expect( await prioritizer.locator( '.priority' ).count() ).toBe( 5 )
+-    await prioritizer.locator( '.cancel' ).click();
+-    expect( await firstTask!.locator( '.priority-1' ).count() ).toBe( 1 )
+-    await prioritizer.click(); // expand
+-    expect( await prioritizer.locator( '.priority' ).count() ).toBe( 5 )
+-    await prioritizer.locator( '.priority-4' ).click();
+-    expect( await firstTask!.locator( '.priority-4' ).count() ).toBe( 1 )
+-    expect( await prioritizer.locator( '.priority' ).count() ).toBe( 0 )
+-
+-    expect( await menu.locator( '.priority-4 div', {hasText:"1"} ).count() ).toBe( 1 )
+-
+-  } );
+-  test( 'Task status', async( { page } ) => {
+-    await setTaskStatus( firstTask!, page, 'status-completed' );
+-  } );
+-
+-  test( 'Task archive', async( { page } ) => {
+-    // archive
+-    /*
+-    await firstTaskStatus!.click(); // expand
+-    await firstTaskStatus!.locator( '.status-archived' ).click();
+-    */
+-    await firstTask?.hover();
+-    await firstTask?.locator( '.task-archive' ).click();
+-
+-    const archive = page.locator( 'lane', {hasText: /Archive/} ).first();
+-    await expect( archive ).toBeVisible();
+-    expect( await archive.locator( 'task' ).count() ).toBe( 0 )
+-
+-    await expect( archive.locator( '.task-count' ).first() ).toHaveText( "1 tasks" )
+-
+-    await page.locator( 'lane', {hasText: /Archive/} ).locator( '.expand' ).click();
+-
+-    expect( await archive.locator( 'task' ).count() ).toBe( 1 )
+-
+-    // unarchive
+-    const archived = archive.locator( 'task' )
+-    /*
+-    await archived.locator( 'status' ).first().click();
+-    await archived.locator( '.status-waiting' ).first().click();
+-    expect( await archive.locator( 'task' ).count() ).toBe( 0 )
+-    expect( await firstLane!.locator( 'task' ).count() ).toBe( nOfTasks )
+-    */
+-    // unarchive by drag
+-    await archived.locator( ".drag-handle" ).hover();
+-    await page.mouse.down();
+-    await firstLane!.hover()
+-    await page.mouse.up();
+-    await page.locator( "task" ).nth( 1 ).click(); 
+-
+-    await page.keyboard.press( 'Control+ArrowLeft', {delay:200} );
+-
+-    // Board task counts
+-    expect( await archive.locator( 'task' ).count() ).toBe( 0 )
+-
+-    const menu = page.locator( 'board-selection-menu' );
+-    expect( await menu.locator( '.priority-1 div', {hasText:`${nOfTasks}`} ).count() ).toBe( 1 )
+-  } );
+-  test( 'Task tagz', async( { page } ) => {
+-    // add couple tasks
+-    for( let k=nOfTasks; k<nOfTasks + 2; k++ ){
+-      await addTask( page, k )
+-    }
+-
+-    // add first mention w @ char
+-    const firstTask = getTaskByContent( page, 0 )
+-    await firstTask.click()
+-    for( let k= 0; k<text.length; k++ ){
+-      await page.keyboard.press( 'ArrowRight' );
+-    }
+-    await firstTask.pressSequentially( ` @${mention}` )
+-    expect( await page.locator( '.tag-orange' ).count() ).toBe( 1 )
+-
+-    // add second w/o @char
+-    const secondTask = getTaskByContent( page, 1 )
+-    await secondTask.click()
+-    for( let k= 0; k<text.length; k++ ){
+-      await page.keyboard.press( 'ArrowRight' );
+-    }
+-    await secondTask.pressSequentially( ` ${mention}` )
+-
+-    expect( await page.locator( '.tag-orange' ).count() ).toBe( 2 )
+-
+-    await boardMenu!.click();
+-    // create static lane, should show 2 tasks
+-    await page.locator( '.add-lane' ).click();
+-    //await page.waitForSelector('lane:nth-child(1)');
+-    const staticLaneLoc = page.locator( 'lane' ).nth( 1 );
+-    await staticLaneLoc.locator( '.colored-title' ).click();
+-    await page.keyboard.press( `Control+A` )
+-    await page.keyboard.type( ` ${mention}`, {delay: writeDelay} )
+-
+-    await staticLaneLoc.locator( 'task' ).nth( 1 ).waitFor( {state:'visible'} );
+-
+-    expect( await staticLaneLoc.locator( 'task' ).count() ).toBe( 2 )
+-
+-    // add another tag to task
+-    const thirdTask = getTaskByContent( page, 2 )
+-    await thirdTask.click()
+-    for( let k= 0; k<text.length; k++ ){
+-      await page.keyboard.press( 'ArrowRight' );
+-    }
+-    await thirdTask.pressSequentially( ` ${mention}` )
+-    await staticLaneLoc.locator( 'task' ).nth( 2 ).waitFor( {state:'visible'} );
+-
+-    // static lane should be updated to 3 tasks
+-    expect( await staticLaneLoc.locator( 'task' ).count() ).toBe( 3 )
+-
+-    // set static lane priority to 2
+-    await staticLaneLoc.locator( '.selectable.priority' ).click();
+-    await staticLaneLoc.locator( '.priority.priority-2' ).click();
+-    await page.waitForTimeout( 350 );
+-    expect( await staticLaneLoc.locator( 'task' ).count() ).toBe( 0 )
+-    await firstTask.locator( 'prioritizer' ).click();
+-    await firstTask.locator( '.priority.priority-2' ).click();
+-    await staticLaneLoc.locator( 'task' ).first().waitFor( {state:'visible'} );
+-
+-    expect( await staticLaneLoc.locator( 'task' ).count() ).toBe( 1 )
+-    await page.waitForTimeout( 350 );
+-
+-    // tag restructuring: change @mention to !mention
+-    expect( await page.locator( '.task-text-content', {hasText: new RegExp( '@' + mention )} ).count() ).toBe( 4 )
+-    const fTask = page.locator( 'task' ).first()
+-    await fTask.hover()
+-    await fTask.click()
+-    await page.keyboard.press( `Control+A` )
+-
+-    await fTask.pressSequentially( `Tag refactoring !${mention}` )
+-    await page.waitForTimeout( 1000 );
+-
+-    expect( await page.locator( '.task-text-content', {hasText: new RegExp( '!' + mention )} ).count() ).toBe( 4 )
+-    await fTask.click()
+-    await page.keyboard.press( `Control+A` )
+-
+-    await fTask.pressSequentially( `Tag refactoring #${mention}` )
+-    await page.waitForTimeout( 1000 );
+-    expect( await page.locator( '.task-text-content', {hasText: new RegExp( '#' + mention )} ).count() ).toBe( 4 )
+-
+-  } )
+-
+-  test( 'Board layouts', async( { page } ) => {
+-    // Switch layouts
+-    await boardMenu!.click();
+-
+-    const toolbar = page.locator( 'board-toolbar' );
+-    const layouts = toolbar.locator( '.layout' );
+-    expect( await layouts.count() ).toBe( 5 )
+-    for( let i = 0; i<5; i++ ){
+-      await layouts.nth( i ).click(); //flex1
+-      const count = await lanes.count();
+-
+-      for( let r = 0; r < count; r++ ){
+-        if( i == 0 ){
+-          await expect( lanes.nth( r ) ).toHaveCSS( 'position', 'absolute' )
+-        }else{
+-          await boardMenu!.click();
+-          await expect( lanes.nth( r ) ).not.toHaveCSS( 'position', 'absolute' );
+-          expect( await board.locator( '.board-column' ).count() ).toBe( i )
+-        }
+-      }
+-      expect( await lanes.count() ).toBe( 1 )
+-
+-    }
+-
+-    // search
+-    const search = page.locator( 'search' );
+-    await search.click();
+-    // await search.locator('input').fill(text);
+-    await page.keyboard.type( text, {delay:writeDelay} );
+-
+-    await boardMenu!.click();
+-    const toCkech3 = await search.locator( 'input' ).inputValue();
+-    expect( toCkech3 ).toContain( text );
+-    // expect(await search.locator('span',{hasText:"1 matches"}).count()).toBe(1) TODO fix
+-
+-  } );
+-
+-  test( 'Task - gantt', async( { page } ) => { 
+-    await setDatesForVisibleTasks( page );
+-    //await boardMenu!.click();
+-    //await page.locator( '.show-in-gantter' ).first().click()
+-  
+-    //expect( await page.locator( '.show-in-gantter.selected' ).count() ).toBe( 1 );
+-    await page.locator( 'gantt-button' ).first().click();
+-    expect( await page.locator( 'gantt' ).count() ).toBe( 1 );
+-    expect( await page.locator( '.gantt_row_task' ).count() ).toBe( 2 ); 
+-
+-    await page.locator( '.close.pointer.absolute' ).first().click();
+-    //await page.locator( '.show-in-gantter' ).nth( 1 ).click()
+-    //expect( await page.locator( '.show-in-gantter.selected' ).count() ).toBe( 2 );
+-    await page.locator( 'gantt-button' ).first().click();
+-    expect( await page.locator( '.gantt_row_task' ).count() ).toBe( 2 );
+-
+-    await expect( page.locator( '.gantt_row_task' ).first() ).toHaveText( new RegExp( `${text} ${0}` ) )
+-
+-    // switch tasks
+-    await page.locator( '.gantt_row_task' ).first().hover();
+-    await page.mouse.down();
+-    await page.locator( '.gantt_row_task' ).nth( 1 ).hover();
+-    await page.mouse.up();
+-    await expect( page.locator( '.gantt_row_task' ).first() ).toHaveText( new RegExp( `${text} ${1}` ) )
+-
+-    // move
+-    const ganttBar = page.locator( '.gantt_bar_task' ).first();
+-    const bb = await ganttBar.boundingBox();
+-    if( !bb ){
+-      return;
+-    }
+-    await ganttBar.hover();
+-    await page.mouse.down();
+-    await page.mouse.move( bb.x + 100, bb.y );
+-    await page.mouse.up();
+-    const bb2 = await ganttBar.boundingBox();
+-    expect( bb2?.x ).toBeGreaterThan( bb.x + 50 )
+-
+-    // increase duration
+-    await expect( page.locator( '.gantt_last_cell' ).nth( 1 ) ).toHaveText( /[012]/ )
+-    const dragEl = ganttBar.locator( '.task_end_date' ).first();
+-    const bb3 = await ganttBar.boundingBox();
+-    if( !bb3 ){
+-      return;
+-    }
+-    await ganttBar.hover();
+-    await dragEl.hover( {force:true} );
+-    await page.mouse.down();
+-    await page.mouse.move( bb3.x + 300, bb3.y + bb3.height / 2 );
+-    await page.mouse.up();
+-    await page.waitForTimeout( 400 );
+-
+-    await  expect( ( await page.locator( '.gantt_task_line' ).first().boundingBox() )?.x ).toBeGreaterThan( 200 );
+-
+-  } )
+-
+-  test( 'Board - add new, activate, change name', async( { page } ) => { 
+-    expect( await page.locator( '.available-board' ).count() ).toBe( 1 )
+-    await page.locator( '.add-board' ).click();
+-    expect( await page.locator( '.available-board' ).count() ).toBe( 2 )
+-    await page.locator( '.available-board' ).nth( 1 ).click();
+-    expect( await page.locator( 'task' ).count() ).toBe( 0 )
+-    // change name
+-    await page.locator( '.board-label' ).click();
+-    await page.keyboard.press( 'Control+A' );
+-    await page.keyboard.press( 'Backspace' );
+-    await page.keyboard.type( "My new board", {delay:writeDelay} );
+-    expect( await page.locator( '.board-selection.active', {hasText: /My new board/} ).count() ).toBe( 1 )
+-    await page.click( '.new-task' );
+-    expect( await page.locator( 'task' ).count() ).toBe( 1 )
+-    await page.locator( '.available-board' ).nth( 0 ).click();
+-    expect( await page.locator( 'task' ).count() ).toBe( nOfTasks )
+-  } )
+-
+-  test( 'Board - search', async( { page } ) => {
+-    // await boardMenu!.click();
+-    await page.locator( '.search-input' ).hover();
+-    await page.locator( '.search-input' ).click();
+-    //await page.locator('.search-input').pressSequentially(text);
+-    await page.keyboard.type( text, {delay:writeDelay} );
+-    await page.waitForSelector( '.search-matches' );
+-    await page.waitForTimeout( 200 ); 
+-
+-    await expect( page.locator( '.search-matches' ) ).toHaveText( "2 matches" )
+-  } )
+-
+-  test( 'Task - picker and dates, recurrences', async( { page } ) => {
+-    await setDatesForVisibleTasks( page )
+-    await boardMenu!.click();
+-    await page.locator( '.add-lane' ).last().click();
+-    await expect( page.locator( 'lane' ) ).toHaveCount( 2 );
+-    await page.locator( 'lane' ).last().locator( '.select-dates' ).click();
+-    await expect( page.locator( 'owl-date-time-container' ) ).toHaveCount( 1 );
+-    await page.locator( '.recurrence-option ' ).nth( 3 ).click();
+-    await page.locator( '.owl-dt-control-button-content' ).last().click();
+-    await expect( page.locator( 'lane' ).last().locator( 'task' ) ).toHaveCount( 2 );
+-
+-    await addTask( page, 1 );
+-    let lastTask = page.locator( 'lane' ).first().locator( 'task' ).last();
+-    await setPickerToCurrentYearNextMonth( lastTask, page, 1 );
+-    lastTask = page.locator( 'lane' ).first().locator( '.recurrent-task-container' ).last();
+-
+-    // recurrences: make a task recurrent, complete a recurrence, another one should appear.
+-    await expect( lastTask.locator( '.recurrences-toggle' ) ).toBeVisible();
+-    await expect( lastTask.locator( '.task-recurrence-wrapper task' ) ).toHaveCount( 2 );
+-    const firstRec = lastTask.locator( 'task.child' ).first();
+-    await firstTask!.hover();
+-    await setTaskStatus( firstRec, page, 'status-completed' );
+-    await expect( lastTask.locator( '.task-recurrence-wrapper task' ) ).toHaveCount( 3 );
+-  } )
+-
+-  test( 'Task - projects', async( { page } ) => {
+-    await addTask( page, 1 );
+-
+-    await page.locator( 'task' ).nth( 1 ).click();
+-    await page.keyboard.press( 'Control+ArrowRight', {delay:200} );
+-    await page.locator( 'task' ).nth( 2 ).click();
+-    await page.keyboard.press( 'Control+ArrowRight', {delay:200} );
+-    await page.keyboard.press( 'Control+ArrowLeft', {delay:200} );
+-
+-    // Initially the project is in progress
+-    await expect( page.locator( '.project' ) ).toHaveCount( 1 );
+-    await expect( page.locator( 'task' ).first().locator( '.status' ).nth( 0 ) ).toHaveClass( /status-todo/ );
+-
+-    // change status for a child should put the project 'in progress
+-    await setTaskStatus( page.locator( 'task' ).nth( 1 ), page, 'status-delegated' );
+-    await expect( page.locator( 'task' ).first().locator( '.status' ).nth( 0 ) ).toHaveClass( /status-in-progress/ );
+-
+-    // change status for all the children(2) should put the project in the same status:
+-    await setTaskStatus( page.locator( 'task' ).nth( 2 ), page, 'status-delegated' );
+-    await expect( page.locator( 'task' ).first().locator( '.status' ).nth( 0 ) ).toHaveClass( /status-delegated/ );
+-
+-    // change the status of the first child should return the project 'in progress'
+-    await setTaskStatus( page.locator( 'task' ).nth( 1 ), page, 'status-to-be-delegated' );
+-    await expect( page.locator( 'task' ).first().locator( '.status' ).nth( 0 ) ).toHaveClass( /status-in-progress/ );
+-  } );
+-
+-  test( 'Task - similarity', async( { page } ) => {
+-    await page.waitForTimeout( 1100 ); // time for similarity to be evaluated
+-    const l = page.locator( 'lane' ).first();
+-    const bb = await l.boundingBox()
+-    if( !bb )return;
+-
+-    await page.mouse.move( bb?.x + bb?.width - 3, bb?.y + bb?.height - 3 )
+-    await page.mouse.down();
+-    await page.mouse.move( bb?.x + bb?.width + 300, bb?.y + bb?.height - 3 );
+-    await page.mouse.up();
+-
+-    await expect( page.locator( '.similar-pill' ) ).toHaveCount( 2 );
+-    await expect( page.locator( '.similar-pill' ).first().locator( 'span' ) ).toHaveText( "1 similar (92%)" )
+-
+-    // hover and check arrows
+-    await page.locator( '.similar-pill' ).first().hover();
+-
+-    await page.waitForSelector( '.leader-line' );
+-    await expect( page.locator( '.leader-line' ) ).toHaveCount( 1 );
+-
+-    // add another task, recheck similarities
+-    await addTask( page, 2 );
+-    await page.waitForTimeout( 1300 ); // time for similarity to be evaluated
+-
+-    await expect( page.locator( '.similar-pill' ) ).toHaveCount( 3 );
+-    await expect( page.locator( '.similar-pill' ).first().locator( 'span' ) ).toHaveText( "2 similar (92%)" )
+-    // hover and check arrows
+-    await page.locator( '.similar-pill' ).first().hover();
+-
+-    await page.waitForSelector( '.leader-line' );
+-    await expect( page.locator( '.leader-line' ) ).toHaveCount( 2 );
+-
+-  } );
+-
+-  test( 'Board charts', async( { page } ) => {
+-    await page.locator( 'charts' ).click();
+-    await page.waitForTimeout( 1300 ); // animation
+-    await expect( page.locator( 'chart' ) ).toHaveCount( 4 );
+-    // Verify chart data
+-    let instances = await page.evaluate( async() => {
+-      // @ts-expect-error extract chart instances
+-      const instances = ( window.chart as Chart ).instances;
+-      return instances;
+-    } );
+-    await expect( instances[Object.keys( instances )[0]]._sortedMetasets[0]._dataset.data[0] ).toBe( 2 ); // todos
+-    await expect( instances[Object.keys( instances )[1]]._sortedMetasets[0]._dataset.data[0] ).toBe( 2 ); // prio 1
+-    await expect( instances[Object.keys( instances )[2]]._sortedMetasets[0]._dataset.data[0] ).toBe( undefined ); // tags
+-
+-    await expect( instances[Object.keys( instances )[3]]._sortedMetasets[2]._dataset.data[instances[Object.keys( instances )[3]]._sortedMetasets[2]._dataset.data.length - 1] ).toBe( 2 ); // created bar
+-
+-    await setTaskStatus( firstTask!, page, 'status-completed' );
+-    await page.waitForTimeout( 1300 ); // animation
+-
+-    instances = await page.evaluate( async() => {
+-      // @ts-expect-error extract chart instances
+-      const instances = ( window.chart as Chart ).instances;
+-      return instances;
+-    } );
+-
+-    await expect( instances[Object.keys( instances )[0]]._sortedMetasets[0]._dataset.data[0] ).toBe( 1 ); // todos
+-    await expect( instances[Object.keys( instances )[1]]._sortedMetasets[0]._dataset.data[0] ).toBe( 2 ); // prio 1
+-    await expect( instances[Object.keys( instances )[2]]._sortedMetasets[0]._dataset.data[0] ).toBe( undefined ); // tags
+-    await expect( instances[Object.keys( instances )[3]]._sortedMetasets[2]._dataset.data[instances[Object.keys( instances )[3]]._sortedMetasets[2]._dataset.data.length - 1] ).toBe( 2 ); // created bar
+-    await expect( instances[Object.keys( instances )[3]]._sortedMetasets[3]._dataset.data[instances[Object.keys( instances )[3]]._sortedMetasets[3]._dataset.data.length - 1] ).toBe( 1 ); // completed bar
+-  } )
+-
+-} );
+-
+-async function setDatesForVisibleTasks( page: Page ){
+-  const loc =  page.locator( 'task' );
+-  for( let i = 0; i < await loc.count(); i++ ){
+-    const task = loc.nth( i );
+-    await setPickerToCurrentYearNextMonth( task, page )
+-  }
+-}
+-
+-async function setPickerToCurrentYearNextMonth( task:Locator, page: Page, recurrence?: number ){
+-  const nextMonth = new Date( new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 3 );
+-  await task!.hover();
+-  await expect( task!.locator( '.select-dates' ) ).toBeVisible();
+-
+-  await task!.locator( '.select-dates' ).click();
+-
+-  await page.locator( '.owl-dt-control-content.owl-dt-control-button-content' ).nth( 1 ).click();
+-  await page.locator( '.owl-dt-calendar-cell-content', {hasText: nextMonth.toLocaleString( 'default', { year: 'numeric' } )} ).click();
+-  await page.locator( '.owl-dt-calendar-cell-content', {hasText: nextMonth.toLocaleString( 'default', { month: 'short' } )} ).click();
+-  await page.locator( '.owl-dt-calendar-cell-content', {hasText: new RegExp( `^ ${nextMonth.getDate()} $` )} ).first().click();
+-  await expect( page.locator( '.owl-dt-control-content.owl-dt-container-range-content' ).nth( 0 ) ).toContainText( `${nextMonth.getMonth() + 1}/${nextMonth.getDate()}/${nextMonth.getFullYear()}` )
+-  await expect( page.locator( '.owl-dt-control-content.owl-dt-container-range-content' ).nth( 1 ).locator( '.owl-dt-container-info-value' ) ).toBeEmpty()
+-  await page.locator( '.owl-dt-calendar-cell-content', {hasText: new RegExp( `^ ${nextMonth.getDate()+1} $` )} ).first().click();
+-  await expect( page.locator( '.owl-dt-control-content.owl-dt-container-range-content' ).nth( 1 ) ).toContainText( `${nextMonth.getMonth() + 1}/${nextMonth.getDate()+1}/${nextMonth.getFullYear()}` )
+-  if( recurrence ){
+-    await page.locator( 'owl-date-time-container' ).locator( '.recurrence-option' ).nth( recurrence ).click()
+-  }
+-  await page.locator( '.owl-dt-control-button-content' ).last().click();
+-  if( !recurrence ){
+-    await expect( task.locator( '.dates-n-stuff' ) ).toContainText( `planned` )
+-    await expect( task.locator( '.dates-n-stuff' ) ).toContainText( `${nextMonth.getMonth() + 1}/${nextMonth.getDate()}/${nextMonth.getFullYear()}` )
+-    await expect( task.locator( '.dates-n-stuff' ) ).toContainText( `${nextMonth.getMonth() + 1}/${nextMonth.getDate()+1}/${nextMonth.getFullYear()}` )
+-  }
+-}
+-
+-async function setTaskStatus( task:Locator, page: Page, statusCode: string ){
+-  const status =  task.locator( 'status' ).first()
+-  // status
+-  //expect( await task!.locator( '.status-todo' ).count() ).toBe( 1 )
+-  await page.locator( '.board-menu' ).hover()
+-  await status!.hover()
+-  await status!.click(); // expand
+-  expect( await status!.locator( '.status' ).count() ).toBe( Object.keys( statusValues ).length )
+-  await status!.locator( '.cancel' ).click();
+-  
+-  //expect( await task!.locator( '.status-todo' ).count() ).toBe( 1 )
+-  await page.locator( '.board-menu' ).hover()
+-  await status!.hover()
+-  await status!.click(); // expand
+-  expect( await status!.locator( '.status' ).count() ).toBe( Object.keys( statusValues ).length )
+-  await status!.locator( '.' + statusCode ).click();
+-  expect( await status!.locator( '.' + statusCode ).count() ).toBe( 1 )
+-  expect( await status!.locator( '.status' ).count() ).toBe( 1 )
+-  
+-}
+-
+-function getTaskByContent( page: Page, content: number ): Locator{
+-  return page.locator( 'task:not(.child)', {hasText: new RegExp( `${text} ${content}` )} )
+-}
+-
+-async function addTask( page: Page, k: number ){
+-  await page.click( '.new-task' );
+-  // write on a task
+-  const curTask = page.locator( 'task' ).nth( k );
+-  await curTask.click()
+-  await page.keyboard.press( 'Control+A' );
+-  await page.keyboard.press( 'Backspace' );
+-  await page.keyboard.type( `${text} ${k}`, {delay:writeDelay} );
+-  await expect( curTask ).toHaveText( new RegExp( `${text} ${k}` ) );
+-}
+-
+-async function drag( page: Page, locator: Locator, deltax: number, deltay: number, task: boolean, targetLocator?: Locator ){
+-  const dragHandle = locator;
+-  const box = await dragHandle.boundingBox();
+-  if( box ){
+-    // Click and hold at the center of the element
+-    await dragHandle.hover();
+-    // await dragHandle.click();
+-    await page.mouse.down();
+-  
+-    if( targetLocator ){
+-      await targetLocator.hover();
+-      await page.mouse.up();
+-
+-    }else{
+-      const oldX = box.x
+-      const oldY = box.y
+-
+-      await page.mouse.move( box.x + deltax, box.y + deltay );
+-      // Release the mouse button
+-      await page.mouse.up();
+-  
+-      // Optional: Verify the new position
+-      const newBox = await dragHandle.boundingBox();
+-      if( deltax > 0 && deltay > 0 ){
+-        expect( ( newBox?.x ?? 0 ) ).toBeGreaterThan( oldX + deltax/2 ); // Allow some small deviation
+-        expect( ( newBox?.y ?? 0 ) ).toBeGreaterThan( oldY + deltay/2 ); // Allow some small deviation
+-      }
+-
+-    }
+-
+-  }else{
+-    throw new Error( 'Element not found or not visible' );
+-  }
+-}
+\ No newline at end of file
+diff --git a/tsconfig.spec.json b/tsconfig.spec.json
+deleted file mode 100644
+index be7e9da..0000000
+--- a/tsconfig.spec.json
++++ /dev/null
+@@ -1,14 +0,0 @@
+-/* To learn more about this file see: https://angular.io/config/tsconfig. */
+-{
+-  "extends": "./tsconfig.json",
+-  "compilerOptions": {
+-    "outDir": "./out-tsc/spec",
+-    "types": [
+-      "jasmine"
+-    ]
+-  },
+-  "include": [
+-    "src/**/*.spec.ts",
+-    "src/**/*.d.ts"
+-  ]
+-}

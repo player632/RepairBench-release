@@ -1,0 +1,141 @@
+diff --git a/src/components/global-setting/block.vue b/src/components/global-setting/block.vue
+index 977fce7..53b97b7 100644
+--- a/src/components/global-setting/block.vue
++++ b/src/components/global-setting/block.vue
+@@ -45,7 +45,7 @@
+     value: unknown;
+   }) => {
+     if (key === 'colorWeak') {
+-      document.body.style.filter = value ? 'none' : 'invert(80%)';
++      document.body.style.filter = value ? 'invert(80%)' : 'none';
+     }
+     if (key === 'menuFromServer' && value) {
+       await appStore.fetchServerMenuConfig();
+diff --git a/src/components/message-box/index.vue b/src/components/message-box/index.vue
+index 21bde27..f0686d0 100644
+--- a/src/components/message-box/index.vue
++++ b/src/components/message-box/index.vue
+@@ -78,8 +78,8 @@
+   }
+   async function readMessage(data: MessageListType) {
+     const ids = data.map((item) => item.id);
+-    fetchSourceData();
+     await setMessageStatus({ ids });
++    fetchSourceData();
+   }
+   const renderList = computed(() => {
+     return messageData.messageList.filter(
+diff --git a/src/components/navbar/index.vue b/src/components/navbar/index.vue
+index 20de6cb..17cfc0e 100644
+--- a/src/components/navbar/index.vue
++++ b/src/components/navbar/index.vue
+@@ -249,7 +249,7 @@
+       bubbles: true,
+       cancelable: true,
+     });
+-    triggerBtn.value.dispatchEvent(event);
++    refBtn.value.dispatchEvent(event);
+   };
+   const handleLogout = () => {
+     logout();
+diff --git a/src/components/tab-bar/tab-item.vue b/src/components/tab-bar/tab-item.vue
+index 503f8eb..816374c 100644
+--- a/src/components/tab-bar/tab-item.vue
++++ b/src/components/tab-bar/tab-item.vue
+@@ -136,15 +136,15 @@
+       copyTagList.splice(1, props.index - 1);
+ 
+       tabBarStore.freshTabList(copyTagList);
+-      if (currentRouteIdx > index) {
++      if (currentRouteIdx < index) {
+         router.push({ name: itemData.name });
+       }
+     } else if (value === Eaction.right) {
+       const currentRouteIdx = findCurrentRouteIndex();
+-      copyTagList.splice(props.index);
++      copyTagList.splice(props.index + 1);
+ 
+       tabBarStore.freshTabList(copyTagList);
+-      if (currentRouteIdx < index) {
++      if (currentRouteIdx > index) {
+         router.push({ name: itemData.name });
+       }
+     } else if (value === Eaction.others) {
+diff --git a/src/hooks/user.ts b/src/hooks/user.ts
+index cf3676c..107358c 100644
+--- a/src/hooks/user.ts
++++ b/src/hooks/user.ts
+@@ -14,6 +14,7 @@ export default function useUser() {
+       name: logoutTo && typeof logoutTo === 'string' ? logoutTo : 'login',
+       query: {
+         ...router.currentRoute.value.query,
++        redirect: currentRoute.name as string,
+       },
+     });
+   };
+diff --git a/src/layout/default-layout.vue b/src/layout/default-layout.vue
+index ae7311d..f50f046 100644
+--- a/src/layout/default-layout.vue
++++ b/src/layout/default-layout.vue
+@@ -89,7 +89,7 @@
+   watch(
+     () => userStore.role,
+     (roleValue) => {
+-      if (roleValue && permission.accessRouter(route))
++      if (roleValue && !permission.accessRouter(route))
+         router.push({ name: 'notFound' });
+     }
+   );
+diff --git a/src/store/modules/tab-bar/index.ts b/src/store/modules/tab-bar/index.ts
+index 5560ad3..6072e1d 100644
+--- a/src/store/modules/tab-bar/index.ts
++++ b/src/store/modules/tab-bar/index.ts
+@@ -59,7 +59,7 @@ const useAppStore = defineStore('tabBar', {
+       this.cacheTabList.clear();
+       // 要先判断ignoreCache
+       this.tagList
+-        .filter((el) => el.ignoreCache)
++        .filter((el) => !el.ignoreCache)
+         .map((el) => el.name)
+         .forEach((x) => this.cacheTabList.add(x));
+     },
+diff --git a/src/views/dashboard/workplace/components/popular-content.vue b/src/views/dashboard/workplace/components/popular-content.vue
+index 3025876..f7c46df 100644
+--- a/src/views/dashboard/workplace/components/popular-content.vue
++++ b/src/views/dashboard/workplace/components/popular-content.vue
+@@ -96,6 +96,7 @@
+   const typeChange = (contentType: string) => {
+     fetchData(contentType);
+   };
++  fetchData('text');
+ </script>
+ 
+ <style scoped lang="less">
+diff --git a/src/views/list/search-table/index.vue b/src/views/list/search-table/index.vue
+index 178a0d7..826338b 100644
+--- a/src/views/list/search-table/index.vue
++++ b/src/views/list/search-table/index.vue
+@@ -195,7 +195,7 @@
+         data-testid="st-table"
+       >
+         <template #index="{ rowIndex }">
+-          <span data-testid="st-row-index">{{ rowIndex + 1 }}</span>
++          <span data-testid="st-row-index">{{ rowIndex + 1 + (pagination.current - 1) * pagination.pageSize }}</span>
+         </template>
+         <template #contentType="{ record }">
+           <a-space>
+diff --git a/src/views/login/components/login-form.vue b/src/views/login/components/login-form.vue
+index 74729b9..27f2e05 100644
+--- a/src/views/login/components/login-form.vue
++++ b/src/views/login/components/login-form.vue
+@@ -115,8 +115,8 @@
+         const { username, password } = values;
+         // 实际生产环境需要进行加密存储。
+         // The actual production environment requires encrypted storage.
+-        loginConfig.value.username = rememberPassword ? '' : username;
+-        loginConfig.value.password = rememberPassword ? '' : password;
++        loginConfig.value.username = rememberPassword ? username : '';
++        loginConfig.value.password = rememberPassword ? password : '';
+       } catch (err) {
+         errorMessage.value = (err as Error).message;
+       } finally {

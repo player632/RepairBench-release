@@ -1,0 +1,148 @@
+/**
+* The MIT License (MIT)
+*
+* Igor Zinken 2020-2026 - https://www.igorski.nl
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy of
+* this software and associated documentation files (the "Software"), to deal in
+* the Software without restriction, including without limitation the rights to
+* use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+* the Software, and to permit persons to whom the Software is furnished to do so,
+* subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+* FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+* COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+* IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+* CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+<template>
+    <modal class="resize-document">
+        <template #header>
+            <h2 class="component__title">{{ t( "resizeDocument" ) }}</h2>
+        </template>
+        <template #content>
+            <div class="form" @keyup.enter="save()">
+                <div class="wrapper wrapper--toggle">
+                    <label>{{ t( "maintainAspectRatio" ) }}</label>
+                    <toggle-button
+                        v-model="maintainRatio"
+                        name="ratio"
+                    />
+                </div>
+                <dimensions-formatter
+                    v-model="dimensions"
+                />
+            </div>
+        </template>
+        <template #actions>
+            <button
+                type="button"
+                class="button"
+                @click="save()"
+            >{{ t( "save" ) }}</button>
+            <button
+                type="button"
+                class="button"
+                @click="closeModal()"
+            >{{ t( "cancel" ) }}</button>
+        </template>
+    </modal>
+</template>
+
+<script lang="ts">
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapGetters, mapMutations } from "vuex";
+import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import Modal from "@/components/modal/modal.vue";
+import DimensionsFormatter from "@/components/ui/dimensions-formatter/dimensions-formatter.vue";
+import { DEFAULT_DPI, DEFAULT_UNIT } from "@/definitions/document-presets";
+import { resizeDocument } from "@/model/actions/document-resize";
+import messages from "./messages.json";
+
+export default {
+    components: {
+        Modal,
+        ToggleButton,
+        DimensionsFormatter,
+    },
+    data: () => ({
+        dimensions: {
+            width: 0,
+            height: 0,
+            dpi: DEFAULT_DPI,
+            unit: DEFAULT_UNIT,
+        },
+        ratio: 0,
+        syncLock: false,
+        maintainRatio: true,
+    }),
+    setup(): { t: ComposerTranslation } {
+        const { t } = useI18n({ messages });
+        return { t };
+    },
+    computed: {
+        ...mapGetters([
+            "activeDocument",
+        ]),
+        width(): number {
+            return this.dimensions.width;
+        },
+        height(): number {
+            return this.dimensions.height;
+        },
+    },
+    created(): void {
+        const { width, height, meta } = this.activeDocument;
+
+        this.dimensions.width  = width;
+        this.dimensions.height = height;
+        this.dimensions.dpi = meta.dpi;
+        this.dimensions.unit = meta.unit;
+
+        this.ratio = width / height;
+
+        this.$watch( "width", function( value: number ): void  {
+            if ( !this.maintainRatio || this.syncLock ) {
+                return;
+            }
+            this.lockSync();
+            this.dimensions.height = Math.round( value / this.ratio );
+        });
+
+        this.$watch( "height", function( value: number ): void {
+            if ( !this.maintainRatio || this.syncLock ) {
+                return;
+            }
+            this.lockSync();
+            this.dimensions.width = Math.round( value * this.ratio );
+        });
+    },
+    methods: {
+        ...mapMutations([
+            "closeModal",
+        ]),
+        async lockSync(): Promise<void> {
+            this.syncLock = true;
+            await this.$nextTick();
+            this.syncLock = false;
+        },
+        async save(): Promise<void> {
+            await resizeDocument( this.$store, this.activeDocument, this.dimensions );
+            this.closeModal();
+        },
+    }
+};
+</script>
+
+<style lang="scss" scoped>
+@use "@/styles/ui";
+
+.resize-document {
+    @include ui.modalBase( 480px, 310px );
+}
+</style>

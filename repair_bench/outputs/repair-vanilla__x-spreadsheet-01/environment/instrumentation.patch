@@ -1,0 +1,380 @@
+diff --git a/index.html b/index.html
+index ecbd8ba..94e9603 100644
+--- a/index.html
++++ b/index.html
+@@ -63,6 +63,7 @@
+           1: { cells: { 1: { text: 'S2-Beta' } } }
+         }
+       }]);
++      window.xs = xs;
+       setTimeout(() => {
+         xs.cellText(40, 9, 'timer-probe').reRender();
+       }, 5000);
+diff --git a/src/component/bottombar.js b/src/component/bottombar.js
+index 33f1237..c01e82f 100644
+--- a/src/component/bottombar.js
++++ b/src/component/bottombar.js
+@@ -12,11 +12,13 @@
+   constructor(click) {
+     const icon = new Icon('ellipsis');
+     super(icon, 'auto', false, 'top-left');
++    this.headerEl.attr('data-testid', 'xs-bb-more');
+     this.contentClick = click;
+   }
+ 
+   reset(items) {
+     const eles = items.map((it, i) => h('div', `${cssPrefix}-item`)
++      .attr('data-testid', 'xs-bb-more-item')
+       .css('width', '150px')
+       .css('font-weight', 'normal')
+       .on('click', () => {
+@@ -36,6 +38,7 @@
+ 
+ function buildMenuItem(item) {
+   return h('div', `${cssPrefix}-item`)
++    .attr('data-testid', 'xs-bb-ctx-' + item.key)
+     .child(item.title())
+     .on('click', () => {
+       this.itemClick(item.key);
+@@ -86,13 +89,13 @@
+     });
+     this.contextMenu = new ContextMenu();
+     this.contextMenu.itemClick = deleteFunc;
+-    this.el = h('div', `${cssPrefix}-bottombar`).children(
++    this.el = h('div', `${cssPrefix}-bottombar`).attr('data-testid', 'xs-bottombar').children(
+       this.contextMenu.el,
+       this.menuEl = h('ul', `${cssPrefix}-menu`).child(
+         h('li', '').children(
+           new Icon('add').on('click', () => {
+             addFunc();
+-          }),
++          }).attr('data-testid', 'xs-bb-add'),
+           h('span', '').child(this.moreEl),
+         ),
+       ),
+@@ -101,7 +104,8 @@
+ 
+   addItem(name, active, options) {
+     this.dataNames.push(name);
+-    const item = h('li', active ? 'active' : '').child(name);
++    const item = h('li', active ? 'active' : '').child(name)
++      .attr('data-testid', 'xs-bb-tab').attr('aria-label', name);
+     item.on('click', () => {
+       this.clickSwap2(item);
+     }).on('contextmenu', (evt) => {
+@@ -113,6 +117,7 @@
+       if (options.mode === 'read') return;
+       const v = item.html();
+       const input = new FormInput('auto', '');
++      input.input.attr('data-testid', 'xs-bb-rename-input');
+       input.val(v);
+       input.input.on('blur', ({ target }) => {
+         const { value } = target;
+diff --git a/src/component/calendar.js b/src/component/calendar.js
+index d9347e3..bf9d5d9 100644
+--- a/src/component/calendar.js
++++ b/src/component/calendar.js
+@@ -34,7 +34,7 @@
+     this.value = value;
+     this.cvalue = new Date(value);
+ 
+-    this.headerLeftEl = h('div', 'calendar-header-left');
++    this.headerLeftEl = h('div', 'calendar-header-left').attr('data-testid', 'xs-calendar-header');
+     this.bodyEl = h('tbody', '');
+     this.buildAll();
+     this.el = h('div', 'x-spreadsheet-calendar')
+@@ -43,9 +43,11 @@
+           this.headerLeftEl,
+           h('div', 'calendar-header-right').children(
+             h('a', 'calendar-prev')
++              .attr('data-testid', 'xs-calendar-prev')
+               .on('click.stop', () => this.prev())
+               .child(new Icon('chevron-left')),
+             h('a', 'calendar-next')
++              .attr('data-testid', 'xs-calendar-next')
+               .on('click.stop', () => this.next())
+               .child(new Icon('chevron-right')),
+           ),
+@@ -100,6 +102,7 @@
+         if (it1.active) cls += ' active';
+         return h('td', '').child(
+           h('div', cls)
++            .attr('data-testid', 'xs-cal-day-' + it1.d.getDate())
+             .on('click.stop', () => {
+               this.selectChange(it1.d);
+             })
+diff --git a/src/component/contextmenu.js b/src/component/contextmenu.js
+index 08a73a8..7ac9cb0 100644
+--- a/src/component/contextmenu.js
++++ b/src/component/contextmenu.js
+@@ -32,6 +32,7 @@
+     return h('div', `${cssPrefix}-item divider`);
+   }
+   return h('div', `${cssPrefix}-item`)
++    .attr('data-testid', 'xs-ctx-' + item.key)
+     .on('click', () => {
+       this.itemClick(item.key);
+       this.hide();
+@@ -50,6 +51,7 @@
+   constructor(viewFn, isHide = false) {
+     this.menuItems = buildMenu.call(this);
+     this.el = h('div', `${cssPrefix}-contextmenu`)
++      .attr('data-testid', 'xs-ctx-menu')
+       .children(...this.menuItems)
+       .hide();
+     this.viewFn = viewFn;
+diff --git a/src/component/datepicker.js b/src/component/datepicker.js
+index 6d0578a..465de22 100644
+--- a/src/component/datepicker.js
++++ b/src/component/datepicker.js
+@@ -5,7 +5,7 @@
+ export default class Datepicker {
+   constructor() {
+     this.calendar = new Calendar(new Date());
+-    this.el = h('div', `${cssPrefix}-datepicker`).child(
++    this.el = h('div', `${cssPrefix}-datepicker`).attr('data-testid', 'xs-datepicker').child(
+       this.calendar.el,
+     ).hide();
+   }
+diff --git a/src/component/dropdown_font.js b/src/component/dropdown_font.js
+index 6b778b7..2e526d5 100644
+--- a/src/component/dropdown_font.js
++++ b/src/component/dropdown_font.js
+@@ -12,5 +12,8 @@
+       })
+       .child(it.title));
+     super(baseFonts[0].title, '160px', true, 'bottom-left', ...nfonts);
++    this.attr('data-testid', 'xs-dd-font');
++    this.headerEl.attr('data-testid', 'xs-dd-font-header');
++    this.contentEl.attr('data-testid', 'xs-dd-font-content');
+   }
+ }
+diff --git a/src/component/dropdown_fontsize.js b/src/component/dropdown_fontsize.js
+index fd68830..6e2845f 100644
+--- a/src/component/dropdown_fontsize.js
++++ b/src/component/dropdown_fontsize.js
+@@ -12,5 +12,8 @@
+       })
+       .child(`${it.pt}`));
+     super('10', '60px', true, 'bottom-left', ...nfontSizes);
++    this.attr('data-testid', 'xs-dd-fontsize');
++    this.headerEl.attr('data-testid', 'xs-dd-fontsize-header');
++    this.contentEl.attr('data-testid', 'xs-dd-fontsize-content');
+   }
+ }
+diff --git a/src/component/dropdown_format.js b/src/component/dropdown_format.js
+index faed827..bd87813 100644
+--- a/src/component/dropdown_format.js
++++ b/src/component/dropdown_format.js
+@@ -23,6 +23,9 @@
+       return item;
+     });
+     super('Normal', '220px', true, 'bottom-left', ...nformats);
++    this.attr('data-testid', 'xs-dd-format');
++    this.headerEl.attr('data-testid', 'xs-dd-format-header');
++    this.contentEl.attr('data-testid', 'xs-dd-format-content');
+   }
+ 
+   setTitle(key) {
+diff --git a/src/component/editor.js b/src/component/editor.js
+index a9a99b8..571ee72 100644
+--- a/src/component/editor.js
++++ b/src/component/editor.js
+@@ -175,6 +175,7 @@
+     this.areaEl = h('div', `${cssPrefix}-editor-area`)
+       .children(
+         this.textEl = h('textarea', '')
++          .attr('data-testid', 'xs-editor-textarea')
+           .on('input', evt => inputEventHandler.call(this, evt))
+           .on('paste.stop', () => {})
+           .on('keydown', evt => keydownEventHandler.call(this, evt)),
+@@ -185,6 +186,7 @@
+       .on('mousemove.stop', () => {})
+       .on('mousedown.stop', () => {});
+     this.el = h('div', `${cssPrefix}-editor`)
++      .attr('data-testid', 'xs-editor')
+       .child(this.areaEl).hide();
+     this.suggest.bindInputEvents(this.textEl);
+ 
+diff --git a/src/component/message.js b/src/component/message.js
+index fca8d32..748eebf 100644
+--- a/src/component/message.js
++++ b/src/component/message.js
+@@ -4,7 +4,7 @@
+ import { cssPrefix } from '../config';
+ 
+ export function xtoast(title, content) {
+-  const el = h('div', `${cssPrefix}-toast`);
++  const el = h('div', `${cssPrefix}-toast`).attr('data-testid', 'xs-toast');
+   const dimmer = h('div', `${cssPrefix}-dimmer active`);
+   const remove = () => {
+     document.body.removeChild(el.el);
+diff --git a/src/component/modal_validation.js b/src/component/modal_validation.js
+index 8f66423..64f26ca 100644
+--- a/src/component/modal_validation.js
++++ b/src/component/modal_validation.js
+@@ -77,11 +77,19 @@
+         svf.el,
+       ),
+       h('div', `${cssPrefix}-buttons`).children(
+-        new Button('cancel').on('click', () => this.btnClick('cancel')),
+-        new Button('remove').on('click', () => this.btnClick('remove')),
+-        new Button('save', 'primary').on('click', () => this.btnClick('save')),
++        new Button('cancel').on('click', () => this.btnClick('cancel')).attr('data-testid', 'xs-mv-cancel'),
++        new Button('remove').on('click', () => this.btnClick('remove')).attr('data-testid', 'xs-mv-remove'),
++        new Button('save', 'primary').on('click', () => this.btnClick('save')).attr('data-testid', 'xs-mv-save'),
+       ),
+     ]);
++    this.el.attr('data-testid', 'xs-modal-validation');
++    rf.input.input.attr('data-testid', 'xs-mv-range');
++    cf.input.itemEl.attr('data-testid', 'xs-mv-criteria');
++    of.input.itemEl.attr('data-testid', 'xs-mv-operator');
++    minvf.input.input.attr('data-testid', 'xs-mv-min');
++    maxvf.input.input.attr('data-testid', 'xs-mv-max');
++    vf.input.input.attr('data-testid', 'xs-mv-value');
++    svf.input.input.attr('data-testid', 'xs-mv-listval');
+     this.mf = mf;
+     this.rf = rf;
+     this.cf = cf;
+diff --git a/src/component/selector.js b/src/component/selector.js
+index dccb5f9..d3bf9d9 100644
+--- a/src/component/selector.js
++++ b/src/component/selector.js
+@@ -10,8 +10,9 @@
+     this.useHideInput = useHideInput;
+     this.autoFocus = autoFocus;
+     this.inputChange = () => {};
+-    this.cornerEl = h('div', `${cssPrefix}-selector-corner`);
++    this.cornerEl = h('div', `${cssPrefix}-selector-corner`).attr('data-testid', 'xs-selector-corner');
+     this.areaEl = h('div', `${cssPrefix}-selector-area`)
++      .attr('data-testid', 'xs-selector-area')
+       .child(this.cornerEl).hide();
+     this.clipboardEl = h('div', `${cssPrefix}-selector-clipboard`).hide();
+     this.autofillEl = h('div', `${cssPrefix}-selector-autofill`).hide();
+diff --git a/src/component/sheet.js b/src/component/sheet.js
+index 0c40164..7950ab9 100644
+--- a/src/component/sheet.js
++++ b/src/component/sheet.js
+@@ -895,13 +895,17 @@
+     targetEl.children(this.toolbar.el, this.el, this.print.el);
+     this.data = data;
+     // table
+-    this.tableEl = h('canvas', `${cssPrefix}-table`);
++    this.tableEl = h('canvas', `${cssPrefix}-table`).attr('data-testid', 'xs-canvas');
+     // resizer
+     this.rowResizer = new Resizer(false, data.rows.height);
+     this.colResizer = new Resizer(true, data.cols.minWidth);
+     // scrollbar
+     this.verticalScrollbar = new Scrollbar(true);
+     this.horizontalScrollbar = new Scrollbar(false);
++    this.verticalScrollbar.el.attr('data-testid', 'xs-scrollbar-v');
++    this.horizontalScrollbar.el.attr('data-testid', 'xs-scrollbar-h');
++    this.rowResizer.el.attr('data-testid', 'xs-resizer-row');
++    this.colResizer.el.attr('data-testid', 'xs-resizer-col');
+     // editor
+     this.editor = new Editor(
+       formulas,
+@@ -920,6 +924,7 @@
+         this.selector.el,
+       );
+     this.overlayerEl = h('div', `${cssPrefix}-overlayer`)
++      .attr('data-testid', 'xs-overlayer')
+       .child(this.overlayerCEl);
+     // sortFilter
+     this.sortFilter = new SortFilter();
+diff --git a/src/component/sort_filter.js b/src/component/sort_filter.js
+index b55f302..27e8906 100644
+--- a/src/component/sort_filter.js
++++ b/src/component/sort_filter.js
+@@ -10,6 +10,7 @@
+ 
+ function buildSortItem(it) {
+   return buildMenu('state').child(t(`sort.${it}`))
++    .attr('data-testid', 'xs-sort-' + it)
+     .on('click.stop', () => this.itemClick(it));
+ }
+ 
+@@ -21,6 +22,7 @@
+     const cnt = items[it];
+     const active = filterValues.includes(it) ? 'checked' : '';
+     filterbEl.child(h('div', `${cssPrefix}-item state ${active}`)
++      .attr('data-testid', 'xs-filter-item')
+       .on('click.stop', () => this.filterClick(index, it))
+       .children(it === '' ? t('filter.empty') : it, h('div', 'label').html(`(${cnt})`)));
+   });
+@@ -35,7 +37,7 @@
+ export default class SortFilter {
+   constructor() {
+     this.filterbEl = h('div', `${cssPrefix}-body`);
+-    this.filterhEl = h('div', `${cssPrefix}-header state`).on('click.stop', () => this.filterClick(0, 'all'));
++    this.filterhEl = h('div', `${cssPrefix}-header state`).attr('data-testid', 'xs-filter-header').on('click.stop', () => this.filterClick(0, 'all'));
+     this.el = h('div', `${cssPrefix}-sort-filter`).children(
+       this.sortAscEl = buildSortItem.call(this, 'asc'),
+       this.sortDescEl = buildSortItem.call(this, 'desc'),
+@@ -45,10 +47,10 @@
+         this.filterbEl,
+       ),
+       h('div', `${cssPrefix}-buttons`).children(
+-        new Button('cancel').on('click', () => this.btnClick('cancel')),
+-        new Button('ok', 'primary').on('click', () => this.btnClick('ok')),
++        new Button('cancel').on('click', () => this.btnClick('cancel')).attr('data-testid', 'xs-sortfilter-cancel'),
++        new Button('ok', 'primary').on('click', () => this.btnClick('ok')).attr('data-testid', 'xs-sortfilter-ok'),
+       ),
+-    ).hide();
++    ).attr('data-testid', 'xs-sortfilter').hide();
+     // this.setFilters(['test1', 'test2', 'text3']);
+     this.ci = null;
+     this.sortDesc = null;
+diff --git a/src/component/suggest.js b/src/component/suggest.js
+index 9213c2c..e7f82a6 100644
+--- a/src/component/suggest.js
++++ b/src/component/suggest.js
+@@ -71,7 +71,7 @@
+   constructor(items, itemClick, width = '200px') {
+     this.filterItems = [];
+     this.items = items;
+-    this.el = h('div', `${cssPrefix}-suggest`).css('width', width).hide();
++    this.el = h('div', `${cssPrefix}-suggest`).attr('data-testid', 'xs-suggest').css('width', width).hide();
+     this.itemClick = itemClick;
+     this.itemIndex = -1;
+   }
+diff --git a/src/component/toolbar/index.js b/src/component/toolbar/index.js
+index 30bdd59..47a4b8d 100644
+--- a/src/component/toolbar/index.js
++++ b/src/component/toolbar/index.js
+@@ -171,7 +171,7 @@
+ 
+     this.items.push([this.moreEl = new More()]);
+ 
+-    this.el = h('div', `${cssPrefix}-toolbar`);
++    this.el = h('div', `${cssPrefix}-toolbar`).attr('data-testid', 'xs-toolbar');
+     this.btns = h('div', `${cssPrefix}-toolbar-btns`);
+ 
+     this.items.forEach((it) => {
+diff --git a/src/component/toolbar/item.js b/src/component/toolbar/item.js
+index 6440dc2..00f5318 100644
+--- a/src/component/toolbar/item.js
++++ b/src/component/toolbar/item.js
+@@ -24,7 +24,8 @@
+       .on('mouseenter', (evt) => {
+         if (this.tip) tooltip(this.tip, evt.target);
+       })
+-      .attr('data-tooltip', tip);
++      .attr('data-tooltip', tip)
++      .attr('data-testid', 'xs-tb-' + (this.tag || 'ext'));
+   }
+ 
+   setState() {}
+diff --git a/src/component/tooltip.js b/src/component/tooltip.js
+index 95df753..7255e4b 100644
+--- a/src/component/tooltip.js
++++ b/src/component/tooltip.js
+@@ -10,7 +10,7 @@
+   const {
+     left, top, width, height,
+   } = target.getBoundingClientRect();
+-  const el = h('div', `${cssPrefix}-tooltip`).html(html).show();
++  const el = h('div', `${cssPrefix}-tooltip`).attr('data-testid', 'xs-tooltip').html(html).show();
+   document.body.appendChild(el.el);
+   const elBox = el.box();
+   // console.log('elBox:', elBox);

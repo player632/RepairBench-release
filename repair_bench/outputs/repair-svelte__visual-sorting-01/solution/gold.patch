@@ -1,0 +1,177 @@
+diff --git a/src/lib/components/HeaderThemeControl.svelte b/src/lib/components/HeaderThemeControl.svelte
+index 4ef9b70..c15620d 100644
+--- a/src/lib/components/HeaderThemeControl.svelte
++++ b/src/lib/components/HeaderThemeControl.svelte
+@@ -62,6 +62,7 @@
+       <li>
+         <button
+           data-act-class="btn-active"
++          data-set-theme={theme}
+           data-testid={`theme-opt-${theme}`}
+           on:click={selectTheme}
+           >{theme.charAt(0).toUpperCase() + theme.slice(1)}</button
+diff --git a/src/lib/components/HelpDialog.svelte b/src/lib/components/HelpDialog.svelte
+index 01909f8..d828c72 100644
+--- a/src/lib/components/HelpDialog.svelte
++++ b/src/lib/components/HelpDialog.svelte
+@@ -2,7 +2,10 @@
+   let ref: HTMLDialogElement;
+   let shown = false;
+ 
+-  export const open = () => ref?.close();
++  export const open = () => {
++    shown = true;
++    ref?.showModal();
++  };
+   export const close = () => {
+     shown = false;
+     ref?.close();
+diff --git a/src/lib/components/RangeDelay.svelte b/src/lib/components/RangeDelay.svelte
+index 9439870..da573c1 100644
+--- a/src/lib/components/RangeDelay.svelte
++++ b/src/lib/components/RangeDelay.svelte
+@@ -26,6 +26,7 @@
+     return delay;
+   };
+ 
++  $: realDelay = getRealDelay(delay);
+ </script>
+ 
+ <label class="form-control w-full" data-testid="delay-picker">
+diff --git a/src/lib/components/WhatsNewModal.svelte b/src/lib/components/WhatsNewModal.svelte
+index fea5798..4312f7f 100644
+--- a/src/lib/components/WhatsNewModal.svelte
++++ b/src/lib/components/WhatsNewModal.svelte
+@@ -10,6 +10,7 @@
+   let shown = false;
+ 
+   onMount(() => {
++    if (localStorage.getItem(VERSION_KEY)) return;
+     // Small delay so the rest of the UI is rendered first.
+     setTimeout(() => {
+       ref?.showModal();
+diff --git a/src/lib/components/menu-outside-click-handler.ts b/src/lib/components/menu-outside-click-handler.ts
+index c0e4df0..2c213b6 100644
+--- a/src/lib/components/menu-outside-click-handler.ts
++++ b/src/lib/components/menu-outside-click-handler.ts
+@@ -5,7 +5,7 @@ export const handleMenuOutsideClick =
+         e !== null &&
+         e.target instanceof HTMLElement &&
+         e.target.dataset &&
+-        e.target.dataset[datasetElement] !== undefined
++        e.target.dataset[datasetElement] === undefined
+       ) {
+         document.body.removeEventListener('click', close);
+         ref.removeAttribute('open');
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 0bc62ad..fafe5b6 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -30,12 +30,12 @@
+   import { algorithms } from '$lib/sort-algorithms/algorithms';
+ 
+   let selectedTheme: Theme = 'dim';
+-  let size = loadPref('size-v2', 300);
++  let size = loadPref('size', 300);
+   let delay = 2;
+   let delaySlider = loadPref('delay', 20);
+   let intervalRef: number;
+   let algorithmA: AlgorithmDefinition = algorithms[0][0];
+-  let algorithmB: AlgorithmDefinition = algorithms[0][0];
++  let algorithmB: AlgorithmDefinition = algorithms[0][1] ?? algorithms[0][0];
+   let compareMode = false;
+   let compareLayout: 'row' | 'col' = loadPref('compareLayout', 'row');
+   let oscillatorType: OscillatorType = loadPref<OscillatorType>(
+@@ -43,11 +43,12 @@
+     'triangle'
+   );
+   let lastOscillator: NonNullable<OscillatorType> = oscillatorType ?? 'triangle';
++  $: if (oscillatorType) lastOscillator = oscillatorType;
+ 
+   // Algorithm-specific size component (e.g., Bitonic Sort needs powers of two).
+   // Picks from whichever active algorithm requires a custom picker.
+   $: arraySizeComponent =
+-    algorithmA?.arraySizeComponent;
++    algorithmA?.arraySizeComponent ?? algorithmB?.arraySizeComponent;
+ 
+   let helpDialog: HelpDialog | undefined;
+   const flatAlgorithms = algorithms.flat();
+@@ -90,7 +91,7 @@
+   const cycleAlgorithm = (dir: 1 | -1) => {
+     const idx = flatAlgorithms.findIndex((a) => a.name === algorithmA?.name);
+     const len = flatAlgorithms.length;
+-    const next = flatAlgorithms[Math.min(len - 1, Math.max(0, idx + dir))];
++    const next = flatAlgorithms[(idx + dir + len) % len];
+     selectAlgorithm(next, 'A');
+   };
+ 
+@@ -113,7 +114,7 @@
+   };
+ 
+   const toggleCompareLayout = () => {
+-    compareLayout = compareLayout === 'row' ? 'row' : 'col';
++    compareLayout = compareLayout === 'row' ? 'col' : 'row';
+   };
+ 
+   const updateCompareUrl = () => {
+@@ -131,7 +132,7 @@
+   };
+ 
+   const toggleMute = () => {
+-    oscillatorType = oscillatorType ? null : 'triangle';
++    oscillatorType = oscillatorType ? null : lastOscillator;
+   };
+ 
+   const openHelp = () => helpDialog?.open();
+@@ -151,6 +152,7 @@
+   };
+ 
+   onMount(() => {
++    themeChange(false);
+     selectedTheme =
+       (document.documentElement.dataset.theme as Theme) || selectedTheme;
+     syncBarsHeight();
+@@ -160,6 +162,25 @@
+       wrapperObserver.observe(wrapperEl);
+     }
+ 
++    const url = new URL(window.location.toString());
++    const aSlug = url.searchParams.get('algorithm');
++    const bSlug = url.searchParams.get('compare');
++
++    const findBySlug = (slug: string | null) =>
++      slug
++        ? flatAlgorithms.find(
++            (a) => a.name.toLowerCase().replace(/ /g, '-') === slug
++          )
++        : undefined;
++
++    const initialA = findBySlug(aSlug) ?? flatAlgorithms[0];
++    selectAlgorithm(initialA, 'A', false);
++
++    const initialB = findBySlug(bSlug);
++    if (initialB) {
++      algorithmB = initialB;
++      compareMode = true;
++    }
+ 
+     return () => {
+       window.removeEventListener('resize', syncBarsHeight);
+@@ -350,7 +371,7 @@
+           baseArray={$arrayToSort}
+           {theme}
+           {oscillatorType}
+-          stats={statsA}
++          bind:stats={statsA}
+           bind:isDone={doneA}
+         />
+         {#if compareMode}
+@@ -360,7 +381,7 @@
+             baseArray={$arrayToSort}
+             {theme}
+             oscillatorType={null}
+-            stats={statsB}
++            bind:stats={statsB}
+             bind:isDone={doneB}
+           />
+           <button

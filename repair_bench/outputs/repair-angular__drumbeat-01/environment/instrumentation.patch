@@ -1,0 +1,286 @@
+diff --git a/src/app/infrastructure/adapters/utils/blob.utils.ts b/src/app/infrastructure/adapters/utils/blob.utils.ts
+index 4b7faa1..400b985 100644
+--- a/src/app/infrastructure/adapters/utils/blob.utils.ts
++++ b/src/app/infrastructure/adapters/utils/blob.utils.ts
+@@ -1,4 +1,8 @@
+ export const downloadBlob = (blob: Blob, filename: string) : void => {
++  // Repair-Bench instrumentation: record exports for checkpoint assertions.
++  const rb = (window as unknown as Record<string, unknown>)['__rb'] as
++    { exports?: { filename: string; type: string; size: number; blob: Blob }[] } | undefined;
++  rb?.exports?.push({ filename, type: blob.type, size: blob.size, blob });
+   const url = URL.createObjectURL(blob);
+   const link = document.createElement('a');
+   link.href = url; // eslint-disable-line functional/immutable-data
+diff --git a/src/app/ui/app.component.ts b/src/app/ui/app.component.ts
+index 2bdc20e..5285ea4 100644
+--- a/src/app/ui/app.component.ts
++++ b/src/app/ui/app.component.ts
+@@ -7,6 +7,8 @@ import {map} from "rxjs/operators";
+ import {TranslatePipe} from "@ngx-translate/core";
+ import {LoadingBarModule} from "@ngx-loading-bar/core";
+ import {SequencerComponent} from './components/sequencer/sequencer.component';
++// Repair-Bench instrumentation
++import {RbProbe} from './services/rb-probe/rb-probe.service';
+ 
+ @Component({
+     selector: 'app-root',
+@@ -29,7 +31,9 @@ export class AppComponent {
+   );
+ 
+   constructor(private readonly responsive: BreakpointObserver,
+-              private readonly modeToggleService: ModeToggleService) {
++              private readonly modeToggleService: ModeToggleService,
++              // Repair-Bench instrumentation: attach the window.__rb probe.
++              readonly rbProbe: RbProbe) {
+     this.modeToggleService.modeChanged$.subscribe(x => this.mode = x);
+     this.checkOrientation();
+   }
+diff --git a/src/app/ui/components/bpm-input/bpm-input.component.html b/src/app/ui/components/bpm-input/bpm-input.component.html
+index 7c6c8fc..103fb05 100644
+--- a/src/app/ui/components/bpm-input/bpm-input.component.html
++++ b/src/app/ui/components/bpm-input/bpm-input.component.html
+@@ -1,5 +1,5 @@
+ <div [formGroup]="form" class="number-control">
+-  <div longPress class="number-left cursor-pointer" (mouseLongPress)="decrementBpm()" (click)="decrementBpm()"></div>
+-  <input name="bpm" type="number" formControlName="bpm" class="number-quantity large" [class.invalid]="!this.form.valid">
+-  <div longPress class="number-right cursor-pointer" (mouseLongPress)="incrementBpm()" (click)="incrementBpm()"></div>
++  <div longPress class="number-left cursor-pointer" data-testid="bpm-dec" (mouseLongPress)="decrementBpm()" (click)="decrementBpm()"></div>
++  <input name="bpm" type="number" formControlName="bpm" class="number-quantity large" data-testid="bpm-input" [class.invalid]="!this.form.valid">
++  <div longPress class="number-right cursor-pointer" data-testid="bpm-inc" (mouseLongPress)="incrementBpm()" (click)="incrementBpm()"></div>
+ </div>
+diff --git a/src/app/ui/components/modals/export-audio-modal/export-audio-modal.component.html b/src/app/ui/components/modals/export-audio-modal/export-audio-modal.component.html
+index e0c08b6..d7efe85 100644
+--- a/src/app/ui/components/modals/export-audio-modal/export-audio-modal.component.html
++++ b/src/app/ui/components/modals/export-audio-modal/export-audio-modal.component.html
+@@ -1,5 +1,5 @@
+ @if(isOpen){
+-<div class="modal-overlay" (click)="onOverlayClick($event)">
++<div class="modal-overlay" data-testid="audio-export-modal" (click)="onOverlayClick($event)">
+   <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="exportDialogTitle">
+     <div class="modal-header">
+       <h2 id="exportDialogTitle">{{ 'export.title' | translate }}</h2>
+@@ -11,7 +11,7 @@
+         @let filename = form.controls.filename;
+ 
+         <label for="beatName">{{ 'exportMidi.filename' | translate }}</label>
+-        <input id="beatName" type="text" [formControl]="filename" class="beat-name-input" />
++        <input id="beatName" type="text" [formControl]="filename" class="beat-name-input" data-testid="wav-filename" />
+ 
+         @if (filename.invalid && (filename.dirty || filename.touched)) {
+         <div>
+@@ -29,7 +29,7 @@
+         @let loopCount = form.controls.loopCount;
+ 
+         <label for="loopCount">{{ 'export.duration' | translate }}</label>
+-        <select id="loopCount" [formControl]="loopCount" class="form-select">
++        <select id="loopCount" [formControl]="loopCount" class="form-select" data-testid="wav-loop-count">
+           @for (count of loopCounts; track count) {
+           <option [value]="count">{{ count }} {{ count > 1 ? ('export.loops' | translate) : ('export.loop' | translate)
+             }}</option>
+@@ -41,13 +41,13 @@
+         @let exportWithTail = form.controls.exportWithTail;
+ 
+         <label for="exportWithTail">{{ 'export.exportWithTail' | translate }}</label>
+-        <input id="exportWithTail" type="checkbox" [formControl]="exportWithTail" class="ml-10" />
++        <input id="exportWithTail" type="checkbox" [formControl]="exportWithTail" class="ml-10" data-testid="wav-tail" />
+       </span>
+     </div>
+ 
+     <div class="modal-footer">
+-      <button class="btn btn-secondary" (click)="onClose()">{{ 'misc.cancel' | translate }}</button>
+-      <button class="btn btn-primary" (click)="onValidate()" [disabled]="!this.form.valid">{{ 'export.export' |
++      <button class="btn btn-secondary" data-testid="wav-cancel-btn" (click)="onClose()">{{ 'misc.cancel' | translate }}</button>
++      <button class="btn btn-primary" data-testid="wav-export-btn" (click)="onValidate()" [disabled]="!this.form.valid">{{ 'export.export' |
+         translate }}</button>
+     </div>
+   </div>
+diff --git a/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.html b/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.html
+index 9525564..daf11b1 100644
+--- a/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.html
++++ b/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.html
+@@ -1,5 +1,5 @@
+ @if(isOpen){
+-<div class="modal-overlay" (click)="onOverlayClick($event)">
++<div class="modal-overlay" data-testid="midi-export-modal" (click)="onOverlayClick($event)">
+   <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="exportMidiDialogTitle">
+     <div class="modal-header">
+       <h2 id="exportMidiDialogTitle">{{ 'exportMidi.title' | translate }}</h2>
+@@ -11,7 +11,7 @@
+         @let filename = form.controls.filename;
+ 
+         <label for="midiFileName">{{ 'exportMidi.filename' | translate }}</label>
+-        <input id="midiFileName" type="text" [formControl]="filename" class="beat-name-input" />
++        <input id="midiFileName" type="text" [formControl]="filename" class="beat-name-input" data-testid="mid-filename" />
+ 
+         @if (filename.invalid && (filename.dirty || filename.touched)) {
+         <div>
+@@ -32,8 +32,8 @@
+     </div>
+ 
+     <div class="modal-footer">
+-      <button class="btn btn-secondary" (click)="onClose()">{{ 'misc.cancel' | translate }}</button>
+-      <button class="btn btn-primary" (click)="onValidate()" [disabled]="!this.form.valid">{{ 'exportMidi.export' |
++      <button class="btn btn-secondary" data-testid="mid-cancel-btn" (click)="onClose()">{{ 'misc.cancel' | translate }}</button>
++      <button class="btn btn-primary" data-testid="mid-export-btn" (click)="onValidate()" [disabled]="!this.form.valid">{{ 'exportMidi.export' |
+         translate }}</button>
+     </div>
+   </div>
+diff --git a/src/app/ui/components/select-input/select-input.component.html b/src/app/ui/components/select-input/select-input.component.html
+index 252644e..c3e5529 100644
+--- a/src/app/ui/components/select-input/select-input.component.html
++++ b/src/app/ui/components/select-input/select-input.component.html
+@@ -1,4 +1,5 @@
+-<select [value]="selectedElement()" (change)="onSelectChange($any($event.target).value)" class="cursor-pointer large">
++<select [value]="selectedElement()" (change)="onSelectChange($any($event.target).value)" class="cursor-pointer large"
++  [attr.data-testid]="testId() || null">
+   <option value="" disabled selected>{{placeHolder()}}</option>
+   @for (element of elements(); track element){
+     <option [value]="element">{{ element }}</option>
+diff --git a/src/app/ui/components/select-input/select-input.component.ts b/src/app/ui/components/select-input/select-input.component.ts
+index 63e2549..d5f7644 100644
+--- a/src/app/ui/components/select-input/select-input.component.ts
++++ b/src/app/ui/components/select-input/select-input.component.ts
+@@ -12,6 +12,8 @@ export class SelectInputComponent {
+   elements = input<readonly string[]>([]);
+   selectedElement = input<string>('');
+   placeHolder = input<string>('');
++  // Repair-Bench instrumentation: stable locator for checkpoint harnesses.
++  testId = input<string>('');
+ 
+   selectChange = output<string>();
+ 
+diff --git a/src/app/ui/components/sequencer/sequencer.component.html b/src/app/ui/components/sequencer/sequencer.component.html
+index c68ac17..151b692 100644
+--- a/src/app/ui/components/sequencer/sequencer.component.html
++++ b/src/app/ui/components/sequencer/sequencer.component.html
+@@ -2,6 +2,7 @@
+   <div class="sequencer-header">
+     <div class="flex label bpm-input-group">
+       <button class="play-pause-button cursor-pointer app-button"
++              data-testid="play-pause"
+               [attr.aria-label]="this.soundService.isPlaying ? 'Pause' : 'Play'"
+               (click)="this.soundService.playPause()">
+         <img [alt]="this.soundService.isPlaying ? 'Pause' : 'Play'"
+@@ -12,12 +13,12 @@
+       </button>
+       <app-bpm-input [bpm]="this.tempoService.bpm" (bpmChange)="changeBeatBpm($event)"></app-bpm-input>
+       <div class="flex">
+-        <button class="button square-button undo" (click)="sequencerService.dispatch({ type: 'UNDO'})"
++        <button class="button square-button undo" data-testid="undo-btn" (click)="sequencerService.dispatch({ type: 'UNDO'})"
+           [disabled]="sequencerService.vm$.getValue().historyLength <= minHistoryLength">
+           <img alt="undo" aria-label="Undo" [ngSrc]="'assets/images/icons/undo.svg' | iconDarkMode" height="28"
+             width="28">
+         </button>
+-        <button class="button square-button redo ml-8" (click)="this.sequencerService.dispatch({ type: 'REDO'})"
++        <button class="button square-button redo ml-8" data-testid="redo-btn" (click)="this.sequencerService.dispatch({ type: 'REDO'})"
+           [disabled]="sequencerService.vm$.getValue().futureLength <= 0">
+           <img alt="redo" aria-label="Redo" [ngSrc]="'assets/images/icons/redo.svg' | iconDarkMode" height="28"
+             width="28">
+@@ -27,26 +28,27 @@
+     <div class="label">
+       <app-select-input [elements]="sequencerService.genresLabel"
+         [selectedElement]="sequencerService.vm$.getValue().genre" (selectChange)="this.genreChange($event)"
+-        placeHolder="{{ 'chooseGenre' | translate }}">
++        placeHolder="{{ 'chooseGenre' | translate }}" testId="genre-select">
+       </app-select-input>
+     </div>
+     <div class="label">
+       <app-select-input [elements]="sequencerService.vm$.getValue().beats"
+         [selectedElement]="sequencerService.vm$.getValue().beat" (selectChange)="beatChange($event)"
+-        placeHolder="{{ 'chooseBeat' | translate : { genre : sequencerService.vm$.getValue().genre } }}">
++        placeHolder="{{ 'chooseBeat' | translate : { genre : sequencerService.vm$.getValue().genre } }}"
++        testId="beat-select">
+       </app-select-input>
+     </div>
+   </div>
+   <div class="tracks-name-container">
+-    @for (track of beat.tracks; track track){
+-    <div class="tracks-name">
+-      <button class="button square-button" title="Play sample" (mousedown)="soundService.playTrack(track.name)">
++    @for (track of beat.tracks; track track; let trackIdx = $index){
++    <div class="tracks-name" [attr.data-testid]="'track-row-' + trackIdx">
++      <button class="button square-button" title="Play sample" [attr.data-testid]="'preview-' + trackIdx" (mousedown)="soundService.playTrack(track.name)">
+         <img alt="drum" [ngSrc]="track.midiNote | drumImage | iconDarkMode" height="28" width="28">
+       </button>
+-      <div class="track-name user-select-none medium">
++      <div class="track-name user-select-none medium" [attr.data-testid]="'track-name-' + trackIdx">
+         {{ track.name }}
+       </div>
+-      <button class="button" [ngClass]="track.isMuted ? 'mute' : ''" (click)="toggleMuteTrack(track.name)">M</button>
++      <button class="button" [ngClass]="track.isMuted ? 'mute' : ''" [attr.data-testid]="'mute-' + trackIdx" (click)="toggleMuteTrack(track.name)">M</button>
+     </div>
+     }
+     @if(AddTrackFeatureToggle) {
+@@ -61,7 +63,7 @@
+     }
+   </div>
+   <section class="tracks-container">
+-    @for (track of beat.tracks; track $index) {
++    @for (track of beat.tracks; track $index; let trackIdx = $index) {
+     <article>
+       <div id="track" [class.eight-steps]="track.steps.steps.length == NumberOfSteps.eight"
+         [class.twelve-steps]="track.steps.steps.length == NumberOfSteps.twelve"
+@@ -69,7 +71,8 @@
+         [class.thirty-two-steps]="track.steps.steps.length == NumberOfSteps.thirty_two"
+         [class.sixty-four-steps]="track.steps.steps.length == NumberOfSteps.sixty_four">
+         @for (step of track.steps.steps; track $index){
+-        <button class="step cursor-pointer" [class.active]="getStepActive(track.name, $index, step)"
++        <button class="step cursor-pointer" [attr.data-testid]="'step-' + trackIdx + '-' + $index"
++          [class.active]="getStepActive(track.name, $index, step)"
+           [class.current]="$index === soundService.index" [class.highlight]="Math.floor($index / (track.steps.steps.length == NumberOfSteps.twelve ? 3 : 4)) % 2 === 0"
+           [class.drag-range]="isInDragRange(track.name, $index)" (mousedown)="onStepMouseDown(track, $index)"
+           (mouseenter)="onStepMouseEnter(track.name, $index)" (mouseup)="onStepMouseUp(track.name, $index)">
+@@ -87,9 +90,9 @@
+     }
+   </section>
+   <section class="export-button-container flex">
+-    <button class="button" (click)="isAudioExportModalOpen = true">{{ 'export.wavButton' | translate
++    <button class="button" data-testid="export-wav-btn" (click)="isAudioExportModalOpen = true">{{ 'export.wavButton' | translate
+       }}</button>
+-    <button class="button ml-8" (click)="isMidiExportModalOpen = true">{{ 'exportMidi.button' | translate
++    <button class="button ml-8" data-testid="export-midi-btn" (click)="isMidiExportModalOpen = true">{{ 'exportMidi.button' | translate
+       }}</button>
+   </section>
+ 
+diff --git a/src/app/ui/services/rb-probe/rb-probe.service.ts b/src/app/ui/services/rb-probe/rb-probe.service.ts
+new file mode 100644
+index 0000000..1cdf10d
+--- /dev/null
++++ b/src/app/ui/services/rb-probe/rb-probe.service.ts
+@@ -0,0 +1,36 @@
++import { Inject, Injectable } from '@angular/core';
++import { IAudioEngine } from '../../../domain/ports/i-audio-engine';
++import { AUDIO_ENGINE } from '../../../infrastructure/injection-tokens/audio-engine.token';
++import { TempoAdapterService } from '../../../infrastructure/adapters/tempo-control/tempo-adapter.service';
++import { SequencerService } from '../sequencer/sequencer.service';
++
++export interface RbExportRecord {
++  filename: string;
++  type: string;
++  size: number;
++  blob: Blob;
++}
++
++// Repair-Bench instrumentation: stable probe surface for checkpoint
++// assertions. Exposes the live services (state is read through them) and a
++// capture list for exported blobs; see downloadBlob in blob.utils.ts.
++@Injectable({ providedIn: 'root' })
++export class RbProbe {
++  readonly exports: RbExportRecord[] = [];
++
++  constructor(
++    readonly sequencerService: SequencerService,
++    readonly tempoService: TempoAdapterService,
++    @Inject(AUDIO_ENGINE) readonly soundService: IAudioEngine
++  ) {
++    (window as unknown as Record<string, unknown>)['__rb'] = this;
++  }
++
++  vm(): unknown {
++    return this.sequencerService.vm$.getValue();
++  }
++
++  engineState(): unknown {
++    return (window as unknown as { SequencerEngine: { getState(): unknown } }).SequencerEngine.getState();
++  }
++}

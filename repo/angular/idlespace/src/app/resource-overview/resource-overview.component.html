@@ -1,0 +1,102 @@
+<div class="clr-row" *ngIf="res">
+  <div class="clr-col-sm-12 clr-col-md-6">
+    <h6>{{ res.description }}</h6>
+
+    <!-- Ending Alert -->
+    <clr-alert
+      *ngIf="res.isEnding"
+      [clrAlertClosable]="false"
+      [clrAlertType]="res.endIn < 3600 ? 'danger' : 'warning'"
+    >
+      <clr-alert-item>
+        <span class="alert-text">
+          {{ res.name }} will end in {{ res.endIn | endIn }}
+        </span>
+      </clr-alert-item>
+    </clr-alert>
+
+    <!-- Alerts -->
+    <ng-container *ngIf="res?.alerts">
+      <clr-alert
+        *ngFor="let alert of alerts; trackBy: getAlertId"
+        [clrAlertClosable]="false"
+        [clrAlertType]="alert.getType()"
+      >
+        <clr-alert-item>
+          <span class="alert-text">
+            {{ alert.getMessage() }}
+          </span>
+        </clr-alert-item>
+      </clr-alert>
+    </ng-container>
+
+    <clr-alert *ngIf="isFinite(res.fullIn)" [clrAlertClosable]="false">
+      <clr-alert-item>
+        <span class="alert-text">
+          {{ res.name }} full in {{ res.fullIn | endIn }}
+        </span>
+      </clr-alert-item>
+    </clr-alert>
+
+    <!-- Operativity -->
+    <div *ngIf="res?.products.length > 0 && res.id !== 'e1'">
+      <h6 data-testid="rb-operativity">
+        Operativity:
+        <span class="monospace"> {{ res.operativity }}</span> %
+      </h6>
+
+      <input
+        type="range"
+        [name]="'slr' + res.id"
+        min="0"
+        max="100"
+        step="1"
+        [(ngModel)]="res.operativity"
+      />
+    </div>
+
+    <!-- Priority -->
+    <div *ngIf="res.showPriority && ms.game.resourceManager.drone.unlocked">
+      <h6 role="tooltip" aria-haspopup="true" class="tooltip tooltip-lg">
+        Robot Priority:
+        <span class="monospace"> {{ res.priority }}</span> %
+
+        <span class="tooltip-content"
+          >Priority is calculated as "missing drones" * "priority slider
+          value"</span
+        >
+      </h6>
+
+      <input
+        type="range"
+        [name]="'p_' + res.id"
+        min="0"
+        max="100"
+        step="1"
+        [(ngModel)]="res.priority"
+      />
+    </div>
+
+    <app-action
+      *ngFor="let act of res.unlockedActions; trackBy: getActId"
+      [action]="act"
+      [attr.data-testid]="'rb-ov-action-' + act.id"
+    ></app-action>
+  </div>
+  <div class="clr-col-sm-12 clr-col-md-6">
+    <app-production-tables [unit]="res"></app-production-tables>
+    <ng-container *ngIf="res.id === 'i'">
+      <h6>
+        Missile Damage
+        <app-formatted-quantity
+          [quantity]="missileDamage"
+          [integer]="true"
+        ></app-formatted-quantity>
+      </h6>
+
+      <app-bonus-view
+        [bonus]="ms.game.enemyManager.missileDamageBonus"
+      ></app-bonus-view>
+    </ng-container>
+  </div>
+</div>

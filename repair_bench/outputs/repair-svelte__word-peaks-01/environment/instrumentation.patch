@@ -1,0 +1,281 @@
+diff --git a/src/components/Board.svelte b/src/components/Board.svelte
+index 6c3b0a9309ec3a99bdaf5e86f6699fe45bf8dee9..e1d2fe675d4e9e72d3c6035abc70e263b60d5e09 100644
+--- a/src/components/Board.svelte
++++ b/src/components/Board.svelte
+@@ -113,13 +113,15 @@
+ 				{#if !$gameFinished || !$lastGameDetail || !$showEndView}
+ 					<div
+ 						class="tile-row-container"
++						data-testid="board-root"
+ 						transition:fade={{ duration: 250, easing: cubicOut }}
+ 					>
+ 						{#each $boardContent as boardRow, r}
+-							<div class="tile-row">
++							<div class="tile-row" data-testid={'row-' + r}>
+ 								{#each boardRow as tile, t ($answer + r + '.' + t)}
+ 									<Tile
+ 										{tile}
++										testId={'tile-' + r + '-' + t}
+ 										current={r === $currentRow && t === $currentTile}
+ 										inCurrentRow={!$gameFinished && r === $currentRow}
+ 										showHint={!$gameFinished && (t === $currentTile || $showAllHints)}
+diff --git a/src/components/EndButtons.svelte b/src/components/EndButtons.svelte
+index 0a5deff5969b6bab533632fe68ded16f4f8da0a9..424f8949cd4bb9898fe9e63bf4baf30bb7bbbe80 100644
+--- a/src/components/EndButtons.svelte
++++ b/src/components/EndButtons.svelte
+@@ -111,7 +111,7 @@
+ 	})
+ </script>
+ 
+-<div class="container">
++<div class="container" data-testid="end-view">
+ 	<div class="actions" class:full-width={showScoreShareMenu}>
+ 		{#if showScoreShareMenu}
+ 			<div class="results-buttons">
+@@ -125,7 +125,7 @@
+ 			</div>
+ 		{:else}
+ 			<div class="action-items">
+-				<button on:click={() => (showScoreShareMenu = true)}>
++				<button on:click={() => (showScoreShareMenu = true)} data-testid="share-btn">
+ 					{$t('main.results.share')}
+ 				</button>
+ 				{#if gameMode === 'daily'}
+@@ -141,7 +141,7 @@
+ 						</div>
+ 					{/if}
+ 				{:else}
+-					<button class="play-button" on:click={() => playRandom(getRandomWord())}>
++					<button class="play-button" on:click={() => playRandom(getRandomWord())} data-testid="play-again-btn">
+ 						{$t('main.results.play_random')}
+ 					</button>
+ 				{/if}
+diff --git a/src/components/Header.svelte b/src/components/Header.svelte
+index e1ac98f615d61ab117bff2bb8f472c704f915bb3..b97723586c704dc749394858c7a4158d63ffbe77 100644
+--- a/src/components/Header.svelte
++++ b/src/components/Header.svelte
+@@ -36,7 +36,7 @@
+ 		<h1>
+ 			<span class:herd={herdActive}>{isAprilFools ? 'Herd' : 'Word'}</span> Peaks
+ 			{#if browser}
+-				<small class="game-mode">
++				<small class="game-mode" data-testid="game-mode-indicator">
+ 					{#if $gameMode === 'daily'}
+ 						#{$lastPlayedDaily + 1}
+ 					{:else}
+@@ -55,10 +55,10 @@
+ 		</h1>
+ 		{#if browser}
+ 			<div class="game-mode-buttons">
+-				<button on:click={playDaily} disabled={$gameMode === 'daily'}>
++				<button on:click={playDaily} disabled={$gameMode === 'daily'} data-testid="mode-daily-btn">
+ 					{$t('main.summary.daily')}
+ 				</button>
+-				<button on:click={() => playRandom()} disabled={$gameMode !== 'daily'}>
++				<button on:click={() => playRandom()} disabled={$gameMode !== 'daily'} data-testid="mode-random-btn">
+ 					{$t('main.summary.random')}
+ 				</button>
+ 				{#if $gameMode !== 'daily'}
+@@ -66,6 +66,7 @@
+ 						transition:fly|global={{ x: -10, duration: 150 }}
+ 						on:click={newRandomWord}
+ 						class="new-random"
++						data-testid="new-random-btn"
+ 						title={$t('main.other.new_word')}
+ 					>
+ 						<svg viewBox="0 0 7 7" xmlns="http://www.w3.org/2000/svg" width="21px">
+@@ -86,9 +87,11 @@
+ 		<button
+ 			title={$t('main.tutorial.title')}
+ 			class="bulge"
+-			on:click={() => openScreen.set('tutorial')}><span>?</span></button
++			on:click={() => openScreen.set('tutorial')}
++			data-testid="open-tutorial-btn"
++		><span>?</span></button
+ 		>
+-		<button title={$t('main.stats.title')} on:click={() => openScreen.set('stats')}>
++		<button title={$t('main.stats.title')} on:click={() => openScreen.set('stats')} data-testid="open-stats-btn">
+ 			<svg viewBox="0 0 9 9" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+ 				<g transform="rotate(180 4.5 4.5)">
+ 					<rect fill="currentColor" id="graph_bar_1" x="0" y="0" height="8" width="2" />
+@@ -101,6 +104,7 @@
+ 			title={$t('main.options.title')}
+ 			class="hover-spin"
+ 			on:click={() => openScreen.set('options')}
++			data-testid="open-options-btn"
+ 		>
+ 			<svg viewBox="0 0 76 76" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+ 				<path fill="currentColor" d={OptionsIconPathData} />
+diff --git a/src/components/Keyboard.svelte b/src/components/Keyboard.svelte
+index 0a6ffe09a2656e02761c02ec5be7135f27f92690..79b38ff2e9436b3a1607b6db6f59f53c7c2a7358 100644
+--- a/src/components/Keyboard.svelte
++++ b/src/components/Keyboard.svelte
+@@ -34,12 +34,12 @@
+ 
+ <svelte:window on:keydown={handleKeydown} />
+ 
+-<div class="keyboard" style:visibility={browser ? 'visible' : 'hidden'}>
++<div class="keyboard" style:visibility={browser ? 'visible' : 'hidden'} data-testid="keyboard-root">
+ 	{#each keyboard.layout as keyRow, r}
+-		<div class="key-row">
++		<div class="key-row" data-testid={'key-row-' + r}>
+ 			{#if r === keyboard.wideKeysRow}
+ 				{#if $swapEnterBackspace}
+-					<button on:click={() => undoLetter()} class="wide"
++					<button on:click={() => undoLetter()} class="wide" data-testid="key-backspace"
+ 						><svg
+ 							viewBox="0 0 21 11"
+ 							xmlns="http://www.w3.org/2000/svg"
+@@ -52,20 +52,21 @@
+ 						</svg></button
+ 					>
+ 				{:else}
+-					<button on:click={submitRow} class="wide">{$t('main.keyboard.enter')}</button>
++					<button on:click={submitRow} class="wide" data-testid="key-enter">{$t('main.keyboard.enter')}</button>
+ 				{/if}
+ 			{/if}
+ 			{#each keyRow as key}
+ 				<button
+ 					on:click={() => typeLetter(key)}
++					data-testid={'key-' + key}
+ 					class:correct={$validLetters.size === 1 && $validLetters.has(key)}
+ 					class:invalid={!$validLetters.has(key)}>{key}</button
+ 				>
+ 			{/each}
+ 			{#if r === keyboard.wideKeysRow}{#if $swapEnterBackspace}
+-					<button on:click={submitRow} class="wide">{$t('main.keyboard.enter')}</button>
++					<button on:click={submitRow} class="wide" data-testid="key-enter">{$t('main.keyboard.enter')}</button>
+ 				{:else}
+-					<button on:click={() => undoLetter()} class="wide">
++					<button on:click={() => undoLetter()} class="wide" data-testid="key-backspace">
+ 						<svg
+ 							viewBox="0 0 21 11"
+ 							xmlns="http://www.w3.org/2000/svg"
+diff --git a/src/components/Options.svelte b/src/components/Options.svelte
+index 489f9539c326629f822314a22dac1813e872b693..fc883d79436357127dd31c3abef831328f862614 100644
+--- a/src/components/Options.svelte
++++ b/src/components/Options.svelte
+@@ -113,7 +113,7 @@
+ </script>
+ 
+ <Screen title={$t('main.options.title')}>
+-	<div class="content">
++	<div class="content" data-testid="options-content">
+ 		{#if languages.length > 1}
+ 			<div class="select-container">
+ 				<div class="label">{$t('main.options.language')}</div>
+@@ -129,7 +129,7 @@
+ 			</div>
+ 			{#if $storedLocale !== 'en'}<p>{@html $t('main.options.help_translate')}</p>{/if}
+ 		{/if}
+-		<div class="select-container">
++		<div class="select-container" data-testid="keyboard-layout-select">
+ 			<div class="label">{$t('main.options.keyboard_layout')}</div>
+ 			<Select
+ 				items={keyboardLayoutOptions}
+@@ -143,7 +143,7 @@
+ 		</div>
+ 		<div class="toggle-container">
+ 			{#each toggleOptions as { store, label, validate } (label)}
+-				<Toggle {store} {validate} label={$t(label)} />
++				<Toggle {store} {validate} label={$t(label)} testId={'toggle-' + label.split('.').pop()} />
+ 			{/each}
+ 		</div>
+ 		<div class="slider-container">
+@@ -152,6 +152,7 @@
+ 				<input
+ 					type="range"
+ 					bind:value={$tileSharpness}
++					data-testid="sharpness-slider"
+ 					min="0"
+ 					max="2"
+ 					step="0.02"
+diff --git a/src/components/Screen.svelte b/src/components/Screen.svelte
+index 3ceb8a5c13d3c2465c43ad156d8b5f9bf79e9176..f32ebc94b1c2ad061b83f40d7de8ac8f4d79be96 100644
+--- a/src/components/Screen.svelte
++++ b/src/components/Screen.svelte
+@@ -32,7 +32,7 @@
+ 	on:mouseup={onBackgroundMouseup}
+ >
+ 	<!-- TODO: Add "Close" to translations -->
+-	<button title="Close" on:click={() => openScreen.set(null)}>
++	<button title="Close" on:click={() => openScreen.set(null)} data-testid="screen-close">
+ 		<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" width="24" height="24">
+ 			<title>Close</title>
+ 			<line x1="1" y1="1" x2="9" y2="9" />
+diff --git a/src/components/Stats.svelte b/src/components/Stats.svelte
+index 5baef993585fe2d5f5236b7983f5c7effe8add91..aaaf141ca0537dd7be52e1ff2c190a6435e8ff37 100644
+--- a/src/components/Stats.svelte
++++ b/src/components/Stats.svelte
+@@ -25,7 +25,7 @@
+ 	<section>
+ 		<div class="stats-container">
+ 			<div class="stats-item">
+-				<strong>{$stats.totalGames}</strong>
++				<strong data-testid="stats-total-games">{$stats.totalGames}</strong>
+ 				{$t('main.stats.total_games')}
+ 			</div>
+ 			<div class="stats-item">
+diff --git a/src/components/Tile.svelte b/src/components/Tile.svelte
+index 6c1c28ff87d7cb285fb621c65f09d66cd892781c..32cf7d6586280832e2cd9e9b680981efbe378d56 100644
+--- a/src/components/Tile.svelte
++++ b/src/components/Tile.svelte
+@@ -18,6 +18,7 @@
+ 	export let current = false
+ 	export let showHint = false
+ 	export let inCurrentRow = false
++	export let testId: string | undefined = undefined
+ 
+ 	let animate = !tile.scored
+ 
+@@ -33,6 +34,7 @@
+ <div
+ 	role="button"
+ 	class="tile-container"
++	data-testid={testId || undefined}
+ 	class:correct={tile.scored && tile.distance === 0}
+ 	class:before={tile.distance < 0}
+ 	class:after={tile.distance > 0}
+@@ -74,7 +76,7 @@
+ 		>
+ 			{#if tile.letter}<div in:fly|global={typeAnimation}>{tile.letter}</div>{/if}
+ 			{#if tile.letterBounds && displayHint}
+-				<span class="hint"
++				<span class="hint" data-testid="tile-hint"
+ 					>{tile.letterBounds[0]}
+ 					{#if tile.letterBounds[0] !== tile.letterBounds[1]}
+ 						<span class="small">...</span>{tile.letterBounds[1]}
+diff --git a/src/components/Toggle.svelte b/src/components/Toggle.svelte
+index 1895a94418d1a313e18ba585d55597f7dd3d63c1..a50c8d0de65eb201a2972e4d1a7b573c6489ffcb 100644
+--- a/src/components/Toggle.svelte
++++ b/src/components/Toggle.svelte
+@@ -6,6 +6,7 @@
+ 	export let store: Writable<boolean | undefined>
+ 	export let validate = () => true
+ 	export let small = false
++	export let testId: string | undefined = undefined
+ 
+ 	let checked: boolean
+ 
+@@ -21,7 +22,7 @@
+ <label class="toggle">
+ 	<div class="label">{label}</div>
+ 	<input type="checkbox" {checked} class:small />
+-	<button class:checked class:small on:click={onClick}></button>
++	<button class:checked class:small on:click={onClick} data-testid={testId || undefined}></button>
+ </label>
+ 
+ <style>
+diff --git a/src/components/Tutorial.svelte b/src/components/Tutorial.svelte
+index 5e4b5773e0516cef39eb2af64284a855dc498495..db28b31d1cfef3bd68ca88e0b8aa4213f1e7c6bc 100644
+--- a/src/components/Tutorial.svelte
++++ b/src/components/Tutorial.svelte
+@@ -47,7 +47,7 @@
+ 	{#if $newUser}
+ 		<hr />
+ 		<div class="center">
+-			<button on:click={() => openScreen.set(null)}
++			<button on:click={() => openScreen.set(null)} data-testid="tutorial-play"
+ 				>{$t('main.results.play_daily')}</button
+ 			>
+ 		</div>

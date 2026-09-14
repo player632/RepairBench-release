@@ -1,0 +1,379 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2020-2026 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+<template>
+    <div
+        class="tool-option"
+        @focusin="handleFocus"
+        @focusout="handleBlur"
+    >
+        <h3>{{ t( "text" ) }}</h3>
+        <div class="wrapper wrapper--textarea">
+            <textarea
+                ref="textInput"
+                v-model="text"
+                :placeholder="t('typeYourTextHere')"
+                :disabled="disabled"
+                class="input-textarea input-full"
+            />
+        </div>
+        <div class="wrapper wrapper--select">
+            <label>{{ t( "font" ) }}</label>
+            <select-box
+                v-model="font"
+                :options="fonts"
+                :searchable="canSearchFonts"
+                :disabled="disabled"
+                class="font-selector"
+            >
+                <template #option="{ value }">
+                    <font-preview :font="value" />
+                </template>
+            </select-box>
+        </div>
+        <div class="wrapper wrapper--select">
+            <label>{{ t( "alignment" ) }}</label>
+            <select-box
+                v-model="alignment"
+                :options="alignments"
+                :disabled="disabled"
+            />
+        </div>
+        <div class="wrapper wrapper--select">
+            <label>{{ t( "size" ) }}</label>
+            <div class="shared-inputs">
+                <input
+                    v-model="size"
+                    class="input-field"
+                    type="number"
+                    :disabled="disabled"
+                />
+                <select-box
+                    v-model="unit"
+                    :options="unitOptions"
+                    :disabled="disabled"
+                />
+            </div>
+        </div>
+        <div class="wrapper wrapper--slider">
+            <label>{{ t( "lineHeight" ) }}</label>
+            <normalised-slider
+                v-model="lineHeight"
+                :disabled="disabled"
+                :denormalise="denormaliseValue('lineHeight')"
+                :normalise="normaliseValue('lineHeight')"
+            />
+        </div>
+        <div class="wrapper wrapper--slider">
+            <label>{{ t( "letterSpacing" ) }}</label>
+            <normalised-slider
+                v-model="spacing"
+                :disabled="disabled"
+                :denormalise="denormaliseValue('spacing')"
+                :normalise="normaliseValue('spacing')"
+            />
+        </div>
+        <div class="wrapper wrapper--picker">
+            <label>{{ t( "color" ) }}</label>
+            <component
+                :is="colorPicker"
+                v-model="color"
+                v-tooltip="t('color')"
+                :disabled="disabled"
+                class="color-picker"
+            />
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { defineAsyncComponent, type IAsyncComponent } from "vue";
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapGetters, mapMutations } from "vuex";
+import SelectBox from "@/components/ui/select-box/select-box.vue";
+import NormalisedSlider from "@/components/ui/slider/normalised-slider.vue";
+import { normalise, denormalise } from "@/definitions/text-properties";
+import { type Layer } from "@/model/types/layer";
+import { type TextAlignment } from "@/model/types/text";
+import { DEFAULT_LAYER_NAME, LayerTypes } from "@/definitions/layer-types";
+import FontPreview from "./font-preview/font-preview.vue";
+import { mapSelectOptions, type SelectOption } from "@/utils/search-select-util";
+import { enqueueState } from "@/model/factories/history-state-factory";
+import KeyboardService from "@/services/keyboard-service";
+import { fontsConsented, consentFonts, rejectFonts } from "@/services/font-service";
+import { googleFonts } from "@/definitions/font-types";
+import { isMobile } from "@/utils/environment-util";
+import { focus } from "@/utils/environment-util";
+import { truncate } from "@/utils/string-util";
+import messages from "./messages.json";
+import sharedMessages from "@/messages.json";
+
+export default {
+    components: {
+        FontPreview,
+        NormalisedSlider,
+        SelectBox,
+    },
+    data: () => ({
+        internalText: "",
+        renderPending: false,
+        layerId: null,
+    }),
+    setup(): { t: ComposerTranslation } {
+        const { t, mergeLocaleMessage } = useI18n({ messages });
+        Object.keys( sharedMessages ).forEach( locale => {
+            mergeLocaleMessage( locale, sharedMessages[ locale ]);
+        });
+        return { t };
+    },
+    computed: {
+        ...mapGetters([
+            "activeLayerIndex",
+            "activeLayer",
+        ]),
+        disabled(): boolean {
+            return this.activeLayer?.type !== LayerTypes.LAYER_TEXT;
+        },
+        canSearchFonts(): boolean {
+            return !isMobile(); // only show preview list on mobile
+        },
+        colorPicker(): IAsyncComponent {
+            // load async as this adds to the bundle size
+            return defineAsyncComponent({
+                loader: () => import( "@/components/ui/color-picker/color-picker.vue" )
+            });
+        },
+        fonts(): SelectOption[] {
+            return mapSelectOptions( [ ...googleFonts ].sort() );
+        },
+        alignments(): { label: string, value: TextAlignment }[] {
+            return [
+                { label: this.t( "left" ), value: "left" },
+                { label: this.t( "center" ), value: "center" },
+                { label: this.t( "right" ), value: "right" },
+            ];
+        },
+        unitOptions(): { label: string, value: string }[] {
+            return [
+                { label: this.t( "pixels" ), value: "px" },
+                { label: this.t( "points" ), value: "pt" },
+                { label: this.t( "millis" ), value: "mm" },
+                { label: this.t( "centis" ), value: "cm" },
+            ];
+        },
+        alignment: {
+            get(): TextAlignment {
+                return this.activeLayer?.text?.alignment;
+            },
+            set( alignment: TextAlignment ): void {
+                this.update({ alignment }, "alignment" );
+            }
+        },
+        text: {
+            get(): string {
+                return this.internalText;
+            },
+            set( value: string ): void {
+                this.internalText = value;
+                // debounce the model update (and subsequent text render)
+                // to not update on each entered character
+                if ( this.renderPending ) {
+                    return;
+                }
+                this.renderPending = true;
+                window.setTimeout(() => {
+                    this.renderPending = false;
+                    this.update({ value: this.internalText }, "value" );
+                }, 50 );
+            }
+        },
+        size: {
+            get(): number {
+                return this.activeLayer?.text?.size;
+            },
+            set( size: string | number ): void {
+                size = parseFloat( size );
+                if ( isNaN( size )) {
+                    return;
+                }
+                size = Math.max( 1, Math.min( 999, size ));
+                this.update({ size }, "size" );
+            }
+        },
+        unit: {
+            get(): string {
+                return this.activeLayer?.text?.unit;
+            },
+            set( unit: string ): void {
+                this.update({ unit }, "unit" );
+            },
+        },
+        lineHeight: {
+            get(): number {
+                return this.activeLayer?.text?.lineHeight;
+            },
+            set( lineHeight: number ): void {
+                this.update({ lineHeight }, "lineHeight" );
+            }
+        },
+        spacing: {
+            get(): number {
+                return this.activeLayer?.text?.spacing;
+            },
+            set( spacing: number ): void {
+                this.update({ spacing }, "spacing" );
+            }
+        },
+        color: {
+            get(): string {
+                return this.activeLayer?.text?.color;
+            },
+            set( color: string ): void {
+                this.update({ color }, "color" );
+            }
+        },
+        font: {
+            get(): string {
+                return this.activeLayer?.text?.font;
+            },
+            set( value: string ): void {
+                this.update({ font: value }, "font" );
+            }
+        }
+    },
+    watch: {
+        activeLayer: {
+            immediate: true,
+            handler( layer?: Layer ): void {
+                if ( !layer ) {
+                    return;
+                }
+                if ( this.layerId !== layer.id ) {
+                    this.layerId = layer.id;
+                }
+                this.internalText = layer.text?.value;
+                this.syncText = this.internalText === layer.name || layer.name === DEFAULT_LAYER_NAME;
+            }
+        },
+    },
+    mounted(): void {
+        if ( !fontsConsented() ) {
+            this.openDialog({
+                type: "confirm",
+                title: this.t( "fonts.consentRequired" ),
+                message: this.t( "fonts.consentExpl" ),
+                confirm: () => {
+                    consentFonts();
+                },
+                cancel: () => {
+                    rejectFonts();
+                    this.setActiveTool({ tool: null });
+                }
+            });
+        } else {
+            focus( this.$refs.textInput );
+        }
+    },
+    unmounted(): void {
+        this.handleBlur();
+    },
+    methods: {
+        ...mapMutations([
+            "openDialog",
+            "setActiveTool",
+            "updateLayer",
+        ]),
+        handleFocus(): void {
+            KeyboardService.setSuspended( true );
+        },
+        handleBlur(): void {
+            KeyboardService.setSuspended( false );
+        },
+        /**
+         * The model values for lineHeight and spacing are in normalised 0 - 1 range with a neutral
+         * center at 0.5. This doesn't necessarily feel natural for the user, hence we scale these
+         * values to a mapped range as the values are in fact non linear on either side of the neutral point.
+         * 
+         * The output of these mappers is reflected in the hover tooltips and the value seen / entered
+         * in the textual representation of the Sliders.
+         */
+        denormaliseValue( prop: "lineHeight" | "spacing" ): any {
+            return ( value: number ) => denormalise({ [ prop ]: value }, prop );
+        },
+        normaliseValue( prop: "lineHeight" | "spacing" ): any {
+            return ( value: number ) => normalise( prop, value );
+        },
+        update( textOpts: Partial<Text> = {}, propName = "text" ): void {
+            if ( !this.activeLayer ) {
+                return;
+            }
+            const index = this.activeLayerIndex;
+            const store = this.$store;
+            const orgOpts = {
+                value      : this.text,
+                size       : this.size,
+                unit       : this.unit,
+                lineHeight : this.lineHeight,
+                spacing    : this.spacing,
+                font       : this.font,
+                color      : this.color,
+                alignment  : this.alignment,
+            };
+            const newOpts = {
+                ...orgOpts,
+                ...textOpts,
+            };
+            const orgName = this.activeLayer.name;
+            let newName   = orgName;
+            // when active layer uses the default layer name or is synced to
+            // the text content, keep the layer name in sync with the text
+            if ( orgName === DEFAULT_LAYER_NAME || this.syncText ) {
+                newName = truncate( this.internalText || DEFAULT_LAYER_NAME, 64 );
+            }
+            // hold a reference to the original layer rectangle as text updates alter its bounding box
+            const { left, top, width, height } = this.activeLayer;
+            const commit = () => store.commit( "updateLayer", { index, opts: { name: newName, text: newOpts } });
+            commit();
+            
+            enqueueState( `${propName}_${index}`, {
+                undo() {
+                    store.commit( "updateLayer", { index, opts: { left, top, width, height, name: orgName, text: orgOpts } });
+                },
+                redo() {
+                    commit();
+                },
+            });
+        },
+    },
+};
+</script>
+
+<style lang="scss" scoped>
+@use "@/styles/_variables";
+@use "@/styles/form";
+@use "@/styles/tool-option";
+
+.font-selector {
+    display: inline-block;
+    width: form.$inputWidth;
+}
+</style>

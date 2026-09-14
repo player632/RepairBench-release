@@ -1,0 +1,185 @@
+diff --git a/packages/core/src/modules/moveCells.ts b/packages/core/src/modules/moveCells.ts
+index 456008e..e5e50fd 100644
+--- a/packages/core/src/modules/moveCells.ts
++++ b/packages/core/src/modules/moveCells.ts
+@@ -518,7 +518,7 @@ export function onCellsMoveEnd(
+ 
+   let rf;
+   if (
+-    ctx.luckysheet_select_save[0].row_focus ===
++    ctx.luckysheet_select_save[0].row_focus !==
+     ctx.luckysheet_select_save[0].row[0]
+   ) {
+     rf = row_s;
+diff --git a/packages/core/src/modules/searchReplace.ts b/packages/core/src/modules/searchReplace.ts
+index 6eb5a08..a130c29 100644
+--- a/packages/core/src/modules/searchReplace.ts
++++ b/packages/core/src/modules/searchReplace.ts
+@@ -520,23 +520,12 @@ export function replaceAll(
+   }
+ 
+   let range;
+-  if (
+-    _.size(ctx.luckysheet_select_save) === 0 ||
+-    (ctx.luckysheet_select_save?.length === 1 &&
+-      ctx.luckysheet_select_save[0].row[0] ===
+-        ctx.luckysheet_select_save[0].row[1] &&
+-      ctx.luckysheet_select_save[0].column[0] ===
+-        ctx.luckysheet_select_save[0].column[1])
+-  ) {
+-    range = [
+-      {
+-        row: [0, flowdata.length - 1],
+-        column: [0, flowdata[0].length - 1],
+-      },
+-    ];
+-  } else {
+-    range = _.assign([], ctx.luckysheet_select_save);
+-  }
++  range = [
++    {
++      row: [0, flowdata.length - 1],
++      column: [0, flowdata[0].length - 1],
++    },
++  ];
+ 
+   const searchIndexArr = getSearchIndexArr(
+     searchText,
+diff --git a/packages/core/src/modules/selection.ts b/packages/core/src/modules/selection.ts
+index 6187e18..f35ab91 100644
+--- a/packages/core/src/modules/selection.ts
++++ b/packages/core/src/modules/selection.ts
+@@ -2317,8 +2317,6 @@ export function calcSelectionInfo(ctx: Context, lang?: string | null) {
+           max = Math.max(valueNumber, max);
+           min = Math.min(valueNumber, min);
+           numberC += 1;
+-        } else if (value != null) {
+-          count += 1;
+         }
+       }
+     }
+diff --git a/packages/react/src/components/FxEditor/index.tsx b/packages/react/src/components/FxEditor/index.tsx
+index 939cac2..81fce06 100644
+--- a/packages/react/src/components/FxEditor/index.tsx
++++ b/packages/react/src/components/FxEditor/index.tsx
+@@ -48,10 +48,7 @@ const FxEditor: React.FC = () => {
+   useEffect(() => {
+     // 当选中行列是处于隐藏状态的话则不允许编辑
+     setIsHidenRC(isShowHidenCR(context));
+-    if (
+-      _.isEqual(prevFirstSelection, firstSelection) &&
+-      context.currentSheetId === prevSheetId
+-    ) {
++    if (_.isEqual(prevFirstSelection, firstSelection)) {
+       // data change by a collabrative update should not trigger this effect
+       return;
+     }
+@@ -80,7 +77,6 @@ const FxEditor: React.FC = () => {
+   }, [
+     context.luckysheetfile,
+     context.currentSheetId,
+-    context.luckysheet_select_save,
+   ]);
+ 
+   const onFocus = useCallback(() => {
+diff --git a/packages/react/src/components/SheetOverlay/index.tsx b/packages/react/src/components/SheetOverlay/index.tsx
+index df0c938..865b77a 100644
+--- a/packages/react/src/components/SheetOverlay/index.tsx
++++ b/packages/react/src/components/SheetOverlay/index.tsx
+@@ -500,7 +500,7 @@ const SheetOverlay: React.FC = () => {
+         />
+         <ColumnHeader />
+       </div>
+-      {(context.showSearch || context.showReplace) && (
++      {(context.showSearch && context.showReplace) && (
+         <SearchReplace getContainer={() => containerRef.current!} />
+       )}
+       <div className="fortune-row-body">
+diff --git a/packages/react/src/components/SheetTab/SheetItem.tsx b/packages/react/src/components/SheetTab/SheetItem.tsx
+index 50235bb..0d19975 100644
+--- a/packages/react/src/components/SheetTab/SheetItem.tsx
++++ b/packages/react/src/components/SheetTab/SheetItem.tsx
+@@ -175,6 +175,8 @@ const SheetItem: React.FC<Props> = ({ sheet, isDropPlaceholder }) => {
+       onClick={() => {
+         if (isDropPlaceholder) return;
+         setContext((draftCtx) => {
++          draftCtx.dataVerificationDropDownList = false;
++          draftCtx.currentSheetId = sheet.id!;
+           draftCtx.sheetScrollRecord[draftCtx.currentSheetId] = {
+             scrollLeft: draftCtx.scrollLeft,
+             scrollTop: draftCtx.scrollTop,
+@@ -182,8 +184,6 @@ const SheetItem: React.FC<Props> = ({ sheet, isDropPlaceholder }) => {
+             luckysheet_select_save: draftCtx.luckysheet_select_save,
+             luckysheet_selection_range: draftCtx.luckysheet_selection_range,
+           };
+-          draftCtx.dataVerificationDropDownList = false;
+-          draftCtx.currentSheetId = sheet.id!;
+           draftCtx.zoomRatio = sheet.zoomRatio || 1;
+           cancelActiveImgItem(draftCtx, refs.globalCache);
+           cancelNormalSelected(draftCtx);
+diff --git a/packages/react/src/components/SheetTab/index.tsx b/packages/react/src/components/SheetTab/index.tsx
+index 80513a1..64ce79e 100644
+--- a/packages/react/src/components/SheetTab/index.tsx
++++ b/packages/react/src/components/SheetTab/index.tsx
+@@ -49,8 +49,7 @@ const SheetTab: React.FC = () => {
+   }, [context.luckysheetfile]);
+ 
+   const onAddSheetClick = useCallback(
+-    () =>
+-      setTimeout(() => {
++    () => {
+         setContext(
+           (draftCtx) => {
+             if (draftCtx.luckysheetCellUpdate.length > 0) {
+@@ -67,7 +66,7 @@ const SheetTab: React.FC = () => {
+         );
+         const tabCurrent = tabContainerRef.current;
+         setIsShowScrollBtn(tabCurrent!.scrollWidth > tabCurrent!.clientWidth);
+-      }),
++    },
+     [refs.cellInput, setContext, settings]
+   );
+ 
+diff --git a/packages/react/src/components/Workbook/index.tsx b/packages/react/src/components/Workbook/index.tsx
+index 2e6e625..29012be 100644
+--- a/packages/react/src/components/Workbook/index.tsx
++++ b/packages/react/src/components/Workbook/index.tsx
+@@ -349,7 +349,6 @@ const Workbook = React.forwardRef<WorkbookInstance, Settings & AdditionalProps>(
+             });
+           }
+           const newContext = applyPatches(ctx_, history.inversePatches);
+-          globalCache.current.redoList.push(history);
+           const inversedOptions = inverseRowColOptions(history.options);
+           if (inversedOptions?.insertRowColOp) {
+             inversedOptions.restoreDeletedCells = true;
+@@ -391,7 +390,7 @@ const Workbook = React.forwardRef<WorkbookInstance, Settings & AdditionalProps>(
+       const history = globalCache.current.redoList.pop();
+       if (history) {
+         setContext((ctx_) => {
+-          const newContext = applyPatches(ctx_, history.patches);
++          const newContext = applyPatches(ctx_, history.inversePatches);
+           globalCache.current.undoList.push(history);
+           emitOp(newContext, history.patches, history.options);
+ 
+@@ -703,7 +702,7 @@ const Workbook = React.forwardRef<WorkbookInstance, Settings & AdditionalProps>(
+           });
+         }
+       },
+-      [context, setContextWithProduce]
++      [setContextWithProduce]
+     );
+ 
+     const onMoreToolbarItemsClose = useCallback(() => {
+diff --git a/packages/react/src/components/ZoomControl/index.tsx b/packages/react/src/components/ZoomControl/index.tsx
+index cd1577a..ded913e 100644
+--- a/packages/react/src/components/ZoomControl/index.tsx
++++ b/packages/react/src/components/ZoomControl/index.tsx
+@@ -26,7 +26,7 @@ const presets = [
+   },
+   {
+     text: "70%",
+-    value: 0.7,
++    value: 0.8,
+   },
+   {
+     text: "100%",

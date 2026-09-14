@@ -1,0 +1,160 @@
+diff --git a/js/class/cooldown.js b/js/class/cooldown.js
+index a736169..ca78a03 100644
+--- a/js/class/cooldown.js
++++ b/js/class/cooldown.js
+@@ -6,7 +6,7 @@ class Cooldown{
+ 
+     getCooldown(cooldown) {
+         if (isArray(this.initCooldown)) {
+-            return random.apply(null, this.initCooldown);
++            return this.initCooldown;
+         }
+         return cooldown;
+     }
+diff --git a/js/class/player.js b/js/class/player.js
+index 3397b52..e755bdc 100644
+--- a/js/class/player.js
++++ b/js/class/player.js
+@@ -36,11 +36,11 @@ class Player extends Plane{
+             's': this.down,
+             'd': this.right,
+         };
+-        Object.keys(keys).map((key) => {
++        for (var key in keys) {
+             hotkey.reg(key, () => {
+                called(keys[key]);
+-            }); 
+-        });
++            });
++        }
+         
+         hotkey.reg(' ', () => {
+             called(()=>{
+diff --git a/js/game.js b/js/game.js
+index e914ad9..8724067 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -39,8 +39,8 @@ class Game {
+         Object.keys(this.scenes).map(key => {
+             this.scenes[key].hidden();
+         });
+-        this.scene && this.scene.uninstall();
+         this.scene = this.scenes[scene];
++        this.scene && this.scene.uninstall();
+         this.scene.show();
+         this.scene.setup();
+     }
+diff --git a/js/scenes/over.js b/js/scenes/over.js
+index 7c52e56..0644b8e 100644
+--- a/js/scenes/over.js
++++ b/js/scenes/over.js
+@@ -31,11 +31,11 @@ class Over extends Scene{
+             }
+         );
+ 
++        const empty = name.value === '';
+         on(
+             name,
+             'input',
+             ()=>{
+-                const empty = name.value === '';
+                 const attr = empty ? 'setAttribute' : 'removeAttribute';
+                 btn[attr]('disabled','disabled');
+             }
+diff --git a/js/scenes/play.js b/js/scenes/play.js
+index 9b20215..0e8219c 100644
+--- a/js/scenes/play.js
++++ b/js/scenes/play.js
+@@ -62,13 +62,14 @@ class Play extends Scene {
+         this.playerBullets = [];
+         this.enemyBullets = [];
+         this.allEnemys = [];
++        this.allMeteorites = [];
+         this.enemys = {
+             arr: this.allEnemys,
+             elem: Enemy,
+             cooldown: new Cooldown(config.game.appendEnemyCooldown),
+         };
+         this.meteorites = {
+-            arr: this.allEnemys,
++            arr: this.allMeteorites,
+             elem: Meteorite,
+             cooldown: new Cooldown(config.game.appendEnemyCooldown),
+         };
+@@ -111,7 +112,7 @@ class Play extends Scene {
+             this.collision(bullet, el, (a, b) => {
+                 a.reduceLife();
+                 b.reduceLife();
+-                if (!b.run) {
++                if (!a.run) {
+                     callback(b);
+                 }
+             });
+@@ -288,9 +289,6 @@ class Play extends Scene {
+             const start = game.data.fuel;
+             const end = start + num;
+             incrementAnimation(start, end, current => {
+-                if (current > fuelMax) {
+-                    current = fuelMax;
+-                }
+                 game.data.fuel = current;
+                 call();
+             })
+@@ -318,8 +316,8 @@ class Play extends Scene {
+ 
+     updateshoot() {
+         const game = this.game;
+-        game.data.shoot++;
+         $('#shoot').innerHTML = numberFormat(game.data.shoot);
++        game.data.shoot++;
+     }
+ 
+     updateFontSize(){
+diff --git a/js/scenes/rank.js b/js/scenes/rank.js
+index 6b2b747..87d1cbc 100644
+--- a/js/scenes/rank.js
++++ b/js/scenes/rank.js
+@@ -3,8 +3,8 @@ class Rank extends Scene {
+         super.setup();
+         this.event();
+         this.storageDataKey = "gameData";
+-        this.addData();
+         this.rank();
++        this.addData();
+     }
+ 
+     addData() {
+@@ -35,7 +35,7 @@ class Rank extends Scene {
+             if (a.score === b.score) {
+                 return a.time < b.time ? 1 : -1;
+             }
+-            return a.score < b.score ? 1 : -1;
++            return a.score > b.score ? 1 : -1;
+         });
+         setTimeout(() => {
+             localStorageData.update(key, data);
+diff --git a/js/scenes/start.js b/js/scenes/start.js
+index 95c5bc3..97c7376 100644
+--- a/js/scenes/start.js
++++ b/js/scenes/start.js
+@@ -14,7 +14,6 @@ class Start extends Scene {
+                 btn.setAttribute('disabled', 'disabled');
+                 res.loadAssets(() => {
+                     this.game.play();
+-                    btn.removeAttribute('disabled');
+                 })
+             }
+         )
+diff --git a/js/utils/utils.js b/js/utils/utils.js
+index 25ca1fc..ae9851d 100644
+--- a/js/utils/utils.js
++++ b/js/utils/utils.js
+@@ -185,7 +185,7 @@ const incrementAnimation = (start, end, callback) => {
+     const time = setInterval(() => {
+         status ? current++ : current--;
+         callback(current);
+-        if (current === end) {
++        if (current === end || !status) {
+             clearInterval(time);
+         }
+     }, 30)

@@ -1,0 +1,136 @@
+diff --git a/src/components/Game/index.tsx b/src/components/Game/index.tsx
+index ce74ede..25ceca7 100644
+--- a/src/components/Game/index.tsx
++++ b/src/components/Game/index.tsx
+@@ -124,7 +124,7 @@ export const Game = () => {
+ 
+   const onWheel = (e: Event) => {
+     const s = (e as WheelEvent).deltaY;
+-    const sign = s < 0 ? 1 : -1;
++    const sign = s < 0 ? -1 : 1;
+     setScale((prev) => {
+       const n = Math.round((prev - sign * stepScale) * 100) / 100;
+       if (prev < minScale) return minScale;
+@@ -185,6 +185,7 @@ export const Game = () => {
+       });
+ 
+       setGameOver(true);
++      stopTimer();
+       return;
+     }
+     if (isFirstClick) {
+@@ -303,7 +304,7 @@ export const Game = () => {
+                         if (cell().isClicked) return;
+ 
+                         setRemainingFlags((prev) =>
+-                          cell().isFlagged ? prev - 1 : prev + 1,
++                          cell().isFlagged ? prev + 1 : prev - 1,
+                         );
+                         updateRows(
+                           (prev) =>
+@@ -410,6 +411,7 @@ const Toolbar = () => {
+         data-rb-action="restart"
+         class="py-2"
+         onClick={() => {
++          setGameOver(false);
+           setGameWon(false);
+           setTimeElapsed(0);
+           window.clearInterval(timerRef());
+@@ -430,7 +432,6 @@ const Toolbar = () => {
+ const SettingsPopover = () => {
+   const [isOpen, setOpen] = createSignal(true);
+   const [selected, setSelected] = createSignal(0);
+-  const budgetDifficulty = difficulty();
+   return (
+     <Popover open={isOpen()} onOpenChange={(b) => setOpen(b)}>
+       <PopoverTrigger
+@@ -487,7 +488,7 @@ const SettingsPopover = () => {
+             onClick={() => {
+               const diff = difficulties[selected()];
+               setDifficulty(selected());
+-              setRemainingFlags(difficulties[budgetDifficulty].mineCount);
++              setRemainingFlags(difficulties[difficulty()].mineCount);
+               setRows(initRows(diff));
+               setTimeElapsed(0);
+               setOpen(false);
+@@ -535,7 +536,7 @@ const getCellBg = (cell: Cell) => {
+   // if (cell.isFlagged) {
+   //   return "bg-secondary";
+   // }
+-  if (!cell.isClicked && !cell.isMine) {
++  if (!cell.isClicked) {
+     return "bg-background";
+   }
+   if (cell.isMine && cell.isClicked) {
+diff --git a/src/components/ui/popover.tsx b/src/components/ui/popover.tsx
+index 694f35e..b9b55de 100644
+--- a/src/components/ui/popover.tsx
++++ b/src/components/ui/popover.tsx
+@@ -42,7 +42,7 @@ export const PopoverContent = <T extends ValidComponent = "div">(
+         {...rest}
+       >
+         {local.children}
+-        <PopoverPrimitive.CloseButton data-rb-settings-close="" disabled class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-[opacity,box-shadow] hover:opacity-100 focus:outline-none focus:ring-[1.5px] focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
++        <PopoverPrimitive.CloseButton data-rb-settings-close="" class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-[opacity,box-shadow] hover:opacity-100 focus:outline-none focus:ring-[1.5px] focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+           <svg
+             xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 24 24"
+diff --git a/src/components/ui/slider.tsx b/src/components/ui/slider.tsx
+index aadf92b..6528e64 100644
+--- a/src/components/ui/slider.tsx
++++ b/src/components/ui/slider.tsx
+@@ -40,15 +40,9 @@ export const Slider = (props: SliderProps) => {
+     "fillClass",
+     "thumbClass",
+     "inputClass",
+-    "value",
+   ]);
+-  const initialValue = (local.value || [])[0];
+   return (
+-    <SliderPrimitive
+-      class={cn(rootClass, local.class)}
+-      {...rest}
+-      value={[initialValue]}
+-    >
++    <SliderPrimitive class={cn(rootClass, local.class)} {...rest}>
+       <div class={cn(labelContainerClass, local.labelContainerClass)}>
+         <Show when={local.labelText}>
+           <SliderPrimitive.Label class={cn(labelClass, local.labelClass)}>
+diff --git a/src/libs/util.ts b/src/libs/util.ts
+index 48365eb..4b2f5d5 100644
+--- a/src/libs/util.ts
++++ b/src/libs/util.ts
+@@ -29,7 +29,7 @@ export const getRandNotInArr: (
+   max: number,
+   arr: number[],
+ ) => number = (min, max, arr) => {
+-  const num = Math.floor(rbRandom() * (max - min) + min);
++  const num = Math.floor(rbRandom() * (max - min + 1) + min);
+   if (Array.isArray(arr) && arr.includes(num)) {
+     return getRandNotInArr(min, max, arr);
+   }
+@@ -129,11 +129,14 @@ export const doZeroOpen = (
+     if (!r) return;
+     const c = r[ci];
+     if (!c) return;
+-    if (c.isMine || c.isClicked) return;
++    if (c.isMine || c.isClicked || c.isFlagged) return;
+     if (isZero) {
+       c.isClicked = true;
+     }
+ 
++    if (c.neighbors === 0) {
++      doZeroOpen(copyRows, ri, ci);
++    }
+   });
+ 
+   //   console.log(copyRows);
+@@ -151,7 +154,7 @@ export const paddZeroes = (num: number, zeroes: number) => {
+   const str = num.toString();
+   if (str.length > zeroes) return str;
+   let z = "";
+-  for (let i = 0; i <= zeroes - str.length; i++) {
++  for (let i = 0; i < zeroes - str.length; i++) {
+     z += "0";
+   }
+   return z + str;

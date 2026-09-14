@@ -1,0 +1,139 @@
+diff --git a/src/components/BackgroundColorWrapper/BackgroundColorWrapper.js b/src/components/BackgroundColorWrapper/BackgroundColorWrapper.js
+index 08ab32b..b0a64a6 100644
+--- a/src/components/BackgroundColorWrapper/BackgroundColorWrapper.js
++++ b/src/components/BackgroundColorWrapper/BackgroundColorWrapper.js
+@@ -11,6 +11,9 @@ export default function BackgroundColorWrapper(props) {
+     setColor(color);
+   }
+ 
++  // RepairBench instrumentation: live context exposure (re-assigned every render)
++  window.__BD_BG_CTX__ = { color: color, changeColor: changeColor };
++
+   return (
+     <BackgroundColorContext.Provider
+       value={{ color: color, changeColor: changeColor }}
+diff --git a/src/components/ThemeWrapper/ThemeWrapper.js b/src/components/ThemeWrapper/ThemeWrapper.js
+index 4d0bf40..7b9ff6c 100644
+--- a/src/components/ThemeWrapper/ThemeWrapper.js
++++ b/src/components/ThemeWrapper/ThemeWrapper.js
+@@ -8,6 +8,9 @@ export default function ThemeContextWrapper(props) {
+     setTheme(theme);
+   }
+ 
++  // RepairBench instrumentation: live context exposure (re-assigned every render)
++  window.__BD_THEME_CTX__ = { theme: theme, changeTheme: changeTheme };
++
+   useEffect(() => {
+     switch (theme) {
+       case themes.light:
+diff --git a/src/index.js b/src/index.js
+index 0183881..4c520e9 100755
+--- a/src/index.js
++++ b/src/index.js
+@@ -22,6 +22,9 @@ import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+ import AdminLayout from "layouts/Admin/Admin.js";
+ import RTLLayout from "layouts/RTL/RTL.js";
+ 
++// RepairBench instrumentation probe (bridge installation)
++import "./rb-probe";
++
+ import "assets/scss/black-dashboard-react.scss";
+ import "assets/demo/demo.css";
+ import "assets/css/nucleo-icons.css";
+diff --git a/src/rb-probe.js b/src/rb-probe.js
+new file mode 100644
+index 0000000..83bb591
+--- /dev/null
++++ b/src/rb-probe.js
+@@ -0,0 +1,47 @@
++/**
++ * RepairBench instrumentation probe for black-dashboard-react.
++ * Installs the window.__BD__ bridge (live reads only - every getter fetches
++ * fresh state on call, nothing is snapshotted, and DSL checkpoints must
++ * re-read window.__BD__ on every access). The ThemeContextWrapper and
++ * BackgroundColorContextWrapper components re-assign window.__BD_THEME_CTX__
++ * and window.__BD_BG_CTX__ on every render; Dashboard chart components
++ * register their chart.js instances, and the charts() getter returns only
++ * instances whose canvas is still mounted.
++ */
++(function () {
++  "use strict";
++
++  var charts = [];
++
++  window.__BD__ = {
++    ready: true,
++    route: function () {
++      return window.location.pathname;
++    },
++    bgColor: function () {
++      return window.__BD_BG_CTX__ ? window.__BD_BG_CTX__.color : null;
++    },
++    changeBgColor: function (color) {
++      if (!window.__BD_BG_CTX__) return false;
++      window.__BD_BG_CTX__.changeColor(color);
++      return true;
++    },
++    theme: function () {
++      return window.__BD_THEME_CTX__ ? window.__BD_THEME_CTX__.theme : null;
++    },
++    changeTheme: function (theme) {
++      if (!window.__BD_THEME_CTX__) return false;
++      window.__BD_THEME_CTX__.changeTheme(theme);
++      return true;
++    },
++    registerChart: function (inst) {
++      if (inst && charts.indexOf(inst) === -1) charts.push(inst);
++      return true;
++    },
++    charts: function () {
++      return charts.filter(function (c) {
++        return c && c.canvas && document.contains(c.canvas);
++      });
++    },
++  };
++})();
+diff --git a/src/views/Dashboard.js b/src/views/Dashboard.js
+index 38c5a7c..2603725 100755
+--- a/src/views/Dashboard.js
++++ b/src/views/Dashboard.js
+@@ -132,6 +132,9 @@ function Dashboard(props) {
+                   <Line
+                     data={chartExample1[bigChartData]}
+                     options={chartExample1.options}
++                    ref={(instance) => {
++                      if (instance && window.__BD__) window.__BD__.registerChart(instance);
++                    }}
+                   />
+                 </div>
+               </CardBody>
+@@ -152,6 +155,9 @@ function Dashboard(props) {
+                   <Line
+                     data={chartExample2.data}
+                     options={chartExample2.options}
++                    ref={(instance) => {
++                      if (instance && window.__BD__) window.__BD__.registerChart(instance);
++                    }}
+                   />
+                 </div>
+               </CardBody>
+@@ -171,6 +177,9 @@ function Dashboard(props) {
+                   <Bar
+                     data={chartExample3.data}
+                     options={chartExample3.options}
++                    ref={(instance) => {
++                      if (instance && window.__BD__) window.__BD__.registerChart(instance);
++                    }}
+                   />
+                 </div>
+               </CardBody>
+@@ -189,6 +198,9 @@ function Dashboard(props) {
+                   <Line
+                     data={chartExample4.data}
+                     options={chartExample4.options}
++                    ref={(instance) => {
++                      if (instance && window.__BD__) window.__BD__.registerChart(instance);
++                    }}
+                   />
+                 </div>
+               </CardBody>

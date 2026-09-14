@@ -1,0 +1,249 @@
+# <img src="frontend/src/generated/favicon.svg" alt="ShutHost" width="24" height="24"> ShutHost
+
+[![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0-blue.svg)]()
+[![Status](https://img.shields.io/badge/status-active-success.svg)]()
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/9SMTM6/shuthost/main.yaml?label=build%20%26%20test)](https://github.com/9SMTM6/shuthost/actions/workflows/main.yaml)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/9SMTM6/shuthost/qa.yaml?label=QA)](https://github.com/9SMTM6/shuthost/actions/workflows/qa.yaml)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/9SMTM6/shuthost/release-test.yaml?label=release%20test)](https://github.com/9SMTM6/shuthost/actions/workflows/release-test.yaml)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/9SMTM6/shuthost/pages-deployment.yaml?label=demo%20tests)](https://github.com/9SMTM6/shuthost/actions/workflows/pages-deployment.yaml)
+
+A neat helper that manages the standby state of unix and windows hosts with Wake-On-Lan (WOL) configured, with Web-GUI.
+
+> Note: LARGE parts of this project were LLM generated. None were blindly committed, but it is what it is.
+
+[![Live demo: PWA controlling NAS aka old PC (2x speed)](docs/shuthost_live_demo_2x.webp)](./docs/shuthost_live_demo_2x.webp)
+> played at 2x speed, using the WebUI installed as PWA
+
+⚠️ **Note**: the short demo clip shown above is slightly out of date with respect to theming and layout. Check the [live demo](https://9SMTM6.github.io/shuthost/) or [screenshots below](#-ui-screenshots) for the current UI.
+
+## 🌐 [Live Demo](https://9SMTM6.github.io/shuthost/)
+
+[You can try a demo of the ShutHost WebUI via GitHub Pages.](https://9SMTM6.github.io/shuthost/)
+
+This demo runs entirely in your browser and does not control any real hosts. It is useful for previewing the UI and some of the features.
+
+Note that the theme (light/dark) of the WebUI is selected based on your system preference.
+
+---
+
+## ✨ Features
+
+- Manage standby state of Linux, MacOS and Windows hosts with Wake-On-Lan (WOL) and lightweight agents
+- Web-based GUI for easy management
+  - Light/Dark theme are selected based on system preference (with CSS media queries)
+  - installable as [PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Installing#installing_and_uninstalling_pwas)
+    - this allows behavior similar to an native app on e.g. Android
+- API for machine-to-machine control (e.g. backups)
+- customizable, e.g. custom shutdown/sleep command per host
+- Should support extension (e.g. Home Assistant)
+- Convenience scripts for simple installation of agents, clients and coordinator
+- Docker and simple binary deployment options for the coordinator (due to how Wake-on-LAN works docker only supports Linux though)
+- simplified agent-only deployment doesn't require a coordinator on an always-on host
+- security wasn't an afterthought
+
+## 💰 Energy & Cost Savings
+
+If the server is 
+* actively used 4h/week for e.g. backups
+* uses ~60W in Idle, 1.7W in WOL standby - typical old desktop hardware -
+* with energy-costs of **0.37 €/kWh** and CO₂ emissions of **344 g/kWh** - both taken from Germany, 2026
+
+we can save: **~15.74 €/month** and **~14.6 kg CO₂/month** (≈ 189 €/year, ≈ 176 kg CO₂/year)
+
+[Open the interactive calculator](https://9smtm6.github.io/shuthost/savings) to adjust parameters, and see the calculation.
+
+---
+
+---
+
+## 📚 Documentation & Resources
+
+Extended documentation, examples, and additional resources to help you get the most out of ShutHost:
+
+- [🧭 ShutHost Design & Operation](#-shuthost-design--operation)
+- [💿 Installation](#-installation)
+- [⚡ Agent-only Install](#-agent-only-install)
+- [📚 Examples](docs/examples/)
+- [📋 Requirements](docs/requirements.md)
+- [🔒 Security Considerations](docs/security_considerations.md)
+- [❓ FAQ](docs/FAQ.md)
+- [📷 UI screenshots](#-ui-screenshots)
+- [🖥️ Platform Support](frontend/src/htmlPartials/platform_support.md)
+- [🏗️ Architecture](https://9smtm6.github.io/shuthost/docs)
+- [🚀 Potential Future Features](#-potential-future-features)
+- [🤝 Contributing](docs/CONTRIBUTING.md)
+
+---
+## 🧭 ShutHost Design & Operation
+
+ShutHost began from a simple observation: Wake-on-LAN (WOL) is reasonably standardized for starting machines on a LAN, but there is no well-established, safe equivalent for remotely shutting down running systems. Some projects try to solve this—for example, [sleep-on-lan](https://github.com/SR-G/sleep-on-lan) and snippets/guides that log in via SSH and shut down the computer that way—but those approaches commonly enlarge the attack surface, are difficult to deploy, and lack usability.
+
+ShutHost addresses these challenges through three key design decisions:
+
+- **Authorization & safety:** Remote shutdown commands pose risks of accidental or malicious denial-of-service. To mitigate this, ShutHost requires authenticated requests: shutdowns are authorized using HMAC-signed messages with timestamps to prevent replay attacks and avoid sending plaintext credentials over the network.
+- **Privilege & init integration:** Performing a shutdown usually requires elevated privileges and must persist across reboots. ShutHost provides lightweight host agents that integrate with common service managers so the shutdown capability is available after restarts. Supported integrations include `systemd` (the dominant init on most mainstream Linux distributions), `openrc` (used by distributions like Alpine and Gentoo), and `launchd` (macOS). A "self-extracting" mode is also available for custom or manual setups where users handle init integration themselves (see [Deploying the Self-Extracting Agent on Unraid](docs/examples/unraid-self-extracting-agent-deployment.md) for an example).
+- **Network reachability & central control:** Wake-on-LAN only operates on the local broadcast domain. To manage hosts from outside the LAN, ShutHost includes a coordinator component: a single LAN-hosted coordinator provides a web GUI (installable as a PWA) and an API. The coordinator sends WOL packets to start machines locally and forwards authenticated shutdown requests to host agents over IP.
+
+Host agents are intentionally minimal and designed for security. They use IP-addressed, authenticated requests and avoid running full-featured HTTP servers. This reduces the attack surface for components that typically run with elevated privileges. The `host_agent` performs the actual shutdown and registers with the host's service manager so the capability survives reboots. The `host_agent` can also be used standalone with direct control scripts (see [Agent-only Installation](docs/examples/agent-installation.md)); its API is documented in [docs/API.md](docs/API.md). The `host_agent` supports custom shutdown commands, allowing users to define how their systems should be powered down or put to sleep—this can also be seen in the [Unraid example](docs/examples/unraid-self-extracting-agent-deployment.md).
+
+![Host-Agent Interaction](frontend/src/generated/host_agent_interaction.svg)
+
+The coordinator glues the pieces together and provides usability features:
+
+- A web UI and API make it easy to start/stop machines and integrate with other services.
+- The coordinator doesn't require elevated privileges to run.
+- The coordinator offers an installer and convenience scripts that simplify deploying `host_agent`s on the LAN and clients over the internet.
+- A lease system prevents hosts from being shut down while a client holds an active lease (for instance, while a backup job is running).
+  > This safety depends on all starts and stops going through the coordinator (either the UI or a client using the coordinator API); actions performed outside the coordinator are outside its control.
+
+![Lease system explainer](frontend/src/generated/client_controller_interaction.svg)
+
+## 💿 Installation
+
+Choose either the binary or the container (Linux only) installation.
+Windows [isn't supported by the coordinator](frontend/src/htmlPartials/platform_support.md); use a Linux VM or install the agent only (see [Agent-only Install](#-agent-only-install)).
+
+#### Binary
+- Use the [automated installation script](scripts/enduser_installers/coordinator.sh):
+  ```bash
+  curl -fsSL https://github.com/9SMTM6/shuthost/releases/latest/download/shuthost_coordinator_installer.sh | sh
+  ```
+  This script will automatically detect your platform, download the appropriate binary, print the checksum, and install the coordinator as a system service.
+  Pass `-i` to see all available install subcommand options (e.g. custom port or user).
+
+- Or follow the [manual steps](docs/examples/manual_install.md).
+
+#### Docker (Linux only)
+-  Download the [example_config.toml](docs/examples/example_config.toml) and [docker-compose.yaml](docs/examples/docker-compose.yaml) from Github and run the service:
+    ```bash
+    # Create config directory and download the example config from GitHub
+    mkdir -p coordinator_config data
+    curl -L -o coordinator_config/config.toml \
+      https://raw.githubusercontent.com/9SMTM6/shuthost/main/docs/examples/example_config.toml
+    
+    # Set restrictive permissions (readable/writable by owner only)
+    chmod 600 coordinator_config/config.toml
+    # Download the docker-compose file
+    curl -L -o docker-compose.yaml \
+      https://raw.githubusercontent.com/9SMTM6/shuthost/main/docs/examples/docker-compose.yaml
+    
+    # Run the service in the background
+    docker-compose up -d shuthost
+    
+    # Access the WebUI at http://localhost:8080
+    ```
+- Notes:
+  - Uses `network_mode: host` to reach the hosts with the Wake-on-LAN packet. This setting is Linux-only and will not work properly on Docker Desktop for Mac/Windows. Use the binary on Mac or run on a Linux VM with bridged networking on Mac or Windows.
+
+![Deployment Possibilities](frontend/src/generated/deployment.svg)
+
+### Agent / Client installation
+- To install a host-agent (controls the hosts): open the web UI, open "Install Host Agent" and follow the instructions shown.
+  Pass `--install-help` (shell) or `-InstallHelp` (PowerShell) to the install script to see all available install subcommand options.
+
+- To install a client (M2M, e.g., backup scripts): switch to the Clients tab, open "Install Client" and follow the instructions shown.
+
+## ⚡ Agent-only Install
+
+Lightweight option: install the host agent only (no coordinator). This does not require an always-on coordinator or a domain; it is easy to deploy but has limitations — the control scripts work only on the same LAN. See the detailed example in [docs/examples/agent-installation.md](docs/examples/agent-installation.md).
+
+![Direct Control Comparison with LAN Limitation](frontend/src/generated/direct_control_comparison.svg)
+
+> **Note for Windows users:** Windows agents are only available as self-extracting archives. You must manually configure the agent to start on boot using a service manager like [NSSM](https://nssm.cc/).
+>
+> ⚠️ **Important behavioral difference:** The PowerShell self-extracting script (`self-extracting-pwsh`) runs attached to the service process, unlike the shell version which automatically backgrounds the process. To run the PowerShell script in the background, start the script itself in the background (e.g., `Start-Process -WindowStyle Hidden`).
+
+Install the released agent installer and generate a direct-control script:
+
+<!-- Note: If you update these invocations update the corresponding invocations in tests! See .github/workflows/main.yaml and scripts/tests/install-and-run-direct-control.sh -->
+```bash
+# Install the agent:
+curl -fsSL https://github.com/9SMTM6/shuthost/releases/latest/download/shuthost_host_agent_installer.sh | sh
+# Generate a direct-control script (run on the machine where the agent binary is installed):
+# If the agent is in your PATH (it should be by default):
+sudo shuthost_host_agent generate-direct-control
+```
+```powershell
+# For Windows (PowerShell):
+curl.exe -fLO "https://github.com/9SMTM6/shuthost/releases/latest/download/shuthost_host_agent_installer.ps1"
+powershell -ExecutionPolicy Bypass -File .\shuthost_host_agent_installer.ps1
+# Then generate direct-control script from the self-extracting script:
+powershell -ExecutionPolicy Bypass -File .\shuthost_host_agent_self_extracting.ps1 generate-direct-control
+```
+```bash
+# Move the script to the device you want to use as the controller (same LAN).
+# copy via scp, USB, etc.
+# Ensure its executable (on Unix):
+chmod +x shuthost_direct_control_<hostname>
+```
+
+After moving the direct-control script to the controller device, you can run `./shuthost_direct_control_<hostname> wake`, `./shuthost_direct_control_<hostname> status` or `./shuthost_direct_control_<hostname> shutdown` while on the same LAN. See the example document for tradeoffs and security notes.
+
+
+---
+
+## 📷 UI screenshots
+
+More screenshots can be found in the [frontend/tests/visual-regression.spec.ts-snapshots](frontend/tests/visual-regression.spec.ts-snapshots) and the [frontend/tests/mobile-navigation.spec.ts-snapshots](frontend/tests/mobile-navigation.spec.ts-snapshots) folders.
+These are generated or validated automatically as part of the test suite, and thus are guaranteed to be up-to-date (if the tests pass).
+
+<table>
+  <tr>
+    <td><img src="frontend/tests/visual-regression.spec.ts-snapshots/at-hosts-Desktop-Dark.png" alt="Hosts — desktop dark" width="540"></td>
+    <td><img src="frontend/tests/visual-regression.spec.ts-snapshots/at-hosts-Mobile-Dark.png" alt="Hosts — mobile dark" width="220"></td>
+  </tr>
+  <tr>
+    <td><img src="frontend/tests/visual-regression.spec.ts-snapshots/at-hosts-expanded-install-Desktop-Light.png" alt="Hosts expanded — desktop light" width="540"></td>
+    <td><img src="frontend/tests/visual-regression.spec.ts-snapshots/at-hosts-expanded-install-Mobile-Landscape.png" alt="Hosts expanded — mobile landscape" width="360"></td>
+  </tr>
+</table>
+
+---
+
+## 🚀 Potential Future Features
+
+### 🎯 Core Features
+- 📊 **Host state tracking for statistics**
+- 🛡️ **Rate limiting of requests by shuthost clients**
+- **Per-user leases in WebUI**: When user authentication is supported (e.g., via OIDC), leases in the WebUI could be tracked per user instead of globally for all users. This would allow for more granular control and visibility over which user holds a lease on a host.
+- Agents pushing state changes to the coordinator (instead of coordinator polling agents for state)
+  - currently the coordinator polls agents for their state, this keeps logic in the agents minimal and requires less configuration (no need to configure coordinator address in agents, and potentially change it on all agents if coordinator address changes). However, it also means that state changes aren't reflected in the UI until the next poll.
+  - this is already supported, but not well tested, and disabling polling is not currently supported.
+
+### 🖥️ Platform Support
+- 🐡 **BSD support** might happen
+  - ⚠️ Requires using more advanced cross compilation
+  - I have no ability to test these practically myself.
+
+### 🔧 Management Features
+- 🗑️ **Uninstalls**
+- ✅ **Validate broadcast port configuration on agent install**
+- **Direct control script download** from the coordinator. IDK if thats actually a good idea. It means that that direct control script might interfere with the coordinator and/or cause unexpected event notifications, and the primary reason direct control scripts exist is for users who dont want to use the coordinator at all. This also introduces the ability to extract the shared secrets from just the coordinator GUI, this ability didn't previously exist.
+- 📝 **Self-registration endpoint** for host agents
+  - ❓ Unclear how to deal with authorization:
+    - Server secret?
+
+<!-- TODO:
+* consider using one of these crates to support services on windows:
+  * https://crates.io/crates/ceviche
+  * https://crates.io/crates/windows-service
+  * https://crates.io/crates/planif
+* add tests for push agents notifications
+  * copilot:
+    > New UDP startup broadcast handling (parsing, HMAC validation, override persistence, and status marking) is introduced without tests, while this module already has unit tests. Adding tests for valid/invalid packets, timestamp/HMAC failures, and the override update/clear behavior would help prevent regressions.
+  * These tests, at least when implemented as integration tests, kinda would profit from more configuration options, which is to be added in the future. After that we hopefully will get back to this.
+* add e2e tests for OIDC in a compose setup or similar, with kanidm (use example), authelia, authentik, dex
+  * (add tests for OIDC refresh flow) currently not active code
+* consider using secrets crate or secure-types instead for secrecy. These offer OS locks. On the other hand, once we give these secrets to dependencies, like openidconnect, its not as if they are well protected any longer...
+* consider using https://crates.io/crates/include_packed on some of the assets included, especially the agents. Should reduce shuthost binary size (including in memory if we decompress on request) by ~6mb with all agents.
+* > WoL always broadcasts to 255.255.255.255
+  > The WoL packet is always sent to the global broadcast address. For hosts on a different subnet (common in home-lab setups), this won't work. The config already stores the host's IP, which could be used to derive a directed subnet broadcast.
+  * investigate
+* consider adding lighthouse tests to CI and/or local tests.
+* pre_startup hook etc should display the EXISTENCE of a http body and similar
+* Add the ability to start/shutdown hosts (probably only without enforce_state) without changing leases.
+* A bypass for the startup/shutdown hooks might also be a good idea. That could potentially be implemented only into the lease-less startup/shutdown.
+* need to reword/work the main poll interval description in the documentation, as the interval is more likely to be limited by the timeouts on the hosts.
+* need tests for the self-extracting update flow. Though annoyingly even these need local admin rights. At first I thought that we should be able to remove that requirement from installers, but in that case the agent would not - in default setups - have the rights to shutdown the machine at all, so we probably should keep that around. But that also means that testing the update flow cant be done without admin rights (and/or docker), which is a bit of a pain.
+  * I could just require sudo and make them primarily CI tests, like some other tests.
+-->

@@ -1,0 +1,63 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2026 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+import { denormaliseHue, denormaliseSaturation, denormaliseLightness } from "@/definitions/filter-ranges";
+import { RGBtoHSL, HSLtoRGB } from "@/utils/color-util";
+
+/**
+ * Applies HSL balancing onto provided data
+ */
+export const applyHSL = (
+    input: Uint8ClampedArray, output: Uint8ClampedArray,
+    normalisedHue: number, normalisedSaturation: number, normalisedLightness: number
+): void => {
+    const hue = denormaliseHue( normalisedHue );
+    const saturation = denormaliseSaturation( normalisedSaturation );
+    const lightness = denormaliseLightness( normalisedLightness );
+
+    const { length } = input;
+
+    for ( let i = 0; i < length; i += 4 ) {
+        let r = input[ i ];
+        let g = input[ i + 1 ];
+        let b = input[ i + 2 ];
+
+        let { h, s, l } = RGBtoHSL({ r, g, b });
+
+        h = ( h + hue + 360 ) % 360; // Keep hue wrapped inside 0-360°
+        s = Math.max( 0, Math.min( 1, s + saturation ));
+        // l = Math.max( 0, Math.min( 1, l + lightness )); // additive lightness
+
+        // more natural lightness
+        if ( lightness > 0 ) {
+            l = l + ( 1.0 - l ) * lightness;
+        } else if ( lightness < 0 ) {
+            l = l + l * lightness; 
+        }
+        
+        ({ r, g, b } = HSLtoRGB({ h, s, l }));
+
+        output[ i ]     = r;
+        output[ i + 1 ] = g;
+        output[ i + 2 ] = b;
+    }
+};

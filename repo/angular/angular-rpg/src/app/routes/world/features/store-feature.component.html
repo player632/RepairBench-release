@@ -1,0 +1,99 @@
+<div layout="column" class="rpg-game-store" layout-padding *ngIf="active$ | async">
+  <div class="title">
+    <h1>{{ name$ | async }}</h1>
+  </div>
+
+  <div class="inventory" layout-padding flex>
+    <mat-tab-group
+      mat-stretch-tabs
+      animationDuration="0ms"
+      color="accent"
+      (selectedTabChange)="tabChange($event)"
+    >
+      <mat-tab label="Buy"></mat-tab>
+      <mat-tab label="Sell"></mat-tab>
+    </mat-tab-group>
+    <table mat-table [dataSource]="data" *ngIf="dataSource$ | async as data">
+      <ng-container matColumnDef="icon">
+        <th mat-header-cell *matHeaderCellDef>Item</th>
+        <td mat-cell *matCellDef="let item">
+          <div class="item-icon">
+            <rpg-sprite
+              width="32"
+              height="32"
+              class="icon"
+              [name]="item.icon"
+            ></rpg-sprite>
+            <span flex class="item-name" [innerText]="item.name"></span>
+          </div>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="value">
+        <th mat-header-cell *matHeaderCellDef>Value</th>
+        <td mat-cell *matCellDef="let item">
+          <span class="item-price" [innerText]="item.value"></span>
+        </td>
+      </ng-container>
+
+      <tr
+        mat-row
+        class="item-value"
+        *matRowDef="let row; columns: ['icon', 'value']"
+        (click)="toggleRowSelection($event, row)"
+        [class.selected]="(selected$ | async)?.has(row)"
+      ></tr>
+    </table>
+    <h1 *ngIf="!(inventory$ | async)?.length">No Items</h1>
+  </div>
+
+  <section class="differences">
+    <div
+      *ngFor="let diff of differences$ | async; trackBy: trackByEid"
+      [class]="diff.member.type"
+    >
+      <rpg-sprite
+        [class.disabled]="
+          diff.diff == '' && !(selling$ | async) && (selected$ | async)?.size
+        "
+        class="image"
+        [name]="diff.member.icon"
+        frame="7"
+      ></rpg-sprite>
+      <strong
+        *ngIf="diff.diff != '' && !(selling$ | async)"
+        [class.upgrade]="diff.difference > 0"
+        [class.downgrade]="diff.difference < 0"
+        >{{ diff.diff }}</strong
+      >
+    </div>
+  </section>
+
+  <footer class="actions">
+    <button mat-raised-button (click)="close()" color="primary">Exit</button>
+    <div class="money">
+      <rpg-sprite width="32" height="32" class="icon" name="gold.png"></rpg-sprite>
+      <span>{{ partyGold$ | async }}</span>
+    </div>
+    <button
+      mat-raised-button
+      class="btn-buy"
+      (click)="buyItems(buyData[0], buyData[1])"
+      [disabled]="!(selected$ | async)?.size"
+      *ngIf="buyingState$ | async as buyData"
+      color="accent"
+    >
+      Buy
+    </button>
+    <button
+      mat-raised-button
+      class="btn-sell"
+      (click)="sellItems()"
+      [disabled]="!(selected$ | async)?.size"
+      *ngIf="selling$ | async"
+      color="accent"
+    >
+      Sell
+    </button>
+  </footer>
+</div>

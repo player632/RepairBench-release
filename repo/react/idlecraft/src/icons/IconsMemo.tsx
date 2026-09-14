@@ -1,0 +1,12 @@
+import { GiTwoCoins } from 'react-icons/gi'
+import { LuArrowDown, LuArrowUp, LuChevronsUpDown, LuEye, LuInfo, LuTrash2 } from 'react-icons/lu'
+import { TbCircleCheck } from 'react-icons/tb'
+
+export const TrashIcon = <LuTrash2 className="text-lg" />
+export const InfoIcon = <LuInfo />
+export const ChevronsUpDownIcon = <LuChevronsUpDown className="ml-2 h-4" />
+export const ArrowDownIcon = <LuArrowDown />
+export const ArrowUpIcon = <LuArrowUp />
+export const Eye = <LuEye />
+export const Coins = <GiTwoCoins className="text-money-foreground" />
+export const Check = <TbCircleCheck color="var(--color-success)" className="text-lg" />

@@ -1,0 +1,361 @@
+diff --git a/src/lib/components/Actions.svelte b/src/lib/components/Actions.svelte
+index b1fdf82..dc78f07 100644
+--- a/src/lib/components/Actions.svelte
++++ b/src/lib/components/Actions.svelte
+@@ -272,9 +272,9 @@ ${svgString}`);
+     <div class="flex w-full items-center gap-2 py-2 whitespace-nowrap">
+       PNG size
+       <ToggleGroup.Root type="single" variant="outline" bind:value={imageSizeMode}>
+-        <ToggleGroup.Item value="auto">Auto</ToggleGroup.Item>
+-        <ToggleGroup.Item value="width">Width</ToggleGroup.Item>
+-        <ToggleGroup.Item value="height">Height</ToggleGroup.Item>
++        <ToggleGroup.Item value="auto" data-testid="png-mode-auto">Auto</ToggleGroup.Item>
++        <ToggleGroup.Item value="width" data-testid="png-mode-width">Width</ToggleGroup.Item>
++        <ToggleGroup.Item value="height" data-testid="png-mode-height">Height</ToggleGroup.Item>
+       </ToggleGroup.Root>
+       {#if imageSizeMode !== 'auto'}
+         <WidthIcon
+@@ -282,6 +282,7 @@ ${svgString}`);
+       {/if}
+       <Input
+         type="number"
++        data-testid="png-size-input"
+         min="3"
+         max="10000"
+         disabled={imageSizeMode === 'auto'}
+diff --git a/src/lib/components/Card/Card.svelte b/src/lib/components/Card/Card.svelte
+index 9d412bf..3e38203 100644
+--- a/src/lib/components/Card/Card.svelte
++++ b/src/lib/components/Card/Card.svelte
+@@ -12,6 +12,7 @@
+     isStackable?: boolean;
+     tabs?: Tab[];
+     activeTabID?: string;
++    testID?: string;
+     title?: string;
+     icon?: {
+       component: Component;
+@@ -23,6 +24,7 @@
+   }
+ 
+   let {
++    testID,
+     isClosable = true,
+     isOpen = false,
+     isStackable = false,
+@@ -45,6 +47,7 @@
+ </script>
+ 
+ <div
++  data-testid={testID}
+   class={[
+     'card flex h-fit flex-col overflow-hidden rounded-2xl border-2 border-muted',
+     isOpen && 'isOpen flex-grow',
+diff --git a/src/lib/components/Card/Tabs.svelte b/src/lib/components/Card/Tabs.svelte
+index 64a259d..64f8c77 100644
+--- a/src/lib/components/Card/Tabs.svelte
++++ b/src/lib/components/Card/Tabs.svelte
+@@ -30,6 +30,7 @@
+     {#each tabs as tab, index (tab.id)}
+       <Button
+         role="tab"
++        data-testid={`tab-${tab.id}`}
+         variant="ghost"
+         class={[
+           'px-2',
+diff --git a/src/lib/components/DesktopEditor.svelte b/src/lib/components/DesktopEditor.svelte
+index 77b55ab..7d25ed7 100644
+--- a/src/lib/components/DesktopEditor.svelte
++++ b/src/lib/components/DesktopEditor.svelte
+@@ -227,7 +227,7 @@
+   });
+ </script>
+ 
+-<div class="relative h-full grow overflow-hidden">
++<div class="relative h-full grow overflow-hidden" data-testid="code-editor">
+   <div bind:this={divElement} id="editor" class="h-full w-full"></div>
+   <div bind:this={aiPromptPopupElement}>
+     <AIPromptPopup
+diff --git a/src/lib/components/EmbedView.svelte b/src/lib/components/EmbedView.svelte
+index a6704cb..eaa7728 100644
+--- a/src/lib/components/EmbedView.svelte
++++ b/src/lib/components/EmbedView.svelte
+@@ -90,6 +90,7 @@
+ 
+ <div
+   id="embed-view"
++  data-testid="embed-view"
+   class={[
+     'h-full w-full',
+     grid && (dark ? 'grid-bg-dark' : 'grid-bg-light'),
+diff --git a/src/lib/components/History/History.svelte b/src/lib/components/History/History.svelte
+index 9e7a10c..6681e56 100644
+--- a/src/lib/components/History/History.svelte
++++ b/src/lib/components/History/History.svelte
+@@ -125,7 +125,7 @@
+   );
+ </script>
+ 
+-<Card onselect={tabSelectHandler} isOpen isClosable={false} {tabs} activeTabID={historyState.mode}>
++<Card testID="history-card" onselect={tabSelectHandler} isOpen isClosable={false} {tabs} activeTabID={historyState.mode}>
+   {#snippet actions()}
+     <div class="flex items-center gap-2">
+       <Button
+@@ -145,6 +145,7 @@
+       <Separator orientation="vertical" />
+       <Button
+         id="saveHistory"
++        data-testid="history-save-button"
+         size="icon"
+         variant="ghost"
+         onclick={saveHistory}
+@@ -160,10 +161,10 @@
+       {/if}
+     </div>
+   {/snippet}
+-  <ul class="flex h-full flex-col gap-2 overflow-auto p-2" id="historyList">
++  <ul class="flex h-full flex-col gap-2 overflow-auto p-2" id="historyList" data-testid="history-list">
+     {#if entriesWithUrl.length > 0}
+       {#each entriesWithUrl as { id, state, time, name, url, type, openUrl } (id)}
+-        <li class="flex flex-col gap-2">
++        <li class="flex flex-col gap-2" data-testid="history-entry">
+           <div class="flex items-center justify-between">
+             <div class="flex min-w-0 flex-1 flex-col">
+               <div class="flex min-w-0 items-center gap-1 overflow-hidden">
+@@ -177,6 +178,7 @@
+                 {:else if editingId === id}
+                   <input
+                     class="min-w-0 flex-1 rounded border px-1 text-sm"
++                    data-testid="history-rename-input"
+                     bind:value={editValue}
+                     aria-label="Rename entry"
+                     onkeydown={(event) => {
+@@ -192,6 +194,7 @@
+                   {#if type !== 'loader'}
+                     <button
+                       type="button"
++                      data-testid="history-rename-button"
+                       class="shrink-0 opacity-50 hover:opacity-100"
+                       title="Rename"
+                       onclick={() => {
+@@ -224,6 +227,7 @@
+               <Button
+                 size="icon"
+                 variant="ghost"
++                data-testid="history-restore-button"
+                 title="Restore this version"
+                 onclick={() => restoreHistoryItem(state)}>
+                 <UndoIcon />
+@@ -233,6 +237,7 @@
+                   size="icon"
+                   variant="ghost"
+                   class="hover:text-destructive"
++                  data-testid="history-delete-button"
+                   title="Delete this version"
+                   onclick={() => removeEntry(id)}>
+                   <TrashAltIcon />
+diff --git a/src/lib/components/Navbar.svelte b/src/lib/components/Navbar.svelte
+index 6d691f7..2feb5fb 100644
+--- a/src/lib/components/Navbar.svelte
++++ b/src/lib/components/Navbar.svelte
+@@ -55,7 +55,7 @@
+ </script>
+ 
+ {#if activePromotion}
+-  <div class="top-bar z-10 flex h-fit w-full bg-primary">
++  <div class="top-bar z-10 flex h-fit w-full bg-primary" data-testid="promo-banner">
+     <div
+       class="flex grow"
+       role="button"
+@@ -66,6 +66,7 @@
+     </div>
+     {#snippet closeBanner()}
+       <Button
++        data-testid="promo-dismiss"
+         title="Dismiss banner"
+         variant="ghost"
+         class="hover:bg-transparent hover:text-[#261A56]"
+diff --git a/src/lib/components/Preset.svelte b/src/lib/components/Preset.svelte
+index 8bc7784..c5dff23 100644
+--- a/src/lib/components/Preset.svelte
++++ b/src/lib/components/Preset.svelte
+@@ -76,6 +76,7 @@
+       <div class="flex min-w-20 flex-grow">
+         <Button
+           size="sm"
++          data-testid={`preset-${sample}`}
+           class={cn('flex-grow normal-case', examples.length > 1 && 'rounded-r-none')}
+           onclick={() => loadSampleDiagram(sample, examples[0])}>
+           {sample}
+diff --git a/src/lib/components/Share.svelte b/src/lib/components/Share.svelte
+index 369ba9a..c308bfd 100644
+--- a/src/lib/components/Share.svelte
++++ b/src/lib/components/Share.svelte
+@@ -54,7 +54,7 @@
+ </script>
+ 
+ <Dialog.Root>
+-  <Dialog.Trigger class={buttonVariants({ size: 'sm' })}>Share</Dialog.Trigger>
++  <Dialog.Trigger data-testid="share-button" class={buttonVariants({ size: 'sm' })}>Share</Dialog.Trigger>
+   <Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+     <Dialog.Header>
+       <Dialog.Title class="flex items-center gap-2 text-xl">
+@@ -69,7 +69,7 @@
+           <img class="size-5" src={asset('/favicon.svg')} alt="Mermaid Live Editor" />
+           Mermaid Live Editor
+         </h2>
+-        <CopyInput value={window.location.href} />
++        <CopyInput value={window.location.href} testID="share-page-link" />
+         <Dialog.Description>
+           The content of the diagrams you create never leaves your browser.
+         </Dialog.Description>
+@@ -119,11 +119,11 @@
+           </label>
+           <label class="flex flex-col gap-1 text-sm">
+             Width
+-            <Input bind:value={width} />
++            <Input bind:value={width} data-testid="embed-width-input" />
+           </label>
+           <label class="flex flex-col gap-1 text-sm">
+             Height
+-            <Input bind:value={height} />
++            <Input bind:value={height} data-testid="embed-height-input" />
+           </label>
+         </div>
+         <div class="flex flex-wrap items-center gap-4">
+@@ -140,15 +140,15 @@
+             <ToggleGroup.Item value="dark">Dark</ToggleGroup.Item>
+           </ToggleGroup.Root>
+           <label class="flex items-center gap-2 text-sm">
+-            <Switch bind:checked={controls} />
++            <Switch bind:checked={controls} data-testid="embed-controls-switch" />
+             Controls
+           </label>
+           <label class="flex items-center gap-2 text-sm">
+-            <Switch bind:checked={grid} />
++            <Switch bind:checked={grid} data-testid="embed-grid-switch" />
+             Grid
+           </label>
+           <label class="flex items-center gap-2 text-sm">
+-            <Switch bind:checked={showPreview} />
++            <Switch bind:checked={showPreview} data-testid="embed-preview-switch" />
+             Preview
+           </label>
+         </div>
+@@ -171,8 +171,8 @@
+                   format = value;
+                 }
+               }}>
+-              <ToggleGroup.Item value="iframe">iframe</ToggleGroup.Item>
+-              <ToggleGroup.Item value="webComponent">Web component</ToggleGroup.Item>
++              <ToggleGroup.Item value="iframe" data-testid="embed-format-iframe">iframe</ToggleGroup.Item>
++              <ToggleGroup.Item value="webComponent" data-testid="embed-format-webcomponent">Web component</ToggleGroup.Item>
+             </ToggleGroup.Root>
+             <textarea
+               data-testid={TID.embedSnippet}
+diff --git a/src/lib/components/SyncRoughToolbar.svelte b/src/lib/components/SyncRoughToolbar.svelte
+index e8651e9..31484ea 100644
+--- a/src/lib/components/SyncRoughToolbar.svelte
++++ b/src/lib/components/SyncRoughToolbar.svelte
+@@ -13,12 +13,14 @@
+ 
+ <FloatingToolbar>
+   <Toggle
++    data-testid="rough-toggle"
+     bind:pressed={() => inputState.rough, (rough) => updateCodeStore({ rough })}
+     size="sm"
+     title="Hand-Drawn">
+     <RoughIcon />
+   </Toggle>
+   <Toggle
++    data-testid="grid-toggle"
+     bind:pressed={() => inputState.grid ?? defaultState.grid, (grid) => updateCodeStore({ grid })}
+     size="sm"
+     title="Background Grid">
+diff --git a/src/lib/components/VersionSecurityToolbar.svelte b/src/lib/components/VersionSecurityToolbar.svelte
+index 26f7964..ec7b475 100644
+--- a/src/lib/components/VersionSecurityToolbar.svelte
++++ b/src/lib/components/VersionSecurityToolbar.svelte
+@@ -11,7 +11,7 @@
+ </script>
+ 
+ <FloatingToolbar>
+-  <span class="text-sm font-semibold opacity-60">v{version}</span>
++  <span class="text-sm font-semibold opacity-60" data-testid="mermaid-version">v{version}</span>
+   {#if !env.hidePrivacyPolicy}
+     <Button variant="ghost" size="icon" title="Privacy & Security">
+       <Privacy />
+diff --git a/src/lib/components/View.svelte b/src/lib/components/View.svelte
+index 24a48bd..ad08742 100644
+--- a/src/lib/components/View.svelte
++++ b/src/lib/components/View.svelte
+@@ -121,9 +121,10 @@
+ 
+ <div
+   id="view"
++  data-testid="diagram-view"
+   bind:this={view}
+   class={['h-full w-full', shouldShowGrid && `grid-bg-${mode.current}`, error && 'opacity-50']}>
+-  <div id="container" bind:this={container} class="h-full overflow-auto"></div>
++  <div id="container" data-testid="diagram-container" bind:this={container} class="h-full overflow-auto"></div>
+ </div>
+ 
+ <style>
+diff --git a/src/lib/util/notify.ts b/src/lib/util/notify.ts
+index 5c1c702..344e778 100644
+--- a/src/lib/util/notify.ts
++++ b/src/lib/util/notify.ts
+@@ -1,7 +1,23 @@
+ import { toast } from 'svelte-sonner';
+ 
++// Instrumentation probe: svelte-sonner renders toast nodes asynchronously and
++// exposes no testid of its own; tag freshly rendered toasts so checkpoints can
++// locate them. Purely additive DOM attribute writes - no behavior change.
++const tagRenderToasts = (): void => {
++  if (typeof document === 'undefined') return;
++  for (const el of document.querySelectorAll('[data-sonner-toast]')) {
++    if (!el.hasAttribute('data-testid')) {
++      el.setAttribute('data-testid', 'history-toast');
++    }
++  }
++};
++
+ export const notify = (message: string): void => {
+   toast(message);
++  if (typeof window !== 'undefined') {
++    window.setTimeout(tagRenderToasts, 150);
++    window.setTimeout(tagRenderToasts, 500);
++  }
+ };
+ 
+ export const prompt = (message: string): boolean => {
+diff --git a/src/lib/util/renderView.ts b/src/lib/util/renderView.ts
+index 07c2bcc..e30eba2 100644
+--- a/src/lib/util/renderView.ts
++++ b/src/lib/util/renderView.ts
+@@ -64,5 +64,6 @@ export const renderAndPlaceDiagram = async ({
+       bindFunctions(graphDiv);
+     }
+   }
++  graphDiv.setAttribute('data-testid', 'diagram-svg');
+   return { diagramType, graphDiv };
+ };
+diff --git a/src/routes/(app)/edit/+page.svelte b/src/routes/(app)/edit/+page.svelte
+index 5c2518d..c545063 100644
+--- a/src/routes/(app)/edit/+page.svelte
++++ b/src/routes/(app)/edit/+page.svelte
+@@ -91,12 +91,13 @@
+   {/snippet}
+ 
+   <Navbar mobileToggle={isMobile ? mobileToggle : undefined}>
+-    <Toggle bind:pressed={isHistoryOpen} size="sm" title="History" aria-label="History">
++    <Toggle data-testid="history-toggle" bind:pressed={isHistoryOpen} size="sm" title="History" aria-label="History">
+       <HistoryIcon />
+     </Toggle>
+     <Share />
+     <McWrapper>
+       <Button
++        data-testid="save-diagram-button"
+         variant="accent"
+         size="sm"
+         href={urls.current.mermaidChart({ medium: 'save_diagram' }).save}

@@ -1,0 +1,38 @@
+import { useEffect, useRef, useState } from 'react'
+import { Colors } from '../state/uiFunctions'
+import { ProgressBar } from './ProgressBar'
+
+export function RestartProgress(props: { value: number; className?: string; color: Colors; testId?: string }) {
+    const { value: hpPercent, className, color, testId } = props
+    const [isZero, setIsZero] = useState(false)
+    const prevHpPercentRef = useRef(100)
+
+    useEffect(() => {
+        let frame = -1
+
+        if (hpPercent === 100 && hpPercent > prevHpPercentRef.current) {
+            // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
+            setIsZero(true)
+
+            frame = window.setTimeout(() => {
+                setIsZero(false)
+            }, 200)
+        }
+        prevHpPercentRef.current = hpPercent
+        return () => {
+            if (frame !== -1) {
+                setIsZero(false)
+                window.clearTimeout(frame)
+            }
+        }
+    }, [hpPercent])
+
+    return (
+        <ProgressBar
+            value={isZero && hpPercent === 100 ? 0 : hpPercent}
+            className={className}
+            color={color}
+            testId={testId}
+        />
+    )
+}

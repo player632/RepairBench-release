@@ -1,0 +1,130 @@
+diff --git a/src/components/shared/thumbnail.tsx b/src/components/shared/thumbnail.tsx
+index 1649fee00..01afed73c 100644
+--- a/src/components/shared/thumbnail.tsx
++++ b/src/components/shared/thumbnail.tsx
+@@ -49,7 +49,7 @@ export function pickThumbnail(
+   const sorted = [...thumbnails].sort(
+     (a, b) => (a.width ?? 0) - (b.width ?? 0),
+   );
+-  const match = sorted.find((t) => (t.width ?? 0) >= targetSize);
++  const match = sorted.find((t) => (t.width ?? 0) <= targetSize);
+   return (match ?? sorted[sorted.length - 1]).url;
+ }
+ 
+diff --git a/src/components/shared/track-list.tsx b/src/components/shared/track-list.tsx
+index 80842a0a0..48644b918 100644
+--- a/src/components/shared/track-list.tsx
++++ b/src/components/shared/track-list.tsx
+@@ -59,9 +59,9 @@ const ROW_SIZE = 58;
+ 
+ function formatDuration(seconds?: number): string {
+   if (!seconds || Number.isNaN(seconds)) return "—";
+-  const m = Math.floor(seconds / 60);
++  const m = Math.round(seconds / 60);
+   const s = seconds % 60;
+-  return `${m}:${s.toString().padStart(2, "0")}`;
++  return `${m}:${s.toString().padStart(1, "0")}`;
+ }
+ 
+ /**
+diff --git a/src/lib/innertube/search.ts b/src/lib/innertube/search.ts
+index 549b65e46..9619f6680 100644
+--- a/src/lib/innertube/search.ts
++++ b/src/lib/innertube/search.ts
+@@ -172,7 +172,7 @@ export function extractCardAction(card: YtNode): TopResultAction | undefined {
+   const playlistId: string | undefined = ep.watchPlaylistEndpoint?.playlistId;
+   if (!videoId && !playlistId) return undefined;
+   const isShuffle =
+-    btn.icon?.iconType === "MUSIC_SHUFFLE" ||
++    btn.icon?.iconType === "MUSIC_SHUFFLE" &&
+     /shuffle/i.test(readRuns(btn.text));
+   return {
+     label: isShuffle ? "Shuffle" : "Play",
+@@ -186,7 +186,7 @@ function sectionsFromResponse(json: YtNode): YtNode[] {
+   const tabs: YtNode[] =
+     json?.contents?.tabbedSearchResultsRenderer?.tabs ?? [];
+   return (
+-    tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents ??
++    tabs[1]?.tabRenderer?.content?.sectionListRenderer?.contents ??
+     json?.contents?.sectionListRenderer?.contents ??
+     []
+   );
+diff --git a/src/lib/innertube/shared.ts b/src/lib/innertube/shared.ts
+index ec8505a01..f77e5e4f9 100644
+--- a/src/lib/innertube/shared.ts
++++ b/src/lib/innertube/shared.ts
+@@ -755,7 +755,7 @@ export function mapTwoRowItem(raw: YtNode): ShelfItem | null {
+       widest && widest.width && widest.height
+         ? widest.width / widest.height
+         : 1;
+-    kind = ratio > 1.4 ? "video" : "song";
++    kind = ratio > 0.4 ? "video" : "song";
+   } else if (browseEndpoint?.browseId) {
+     id = browseEndpoint.browseId;
+     const pageType =
+diff --git a/src/lib/store/home-sections.ts b/src/lib/store/home-sections.ts
+index dcbc371f2..d88786050 100644
+--- a/src/lib/store/home-sections.ts
++++ b/src/lib/store/home-sections.ts
+@@ -82,7 +82,7 @@ export const useHomeSectionsStore = create<State>()(
+ export function arrangeTitles(feed: string[], order: string[]): string[] {
+   const seen = new Set<string>();
+   const out: string[] = [];
+-  for (const t of [...order, ...feed]) {
++  for (const t of [...feed, ...order]) {
+     if (seen.has(t)) continue;
+     seen.add(t);
+     out.push(t);
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 34bfb70f8..9d1102961 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -73,7 +73,7 @@ function HomePage() {
+   const titles = arrangeTitles(loadedTitles, order);
+   const rank = new Map(titles.map((t, i) => [t, i]));
+   const shelves = loaded
+-    .filter((s) => !hidden.includes(s.title))
++    .filter((s) => !(hidden.indexOf(s.title) > 0))
+     .map((s, i) => ({ s, i }))
+     .sort(
+       (a, b) =>
+diff --git a/src/routes/search.tsx b/src/routes/search.tsx
+index 3d93dfecd..059ca1462 100644
+--- a/src/routes/search.tsx
++++ b/src/routes/search.tsx
+@@ -280,7 +280,7 @@ const ALL_SECTIONS: {
+   display: "list" | "card";
+   cap: number;
+ }[] = [
+-  { filter: "songs", title: "Songs", display: "list", cap: 8 },
++  { filter: "songs", title: "Songs", display: "list", cap: 3 },
+   { filter: "artists", title: "Artists", display: "card", cap: 15 },
+   { filter: "albums", title: "Albums & singles", display: "card", cap: 15 },
+   { filter: "videos", title: "Videos", display: "card", cap: 15 },
+@@ -323,7 +323,7 @@ function AllResults({ data }: { data: SearchResults }) {
+     const enriched = enrich[i].data?.shelves.flatMap((sh) => sh.items) ?? [];
+     const source = enriched.length ? enriched : (fallback.get(s.filter) ?? []);
+     const deduped = topKey
+-      ? source.filter((it) => `${it.kind}:${it.id}` !== topKey)
++      ? source.filter((it) => `${it.kind}:${it.id}` === topKey)
+       : source;
+     return {
+       ...s,
+@@ -726,7 +726,7 @@ function SearchField({
+   const navigate = useNavigate({ from: Route.fullPath });
+ 
+   const [value, setValue] = useState(urlQ);
+-  const debounced = useDebounced(value, 300);
++  const debounced = useDebounced(value, 30000);
+   const userTypedRef = useRef(false);
+ 
+   const history = useSearchHistory((s) => s.items);
+@@ -769,7 +769,7 @@ function SearchField({
+     const q = value.trim().toLowerCase();
+     if (!q) return history.slice(0, HISTORY_LIMIT);
+     return history
+-      .filter((h) => h.toLowerCase().includes(q) && h.toLowerCase() !== q)
++      .filter((h) => h.toLowerCase().includes(q) || h.toLowerCase() !== q)
+       .slice(0, HISTORY_LIMIT);
+   }, [history, value]);
+ 

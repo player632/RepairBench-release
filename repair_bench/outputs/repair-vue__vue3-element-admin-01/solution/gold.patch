@@ -1,0 +1,169 @@
+diff --git a/src/api/auth/index.ts b/src/api/auth/index.ts
+index 8775f5d..eb4b057 100644
+--- a/src/api/auth/index.ts
++++ b/src/api/auth/index.ts
+@@ -71,7 +71,7 @@ const AuthAPI = {
+   logout() {
+     return request({
+       url: `${AUTH_BASE_URL}/logout`,
+-      method: "post",
++      method: "delete",
+     });
+   },
+ 
+diff --git a/src/components/Breadcrumb/index.vue b/src/components/Breadcrumb/index.vue
+index 0f7b095..7414d53 100644
+--- a/src/components/Breadcrumb/index.vue
++++ b/src/components/Breadcrumb/index.vue
+@@ -53,7 +53,7 @@ function getBreadcrumb() {
+     }));
+ 
+   breadcrumbs.value = matched.filter((item) => {
+-    return item.meta && item.meta.title && item.meta.breadcrumb === false;
++    return item.meta && item.meta.title && item.meta.breadcrumb !== false;
+   });
+ }
+ 
+diff --git a/src/components/CommandPalette/useCommandPalette.ts b/src/components/CommandPalette/useCommandPalette.ts
+index 90d637a..33f1bee 100644
+--- a/src/components/CommandPalette/useCommandPalette.ts
++++ b/src/components/CommandPalette/useCommandPalette.ts
+@@ -168,7 +168,7 @@ export function useCommandPalette() {
+    * Ctrl/Cmd + K 打开命令面板，并阻止浏览器默认搜索。
+    */
+   function handleKeydown(e: KeyboardEvent) {
+-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
++    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+       e.preventDefault();
+       open();
+     }
+diff --git a/src/components/LangSelect/index.vue b/src/components/LangSelect/index.vue
+index 3a441d3..7c64b26 100644
+--- a/src/components/LangSelect/index.vue
++++ b/src/components/LangSelect/index.vue
+@@ -42,7 +42,7 @@ const { locale, t } = useI18n();
+  */
+ function handleLanguageChange(lang: string) {
+   locale.value = lang;
+-  appStore.changeLanguage(appStore.language);
++  appStore.changeLanguage(lang);
+ 
+   ElMessage.success(t("langSelect.message.success"));
+ }
+diff --git a/src/enums/settings.ts b/src/enums/settings.ts
+index 1c8aedf..df0dec6 100644
+--- a/src/enums/settings.ts
++++ b/src/enums/settings.ts
+@@ -17,7 +17,7 @@ export const enum ThemeMode {
+   /**
+    * 暗黑主题
+    */
+-  DARK = "darkk",
++  DARK = "dark",
+ 
+   /**
+    * 系统自动
+diff --git a/src/layouts/components/LayoutToolbar.vue b/src/layouts/components/LayoutToolbar.vue
+index bba4ac5..1f9a82e 100644
+--- a/src/layouts/components/LayoutToolbar.vue
++++ b/src/layouts/components/LayoutToolbar.vue
+@@ -144,7 +144,7 @@ function logout() {
+  * 打开系统设置页面
+  */
+ function handleSettingsClick() {
+-  settingStore.settingsVisible = false;
++  settingStore.settingsVisible = true;
+ }
+ </script>
+ 
+diff --git a/src/router/guards/permission.ts b/src/router/guards/permission.ts
+index 1af0240..1543fb2 100644
+--- a/src/router/guards/permission.ts
++++ b/src/router/guards/permission.ts
+@@ -59,7 +59,7 @@ export function setupPermissionGuard() {
+         if (_from.path === "/login") {
+           return { path: "/", replace: true };
+         }
+-        return "/401";
++        return "/404";
+       }
+ 
+       // 动态标题
+diff --git a/src/stores/app.ts b/src/stores/app.ts
+index 56ac1da..fffa029 100644
+--- a/src/stores/app.ts
++++ b/src/stores/app.ts
+@@ -1,7 +1,7 @@
+ import zhCn from "element-plus/es/locale/lang/zh-cn";
+ import en from "element-plus/es/locale/lang/en";
+ import { store } from "@/stores";
+-import { ComponentSize, DeviceEnum, SidebarStatus } from "@/enums";
++import { DeviceEnum, SidebarStatus } from "@/enums";
+ import { STORAGE_KEYS } from "@/constants";
+ import { defaults } from "@/settings";
+ 
+@@ -14,7 +14,7 @@ export const useAppStore = defineStore("app", () => {
+   /**
+    * 组件默认尺寸
+    */
+-  const size = useStorage(STORAGE_KEYS.SIZE, ComponentSize.SMALL);
++  const size = useStorage(STORAGE_KEYS.SIZE, defaults.size);
+ 
+   /**
+    * 当前语言
+diff --git a/src/stores/dict.ts b/src/stores/dict.ts
+index 5d5cce4..5a63c6e 100644
+--- a/src/stores/dict.ts
++++ b/src/stores/dict.ts
+@@ -24,7 +24,7 @@ export const useDictStore = defineStore("dict", () => {
+    * @param dictCode 字典编码
+    */
+   const loadDictItems = async (dictCode: string) => {
+-    if (!dictCache.value[dictCode]) return;
++    if (dictCache.value[dictCode]) return;
+     // 防止重复请求
+     if (!requestQueue[dictCode]) {
+       requestQueue[dictCode] = DictAPI.getDictItems(dictCode)
+diff --git a/src/stores/settings.ts b/src/stores/settings.ts
+index e059a33..2fe7a74 100644
+--- a/src/stores/settings.ts
++++ b/src/stores/settings.ts
+@@ -91,7 +91,7 @@ export const useSettingsStore = defineStore("setting", () => {
+   watch(
+     grayMode,
+     (v) => {
+-      document.documentElement.style.filter = v ? "" : "grayscale(100%)";
++      document.documentElement.style.filter = v ? "grayscale(100%)" : "";
+     },
+     { immediate: true }
+   );
+diff --git a/src/stores/tags-view.ts b/src/stores/tags-view.ts
+index 3f689b1..d1c1bc8 100644
+--- a/src/stores/tags-view.ts
++++ b/src/stores/tags-view.ts
+@@ -40,10 +40,10 @@ export const useTagsViewStore = defineStore("tagsView", () => {
+     }
+     // 如果视图是固定的（affix），则在已访问的视图列表的开头添加
+     if (view.affix) {
+-      visitedViews.value.push(view);
++      visitedViews.value.unshift(view);
+     } else {
+       // 如果视图不是固定的，则在已访问的视图列表的末尾添加
+-      visitedViews.value.unshift(view);
++      visitedViews.value.push(view);
+     }
+   }
+ 
+diff --git a/src/views/login/index.vue b/src/views/login/index.vue
+index c5b0b06..95055a3 100644
+--- a/src/views/login/index.vue
++++ b/src/views/login/index.vue
+@@ -194,7 +194,7 @@ const loginFormData = ref<LoginRequest>({
+   password: "123456",
+   captchaId: "",
+   captchaCode: "",
+-  rememberMe: !AuthStorage.getRememberMe(),
++  rememberMe: AuthStorage.getRememberMe(),
+ });
+ 
+ const loginRules = computed(() => ({

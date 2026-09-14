@@ -1,0 +1,530 @@
+// RepairBench offline environment stub.
+// Answers the application's remote endpoints from deterministic local fixtures. The stub
+// performs no writes to application state and issues no network requests.
+(() => {
+  if (window.__RB_STUB__) return;
+
+  // ---------------------------------------------------------------- 夹具（全部写死）
+  const THUMB = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR42mNwcYuFIwbiOAB2Ew5xSK4PigAAAABJRU5ErkJggg==";   // 4x4 opaque PNG, deterministic bytes; 0 http: substring so getThumbnails().replace('http:','https:') is a no-op
+  const thumbs = () => ({
+    default: { url: THUMB, width: 120, height: 90 },
+    medium: { url: THUMB, width: 320, height: 180 },
+    high: { url: THUMB, width: 480, height: 360 }
+  });
+
+  //
+  const ITEM_DURATIONS = {
+    rbitm00001: "PT1H2M3S",
+    rbitm00002: "PT10M15S",
+    rbitm00003: "PT1H3S",
+    rbitm00004: "PT45S"
+  };
+  const DEFAULT_DURATION = "PT1M1S";
+
+  const video = (id, over) => Object.assign({
+    id,
+    contentDetails: { duration: ITEM_DURATIONS[id] || DEFAULT_DURATION },
+    snippet: {
+      title: "RB Fixture Video " + id,
+      description: "RB fixture description for " + id + ".",
+      thumbnails: thumbs(),
+      channelId: "rbch0000001",
+      channelTitle: "RB Fixture Channel",
+      publishedAt: "2024-03-05T10:00:00Z"
+    },
+    status: { privacyStatus: "public" }
+  }, over || {});
+
+  const SEEDED_QUEUE_VIDEO = video("rbseed00001", {
+    snippet: {
+      title: "RB Seeded Queue Item One",
+      description: "RB fixture description for rbseed00001.",
+      thumbnails: thumbs(),
+      channelId: "rbch0000001",
+      channelTitle: "RB Fixture Channel",
+      publishedAt: "2024-03-05T10:00:00Z"
+    },
+    contentDetails: { duration: "PT1H2M3S" }
+  });
+
+  const VIDEOS = {
+    rbseed00001: SEEDED_QUEUE_VIDEO,
+    rbitm00001: video("rbitm00001", { snippet: { title: "RB Fixture Item PT1H2M3S", description: "d", thumbnails: thumbs(), channelId: "rbch0000001", channelTitle: "RB Fixture Channel", publishedAt: "2024-03-05T10:00:00Z" } }),
+    rbitm00002: video("rbitm00002", { snippet: { title: "RB Fixture Item PT10M15S", description: "d", thumbnails: thumbs(), channelId: "rbch0000001", channelTitle: "RB Fixture Channel", publishedAt: "2024-03-06T10:00:00Z" } }),
+    rbitm00003: video("rbitm00003", { snippet: { title: "RB Fixture Item PT1H3S", description: "d", thumbnails: thumbs(), channelId: "rbch0000001", channelTitle: "RB Fixture Channel", publishedAt: "2024-03-07T10:00:00Z" } }),
+    rbitm00004: video("rbitm00004", { snippet: { title: "RB Fixture Item PT45S", description: "d", thumbnails: thumbs(), channelId: "rbch0000001", channelTitle: "RB Fixture Channel", publishedAt: "2024-03-08T10:00:00Z" } }),
+    rbimp00001: video("rbimp00001"),
+    rbimp00002: video("rbimp00002"),
+    rbimp00003: video("rbimp00003"),
+    rbbare0001: video("rbbare0001"),
+    rbbare0002: video("rbbare0002"),
+    rbbare0003: video("rbbare0003")
+  };
+  const videoById = (id) => VIDEOS[id] || video(id);
+
+  // 播放列表夹具：P1 显式**缺** contentDetails.itemCount（D07 观测面）；P2 itemCount=3（D07 领地守卫）；P3 itemCount=1（复数边界守卫）
+  const PLAYLISTS = [
+    { id: "rbplnocount1", contentDetails: {}, snippet: { title: "RB Fixture Playlist No Count", thumbnails: thumbs() }, status: { privacyStatus: "private" } },
+    { id: "rbplthree001", contentDetails: { itemCount: 3 }, snippet: { title: "RB Fixture Playlist Three", thumbnails: thumbs() }, status: { privacyStatus: "private" } },
+    { id: "rbplone00001", contentDetails: { itemCount: 1 }, snippet: { title: "RB Fixture Playlist One", thumbnails: thumbs() }, status: { privacyStatus: "public" } }
+  ];
+  const PLAYLIST_ITEM_IDS = {
+    rbplnocount1: ["rbitm00001", "rbitm00002", "rbitm00003", "rbitm00004"],
+    rbplthree001: ["rbitm00001", "rbitm00002", "rbitm00003"],
+    rbplone00001: ["rbitm00004"]
+  };
+
+  // 频道简介：D06（email TLD {2,6} → {2,3}）的观测面 + `https://` 真链接的领地守卫
+  const CHANNEL_DESCRIPTION = [
+    "RB Fixture channel description.",
+    "Contact: contact@rb-fixture.museum for support.",
+    "Site: https://rb-fixture.example/about?ref=one",
+    "End of fixture description."
+  ].join("\n");
+  const CHANNELS = {
+    rbch0000001: {
+      id: "rbch0000001",
+      snippet: { title: "RB Fixture Channel", description: CHANNEL_DESCRIPTION, thumbnails: thumbs() }
+    }
+  };
+
+  // 预置持久化态（＝「已认证过的浏览器档案」）：isSignedIn=true 但**三个 token 全空**
+  // ⇒ `src/store/user/index.ts:64` 走 `else if (!accessToken) signOutOfDatabase()`（本地 signOut），
+  //    不会走 `:57` 那条会联网的 `signIntoDatabase(idToken, accessToken)`。
+  const SEED_STATE = {
+    user: {
+      id: "rb-user-1",
+      name: "RB Fixture User",
+      picture: "",
+      accessToken: "",
+      refreshToken: "",
+      idToken: "",
+      isSignedIn: true
+    },
+    player: {
+      queue: [{
+        id: SEEDED_QUEUE_VIDEO.id,
+        title: SEEDED_QUEUE_VIDEO.snippet.title,
+        description: SEEDED_QUEUE_VIDEO.snippet.description,
+        thumbnails: thumbs(),
+        duration: 3723,
+        publishedAt: "2024-03-05T10:00:00Z",
+        channelId: "rbch0000001",
+        channelTitle: "RB Fixture Channel",
+        privacyStatus: "public"
+      }],
+      currentId: SEEDED_QUEUE_VIDEO.id,
+      isScreenVisible: false,
+      volume: 100,
+      currentTime: 0
+    },
+    search: { forMine: 0 }
+  };
+
+  const STORAGE_KEY = "microtube";   // src/config/app.ts
+  //
+  //   老写法只清空 localStorage['microtube']，结果桩下一行就把它重新播种回已登录态
+  //
+  //
+  //   isSignedIn:false ⇒ src/main.tsx:31 的 <Show when={...} fallback={<Login/>}> 真把登录墙渲出来。
+  const SIGNED_OUT = String(window.localStorage.getItem("__RB_SIGNED_OUT__") || "") === "1";
+  const seededNow = !SIGNED_OUT && !String(window.localStorage.getItem(STORAGE_KEY) || "").trim();
+  if (seededNow) {
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_STATE)); } catch (e) {}
+  }
+
+  // ---------------------------------------------------------------- 账本
+  const LOG = {
+    xhr: [], fetch: [], ws: [], blocked: [], firebase: [], youtube: [], backend: [], other: []
+  };
+  const STUB = {
+    schema: "rb-stub/microtube/v1",
+    seededLocalStorage: seededNow,
+    signedOutMode: SIGNED_OUT,
+    storageKey: STORAGE_KEY,
+    log: LOG,
+    fixtures: {
+      playlistIds: PLAYLISTS.map((p) => p.id),
+      playlistWithoutItemCount: "rbplnocount1",
+      playlistItemDurations: ITEM_DURATIONS,
+      seededQueueVideoId: SEEDED_QUEUE_VIDEO.id,
+      channelDescription: CHANNEL_DESCRIPTION,
+      publishedAt: "2024-03-05T10:00:00Z"
+    },
+    counts: {
+      youtubeApi: () => LOG.youtube.length,
+      backend: () => LOG.backend.length,
+      firebase: () => LOG.firebase.length,
+      blocked: () => LOG.blocked.length,
+      wsAttempts: () => LOG.ws.length,
+      unmatched: () => LOG.other.length
+    },
+    youtubeRequests: () => LOG.youtube.map((r) => r.path + "?" + r.query),
+    sw: { present: null, accessorDeleted: null, registerAttempts: 0, registerStubbed: null, cacheKeys: 0 },
+    clipboard: { writes: [] },
+    yt: { playerConstructions: [] }
+  };
+  window.__RB_STUB__ = STUB;
+
+  // ---------------------------------------------------------------- 目标分派
+  const YT_API = "content.googleapis.com/youtube/v3";
+  function classify(method, url) {
+    const u = String(url);
+    let parsed = null;
+    try { parsed = new URL(u, window.location.href); } catch (e) { parsed = null; }
+    const host = parsed ? parsed.hostname : "";
+    const pathname = parsed ? parsed.pathname : u;
+    const search = parsed ? parsed.search.replace(/^\?/, "") : "";
+    if (host === YT_API.split("/")[0] && pathname.indexOf("/youtube/v3/") === 0) {
+      return { bucket: "youtube", path: pathname.replace("/youtube/v3/", ""), query: search, host, method };
+    }
+    if (/(^|\.)firebaseio\.com$/.test(host) || /identitytoolkit\.googleapis\.com$/.test(host) ||
+        /firebase\.googleapis\.com$/.test(host) || /firebaseinstallations\.googleapis\.com$/.test(host) ||
+        /firebaselogging\.googleapis\.com$/.test(host) || /accounts\.google\.com$/.test(host) ||
+        /googleapis\.com$/.test(host) || /gstatic\.com$/.test(host) || /youtube\.com$/.test(host) ||
+        /ytimg\.com$/.test(host)) {
+      return { bucket: "firebase", path: pathname, query: search, host, method };
+    }
+    // microtube 自家后端：VITE_API_URL 未设 ⇒ `import.meta.env.VITE_API_URL` 是 undefined，
+    // axios 把 "undefined/authorization" 当相对路径解析 ⇒ 落到同源 /undefined/*
+    if (/^\/?undefined\/(authorization|token|refresh)$/.test(pathname) ||
+        /(authorization|token|refresh)$/.test(pathname) && host === window.location.hostname) {
+      return { bucket: "backend", path: pathname, query: search, host, method };
+    }
+    if (host === window.location.hostname || host === "") {
+      return { bucket: "other", path: pathname, query: search, host, method };
+    }
+    return { bucket: "blocked", path: pathname, query: search, host, method };
+  }
+
+  function backendBody(p) {
+    if (/authorization$/.test(p)) return { url: "https://rb-fixture.invalid/authorization" };
+    if (/token$/.test(p)) return { id: "rb-user-1", name: "RB Fixture User", picture: "", accessToken: "", refreshToken: "", idToken: "" };
+    return { id: "rb-user-1", name: "RB Fixture User", picture: "", accessToken: "", refreshToken: "", idToken: "" };
+  }
+
+  // 返回 {status, body} —— body 是 JS 值（XHR 面序列化成 responseText）
+  function resolveFixture(cls, reqBody) {
+    const p = cls.path;
+    if (cls.bucket === "backend") return { status: 200, body: backendBody(p) };
+    if (cls.bucket === "firebase" || cls.bucket === "blocked") return { status: 503, body: { error: "rb-stub: offline" } };
+    if (cls.bucket !== "youtube") return { status: 503, body: { error: "rb-stub: unmatched same-origin request" } };
+
+    const q = {};
+    for (const kv of String(cls.query || "").split("&")) {
+      if (!kv) continue;
+      const i = kv.indexOf("=");
+      const k = i < 0 ? kv : kv.slice(0, i);
+      const v = i < 0 ? "" : kv.slice(i + 1);
+      q[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, " "));
+    }
+    const ids = String(q.id || "").split(",").filter(Boolean);
+
+    if (p === "videos") return { status: 200, body: { kind: "youtube#videoListResponse", items: ids.map(videoById), pageInfo: { totalResults: ids.length, resultsPerPage: ids.length } } };
+
+    if (p === "playlists") {
+      if (String(q.part || "").indexOf("contentDetails") < 0 && q.id) {
+        // getPlaylistTitle: 只要 snippet
+        const hit = PLAYLISTS.filter((x) => x.id === q.id);
+        return { status: 200, body: { items: hit, pageInfo: { totalResults: hit.length, resultsPerPage: hit.length } } };
+      }
+      const method = String(cls.method || "get").toLowerCase();
+      if (method === "post") {
+        const t = (reqBody && reqBody.snippet && reqBody.snippet.title) || "RB Created Playlist";
+        return { status: 200, body: { id: "rbplcreated1", contentDetails: { itemCount: 0 }, snippet: { title: t, thumbnails: thumbs() }, status: { privacyStatus: (reqBody && reqBody.status && reqBody.status.privacyStatus) || "private" } } };
+      }
+      if (method === "delete") return { status: 204, body: "" };
+      if (q.channelId) {
+        return { status: 200, body: { items: PLAYLISTS.slice(0, 2), pageInfo: { totalResults: 2, resultsPerPage: 2 } } };
+      }
+      return { status: 200, body: { items: PLAYLISTS, pageInfo: { totalResults: PLAYLISTS.length, resultsPerPage: PLAYLISTS.length } } };
+    }
+
+    if (p === "playlistItems") {
+      const method = String(cls.method || "get").toLowerCase();
+      if (method === "post") {
+        const pid = (reqBody && reqBody.snippet && reqBody.snippet.playlistId) || "";
+        const vid = (reqBody && reqBody.snippet && reqBody.snippet.resourceId && reqBody.snippet.resourceId.videoId) || "";
+        return { status: 200, body: { id: "rbpi-" + pid + "-" + vid, snippet: { playlistId: pid, resourceId: { kind: "youtube#video", videoId: vid } } } };
+      }
+      if (method === "delete") return { status: 204, body: "" };
+      const list = PLAYLIST_ITEM_IDS[q.playlistId] || [];
+      return {
+        status: 200,
+        body: {
+          items: list.map((vid, i) => ({
+            id: "rbpi-" + q.playlistId + "-" + i,
+            snippet: { resourceId: { kind: "youtube#video", videoId: vid } },
+            status: { privacyStatus: "public" }
+          })),
+          pageInfo: { totalResults: list.length, resultsPerPage: list.length }
+        }
+      };
+    }
+
+    if (p === "channels") {
+      const hit = ids.map((id) => CHANNELS[id]).filter(Boolean);
+      return { status: 200, body: { items: hit.length ? hit : [CHANNELS.rbch0000001], pageInfo: { totalResults: 1, resultsPerPage: 1 } } };
+    }
+
+    if (p === "subscriptions") {
+      if (String(cls.method || "get").toLowerCase() === "post") return { status: 200, body: { id: "rbsub0000001" } };
+      if (String(cls.method || "get").toLowerCase() === "delete") return { status: 204, body: "" };
+      if (q.forChannelId) return { status: 200, body: { items: [], pageInfo: { totalResults: 0, resultsPerPage: 0 } } };
+      return {
+        status: 200,
+        body: {
+          items: [{ id: "rbsub0000001", snippet: { title: "RB Fixture Channel", resourceId: { kind: "youtube#channel", channelId: "rbch0000001" } }, contentDetails: { totalItemCount: 4, newItemCount: 0 } }],
+          pageInfo: { totalResults: 1, resultsPerPage: 1 }
+        }
+      };
+    }
+
+    if (p === "search") {
+      if (q.channelId) {
+        const list = (PLAYLIST_ITEM_IDS[Object.keys(PLAYLIST_ITEM_IDS)[0]] || []).slice(0, 2);
+        return { status: 200, body: { items: list.map((vid) => ({ id: { videoId: vid } })), pageInfo: { totalResults: list.length, resultsPerPage: list.length } } };
+      }
+      return { status: 200, body: { items: [{ id: { videoId: "rbitm00001" } }, { id: { videoId: "rbitm00004" } }], pageInfo: { totalResults: 2, resultsPerPage: 2 } } };
+    }
+
+    return { status: 200, body: { items: [], pageInfo: { totalResults: 0, resultsPerPage: 0 } } };
+  }
+
+  function dispatch(method, url, reqBody, via) {
+    const cls = classify(method, url);
+    cls.via = via;
+    let parsedBody = null;
+    if (reqBody) { try { parsedBody = typeof reqBody === "string" ? JSON.parse(reqBody) : reqBody; } catch (e) { parsedBody = null; } }
+    let out;
+    try { out = resolveFixture(cls, parsedBody); } catch (e) { out = { status: 500, body: { error: "rb-stub resolver threw: " + String(e && e.message) } }; }
+    const rec = { method: String(method).toUpperCase(), url: String(url), host: cls.host, path: cls.path, query: cls.query, via, status: out.status, at: LOG.xhr.length + LOG.fetch.length };
+    LOG[cls.bucket] && LOG[cls.bucket].push(rec);
+    LOG[via].push(rec);
+    return { cls, out, rec };
+  }
+
+  // ---------------------------------------------------------------- XMLHttpRequest 顶替
+  const NativeXHR = window.XMLHttpRequest;
+  function RbXHR() {
+    const self = this;
+    this.readyState = 0;
+    this.status = 0;
+    this.statusText = "";
+    this.responseText = "";
+    this.response = "";
+    this.responseType = "";
+    this.responseURL = "";
+    this.timeout = 0;
+    this.withCredentials = false;
+    this.upload = { addEventListener() {}, removeEventListener() {}, onload: null, onerror: null, onprogress: null };
+    this._m = "GET"; this._u = ""; this._headers = {}; this._listeners = {}; this._aborted = false;
+    this.onreadystatechange = null; this.onload = null; this.onerror = null;
+    this.onloadend = null; this.ontimeout = null; this.onabort = null; this.onprogress = null;
+
+    this.open = function (method, url) { self._m = method; self._u = url; self.readyState = 1; self._fire("readystatechange"); };
+    this.setRequestHeader = function (k, v) { self._headers[String(k)] = String(v); };
+    this.getAllResponseHeaders = function () { return self.readyState >= 2 ? "content-type: application/json\r\nx-rb-stub: 1\r\n" : ""; };
+    this.getResponseHeader = function (k) { const kk = String(k).toLowerCase(); return kk === "content-type" ? "application/json" : kk === "x-rb-stub" ? "1" : null; };
+    this.addEventListener = function (t, fn) { (self._listeners[t] = self._listeners[t] || []).push(fn); };
+    this.removeEventListener = function (t, fn) { const a = self._listeners[t] || []; const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); };
+    this.abort = function () { self._aborted = true; self.readyState = 4; self._fire("abort"); self._fire("loadend"); };
+    this._fire = function (t) {
+      const h = self["on" + t];
+      if (typeof h === "function") { try { h.call(self, { type: t, target: self }); } catch (e) {} }
+      for (const fn of (self._listeners[t] || []).slice()) { try { fn.call(self, { type: t, target: self }); } catch (e) {} }
+    };
+    this.send = function (body) {
+      if (self._aborted) return;
+      const r = dispatch(self._m, self._u, body, "xhr");
+      setTimeout(function () {
+        if (self._aborted) return;
+        self.readyState = 2; self._fire("readystatechange");
+        self.status = r.out.status;
+        self.statusText = r.out.status === 204 ? "No Content" : r.out.status === 503 ? "Service Unavailable" : "OK";
+        self.responseURL = self._u;
+        const txt = typeof r.out.body === "string" ? r.out.body : JSON.stringify(r.out.body);
+        self.responseText = txt;
+        self.response = txt;
+        self.readyState = 4;
+        self._fire("readystatechange");
+        self._fire("load");
+        self._fire("loadend");
+      }, 0);
+    };
+  }
+  RbXHR.prototype.UNSENT = 0; RbXHR.prototype.OPENED = 1; RbXHR.prototype.HEADERS_RECEIVED = 2;
+  RbXHR.prototype.LOADING = 3; RbXHR.prototype.DONE = 4;
+  RbXHR.DONE = 4; RbXHR.HEADERS_RECEIVED = 2; RbXHR.LOADING = 3; RbXHR.OPENED = 1; RbXHR.UNSENT = 0;
+  STUB.nativeXHRReplaced = typeof NativeXHR === "function";
+  window.XMLHttpRequest = RbXHR;
+
+  // ---------------------------------------------------------------- fetch 顶替（0 放行）
+  const nativeFetch = window.fetch;
+  STUB.nativeFetchReplaced = typeof nativeFetch === "function";
+  window.fetch = function (input, init) {
+    const url = typeof input === "string" ? input : (input && input.url) || String(input);
+    const method = (init && init.method) || (input && input.method) || "GET";
+    const body = (init && init.body) || null;
+    const r = dispatch(method, url, body, "fetch");
+    if (r.out.status === 503 && r.cls.bucket !== "youtube") {
+      LOG.blocked.push(r.rec);
+      return Promise.reject(new TypeError("rb-stub: blocked offline request to " + url));
+    }
+    const text = typeof r.out.body === "string" ? r.out.body : JSON.stringify(r.out.body);
+    return Promise.resolve(new Response(text, {
+      status: r.out.status,
+      statusText: r.out.status === 204 ? "No Content" : "OK",
+      headers: { "Content-Type": "application/json", "x-rb-stub": "1" }
+    }));
+  };
+
+  // ---------------------------------------------------------------- WebSocket：快速失败、永不回快照
+  const NativeWS = window.WebSocket;
+  STUB.nativeWebSocketReplaced = typeof NativeWS === "function";
+  function RbWebSocket(url, protocols) {
+    const self = this;
+    this.url = String(url); this.protocol = ""; this.readyState = 0; this.bufferedAmount = 0;
+    this.extensions = ""; this.binaryType = "blob";
+    this.onopen = null; this.onmessage = null; this.onerror = null; this.onclose = null;
+    this._l = {};
+    LOG.ws.push({ url: this.url, protocols: protocols || null });
+    this.addEventListener = function (t, fn) { (self._l[t] = self._l[t] || []).push(fn); };
+    this.removeEventListener = function (t, fn) { const a = self._l[t] || []; const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); };
+    this.send = function () { throw new Error("rb-stub: WebSocket.send on a stubbed socket"); };
+    this.close = function () { self.readyState = 3; };
+    const fire = (t, ev) => { const h = self["on" + t]; if (typeof h === "function") { try { h.call(self, ev); } catch (e) {} } for (const fn of (self._l[t] || []).slice()) { try { fn.call(self, ev); } catch (e) {} } };
+    setTimeout(function () {
+      self.readyState = 3;
+      fire("error", { type: "error", target: self });
+      fire("close", { type: "close", code: 1006, reason: "rb-stub: offline", wasClean: false, target: self });
+    }, 0);
+  }
+  RbWebSocket.CONNECTING = 0; RbWebSocket.OPEN = 1; RbWebSocket.CLOSING = 2; RbWebSocket.CLOSED = 3;
+  window.WebSocket = RbWebSocket;
+
+  // -------------------------------------------------- 动态 script／iframe：非本机一律不放行（firebase 长轮询的真实出口）
+  // 由来（实测，非推测）：WebSocket 被顶替后 firebase SDK **回退到 BrowserPollConnection(long-polling)**，
+  //   用 <iframe>(dframe) ＋ 该 iframe 文档里 createElement('script') 的 JSONP 直连外网 ——
+  //   clean 态实测 63 条非本机请求打到 microtube-d1da3.firebaseio.com／s-gke-usc1-nssi4-5.firebaseio.com
+  //
+  //   （stub_firebaseAttempts 仍是 0）。SDK 侧写法已核对：@firebase/database dist 里是 `myDisconnFrame.src = urlFn(...)`
+  //   与 `newScript.src = url` —— 都是**属性赋值**，不是 setAttribute ⇒ 掐 prototype 的 src setter 就能掐住。
+  //   掐掉 iframe 的 src 后，那张远端文档永不加载 ⇒ `myIFrame.doc.createElement('script')` 那条支路一起死掉。
+  // 手法：非 127.0.0.1／localhost／[::1]／data:／blob:／about: 的 src **根本不写入**（元素无 src ⇒ 0 字节出网），
+  //   记账进 LOG.blocked，并异步派发 error 让 SDK 走失败退避而不是无限挂等。
+  const rbIsLocal = (u) => {
+    try {
+      const x = new URL(String(u), window.location.href);
+      if (x.protocol === "data:" || x.protocol === "blob:" || x.protocol === "about:") return true;
+      const h = x.hostname;
+      return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "";
+    } catch (e) { return true; }
+  };
+  function rbGuardSrc(proto, kind) {
+    if (!proto) return false;
+    const d = Object.getOwnPropertyDescriptor(proto, "src");
+    if (!d || typeof d.set !== "function") return false;
+    Object.defineProperty(proto, "src", {
+      configurable: true,
+      enumerable: d.enumerable,
+      get: d.get,
+      set: function (v) {
+        const url = String(v === null || v === undefined ? "" : v);
+        if (url && !rbIsLocal(url)) {
+          LOG.blocked.push({ method: "DOM-" + kind.toUpperCase(), url: url.slice(0, 200), via: kind + ".src" });
+          const el = this;
+          setTimeout(function () { try { el.dispatchEvent(new Event("error")); } catch (e) {} }, 0);
+          return;                     // 🔴 故意不写 src ⇒ 一个字节都不出网
+        }
+        d.set.call(this, v);
+      }
+    });
+    return true;
+  }
+  STUB.domSrcGuard = {
+    script: rbGuardSrc(window.HTMLScriptElement && window.HTMLScriptElement.prototype, "script"),
+    iframe: rbGuardSrc(window.HTMLIFrameElement && window.HTMLIFrameElement.prototype, "iframe"),
+    localOnlyPolicy: "非 127.0.0.1/localhost/[::1]/data:/blob:/about: 的 script|iframe.src 一律不写入并记账"
+  };
+
+  // ---------------------------------------------------------------- ServiceWorker / CacheStorage：0 注册、0 缓存
+  try {
+    const origContainer = navigator.serviceWorker;
+    STUB.sw.present = !!origContainer;
+    if (origContainer) {
+      STUB.sw.getRegistrations = () => origContainer.getRegistrations ? origContainer.getRegistrations().then((r) => r.length) : Promise.resolve(-1);
+      try {
+        Object.defineProperty(Object.getPrototypeOf(origContainer), "register", {
+          configurable: true, writable: true,
+          value: function (url, opts) {
+            STUB.sw.registerAttempts += 1;
+            LOG.blocked.push({ method: "SW-REGISTER", url: String(url), via: "serviceworker" });
+            return new Promise(function () {});   // 永不 settle ⇒ workbox 的 installed/waiting 事件永不触发 ⇒ onOfflineReady 永不弹通知
+          }
+        });
+        STUB.sw.registerStubbed = true;
+      } catch (e) { STUB.sw.registerStubbed = "FAILED:" + String(e && e.message); }
+    }
+    try {
+      delete Navigator.prototype.serviceWorker;
+      STUB.sw.accessorDeleted = !("serviceWorker" in navigator);
+    } catch (e) { STUB.sw.accessorDeleted = "FAILED:" + String(e && e.message); }
+    if (window.caches && window.caches.keys) {
+      window.caches.keys().then((k) => { STUB.sw.cacheKeys = k.length; }).catch(() => { STUB.sw.cacheKeys = -1; });
+    }
+  } catch (e) { STUB.sw.error = String(e && e.message); }
+
+  // ---------------------------------------------------------------- clipboard / share / beacon
+  try {
+    const clip = navigator.clipboard;
+    const writeText = (t) => { STUB.clipboard.writes.push(String(t)); return Promise.resolve(); };
+    if (clip) Object.defineProperty(clip, "writeText", { configurable: true, writable: true, value: writeText });
+    else Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText, readText: () => Promise.resolve("") } });
+    STUB.clipboard.stubbed = true;
+  } catch (e) { STUB.clipboard.stubbed = "FAILED:" + String(e && e.message); }
+  try {
+    if (!navigator.share) Object.defineProperty(navigator, "share", { configurable: true, value: (c) => { STUB.clipboard.writes.push("share:" + JSON.stringify(c)); return Promise.resolve(); } });
+  } catch (e) {}
+  try {
+    if (navigator.sendBeacon) navigator.sendBeacon = function (u, d) { LOG.blocked.push({ method: "BEACON", url: String(u), via: "beacon" }); return true; };
+  } catch (e) {}
+
+  // ---------------------------------------------------------------- 假 YouTube iframe API（0 联网）
+  function RbFakeYTPlayer(containerId, options) {
+    const self = this;
+    this._containerId = containerId;
+    this._options = options || {};
+    this._volume = 100; this._muted = false; this._time = 0; this._state = -1;
+    STUB.yt.playerConstructions.push({ containerId: String(containerId), videoId: String((options || {}).videoId || "") });
+    const ev = (options && options.events) || {};
+    setTimeout(function () { try { ev.onReady && ev.onReady({ target: self, data: undefined }); } catch (e) {} }, 0);
+  }
+  RbFakeYTPlayer.prototype.getCurrentTime = function () { return this._time; };
+  RbFakeYTPlayer.prototype.getDuration = function () { return 0; };
+  RbFakeYTPlayer.prototype.getVideoLoadedFraction = function () { return 0; };
+  RbFakeYTPlayer.prototype.getPlayerState = function () { return this._state; };
+  RbFakeYTPlayer.prototype.getVolume = function () { return this._volume; };
+  RbFakeYTPlayer.prototype.setVolume = function (v) { this._volume = Number(v) || 0; };
+  RbFakeYTPlayer.prototype.isMuted = function () { return this._muted; };
+  RbFakeYTPlayer.prototype.mute = function () { this._muted = true; };
+  RbFakeYTPlayer.prototype.unMute = function () { this._muted = false; };
+  RbFakeYTPlayer.prototype.playVideo = function () { this._state = 1; };
+  RbFakeYTPlayer.prototype.pauseVideo = function () { this._state = 2; };
+  RbFakeYTPlayer.prototype.stopVideo = function () { this._state = -1; };
+  RbFakeYTPlayer.prototype.seekTo = function (s) { this._time = Number(s) || 0; };
+  RbFakeYTPlayer.prototype.loadVideoById = function () {};
+  RbFakeYTPlayer.prototype.cueVideoById = function () {};
+  RbFakeYTPlayer.prototype.destroy = function () {};
+  RbFakeYTPlayer.prototype.setSize = function () { return this; };
+  RbFakeYTPlayer.prototype.getIframe = function () { return document.getElementById(this._containerId); };
+  RbFakeYTPlayer.prototype.addEventListener = function () {};
+  RbFakeYTPlayer.prototype.removeEventListener = function () {};
+  RbFakeYTPlayer.prototype.on = function () {};
+  window.YT = window.YT || {};
+  window.YT.Player = RbFakeYTPlayer;
+  window.YT.PlayerState = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+  window.onYouTubeIframeAPIReady = window.onYouTubeIframeAPIReady || function () {};
+
+  STUB.installedAt = "before-app-modules";
+})();

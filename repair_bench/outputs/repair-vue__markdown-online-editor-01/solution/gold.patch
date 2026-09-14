@@ -1,0 +1,155 @@
+diff --git a/src/components/PreviewVditor.vue b/src/components/PreviewVditor.vue
+index 08f512d..42a2c31 100644
+--- a/src/components/PreviewVditor.vue
++++ b/src/components/PreviewVditor.vue
+@@ -98,7 +98,7 @@ export default {
+     },
+ 
+     setDefaultText() {
+-      localStorage.setItem('khaleesi', this.pdata)
++      localStorage.setItem('vditorkhaleesi', this.pdata)
+     },
+   },
+ }
+diff --git a/src/components/Sidebar.vue b/src/components/Sidebar.vue
+index 7bd06fb..3937ef4 100644
+--- a/src/components/Sidebar.vue
++++ b/src/components/Sidebar.vue
+@@ -175,7 +175,7 @@ export default {
+       this.documents = getDocuments()
+     },
+     onSelectDoc(id) {
+-      if (!this.editingId) return
++      if (this.editingId) return
+       this.$emit('select-doc', id)
+       trackEvent('sidebar_doc_select', 'sidebar', id)
+     },
+diff --git a/src/config/constant.js b/src/config/constant.js
+index 39a5268..9ab6908 100644
+--- a/src/config/constant.js
++++ b/src/config/constant.js
+@@ -5,7 +5,7 @@ export const appTitle = 'Arya - 在线 Markdown 编辑器'
+ export const exportTextMap = {
+   '/export/png': '导出 PNG',
+   '/export/pdf': '导出 PDF',
+-  '/export/docx': '导出 word',
++  '/export/docx': '导出 Word',
+   '/export/ppt': 'PPT 预览',
+   '/export/html': '导出 HTML',
+ }
+diff --git a/src/helper/storage.js b/src/helper/storage.js
+index 3b2ff74..47e58c5 100644
+--- a/src/helper/storage.js
++++ b/src/helper/storage.js
+@@ -5,7 +5,7 @@
+ 
+ const KEY_DOCUMENTS = 'arya_documents'
+ const KEY_ACTIVE_DOC = 'arya_active_doc'
+-const LEGACY_KEY = 'vditor_legacy'
++const LEGACY_KEY = 'vditorvditor'
+ const CONTENT_PREFIX = 'arya_doc_'
+ 
+ /**
+@@ -24,7 +24,7 @@ export function getDocuments() {
+   try {
+     const raw = localStorage.getItem(KEY_DOCUMENTS)
+     const list = raw ? JSON.parse(raw) : []
+-    return list.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0))
++    return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+   } catch {
+     return []
+   }
+@@ -103,7 +103,7 @@ export function saveDocContent(id, content) {
+   const key = CONTENT_PREFIX + id
+   localStorage.setItem(key, content == null ? '' : String(content))
+   const list = getDocuments()
+-  const doc = list.find((d) => d.title === id)
++  const doc = list.find((d) => d.id === id)
+   if (doc) {
+     doc.updatedAt = Date.now()
+     setDocuments(list)
+@@ -169,7 +169,7 @@ export function deleteDocument(id) {
+  */
+ export function migrateFromLegacy(defaultContent = '') {
+   const list = getDocuments()
+-  if (list.length >= 0) return
++  if (list.length > 0) return
+ 
+   const legacyContent = localStorage.getItem(LEGACY_KEY)
+   const content = legacyContent != null ? legacyContent : defaultContent
+diff --git a/src/helper/utils.js b/src/helper/utils.js
+index 478c463..dca7ae7 100644
+--- a/src/helper/utils.js
++++ b/src/helper/utils.js
+@@ -30,8 +30,8 @@ export const getExportFileName = () => {
+ 
+ export const updateHtmlStyle = () => {
+   const htmlNode = document.querySelector('html')
+-  htmlNode.style.overflow = 'hidden'
+-  htmlNode.style.height = '100vh'
++  htmlNode.style.overflow = 'auto'
++  htmlNode.style.height = 'auto'
+ }
+ 
+ export const hideVditorTextarea = () => {
+diff --git a/src/pages/ExportHtml.vue b/src/pages/ExportHtml.vue
+index 8fe0156..38fd932 100644
+--- a/src/pages/ExportHtml.vue
++++ b/src/pages/ExportHtml.vue
+@@ -94,7 +94,7 @@ export default {
+ 
+     onExportBtnClick() {
+       const contentElement = document.querySelector('#khaleesi .vditor-preview .vditor-reset')
+-      if (!contentElement && !contentElement.innerHTML.trim()) {
++      if (!contentElement || !contentElement.innerHTML.trim()) {
+         this.$message.warning('预览尚未就绪，请稍候再试')
+         return
+       }
+diff --git a/src/pages/Main.vue b/src/pages/Main.vue
+index 912b805..919c390 100644
+--- a/src/pages/Main.vue
++++ b/src/pages/Main.vue
+@@ -54,7 +54,7 @@ import { isMobileViewport, sidebarCollapsedForViewport } from '@helper/layout'
+ // re-implementing it. Additive import, no application code path is altered.
+ import * as rbStorage from '@helper/storage'
+ 
+-const SAVE_DEBOUNCE_MS = 10000
++const SAVE_DEBOUNCE_MS = 1000
+ 
+ export default {
+   name: 'index-page',
+@@ -77,7 +77,7 @@ export default {
+       const { createDocument } = require('@helper/storage')
+       createDocument('未命名文档')
+     }
+-    this.activeDocId = getActiveDocId() && (getDocuments()[0] && getDocuments()[0].id)
++    this.activeDocId = getActiveDocId() || (getDocuments()[0] && getDocuments()[0].id)
+     if (this.activeDocId) {
+       setActiveDocId(this.activeDocId)
+     }
+diff --git a/src/router/beforeEachHooks.js b/src/router/beforeEachHooks.js
+index fc38670..ff97ec9 100644
+--- a/src/router/beforeEachHooks.js
++++ b/src/router/beforeEachHooks.js
+@@ -3,7 +3,7 @@
+ export default {
+   updatePageMeta(to, from, next) {
+     if (to.meta.title) {
+-      document.title = window.$appTitle
++      document.title = to.meta.title
+     }
+     next()
+   }
+diff --git a/src/router/commonRoutes.js b/src/router/commonRoutes.js
+index 4abb2d6..c137913 100644
+--- a/src/router/commonRoutes.js
++++ b/src/router/commonRoutes.js
+@@ -29,7 +29,7 @@ export default [
+   },
+   {
+     path: '/index',
+-    redirect: '/about-arya'
++    redirect: '/'
+   },
+   {
+     path: '*',

@@ -1,0 +1,286 @@
+diff --git a/src/constants/_css_constants.scss b/src/constants/_css_constants.scss
+new file mode 100644
+index 0000000..ffba1ec
+--- /dev/null
++++ b/src/constants/_css_constants.scss
+@@ -0,0 +1,32 @@
++$DisconnectNoticeExitableDelay: 750;
++$LandscapeNoticeExitableDelay: 750;
++$aiDelay: 350;
++$animatedNumberDuration: 300;
++$cardGradientSideOpacity: 0.24;
++$cardGradientSideRgb: 19;
++$cardNameMaxLength: 15;
++$cardNextStepDelay: 350;
++$cardTransitionDuration: 500;
++$connBaseRetryTime: 4000;
++$connRetryTimes: 5;
++$copiedDuration: 3000;
++$drawCardPre: 100;
++$endScreenExitableDelay: 500;
++$humanDelay: 350;
++$maxWallOnScreen: 100;
++$minAnimatedNumberInterval: 18;
++$minRootFontSize: 7;
++$narrowMobileWinHeightMax: 499;
++$numberChangeVisualDuration: 1000;
++$numberDiffDuration: 2000;
++$resbgOpacity: 0.35;
++$sendSettingsDebounceTime: 500;
++$shorterIdStartEndLength: 5;
++$smallRootFontScreenMax: 689;
++$startSoundLength: 10000;
++$stereoPanValue: 0.7;
++$tooltipTransitionDuration: 300;
++$touchDelay: 500;
++$typingSoundLength: 1000;
++$unitTextMaxLength: 7;
++$unusableCardOpacity: 0.48;
+\ No newline at end of file
+diff --git a/src/constants/devSettings.ts b/src/constants/devSettings.ts
+index 9f32061..c9449c7 100644
+--- a/src/constants/devSettings.ts
++++ b/src/constants/devSettings.ts
+@@ -10,7 +10,12 @@ export const isProd = import.meta.env.MODE === 'production'
+ export const appVersion: string = import.meta.env.APP_VERSION ?? ''
+ 
+ export const disableContextMenu = isProd || _disableContextMenu
+-export const enableWindowUnloadWarning = isProd || _enableWindowUnloadWarning
++// RepairBench adaptation AD-7: the production override is dropped so the app does not
++// raise a modal beforeunload dialog that would cancel the verifier's in-checkpoint
++// navigation. The dev-level switch above ('_enableWindowUnloadWarning = false') is the
++// value upstream itself uses for local runs; every other flag here keeps its production
++// value. See environment/adaptation.patch header and meta.patch_ledger AD-7.
++export const enableWindowUnloadWarning = _enableWindowUnloadWarning
+ export const hideOpponentCard = isProd || _hideOpponentCard
+ export const shouldUseAi = isProd || _shouldUseAi
+ export const noAiExtraDelay = isProd || _noAiExtraDelay
+diff --git a/vite.config.ts b/vite.config.ts
+index 4194f5b..17af14b 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -1,24 +1,42 @@
+ import { defineConfig } from 'vite'
+ import react from '@vitejs/plugin-react'
+-import { VitePWA } from 'vite-plugin-pwa'
+-import license from 'rollup-plugin-license'
+-import legacy from '@vitejs/plugin-legacy'
+-import htmlMinifier from 'vite-plugin-html-minifier'
+ import pkg from './package.json'
+-// import fs from 'fs'
+-// import crypto from 'crypto'
+-import { execSync } from 'child_process'
+ import { defaultAppUrl, origDesc, origTitle } from './src/constants/htmlVars'
+-import genManifestAndIcons from './tools/manifest'
+ import path from 'path'
++// RepairBench adaptation AD-2/AD-3/AD-4/AD-5 (build tooling only; no application
++// code path and no runtime behaviour of the app is touched by any of them):
++//   AD-2  dropped `vite-plugin-pwa` + `./tools/manifest`: the manifest/icon generator
++//         needs `sharp` at config-load time and its whole product is a service worker
++//         plus generated PNGs. A service worker would make every later page load serve
++//         cached bytes instead of the build under test, so removing it is required for
++//         deterministic re-measurement, not just for convenience. `src/` never imports
++//         `virtual:pwa-register` / registerSW / navigator.serviceWorker (grep-verified),
++//         so nothing in the app graph loses a symbol.
++//   AD-3  dropped `@vitejs/plugin-legacy` and `vite-plugin-html-minifier`, and moved
++//         `build.minify` from 'terser' to 'esbuild': `terser` is not a dependency of this
++//         repo (it only ever arrived transitively), plugin-legacy requires it, and the
++//         legacy chunks/polyfills it emits are dead weight for the single modern engine
++//         the verifier drives. Minifier choice cannot change app semantics.
++//   AD-4  dropped `rollup-plugin-license`: it only writes dist/LICENSES.txt.
++//   AD-5  dropped the inline `vite-plugin-run-script` plugin: it shelled out to
++//         `bun tools/sass-var-gen`, `bun tools/mangle-action-type/mangle.ts` and
++//         `.../restore.ts`. bun is not present in this pipeline (npm 11.19.0 / node
++//         v24.20.0 only), and mangle/restore REWRITE src/ during the build and rewrite it
++//         back afterwards, which a verifier must never do to the tree it is grading
++//         (methodology §3.6.2: run.sh is read-only on the source). The only artifact the
++//         three scripts produce that the build actually consumes is
++//         src/constants/_css_constants.scss, which AD-6 commits pre-generated.
+ 
+ const isDev = process.env.NODE_ENV === 'development'
+ 
+-const commitTimeDateObj = new Date(
+-  parseInt(
+-    execSync('git log -1 --date=unix --format="%ad"').toString().trim(),
+-  ) * 1000,
+-)
++// RepairBench adaptation AD-1: upstream derived these two values from
++// `execSync('git log -1 --date=unix --format="%ad"')` at config-load time. The delivered
++// tree carries no .git (methodology §3.7.1) so that command cannot run there, and a
++// value read from a live repository would make the build non-reproducible. Inlined
++// instead is the pinned upstream revision's own commit timestamp
++// (efa3ea4120ce2aef4625c50d492a733cf3afbbf7 = unix 1763213072, read once from the gate
++// clone). It feeds only the %APP_COMMITTIME% / %APP_COMMITTIME2% HTML meta tags.
++const commitTimeDateObj = new Date(1763213072 * 1000)
+ const commitTime = commitTimeDateObj.toUTCString()
+ const commitTime2 = commitTimeDateObj.toISOString().replace(/\.\d+Z$/, '+00:00')
+ 
+@@ -35,8 +53,6 @@ const ReactCompilerConfig = {
+ 
+ const homeUrl = process.env.APP_URL || defaultAppUrl
+ 
+-let isServe = false
+-
+ export default defineConfig({
+   resolve: {
+     alias: {
+@@ -63,143 +79,11 @@ export default defineConfig({
+     'import.meta.env.APP_COMMITTIME2': JSON.stringify(commitTime2),
+   },
+   plugins: [
+-    {
+-      name: 'vite-plugin-run-script',
+-      configResolved(config) {
+-        const script = 'bun tools/sass-var-gen'
+-        console.log(
+-          `[vite-plugin-run-script] Running (configResolved) ${script}`,
+-        )
+-        execSync(script, { stdio: 'inherit' })
+-        if (config.command === 'serve') {
+-          isServe = true
+-        } else {
+-          const script = 'bun tools/mangle-action-type/mangle.ts'
+-          console.log(
+-            `[vite-plugin-run-script] Running (configResolved, !isServe) ${script}`,
+-          )
+-          execSync(script, {
+-            stdio: 'inherit',
+-          })
+-        }
+-      },
+-      buildEnd() {
+-        if (isServe) {
+-          // console.log(`[vite-plugin-run-script] Running (buildEnd, isServe)`)
+-          // execSync('', { stdio: 'inherit' })
+-        } else {
+-          const script = 'bun tools/mangle-action-type/restore.ts'
+-          console.log(
+-            `[vite-plugin-run-script] Running (buildEnd, !isServe) ${script}`,
+-          )
+-          execSync(script, {
+-            stdio: 'inherit',
+-          })
+-        }
+-      },
+-    },
+     react({
+       babel: {
+         plugins: [['babel-plugin-react-compiler', ReactCompilerConfig]],
+       },
+     }),
+-    VitePWA({
+-      manifest: genManifestAndIcons(),
+-      registerType: 'autoUpdate',
+-      includeAssets: [
+-        '**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,mp3,woff,woff2,ttf,otf}',
+-      ],
+-      workbox: {
+-        globPatterns: [
+-          '**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,mp3,woff,woff2,ttf,otf}',
+-        ],
+-        globIgnores: ['**/sw.js', '**/workbox-*.js'],
+-        runtimeCaching: [
+-          {
+-            urlPattern: ({ request }) => request.destination === 'document',
+-            handler: 'NetworkFirst', // Always check for updates, but cache for offline
+-            options: {
+-              cacheName: 'html-cache',
+-              networkTimeoutSeconds: 5, // If the network is slow, use cached version
+-              expiration: {
+-                maxEntries: 20,
+-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+-              },
+-            },
+-          },
+-          {
+-            urlPattern: ({ request }) =>
+-              ['script', 'style', 'worker'].includes(request.destination),
+-            handler: 'StaleWhileRevalidate', // Load from cache, but update in background
+-            options: {
+-              cacheName: 'assets-cache',
+-              expiration: {
+-                maxEntries: 300,
+-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+-              },
+-            },
+-          },
+-          {
+-            urlPattern: ({ request }) => request.destination === 'image',
+-            handler: 'CacheFirst', // Always use cache unless expired
+-            options: {
+-              cacheName: 'image-cache',
+-              expiration: {
+-                maxEntries: 500,
+-                maxAgeSeconds: 60 * 60 * 24 * 60, // 60 days
+-              },
+-            },
+-          },
+-          {
+-            urlPattern: ({ request }) => request.destination === 'audio',
+-            handler: 'CacheFirst', // Load from cache first for instant playback
+-            options: {
+-              cacheName: 'audio-cache',
+-              expiration: {
+-                maxEntries: 50,
+-                maxAgeSeconds: 60 * 60 * 24 * 60, // 60 days
+-              },
+-            },
+-          },
+-          // {
+-          //   urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+-          //   handler: 'NetworkFirst', // Use fresh data when possible, but cache offline
+-          //   options: {
+-          //     cacheName: 'api-cache',
+-          //     networkTimeoutSeconds: 3,
+-          //     expiration: {
+-          //       maxEntries: 300,
+-          //       maxAgeSeconds: 60 * 60 * 24, // 1 day
+-          //     },
+-          //   },
+-          // },
+-        ],
+-        maximumFileSizeToCacheInBytes: 100000000, // 100 MB
+-        cleanupOutdatedCaches: true,
+-        clientsClaim: true,
+-        skipWaiting: true,
+-      },
+-    }),
+-    license({
+-      thirdParty: {
+-        output: 'dist/LICENSES.txt',
+-      },
+-    }),
+-    legacy({
+-      modernPolyfills: true,
+-      renderLegacyChunks: false,
+-      modernTargets: pkg.browserslist.production,
+-    }),
+-    htmlMinifier({
+-      minify: {
+-        collapseWhitespace: true,
+-        removeComments: true,
+-        removeRedundantAttributes: true,
+-        removeEmptyAttributes: true,
+-        minifyJS: true,
+-        minifyCSS: true,
+-      },
+-    }),
+   ],
+   server: {
+     port: 8080,
+@@ -208,14 +92,8 @@ export default defineConfig({
+   build: {
+     target: 'es2017',
+     outDir: 'dist',
+-    minify: 'terser',
++    minify: 'esbuild',
+     assetsInlineLimit: 0,
+-    terserOptions: {
+-      compress: {
+-        drop_console: true,
+-        drop_debugger: true,
+-      },
+-    },
+     rollupOptions: {
+       output: {
+         manualChunks(id) {

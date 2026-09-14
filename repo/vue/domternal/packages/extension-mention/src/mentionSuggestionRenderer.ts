@@ -1,0 +1,198 @@
+/**
+ * Default mention suggestion renderer - vanilla DOM dropdown.
+ *
+ * Framework-agnostic: creates a positioned dropdown near the cursor
+ * that displays matching mention items with keyboard navigation.
+ *
+ * @example
+ * ```ts
+ * import { Mention, createMentionSuggestionRenderer } from '@domternal/extension-mention';
+ *
+ * const editor = new Editor({
+ *   extensions: [
+ *     Mention.configure({
+ *       suggestion: {
+ *         char: '@',
+ *         name: 'user',
+ *         items: ({ query }) => users.filter(u => u.label.includes(query)),
+ *         render: createMentionSuggestionRenderer(),
+ *       },
+ *     }),
+ *   ],
+ * });
+ * ```
+ */
+import type { MentionSuggestionProps, MentionSuggestionRenderer, MentionItem } from './mentionSuggestionPlugin.js';
+import { positionFloatingOnce } from '@domternal/core';
+
+const MAX_ITEMS = 8;
+
+// Below this the dropdown flips above the caret instead of shrinking further:
+// about five rows plus the dropdown chrome.
+const MIN_MENU_HEIGHT = 160;
+
+/**
+ * Creates a render factory for the mention suggestion plugin.
+ * Returns a function that produces a `MentionSuggestionRenderer` instance.
+ */
+export function createMentionSuggestionRenderer(): () => MentionSuggestionRenderer {
+  return () => {
+    let container: HTMLDivElement | null = null;
+    let currentProps: MentionSuggestionProps | null = null;
+    let selectedIndex = 0;
+    let cleanupFloating: (() => void) | null = null;
+
+    function render(): void {
+      if (!container || !currentProps) return;
+
+      const { items, command } = currentProps;
+      const visible = items.slice(0, MAX_ITEMS);
+
+      container.innerHTML = '';
+
+      if (visible.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'dm-mention-suggestion-empty';
+        empty.textContent = 'No results';
+        container.appendChild(empty);
+        return;
+      }
+
+      visible.forEach((item: MentionItem, i: number) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className =
+          'dm-mention-suggestion-item' +
+          (i === selectedIndex ? ' dm-mention-suggestion-item--selected' : '');
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', String(i === selectedIndex));
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'dm-mention-suggestion-label';
+        labelSpan.textContent = item.label;
+        btn.appendChild(labelSpan);
+
+        btn.addEventListener('mousedown', (e: Event) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        btn.addEventListener('click', () => {
+          command(item);
+        });
+        // mousemove, not mouseenter: re-rendering the list under a resting
+        // pointer fires a synthetic mouseenter that would steal the selection
+        // back from keyboard navigation. Real hovering always produces
+        // mousemove, so hover-to-select still works.
+        btn.addEventListener('mousemove', () => {
+          if (selectedIndex === i) return;
+          const prev = container?.querySelector('.dm-mention-suggestion-item--selected');
+          if (prev) {
+            prev.classList.remove('dm-mention-suggestion-item--selected');
+            prev.setAttribute('aria-selected', 'false');
+          }
+          selectedIndex = i;
+          btn.classList.add('dm-mention-suggestion-item--selected');
+          btn.setAttribute('aria-selected', 'true');
+        });
+
+        container?.appendChild(btn);
+      });
+
+      // Keep the keyboard selection visible in the scrollable list. Manual
+      // scrollTop math instead of `scrollIntoView`: that walks ancestors and
+      // would yank the page while the dropdown still sits at its natural flow
+      // position, before positioning runs.
+      const selected = container.querySelector<HTMLButtonElement>(
+        '.dm-mention-suggestion-item--selected',
+      );
+      if (selected) {
+        const btnTop = selected.offsetTop;
+        const btnBottom = btnTop + selected.offsetHeight;
+        const viewTop = container.scrollTop;
+        const viewBottom = viewTop + container.clientHeight;
+        if (btnTop < viewTop) container.scrollTop = btnTop;
+        else if (btnBottom > viewBottom) container.scrollTop = btnBottom - container.clientHeight;
+      }
+    }
+
+    function updatePosition(): void {
+      if (!container || !currentProps?.clientRect) return;
+
+      cleanupFloating?.();
+
+      const virtualEl = {
+        getBoundingClientRect: () => {
+          const rect = currentProps?.clientRect?.();
+          return rect ?? new DOMRect(0, 0, 0, 0);
+        },
+      };
+
+      cleanupFloating = positionFloatingOnce(virtualEl, container, {
+        placement: 'bottom-start',
+        offsetValue: 4,
+        constrainHeight: { minHeight: MIN_MENU_HEIGHT },
+      });
+    }
+
+    return {
+      onStart(props: MentionSuggestionProps): void {
+        currentProps = props;
+        selectedIndex = 0;
+
+        container = document.createElement('div');
+        container.className = 'dm-mention-suggestion';
+        container.setAttribute('role', 'listbox');
+        container.setAttribute('aria-label', 'Mention suggestions');
+
+        const editorEl = props.element.closest('.dm-editor');
+        const appendTarget = editorEl ?? document.body;
+        appendTarget.appendChild(container);
+
+        render();
+        updatePosition();
+      },
+
+      onUpdate(props: MentionSuggestionProps): void {
+        currentProps = props;
+        selectedIndex = 0;
+        render();
+        updatePosition();
+      },
+
+      onExit(): void {
+        cleanupFloating?.();
+        cleanupFloating = null;
+        container?.remove();
+        container = null;
+        currentProps = null;
+        selectedIndex = 0;
+      },
+
+      onKeyDown(event: KeyboardEvent): boolean {
+        if (!currentProps) return false;
+
+        const maxIndex = Math.min(currentProps.items.length, MAX_ITEMS) - 1;
+
+        if (event.key === 'ArrowDown') {
+          selectedIndex = Math.min(selectedIndex + 1, maxIndex);
+          render();
+          return true;
+        }
+
+        if (event.key === 'ArrowUp') {
+          selectedIndex = Math.max(selectedIndex - 1, 0);
+          render();
+          return true;
+        }
+
+        if (event.key === 'Enter') {
+          const item = currentProps.items[selectedIndex];
+          if (item) currentProps.command(item);
+          return true;
+        }
+
+        return false;
+      },
+    };
+  };
+}

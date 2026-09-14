@@ -1,0 +1,140 @@
+diff --git a/src/lib/header/Header.svelte b/src/lib/header/Header.svelte
+index 4a90e86..4e70313 100644
+--- a/src/lib/header/Header.svelte
++++ b/src/lib/header/Header.svelte
+@@ -26,7 +26,7 @@
+ 					$page.url.pathname.startsWith('/snubsquare') ||
+ 					$page.url.pathname.startsWith('/rhombitrihexagonal') ||
+ 					$page.url.pathname.startsWith('/triangular') ||
+-					$page.url.pathname.startsWith('/customize') ||
++					$page.url.pathname.startsWith('/custom') ||
+ 					$page.url.pathname.startsWith('/play')}
+ 			>
+ 				<a data-sveltekit-preload-data href="/play">Play</a>
+diff --git a/src/lib/puzzle/grids/hexagrid.js b/src/lib/puzzle/grids/hexagrid.js
+index 3891962..e8faaf5 100644
+--- a/src/lib/puzzle/grids/hexagrid.js
++++ b/src/lib/puzzle/grids/hexagrid.js
+@@ -89,7 +89,7 @@ export class HexaGrid extends AbstractGrid {
+ 		this.XMIN = -0.6 - (wrap ? 1 : 0);
+ 		this.XMAX = width + 0.1 + (wrap ? 1 : 0);
+ 		this.YMIN = -YSTEP * (1 + (wrap ? 1 : 0));
+-		this.YMAX = YSTEP * (height + 1);
++		this.YMAX = YSTEP * (height + (wrap ? 1 : 0));
+ 	}
+ 
+ 	/**
+diff --git a/src/lib/puzzle/grids/polygonutils.js b/src/lib/puzzle/grids/polygonutils.js
+index bd585d4..31e8251 100644
+--- a/src/lib/puzzle/grids/polygonutils.js
++++ b/src/lib/puzzle/grids/polygonutils.js
+@@ -93,7 +93,7 @@ export class RegularPolygonTile {
+ 
+ 		// draw tile contour
+ 		let angle = angle_offset - this.angle_unit / 2;
+-		const r = this.radius_in - border_width;
++		const r = this.radius_out - border_width;
+ 		this.contour_path = `m ${r * Math.cos(angle)} ${-r * Math.sin(angle)}`;
+ 		this.vertices = [];
+ 		for (let i = 1; i <= this.num_directions; i++) {
+@@ -196,7 +196,7 @@ export class RegularPolygonTile {
+ 				const angle = this.angle_offset + this.angle_unit * index;
+ 				const dx = this.radius_in * Math.cos(angle);
+ 				const dy = this.radius_in * Math.sin(angle);
+-				path += ` l ${dx} ${dy} L 0 0`;
++				path += ` l ${dx} ${-dy} L 0 0`;
+ 			}
+ 		});
+ 		this.cache.pipes_path.set(tile, path);
+diff --git a/src/lib/puzzle/viewbox.js b/src/lib/puzzle/viewbox.js
+index 50a8041..105c241 100644
+--- a/src/lib/puzzle/viewbox.js
++++ b/src/lib/puzzle/viewbox.js
+@@ -83,7 +83,7 @@ export function createViewBox(grid) {
+ 				visibleTilesTimeoutId = null;
+ 				const visible = grid.getVisibleTiles(lastBox);
+ 				visibleTiles.set(visible);
+-			}, 6000);
++			}, 100);
+ 		}
+ 	});
+ 
+diff --git a/src/lib/puzzleWrapper/PuzzleInstanceWrapper.svelte b/src/lib/puzzleWrapper/PuzzleInstanceWrapper.svelte
+index d0109ea..853c7ab 100644
+--- a/src/lib/puzzleWrapper/PuzzleInstanceWrapper.svelte
++++ b/src/lib/puzzleWrapper/PuzzleInstanceWrapper.svelte
+@@ -146,7 +146,7 @@
+ 				tiles = JSON.parse(instance).tiles;
+ 				// if the grid was refactored and handles size differently
+ 				// then ignore the previously saved instance
+-				if (tiles.length === grid.total) {
++				if (tiles.length !== grid.total) {
+ 					tiles = [];
+ 				}
+ 			}
+diff --git a/src/lib/stores.js b/src/lib/stores.js
+index 78ad00d..00325b5 100644
+--- a/src/lib/stores.js
++++ b/src/lib/stores.js
+@@ -367,7 +367,7 @@ const solvesStores = new Map();
+ export function getSolves(path) {
+ 	// path is like /<category>/<size>/<puzzle id>
+ 	// this takes the category and size parts only
+-	const storeName = path.split('/', 3).slice(0, 2).join('/');
++	const storeName = path.split('/', 3).join('/');
+ 	if (solvesStores.has(storeName)) {
+ 		return solvesStores.get(storeName);
+ 	} else {
+@@ -403,7 +403,7 @@ function averageOfArray(arr) {
+ 	for (let item of sorted.slice(1, -1)) {
+ 		mean += item;
+ 	}
+-	mean /= arr.length;
++	mean /= arr.length - 2;
+ 	return mean;
+ }
+ 
+@@ -417,7 +417,7 @@ export function _calculateStats(solves, isDaily) {
+ 	let streak = 0;
+ 	let totalSolved = 0;
+ 	let streakIncrement = 1;
+-	const startIndex = solves.length > 0 && solves[0].elapsedTime !== -1 ? 1 : 0;
++	const startIndex = solves.length > 0 && solves[0].elapsedTime === -1 ? 1 : 0;
+ 	let currentTime = null;
+ 	let bestTime = Number.POSITIVE_INFINITY;
+ 	let meanOf3 = null;
+@@ -465,7 +465,7 @@ export function _calculateStats(solves, isDaily) {
+ 			ts.push(isSolved ? t : Number.POSITIVE_INFINITY);
+ 		}
+ 		if (ts.length > 12) {
+-			ts.splice(0, ts.length - 13);
++			ts.splice(0, ts.length - 12);
+ 		}
+ 		if (ts.length >= 3) {
+ 			if (meanOf3 === null) {
+diff --git a/src/routes/[grid=gridkind]/+layout.svelte b/src/routes/[grid=gridkind]/+layout.svelte
+index c8a2293..609bde3 100644
+--- a/src/routes/[grid=gridkind]/+layout.svelte
++++ b/src/routes/[grid=gridkind]/+layout.svelte
+@@ -7,7 +7,7 @@
+ 	$: gridKind = category.split('-')[0];
+ 	$: wrap = category.split('-')[1] === 'wrap';
+ 	$: info = gridInfo[gridKind];
+-	$: title = `${info.title} ` + (wrap ? '' : ' Wrap') + ' Pipes';
++	$: title = `${info.title} ` + (wrap ? ' Wrap' : '') + ' Pipes';
+ 	$: sizes = info.sizes;
+ </script>
+ 
+diff --git a/src/routes/[grid=gridkind]/[size=integer]/[id=integer]/+page.js b/src/routes/[grid=gridkind]/[size=integer]/[id=integer]/+page.js
+index 50dbac0..225c8ec 100644
+--- a/src/routes/[grid=gridkind]/[size=integer]/[id=integer]/+page.js
++++ b/src/routes/[grid=gridkind]/[size=integer]/[id=integer]/+page.js
+@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
+ export async function load({ params, fetch }) {
+ 	const size = `${params.size}x${params.size}`;
+ 	const id = Number(params.id);
+-	const folderNum = Math.floor(id / 100);
++	const folderNum = Math.floor((id - 1) / 100);
+ 	const url = `/_instances/hexagonal/${size}/${folderNum}/${id}.json`;
+ 	const response = await fetch(url);
+ 

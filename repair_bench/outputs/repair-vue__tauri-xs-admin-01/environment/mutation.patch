@@ -1,0 +1,156 @@
+diff --git a/src/config/index.ts b/src/config/index.ts
+index 8ffe5f1..d959156 100644
+--- a/src/config/index.ts
++++ b/src/config/index.ts
+@@ -27,7 +27,7 @@ export async function getServerConfig(app: App): Promise<AppConfig> {
+     }
+   }
+   configTheme(config);
+-  _storage.setStorageConfig({ ...config.StorageConfig, prefix: config.title });
++  _storage.setStorageConfig({ ...config.StorageConfig, prefix: config.Title });
+   app.config.globalProperties.$config = getConfig();
+   return config;
+ }
+diff --git a/src/hooks/web/useI18n.ts b/src/hooks/web/useI18n.ts
+index 9cd77fc..14a8063 100644
+--- a/src/hooks/web/useI18n.ts
++++ b/src/hooks/web/useI18n.ts
+@@ -29,7 +29,7 @@ export function translateI18n(message: any = '') {
+   if (typeof message === 'object') {
+     return message[locale];
+   }
+-  const key = message.split('.')[0];
++  const key = message.split('.')[1];
+   if (key && Object.keys(i18n.global.messages.value[locale]).includes(key)) {
+     return i18n.global.t(message);
+   }
+diff --git a/src/layouts/page-layouts/components/AppTabs/hooks/useTabsChange.ts b/src/layouts/page-layouts/components/AppTabs/hooks/useTabsChange.ts
+index 451d8a5..4da6a08 100644
+--- a/src/layouts/page-layouts/components/AppTabs/hooks/useTabsChange.ts
++++ b/src/layouts/page-layouts/components/AppTabs/hooks/useTabsChange.ts
+@@ -30,7 +30,7 @@ export const useTabsChange = (multiTabs: Ref<MultiTabsType[]>) => {
+     const mapList = multiTabs.value.filter((i, index) => {
+       if (i.path !== e.path && type === 'other') return true;
+       else if (index < item && type === 'left') return true;
+-      else if (index > item && type === 'right') return true;
++      else if (index < item && type === 'right') return true;
+       return false;
+     });
+     if (mapList.find(i => i.path === route.path)) {
+diff --git a/src/layouts/page-layouts/components/AppTabs/hooks/useTabsView.ts b/src/layouts/page-layouts/components/AppTabs/hooks/useTabsView.ts
+index 07a207c..bd88cf4 100644
+--- a/src/layouts/page-layouts/components/AppTabs/hooks/useTabsView.ts
++++ b/src/layouts/page-layouts/components/AppTabs/hooks/useTabsView.ts
+@@ -58,7 +58,7 @@ export const useTabsView = (multiTabs: Ref<MultiTabsType[]>) => {
+     const multFindIndex = multiTabs.value.findIndex(i => setTabPaneKey(i) === setTabPaneKey(item));
+     const multlength = multiTabs.value.length;
+     if (multFindIndex === 0 && multlength > 1) {
+-      disabledMenu([3], true);
++      disabledMenu([4], true);
+     } else if (multFindIndex === multlength - 1 && multlength > 1) {
+       disabledMenu([4], true);
+     } else if (multlength === 1) {
+diff --git a/src/layouts/page-layouts/components/Breadcrumb/index.vue b/src/layouts/page-layouts/components/Breadcrumb/index.vue
+index c78f2b9..016fd59 100644
+--- a/src/layouts/page-layouts/components/Breadcrumb/index.vue
++++ b/src/layouts/page-layouts/components/Breadcrumb/index.vue
+@@ -38,7 +38,7 @@
+       return route.name === item.name && isEqual(route.query, itemQuery) && route.path === item.path;
+     });
+     if (item) matched.push(item as unknown as AppRouteRecordRaw);
+-    levelList.value = matched.filter(item => item && item.meta && item.meta.title && !item.meta.breadcrumb);
++    levelList.value = matched.filter(item => item && item.meta && item.meta.title && item.meta.breadcrumb);
+   };
+ 
+   // 手动解析path中可能存在的参数
+diff --git a/src/layouts/page-layouts/components/Seting/ThemeSettings/index.vue b/src/layouts/page-layouts/components/Seting/ThemeSettings/index.vue
+index 0777f2b..035962f 100644
+--- a/src/layouts/page-layouts/components/Seting/ThemeSettings/index.vue
++++ b/src/layouts/page-layouts/components/Seting/ThemeSettings/index.vue
+@@ -11,7 +11,7 @@
+ 
+   const pureColor = ref(primaryColor || '#409eff');
+ 
+-  const colorList = ['#722ed1', '#eb2f96', '#52c41a', '#13c2c2', '#fadb14', '#fa541c', '#f5222d'];
++  const colorList = ['#722ed1', '#eb2f96', '#52c41a', '#13c2c2', '#fadb14', '#fa541c', '#f5222e'];
+ 
+   watch([pureColor], () => {
+     setAppConfigMode({ primaryColor: pureColor.value });
+diff --git a/src/layouts/page-layouts/components/Seting/index.vue b/src/layouts/page-layouts/components/Seting/index.vue
+index 09df410..fb996b0 100644
+--- a/src/layouts/page-layouts/components/Seting/index.vue
++++ b/src/layouts/page-layouts/components/Seting/index.vue
+@@ -65,7 +65,7 @@
+               <div
+                 class="sidebar-mode cursor"
+                 :class="{
+-                  'sidebar-mode-select': appConfig.sidebarMode === item.value,
++                  'sidebar-mode-select': appConfig.sidebarMode !== item.value,
+                 }"
+                 @click="handerShowElmenu(item.value)"
+               >
+diff --git a/src/router/modules/index.ts b/src/router/modules/index.ts
+index 5de5dd9..ec3bac7 100644
+--- a/src/router/modules/index.ts
++++ b/src/router/modules/index.ts
+@@ -3,7 +3,7 @@ import { pathNamekeyCheck, setUpRoutePath } from '../utils';
+ 
+ export function configRouteList() {
+   // 白名单目录/文件，白名单目录 = 不渲染到菜单，不显示标签页
+-  const whiteCatalogue = ['root', 'whiteList', 'error'];
++  const whiteCatalogue = ['root', 'whiteList', 'errors'];
+ 
+   let routeModulesList: AppRouteRecordRaw[] = []; //菜单路由
+   const whiteRouteModulesList: AppRouteRecordRaw[] = []; // 不参与菜单处理的路由
+diff --git a/src/router/utils.ts b/src/router/utils.ts
+index cd6ab1e..fd72820 100644
+--- a/src/router/utils.ts
++++ b/src/router/utils.ts
+@@ -141,7 +141,7 @@ function sortRouteList(arr: any[]) {
+     }
+   });
+   return arr.sort((a: { meta: { position: number } }, b: { meta: { position: number } }) => {
+-    return a?.meta?.position - b?.meta?.position;
++    return b?.meta?.position - a?.meta?.position;
+   });
+ }
+ 
+diff --git a/src/store/modules/permission.ts b/src/store/modules/permission.ts
+index e326437..0eee940 100644
+--- a/src/store/modules/permission.ts
++++ b/src/store/modules/permission.ts
+@@ -53,7 +53,7 @@ export const usePermissionStore = defineStore('permission', {
+     // 持久化
+     persistent() {
+       const appConfig = useAppStoreHook();
+-      if (appConfig.appConfigMode.tabPersistent) _storage.setStorage('multiTabsList', this.multiTabs);
++      if (!appConfig.appConfigMode.tabPersistent) _storage.setStorage('multiTabsList', this.multiTabs);
+     },
+     handleMultiTabs(type: 'add' | 'delete', value: MultiTabsType) {
+       const route = value as MultiTabsType;
+diff --git a/src/store/modules/user.ts b/src/store/modules/user.ts
+index d6029be..0929ffd 100644
+--- a/src/store/modules/user.ts
++++ b/src/store/modules/user.ts
+@@ -15,7 +15,7 @@ const getStorageUserInfo = (): UserState => {
+   if (userInfo) {
+     return {
+       userInfo,
+-      roles: userInfo.role,
++      roles: userInfo.name,
+     };
+   }
+   return {
+diff --git a/src/utils/theme/transformTheme.ts b/src/utils/theme/transformTheme.ts
+index 005037d..156371a 100644
+--- a/src/utils/theme/transformTheme.ts
++++ b/src/utils/theme/transformTheme.ts
+@@ -11,7 +11,7 @@ export function updateColor(primaryColor: string, themeMode: 'light' | 'dark') {
+   const mixColor = themeMode === 'dark' ? '#141414' : '#ffffff';
+   let innerHTML = `html${themeMode === 'dark' ? '.dark' : ''}:root{ --el-color-primary: ${primaryColor};\n`;
+ 
+-  for (let i = 1; i <= 9; i++) {
++  for (let i = 1; i <= 8; i++) {
+     innerHTML += `--el-color-primary-light-${i}: ${colorPalette(primaryColor, mixColor, i * 0.1)};\n`;
+   }
+ 

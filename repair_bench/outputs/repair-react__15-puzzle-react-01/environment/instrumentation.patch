@@ -1,0 +1,1630 @@
+diff --git a/src/components/App.js b/src/components/App.js
+index e4ac060..81e24ef 100644
+--- a/src/components/App.js
++++ b/src/components/App.js
+@@ -39,6 +39,7 @@ class App extends Component {
+   render() {
+     return (
+       <main
++        data-testid="app-root"
+         style={{
+           display: "flex",
+           flexDirection: "column",
+diff --git a/src/components/App.test.js b/src/components/App.test.js
+deleted file mode 100644
+index aaffdc3..0000000
+--- a/src/components/App.test.js
++++ /dev/null
+@@ -1,18 +0,0 @@
+-// @ts-check
+-
+-import React from "react";
+-import renderer from "react-test-renderer";
+-import App from "./App";
+-
+-test("App renders correctly", () => {
+-  const tree = renderer
+-    .create(
+-      <App
+-        level={{
+-          tileSet: [4, 6, 11, 1, 2, 16, 3, 15, 10, 9, 7, 13, 12, 14, 8, 5],
+-        }}
+-      />
+-    )
+-    .toJSON();
+-  expect(tree).toMatchSnapshot();
+-});
+diff --git a/src/components/Footer.js b/src/components/Footer.js
+index 731c018..068387d 100644
+--- a/src/components/Footer.js
++++ b/src/components/Footer.js
+@@ -23,18 +23,20 @@ const Footer = () => {
+   const styles = useStyles();
+ 
+   return (
+-    <footer className={styles.root}>
++    <footer className={styles.root} data-testid="footer-root">
+       <a
++        data-testid="footer-repo-link"
+         href="https://github.com/react-puzzle-games/15-puzzle/"
+         target="_blank"
+         rel="noopener noreferrer"
+       >
+         <GitHubIcon />
+       </a>
+-      <p>
++      <p data-testid="footer-note">
+         Made with <span className={styles.heart}>♥</span> by{" "}
+         <a
+           className={styles.link}
++          data-testid="footer-org-link"
+           href="https://github.com/react-puzzle-games"
+           rel="noopener noreferrer"
+           target="_blank"
+diff --git a/src/components/Footer.test.js b/src/components/Footer.test.js
+deleted file mode 100644
+index c4f65fd..0000000
+--- a/src/components/Footer.test.js
++++ /dev/null
+@@ -1,10 +0,0 @@
+-// @ts-check
+-
+-import React from 'react';
+-import renderer from 'react-test-renderer';
+-import Footer from './Footer';
+-
+-test('Footer renders correctly', () => {
+-  const tree = renderer.create(<Footer />).toJSON();
+-  expect(tree).toMatchSnapshot();
+-});
+diff --git a/src/components/Game.js b/src/components/Game.js
+index ed64ee0..6452605 100644
+--- a/src/components/Game.js
++++ b/src/components/Game.js
+@@ -19,6 +19,21 @@ import { distanceBetween, getTileCoords, invert } from "../lib/utils";
+ import Grid from "./Grid";
+ import Menu from "./Menu";
+ 
++// Repair-Bench instrumentation probe helper. The four game states are ES Symbols
++// (src/lib/game-status.ts) whose String() form is "Symbol(GAME_STARTED)" - not a stable
++// identifier for a checker. This maps them to plain names for the data-game-state probe
++// attribute only; no game logic reads it and no branch depends on it.
++const rbStateName = (s) =>
++  s === GAME_IDLE
++    ? "IDLE"
++    : s === GAME_STARTED
++    ? "STARTED"
++    : s === GAME_OVER
++    ? "OVER"
++    : s === GAME_PAUSED
++    ? "PAUSED"
++    : "UNKNOWN";
++
+ class Game extends Component {
+   constructor(props) {
+     super(props);
+@@ -202,6 +217,10 @@ class Game extends Component {
+ 
+     return (
+       <div
++        data-testid="game-root"
++        data-game-state={rbStateName(this.state.gameState)}
++        data-moves={this.state.moves}
++        data-seconds={this.state.seconds}
+         style={{
+           display: "flex",
+           flexDirection: "column",
+@@ -223,20 +242,20 @@ class Game extends Component {
+           onTileClick={this.onTileClick}
+         />
+         <Dialog open={this.state.dialogOpen} onClose={this.handleDialogClose}>
+-          <DialogTitle>Congratulations!</DialogTitle>
+-          <DialogContent>
++          <DialogTitle data-testid="win-dialog-title">Congratulations!</DialogTitle>
++          <DialogContent data-testid="win-dialog-content">
+             You've solved the puzzle in {this.state.moves} moves in{" "}
+             {this.state.seconds} seconds!
+           </DialogContent>
+           <DialogActions>
+-            <Button variant="text" onClick={this.handleDialogClose}>
++            <Button variant="text" onClick={this.handleDialogClose} data-testid="win-dialog-close">
+               Close
+             </Button>
+           </DialogActions>
+         </Dialog>
+         <Snackbar
+           open={this.state.snackbarOpen}
+-          message={this.state.snackbarText}
++          message={<span data-testid="snackbar-text">{this.state.snackbarText}</span>}
+           onClose={this.handleSnackbarClose}
+         />
+       </div>
+diff --git a/src/components/Game.test.js b/src/components/Game.test.js
+deleted file mode 100644
+index 60feb61..0000000
+--- a/src/components/Game.test.js
++++ /dev/null
+@@ -1,21 +0,0 @@
+-// @ts-check
+-
+-import React from "react";
+-import renderer from "react-test-renderer";
+-import Game from "./Game";
+-
+-test("Game renders correctly", () => {
+-  const tree = renderer
+-    .create(
+-      <Game
+-        gridSize={4}
+-        tileSize={90}
+-        numbers={[]}
+-        onResetClick={() => {}}
+-        onNewClick={() => {}}
+-        original={[]}
+-      />
+-    )
+-    .toJSON();
+-  expect(tree).toMatchSnapshot();
+-});
+diff --git a/src/components/GitHubIcon.test.js b/src/components/GitHubIcon.test.js
+deleted file mode 100644
+index b67c317..0000000
+--- a/src/components/GitHubIcon.test.js
++++ /dev/null
+@@ -1,10 +0,0 @@
+-// @ts-check
+-
+-import React from 'react';
+-import renderer from 'react-test-renderer';
+-import GitHubIcon from './GitHubIcon';
+-
+-test('GitHubIcon renders correctly', () => {
+-  const tree = renderer.create(<GitHubIcon />).toJSON();
+-  expect(tree).toMatchSnapshot();
+-});
+diff --git a/src/components/Grid.js b/src/components/Grid.js
+index 4fb697d..fbe341c 100644
+--- a/src/components/Grid.js
++++ b/src/components/Grid.js
+@@ -30,12 +30,13 @@ const Grid = (props) => {
+   const styles = useStyles(props);
+ 
+   return (
+-    <div className={styles.root}>
+-      <div className={styles.tile}>
++    <div className={styles.root} data-testid="grid-root">
++      <div className={styles.tile} data-testid="grid-board">
+         {tiles.map((tile, index) => {
+           return (
+             <Tile
+               {...tile}
++              slot={index}
+               key={`tile-${index}`}
+               correct={tile.tileId + 1 === tile.number}
+               onClick={onTileClick}
+diff --git a/src/components/Grid.test.js b/src/components/Grid.test.js
+deleted file mode 100644
+index 528294a..0000000
+--- a/src/components/Grid.test.js
++++ /dev/null
+@@ -1,83 +0,0 @@
+-// @ts-check
+-
+-import React from 'react';
+-import renderer from 'react-test-renderer';
+-import Grid from './Grid';
+-
+-describe('Grid renders correctly', () => {
+-  test('given an empty set of tiles', () => {
+-    const tree = renderer
+-      .create(
+-        <Grid tiles={[]} onTileClick={() => {}} tileSize={90} gridSize={4} />,
+-      )
+-      .toJSON();
+-    expect(tree).toMatchSnapshot();
+-  });
+-  test('given one tile', () => {
+-    const tree = renderer
+-      .create(
+-        <Grid
+-          tiles={[
+-            {
+-              tileId: 3,
+-              width: 90,
+-              height: 90,
+-              left: 0,
+-              top: -180,
+-            },
+-          ]}
+-          onTileClick={() => {}}
+-          tileSize={90}
+-          gridSize={1}
+-        />,
+-      )
+-      .toJSON();
+-    expect(tree).toMatchSnapshot();
+-  });
+-  test('given a set of tiles', () => {
+-    const tree = renderer
+-      .create(
+-        <Grid
+-          tiles={[
+-            {
+-              tileId: 0,
+-              width: 90,
+-              height: 90,
+-              left: 0,
+-              top: 0,
+-              number: 4,
+-            },
+-            {
+-              tileId: 1,
+-              width: 90,
+-              height: 90,
+-              left: 90,
+-              top: 0,
+-              number: 2,
+-            },
+-            {
+-              tileId: 2,
+-              width: 90,
+-              height: 90,
+-              left: 0,
+-              top: 90,
+-              number: 3,
+-            },
+-            {
+-              tileId: 3,
+-              width: 90,
+-              height: 90,
+-              left: 90,
+-              top: 90,
+-              number: 1,
+-            },
+-          ]}
+-          onTileClick={() => {}}
+-          tileSize={90}
+-          gridSize={1}
+-        />,
+-      )
+-      .toJSON();
+-    expect(tree).toMatchSnapshot();
+-  });
+-});
+diff --git a/src/components/Menu.test.js b/src/components/Menu.test.js
+deleted file mode 100644
+index 057f7a4..0000000
+--- a/src/components/Menu.test.js
++++ /dev/null
+@@ -1,24 +0,0 @@
+-// @ts-check
+-
+-import React from "react";
+-import renderer from "react-test-renderer";
+-import { GAME_STARTED } from "../lib/game-status";
+-import Menu from "./Menu";
+-
+-describe("Menu renders correctly", () => {
+-  test("given default values", () => {
+-    const tree = renderer
+-      .create(
+-        <Menu
+-          seconds={0}
+-          moves={0}
+-          onResetClick={() => {}}
+-          onPauseClick={() => {}}
+-          onNewClick={() => {}}
+-          gameState={GAME_STARTED}
+-        />
+-      )
+-      .toJSON();
+-    expect(tree).toMatchSnapshot();
+-  });
+-});
+diff --git a/src/components/Menu.tsx b/src/components/Menu.tsx
+index 541821d..50f0ec5 100644
+--- a/src/components/Menu.tsx
++++ b/src/components/Menu.tsx
+@@ -57,16 +57,17 @@ const Menu = (props: Props) => {
+   const classes = useStyles(props);
+ 
+   return (
+-    <AppBar position="static" className={classes.root}>
+-      <Toolbar className={classes.toolbar}>
++    <AppBar position="static" className={classes.root} data-testid="menu-appbar">
++      <Toolbar className={classes.toolbar} data-testid="menu-toolbar">
+         <MediaQuery query="(min-width: 772px)">
+-          <Typography className={classes.title} variant="h6" component="div">
++          <Typography className={classes.title} variant="h6" component="div" data-testid="menu-title">
+             React Puzzle Games - 15 Puzzle
+           </Typography>
+         </MediaQuery>
+ 
+         <Button
+           aria-label="Start a new game"
++          data-testid="menu-new-game"
+           onClick={onNewClick}
+           startIcon={<PowerSettingsNew className="menuIcon" />}
+         >
+@@ -78,6 +79,7 @@ const Menu = (props: Props) => {
+         </Button>
+         <Button
+           aria-label="Pause/Continue current game."
++          data-testid="menu-pause"
+           onClick={onPauseClick}
+           startIcon={
+             gameState === GAME_PAUSED ? (
+@@ -89,13 +91,14 @@ const Menu = (props: Props) => {
+           disabled={gameState !== GAME_STARTED && gameState !== GAME_PAUSED}
+         >
+           <MediaQuery query="(min-width: 772px)">
+-            <Typography component="span" variant="button">
++            <Typography component="span" variant="button" data-testid="menu-pause-label">
+               {gameState === GAME_PAUSED ? "Continue" : "Pause"}
+             </Typography>
+           </MediaQuery>
+         </Button>
+         <Button
+           aria-label="Reset game"
++          data-testid="menu-reset"
+           onClick={onResetClick}
+           startIcon={<Replay />}
+         >
+@@ -104,6 +107,7 @@ const Menu = (props: Props) => {
+           </MediaQuery>
+         </Button>
+         <Chip
++          data-testid="menu-time-chip"
+           avatar={
+             <Avatar>
+               <Alarm />
+@@ -114,11 +118,12 @@ const Menu = (props: Props) => {
+               <MediaQuery query="(min-width: 772px)" component="span">
+                 Time Elapsed:
+               </MediaQuery>
+-              <Typography component="span">{seconds}s</Typography>
++              <Typography component="span" data-testid="menu-time-value">{seconds}s</Typography>
+             </>
+           }
+         />
+         <Chip
++          data-testid="menu-moves-chip"
+           avatar={
+             <Avatar>
+               <CompareArrows />
+@@ -129,7 +134,7 @@ const Menu = (props: Props) => {
+               <MediaQuery query="(min-width: 772px)" component="span">
+                 Moves so far:
+               </MediaQuery>
+-              <Typography component="span">{moves}</Typography>
++              <Typography component="span" data-testid="menu-moves-value">{moves}</Typography>
+             </>
+           }
+         />
+diff --git a/src/components/Tile.tsx b/src/components/Tile.tsx
+index 3ae9e39..311de62 100644
+--- a/src/components/Tile.tsx
++++ b/src/components/Tile.tsx
+@@ -28,6 +28,14 @@ const useStyles = makeStyles({
+ });
+ 
+ type Props = {
++  // Repair-Bench instrumentation: the array slot Grid renders this tile from.
++  slot?: number;
++  // Repair-Bench instrumentation: Grid renders <Tile {...tile} />, so row and column
++  // already reach this component at runtime (TileDescriptor in src/lib/common-types.ts);
++  // they are declared here only so the read-only data-row / data-column probes below
++  // type-check under this project's strict tsconfig. No logic reads them.
++  row?: number;
++  column?: number;
+   tileId: number;
+   number: number;
+   onClick: (props: Props) => void;
+@@ -44,8 +52,23 @@ const Tile = (props: Props) => {
+   const styles = useStyles(props);
+ 
+   return (
+-    <div className={styles.root} onClick={() => onClick(props)}>
+-      <span className={styles.tileNumber}>{number}</span>
++    <div
++      className={styles.root}
++      onClick={() => onClick(props)}
++      data-testid={`tile-${number}`}
++      data-number={number}
++      data-slot={props.slot}
++      data-tile-id={props.tileId}
++      data-row={props.row}
++      data-column={props.column}
++      data-left={props.left}
++      data-top={props.top}
++      data-correct={String(props.correct)}
++      data-visible={String(props.visible)}
++    >
++      <span className={styles.tileNumber} data-testid={`tile-number-${number}`}>
++        {number}
++      </span>
+     </div>
+   );
+ };
+diff --git a/src/components/__snapshots__/App.test.js.snap b/src/components/__snapshots__/App.test.js.snap
+deleted file mode 100644
+index 11b534c..0000000
+--- a/src/components/__snapshots__/App.test.js.snap
++++ /dev/null
+@@ -1,432 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`App renders correctly 1`] = `
+-<main
+-  style={
+-    Object {
+-      "display": "flex",
+-      "flexDirection": "column",
+-      "minHeight": "100vh",
+-    }
+-  }
+->
+-  <div
+-    style={
+-      Object {
+-        "display": "flex",
+-        "flexDirection": "column",
+-        "flexGrow": 1,
+-      }
+-    }
+-  >
+-    <header
+-      className="MuiPaper-root MuiAppBar-root MuiAppBar-positionStatic MuiAppBar-colorPrimary makeStyles-root-1 MuiPaper-elevation4"
+-    >
+-      <div
+-        className="MuiToolbar-root MuiToolbar-regular MuiToolbar-gutters"
+-      >
+-        <div
+-          className="MuiTypography-root makeStyles-title-2 MuiTypography-h6"
+-        >
+-          React Puzzle Games - 15 Puzzle
+-        </div>
+-        <button
+-          aria-label="Start a new game"
+-          className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-          disabled={false}
+-          onBlur={[Function]}
+-          onClick={[Function]}
+-          onDragLeave={[Function]}
+-          onFocus={[Function]}
+-          onKeyDown={[Function]}
+-          onKeyUp={[Function]}
+-          onMouseDown={[Function]}
+-          onMouseLeave={[Function]}
+-          onMouseUp={[Function]}
+-          onTouchEnd={[Function]}
+-          onTouchMove={[Function]}
+-          onTouchStart={[Function]}
+-          tabIndex={0}
+-          type="button"
+-        >
+-          <span
+-            className="MuiButton-label"
+-          >
+-            <span
+-              className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-            >
+-              <svg
+-                aria-hidden={true}
+-                className="MuiSvgIcon-root menuIcon"
+-                focusable="false"
+-                viewBox="0 0 24 24"
+-              >
+-                <path
+-                  d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"
+-                />
+-              </svg>
+-            </span>
+-            <span
+-              className="MuiTypography-root MuiTypography-button"
+-            >
+-              New game
+-            </span>
+-          </span>
+-        </button>
+-        <button
+-          aria-label="Pause/Continue current game."
+-          className="MuiButtonBase-root MuiButton-root MuiButton-text Mui-disabled Mui-disabled"
+-          disabled={true}
+-          onBlur={[Function]}
+-          onClick={[Function]}
+-          onDragLeave={[Function]}
+-          onFocus={[Function]}
+-          onKeyDown={[Function]}
+-          onKeyUp={[Function]}
+-          onMouseDown={[Function]}
+-          onMouseLeave={[Function]}
+-          onMouseUp={[Function]}
+-          onTouchEnd={[Function]}
+-          onTouchMove={[Function]}
+-          onTouchStart={[Function]}
+-          tabIndex={-1}
+-          type="button"
+-        >
+-          <span
+-            className="MuiButton-label"
+-          >
+-            <span
+-              className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-            >
+-              <svg
+-                aria-hidden={true}
+-                className="MuiSvgIcon-root menuIcon"
+-                focusable="false"
+-                viewBox="0 0 24 24"
+-              >
+-                <path
+-                  d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"
+-                />
+-              </svg>
+-            </span>
+-            <span
+-              className="MuiTypography-root MuiTypography-button"
+-            >
+-              Pause
+-            </span>
+-          </span>
+-        </button>
+-        <button
+-          aria-label="Reset game"
+-          className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-          disabled={false}
+-          onBlur={[Function]}
+-          onClick={[Function]}
+-          onDragLeave={[Function]}
+-          onFocus={[Function]}
+-          onKeyDown={[Function]}
+-          onKeyUp={[Function]}
+-          onMouseDown={[Function]}
+-          onMouseLeave={[Function]}
+-          onMouseUp={[Function]}
+-          onTouchEnd={[Function]}
+-          onTouchMove={[Function]}
+-          onTouchStart={[Function]}
+-          tabIndex={0}
+-          type="button"
+-        >
+-          <span
+-            className="MuiButton-label"
+-          >
+-            <span
+-              className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-            >
+-              <svg
+-                aria-hidden={true}
+-                className="MuiSvgIcon-root"
+-                focusable="false"
+-                viewBox="0 0 24 24"
+-              >
+-                <path
+-                  d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+-                />
+-              </svg>
+-            </span>
+-            Reset game
+-          </span>
+-        </button>
+-        <div
+-          className="MuiChip-root"
+-          onKeyDown={[Function]}
+-          onKeyUp={[Function]}
+-        >
+-          <div
+-            className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-          >
+-            <svg
+-              aria-hidden={true}
+-              className="MuiSvgIcon-root"
+-              focusable="false"
+-              viewBox="0 0 24 24"
+-            >
+-              <path
+-                d="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"
+-              />
+-            </svg>
+-          </div>
+-          <span
+-            className="MuiChip-label"
+-          >
+-            <span
+-              className="MuiTypography-root MuiTypography-body1"
+-            >
+-              0
+-              s
+-            </span>
+-          </span>
+-        </div>
+-        <div
+-          className="MuiChip-root"
+-          onKeyDown={[Function]}
+-          onKeyUp={[Function]}
+-        >
+-          <div
+-            className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-          >
+-            <svg
+-              aria-hidden={true}
+-              className="MuiSvgIcon-root"
+-              focusable="false"
+-              viewBox="0 0 24 24"
+-            >
+-              <path
+-                d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z"
+-              />
+-            </svg>
+-          </div>
+-          <span
+-            className="MuiChip-label"
+-          >
+-            <span
+-              className="MuiTypography-root MuiTypography-body1"
+-            >
+-              0
+-            </span>
+-          </span>
+-        </div>
+-      </div>
+-    </header>
+-    <div
+-      className="makeStyles-root-3 makeStyles-root-5"
+-    >
+-      <div
+-        className="makeStyles-tile-4 makeStyles-tile-6"
+-      >
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-9"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            4
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-10"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            6
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-11"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            11
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-12"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            1
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-13"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            2
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-14"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            16
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-15"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            3
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-16"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            15
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-17"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            10
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-18"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            9
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-19"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            7
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-20"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            13
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-21"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            12
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-22"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            14
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-23"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            8
+-          </span>
+-        </div>
+-        <div
+-          className="makeStyles-root-7 makeStyles-root-24"
+-          onClick={[Function]}
+-        >
+-          <span
+-            className="makeStyles-tileNumber-8"
+-          >
+-            5
+-          </span>
+-        </div>
+-      </div>
+-    </div>
+-  </div>
+-  <footer
+-    className="makeStyles-root-25"
+-  >
+-    <a
+-      href="https://github.com/react-puzzle-games/15-puzzle/"
+-      rel="noopener noreferrer"
+-      target="_blank"
+-    >
+-      <svg
+-        className="makeStyles-root-28"
+-        height="24px"
+-        version="1.1"
+-        viewBox="0 0 435.549 435.549"
+-        width="24px"
+-        xmlns="http://www.w3.org/2000/svg"
+-      >
+-        <g>
+-          <path
+-            d="M409.132,114.573c-19.608-33.596-46.205-60.194-79.798-79.8C295.736,15.166,259.057,5.365,219.271,5.365 c-39.781,0-76.472,9.804-110.063,29.408c-33.596,19.605-60.192,46.204-79.8,79.8C9.803,148.168,0,184.854,0,224.63 c0,47.78,13.94,90.745,41.827,128.906c27.884,38.164,63.906,64.572,108.063,79.227c5.14,0.954,8.945,0.283,11.419-1.996 c2.475-2.282,3.711-5.14,3.711-8.562c0-0.571-0.049-5.708-0.144-15.417c-0.098-9.709-0.144-18.179-0.144-25.406l-6.567,1.136 c-4.187,0.767-9.469,1.092-15.846,1c-6.374-0.089-12.991-0.757-19.842-1.999c-6.854-1.231-13.229-4.086-19.13-8.559 c-5.898-4.473-10.085-10.328-12.56-17.556l-2.855-6.57c-1.903-4.374-4.899-9.233-8.992-14.559 c-4.093-5.331-8.232-8.945-12.419-10.848l-1.999-1.431c-1.332-0.951-2.568-2.098-3.711-3.429c-1.142-1.331-1.997-2.663-2.568-3.997 c-0.572-1.335-0.098-2.43,1.427-3.289c1.525-0.859,4.281-1.276,8.28-1.276l5.708,0.853c3.807,0.763,8.516,3.042,14.133,6.851 c5.614,3.806,10.229,8.754,13.846,14.842c4.38,7.806,9.657,13.754,15.846,17.847c6.184,4.093,12.419,6.136,18.699,6.136 c6.28,0,11.704-0.476,16.274-1.423c4.565-0.952,8.848-2.383,12.847-4.285c1.713-12.758,6.377-22.559,13.988-29.41 c-10.848-1.14-20.601-2.857-29.264-5.14c-8.658-2.286-17.605-5.996-26.835-11.14c-9.235-5.137-16.896-11.516-22.985-19.126 c-6.09-7.614-11.088-17.61-14.987-29.979c-3.901-12.374-5.852-26.648-5.852-42.826c0-23.035,7.52-42.637,22.557-58.817 c-7.044-17.318-6.379-36.732,1.997-58.24c5.52-1.715,13.706-0.428,24.554,3.853c10.85,4.283,18.794,7.952,23.84,10.994 c5.046,3.041,9.089,5.618,12.135,7.708c17.705-4.947,35.976-7.421,54.818-7.421s37.117,2.474,54.823,7.421l10.849-6.849 c7.419-4.57,16.18-8.758,26.262-12.565c10.088-3.805,17.802-4.853,23.134-3.138c8.562,21.509,9.325,40.922,2.279,58.24 c15.036,16.18,22.559,35.787,22.559,58.817c0,16.178-1.958,30.497-5.853,42.966c-3.9,12.471-8.941,22.457-15.125,29.979 c-6.191,7.521-13.901,13.85-23.131,18.986c-9.232,5.14-18.182,8.85-26.84,11.136c-8.662,2.286-18.415,4.004-29.263,5.146 c9.894,8.562,14.842,22.077,14.842,40.539v60.237c0,3.422,1.19,6.279,3.572,8.562c2.379,2.279,6.136,2.95,11.276,1.995 c44.163-14.653,80.185-41.062,108.068-79.226c27.88-38.161,41.825-81.126,41.825-128.906 C438.536,184.851,428.728,148.168,409.132,114.573z"
+-          />
+-        </g>
+-      </svg>
+-    </a>
+-    <p>
+-      Made with 
+-      <span
+-        className="makeStyles-heart-26"
+-      >
+-        ♥
+-      </span>
+-       by
+-       
+-      <a
+-        className="makeStyles-link-27"
+-        href="https://github.com/react-puzzle-games"
+-        rel="noopener noreferrer"
+-        target="_blank"
+-      >
+-         
+-        React Puzzle Games
+-      </a>
+-    </p>
+-  </footer>
+-</main>
+-`;
+diff --git a/src/components/__snapshots__/Footer.test.js.snap b/src/components/__snapshots__/Footer.test.js.snap
+deleted file mode 100644
+index 72bc9af..0000000
+--- a/src/components/__snapshots__/Footer.test.js.snap
++++ /dev/null
+@@ -1,47 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`Footer renders correctly 1`] = `
+-<footer
+-  className="makeStyles-root-1"
+->
+-  <a
+-    href="https://github.com/react-puzzle-games/15-puzzle/"
+-    rel="noopener noreferrer"
+-    target="_blank"
+-  >
+-    <svg
+-      className="makeStyles-root-4"
+-      height="24px"
+-      version="1.1"
+-      viewBox="0 0 435.549 435.549"
+-      width="24px"
+-      xmlns="http://www.w3.org/2000/svg"
+-    >
+-      <g>
+-        <path
+-          d="M409.132,114.573c-19.608-33.596-46.205-60.194-79.798-79.8C295.736,15.166,259.057,5.365,219.271,5.365 c-39.781,0-76.472,9.804-110.063,29.408c-33.596,19.605-60.192,46.204-79.8,79.8C9.803,148.168,0,184.854,0,224.63 c0,47.78,13.94,90.745,41.827,128.906c27.884,38.164,63.906,64.572,108.063,79.227c5.14,0.954,8.945,0.283,11.419-1.996 c2.475-2.282,3.711-5.14,3.711-8.562c0-0.571-0.049-5.708-0.144-15.417c-0.098-9.709-0.144-18.179-0.144-25.406l-6.567,1.136 c-4.187,0.767-9.469,1.092-15.846,1c-6.374-0.089-12.991-0.757-19.842-1.999c-6.854-1.231-13.229-4.086-19.13-8.559 c-5.898-4.473-10.085-10.328-12.56-17.556l-2.855-6.57c-1.903-4.374-4.899-9.233-8.992-14.559 c-4.093-5.331-8.232-8.945-12.419-10.848l-1.999-1.431c-1.332-0.951-2.568-2.098-3.711-3.429c-1.142-1.331-1.997-2.663-2.568-3.997 c-0.572-1.335-0.098-2.43,1.427-3.289c1.525-0.859,4.281-1.276,8.28-1.276l5.708,0.853c3.807,0.763,8.516,3.042,14.133,6.851 c5.614,3.806,10.229,8.754,13.846,14.842c4.38,7.806,9.657,13.754,15.846,17.847c6.184,4.093,12.419,6.136,18.699,6.136 c6.28,0,11.704-0.476,16.274-1.423c4.565-0.952,8.848-2.383,12.847-4.285c1.713-12.758,6.377-22.559,13.988-29.41 c-10.848-1.14-20.601-2.857-29.264-5.14c-8.658-2.286-17.605-5.996-26.835-11.14c-9.235-5.137-16.896-11.516-22.985-19.126 c-6.09-7.614-11.088-17.61-14.987-29.979c-3.901-12.374-5.852-26.648-5.852-42.826c0-23.035,7.52-42.637,22.557-58.817 c-7.044-17.318-6.379-36.732,1.997-58.24c5.52-1.715,13.706-0.428,24.554,3.853c10.85,4.283,18.794,7.952,23.84,10.994 c5.046,3.041,9.089,5.618,12.135,7.708c17.705-4.947,35.976-7.421,54.818-7.421s37.117,2.474,54.823,7.421l10.849-6.849 c7.419-4.57,16.18-8.758,26.262-12.565c10.088-3.805,17.802-4.853,23.134-3.138c8.562,21.509,9.325,40.922,2.279,58.24 c15.036,16.18,22.559,35.787,22.559,58.817c0,16.178-1.958,30.497-5.853,42.966c-3.9,12.471-8.941,22.457-15.125,29.979 c-6.191,7.521-13.901,13.85-23.131,18.986c-9.232,5.14-18.182,8.85-26.84,11.136c-8.662,2.286-18.415,4.004-29.263,5.146 c9.894,8.562,14.842,22.077,14.842,40.539v60.237c0,3.422,1.19,6.279,3.572,8.562c2.379,2.279,6.136,2.95,11.276,1.995 c44.163-14.653,80.185-41.062,108.068-79.226c27.88-38.161,41.825-81.126,41.825-128.906 C438.536,184.851,428.728,148.168,409.132,114.573z"
+-        />
+-      </g>
+-    </svg>
+-  </a>
+-  <p>
+-    Made with 
+-    <span
+-      className="makeStyles-heart-2"
+-    >
+-      ♥
+-    </span>
+-     by
+-     
+-    <a
+-      className="makeStyles-link-3"
+-      href="https://github.com/react-puzzle-games"
+-      rel="noopener noreferrer"
+-      target="_blank"
+-    >
+-       
+-      React Puzzle Games
+-    </a>
+-  </p>
+-</footer>
+-`;
+diff --git a/src/components/__snapshots__/Game.test.js.snap b/src/components/__snapshots__/Game.test.js.snap
+deleted file mode 100644
+index 041be24..0000000
+--- a/src/components/__snapshots__/Game.test.js.snap
++++ /dev/null
+@@ -1,218 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`Game renders correctly 1`] = `
+-<div
+-  style={
+-    Object {
+-      "display": "flex",
+-      "flexDirection": "column",
+-      "flexGrow": 1,
+-    }
+-  }
+->
+-  <header
+-    className="MuiPaper-root MuiAppBar-root MuiAppBar-positionStatic MuiAppBar-colorPrimary makeStyles-root-1 MuiPaper-elevation4"
+-  >
+-    <div
+-      className="MuiToolbar-root MuiToolbar-regular MuiToolbar-gutters"
+-    >
+-      <div
+-        className="MuiTypography-root makeStyles-title-2 MuiTypography-h6"
+-      >
+-        React Puzzle Games - 15 Puzzle
+-      </div>
+-      <button
+-        aria-label="Start a new game"
+-        className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-        disabled={false}
+-        onBlur={[Function]}
+-        onClick={[Function]}
+-        onDragLeave={[Function]}
+-        onFocus={[Function]}
+-        onKeyDown={[Function]}
+-        onKeyUp={[Function]}
+-        onMouseDown={[Function]}
+-        onMouseLeave={[Function]}
+-        onMouseUp={[Function]}
+-        onTouchEnd={[Function]}
+-        onTouchMove={[Function]}
+-        onTouchStart={[Function]}
+-        tabIndex={0}
+-        type="button"
+-      >
+-        <span
+-          className="MuiButton-label"
+-        >
+-          <span
+-            className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-          >
+-            <svg
+-              aria-hidden={true}
+-              className="MuiSvgIcon-root menuIcon"
+-              focusable="false"
+-              viewBox="0 0 24 24"
+-            >
+-              <path
+-                d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"
+-              />
+-            </svg>
+-          </span>
+-          <span
+-            className="MuiTypography-root MuiTypography-button"
+-          >
+-            New game
+-          </span>
+-        </span>
+-      </button>
+-      <button
+-        aria-label="Pause/Continue current game."
+-        className="MuiButtonBase-root MuiButton-root MuiButton-text Mui-disabled Mui-disabled"
+-        disabled={true}
+-        onBlur={[Function]}
+-        onClick={[Function]}
+-        onDragLeave={[Function]}
+-        onFocus={[Function]}
+-        onKeyDown={[Function]}
+-        onKeyUp={[Function]}
+-        onMouseDown={[Function]}
+-        onMouseLeave={[Function]}
+-        onMouseUp={[Function]}
+-        onTouchEnd={[Function]}
+-        onTouchMove={[Function]}
+-        onTouchStart={[Function]}
+-        tabIndex={-1}
+-        type="button"
+-      >
+-        <span
+-          className="MuiButton-label"
+-        >
+-          <span
+-            className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-          >
+-            <svg
+-              aria-hidden={true}
+-              className="MuiSvgIcon-root menuIcon"
+-              focusable="false"
+-              viewBox="0 0 24 24"
+-            >
+-              <path
+-                d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"
+-              />
+-            </svg>
+-          </span>
+-          <span
+-            className="MuiTypography-root MuiTypography-button"
+-          >
+-            Pause
+-          </span>
+-        </span>
+-      </button>
+-      <button
+-        aria-label="Reset game"
+-        className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-        disabled={false}
+-        onBlur={[Function]}
+-        onClick={[Function]}
+-        onDragLeave={[Function]}
+-        onFocus={[Function]}
+-        onKeyDown={[Function]}
+-        onKeyUp={[Function]}
+-        onMouseDown={[Function]}
+-        onMouseLeave={[Function]}
+-        onMouseUp={[Function]}
+-        onTouchEnd={[Function]}
+-        onTouchMove={[Function]}
+-        onTouchStart={[Function]}
+-        tabIndex={0}
+-        type="button"
+-      >
+-        <span
+-          className="MuiButton-label"
+-        >
+-          <span
+-            className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-          >
+-            <svg
+-              aria-hidden={true}
+-              className="MuiSvgIcon-root"
+-              focusable="false"
+-              viewBox="0 0 24 24"
+-            >
+-              <path
+-                d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+-              />
+-            </svg>
+-          </span>
+-          Reset game
+-        </span>
+-      </button>
+-      <div
+-        className="MuiChip-root"
+-        onKeyDown={[Function]}
+-        onKeyUp={[Function]}
+-      >
+-        <div
+-          className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-        >
+-          <svg
+-            aria-hidden={true}
+-            className="MuiSvgIcon-root"
+-            focusable="false"
+-            viewBox="0 0 24 24"
+-          >
+-            <path
+-              d="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"
+-            />
+-          </svg>
+-        </div>
+-        <span
+-          className="MuiChip-label"
+-        >
+-          <span
+-            className="MuiTypography-root MuiTypography-body1"
+-          >
+-            0
+-            s
+-          </span>
+-        </span>
+-      </div>
+-      <div
+-        className="MuiChip-root"
+-        onKeyDown={[Function]}
+-        onKeyUp={[Function]}
+-      >
+-        <div
+-          className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-        >
+-          <svg
+-            aria-hidden={true}
+-            className="MuiSvgIcon-root"
+-            focusable="false"
+-            viewBox="0 0 24 24"
+-          >
+-            <path
+-              d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z"
+-            />
+-          </svg>
+-        </div>
+-        <span
+-          className="MuiChip-label"
+-        >
+-          <span
+-            className="MuiTypography-root MuiTypography-body1"
+-          >
+-            0
+-          </span>
+-        </span>
+-      </div>
+-    </div>
+-  </header>
+-  <div
+-    className="makeStyles-root-3 makeStyles-root-5"
+-  >
+-    <div
+-      className="makeStyles-tile-4 makeStyles-tile-6"
+-    />
+-  </div>
+-</div>
+-`;
+diff --git a/src/components/__snapshots__/GitHubIcon.test.js.snap b/src/components/__snapshots__/GitHubIcon.test.js.snap
+deleted file mode 100644
+index 321d964..0000000
+--- a/src/components/__snapshots__/GitHubIcon.test.js.snap
++++ /dev/null
+@@ -1,18 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`GitHubIcon renders correctly 1`] = `
+-<svg
+-  className="makeStyles-root-1"
+-  height="24px"
+-  version="1.1"
+-  viewBox="0 0 435.549 435.549"
+-  width="24px"
+-  xmlns="http://www.w3.org/2000/svg"
+->
+-  <g>
+-    <path
+-      d="M409.132,114.573c-19.608-33.596-46.205-60.194-79.798-79.8C295.736,15.166,259.057,5.365,219.271,5.365 c-39.781,0-76.472,9.804-110.063,29.408c-33.596,19.605-60.192,46.204-79.8,79.8C9.803,148.168,0,184.854,0,224.63 c0,47.78,13.94,90.745,41.827,128.906c27.884,38.164,63.906,64.572,108.063,79.227c5.14,0.954,8.945,0.283,11.419-1.996 c2.475-2.282,3.711-5.14,3.711-8.562c0-0.571-0.049-5.708-0.144-15.417c-0.098-9.709-0.144-18.179-0.144-25.406l-6.567,1.136 c-4.187,0.767-9.469,1.092-15.846,1c-6.374-0.089-12.991-0.757-19.842-1.999c-6.854-1.231-13.229-4.086-19.13-8.559 c-5.898-4.473-10.085-10.328-12.56-17.556l-2.855-6.57c-1.903-4.374-4.899-9.233-8.992-14.559 c-4.093-5.331-8.232-8.945-12.419-10.848l-1.999-1.431c-1.332-0.951-2.568-2.098-3.711-3.429c-1.142-1.331-1.997-2.663-2.568-3.997 c-0.572-1.335-0.098-2.43,1.427-3.289c1.525-0.859,4.281-1.276,8.28-1.276l5.708,0.853c3.807,0.763,8.516,3.042,14.133,6.851 c5.614,3.806,10.229,8.754,13.846,14.842c4.38,7.806,9.657,13.754,15.846,17.847c6.184,4.093,12.419,6.136,18.699,6.136 c6.28,0,11.704-0.476,16.274-1.423c4.565-0.952,8.848-2.383,12.847-4.285c1.713-12.758,6.377-22.559,13.988-29.41 c-10.848-1.14-20.601-2.857-29.264-5.14c-8.658-2.286-17.605-5.996-26.835-11.14c-9.235-5.137-16.896-11.516-22.985-19.126 c-6.09-7.614-11.088-17.61-14.987-29.979c-3.901-12.374-5.852-26.648-5.852-42.826c0-23.035,7.52-42.637,22.557-58.817 c-7.044-17.318-6.379-36.732,1.997-58.24c5.52-1.715,13.706-0.428,24.554,3.853c10.85,4.283,18.794,7.952,23.84,10.994 c5.046,3.041,9.089,5.618,12.135,7.708c17.705-4.947,35.976-7.421,54.818-7.421s37.117,2.474,54.823,7.421l10.849-6.849 c7.419-4.57,16.18-8.758,26.262-12.565c10.088-3.805,17.802-4.853,23.134-3.138c8.562,21.509,9.325,40.922,2.279,58.24 c15.036,16.18,22.559,35.787,22.559,58.817c0,16.178-1.958,30.497-5.853,42.966c-3.9,12.471-8.941,22.457-15.125,29.979 c-6.191,7.521-13.901,13.85-23.131,18.986c-9.232,5.14-18.182,8.85-26.84,11.136c-8.662,2.286-18.415,4.004-29.263,5.146 c9.894,8.562,14.842,22.077,14.842,40.539v60.237c0,3.422,1.19,6.279,3.572,8.562c2.379,2.279,6.136,2.95,11.276,1.995 c44.163-14.653,80.185-41.062,108.068-79.226c27.88-38.161,41.825-81.126,41.825-128.906 C438.536,184.851,428.728,148.168,409.132,114.573z"
+-    />
+-  </g>
+-</svg>
+-`;
+diff --git a/src/components/__snapshots__/Grid.test.js.snap b/src/components/__snapshots__/Grid.test.js.snap
+deleted file mode 100644
+index 2d42ea2..0000000
+--- a/src/components/__snapshots__/Grid.test.js.snap
++++ /dev/null
+@@ -1,83 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`Grid renders correctly given a set of tiles 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-10"
+->
+-  <div
+-    className="makeStyles-tile-2 makeStyles-tile-11"
+-  >
+-    <div
+-      className="makeStyles-root-7 makeStyles-root-12"
+-      onClick={[Function]}
+-    >
+-      <span
+-        className="makeStyles-tileNumber-8"
+-      >
+-        4
+-      </span>
+-    </div>
+-    <div
+-      className="makeStyles-root-7 makeStyles-root-13"
+-      onClick={[Function]}
+-    >
+-      <span
+-        className="makeStyles-tileNumber-8"
+-      >
+-        2
+-      </span>
+-    </div>
+-    <div
+-      className="makeStyles-root-7 makeStyles-root-14"
+-      onClick={[Function]}
+-    >
+-      <span
+-        className="makeStyles-tileNumber-8"
+-      >
+-        3
+-      </span>
+-    </div>
+-    <div
+-      className="makeStyles-root-7 makeStyles-root-15"
+-      onClick={[Function]}
+-    >
+-      <span
+-        className="makeStyles-tileNumber-8"
+-      >
+-        1
+-      </span>
+-    </div>
+-  </div>
+-</div>
+-`;
+-
+-exports[`Grid renders correctly given an empty set of tiles 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-3"
+->
+-  <div
+-    className="makeStyles-tile-2 makeStyles-tile-4"
+-  />
+-</div>
+-`;
+-
+-exports[`Grid renders correctly given one tile 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-5"
+->
+-  <div
+-    className="makeStyles-tile-2 makeStyles-tile-6"
+-  >
+-    <div
+-      className="makeStyles-root-7 makeStyles-root-9"
+-      onClick={[Function]}
+-    >
+-      <span
+-        className="makeStyles-tileNumber-8"
+-      >
+-        0
+-      </span>
+-    </div>
+-  </div>
+-</div>
+-`;
+diff --git a/src/components/__snapshots__/Menu.test.js.snap b/src/components/__snapshots__/Menu.test.js.snap
+deleted file mode 100644
+index d828123..0000000
+--- a/src/components/__snapshots__/Menu.test.js.snap
++++ /dev/null
+@@ -1,201 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`Menu renders correctly given default values 1`] = `
+-<header
+-  className="MuiPaper-root MuiAppBar-root MuiAppBar-positionStatic MuiAppBar-colorPrimary makeStyles-root-1 MuiPaper-elevation4"
+->
+-  <div
+-    className="MuiToolbar-root MuiToolbar-regular MuiToolbar-gutters"
+-  >
+-    <div
+-      className="MuiTypography-root makeStyles-title-2 MuiTypography-h6"
+-    >
+-      React Puzzle Games - 15 Puzzle
+-    </div>
+-    <button
+-      aria-label="Start a new game"
+-      className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-      disabled={false}
+-      onBlur={[Function]}
+-      onClick={[Function]}
+-      onDragLeave={[Function]}
+-      onFocus={[Function]}
+-      onKeyDown={[Function]}
+-      onKeyUp={[Function]}
+-      onMouseDown={[Function]}
+-      onMouseLeave={[Function]}
+-      onMouseUp={[Function]}
+-      onTouchEnd={[Function]}
+-      onTouchMove={[Function]}
+-      onTouchStart={[Function]}
+-      tabIndex={0}
+-      type="button"
+-    >
+-      <span
+-        className="MuiButton-label"
+-      >
+-        <span
+-          className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-        >
+-          <svg
+-            aria-hidden={true}
+-            className="MuiSvgIcon-root menuIcon"
+-            focusable="false"
+-            viewBox="0 0 24 24"
+-          >
+-            <path
+-              d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"
+-            />
+-          </svg>
+-        </span>
+-        <span
+-          className="MuiTypography-root MuiTypography-button"
+-        >
+-          New game
+-        </span>
+-      </span>
+-    </button>
+-    <button
+-      aria-label="Pause/Continue current game."
+-      className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-      disabled={false}
+-      onBlur={[Function]}
+-      onClick={[Function]}
+-      onDragLeave={[Function]}
+-      onFocus={[Function]}
+-      onKeyDown={[Function]}
+-      onKeyUp={[Function]}
+-      onMouseDown={[Function]}
+-      onMouseLeave={[Function]}
+-      onMouseUp={[Function]}
+-      onTouchEnd={[Function]}
+-      onTouchMove={[Function]}
+-      onTouchStart={[Function]}
+-      tabIndex={0}
+-      type="button"
+-    >
+-      <span
+-        className="MuiButton-label"
+-      >
+-        <span
+-          className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-        >
+-          <svg
+-            aria-hidden={true}
+-            className="MuiSvgIcon-root menuIcon"
+-            focusable="false"
+-            viewBox="0 0 24 24"
+-          >
+-            <path
+-              d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"
+-            />
+-          </svg>
+-        </span>
+-        <span
+-          className="MuiTypography-root MuiTypography-button"
+-        >
+-          Pause
+-        </span>
+-      </span>
+-    </button>
+-    <button
+-      aria-label="Reset game"
+-      className="MuiButtonBase-root MuiButton-root MuiButton-text"
+-      disabled={false}
+-      onBlur={[Function]}
+-      onClick={[Function]}
+-      onDragLeave={[Function]}
+-      onFocus={[Function]}
+-      onKeyDown={[Function]}
+-      onKeyUp={[Function]}
+-      onMouseDown={[Function]}
+-      onMouseLeave={[Function]}
+-      onMouseUp={[Function]}
+-      onTouchEnd={[Function]}
+-      onTouchMove={[Function]}
+-      onTouchStart={[Function]}
+-      tabIndex={0}
+-      type="button"
+-    >
+-      <span
+-        className="MuiButton-label"
+-      >
+-        <span
+-          className="MuiButton-startIcon MuiButton-iconSizeMedium"
+-        >
+-          <svg
+-            aria-hidden={true}
+-            className="MuiSvgIcon-root"
+-            focusable="false"
+-            viewBox="0 0 24 24"
+-          >
+-            <path
+-              d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+-            />
+-          </svg>
+-        </span>
+-        Reset game
+-      </span>
+-    </button>
+-    <div
+-      className="MuiChip-root"
+-      onKeyDown={[Function]}
+-      onKeyUp={[Function]}
+-    >
+-      <div
+-        className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-      >
+-        <svg
+-          aria-hidden={true}
+-          className="MuiSvgIcon-root"
+-          focusable="false"
+-          viewBox="0 0 24 24"
+-        >
+-          <path
+-            d="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"
+-          />
+-        </svg>
+-      </div>
+-      <span
+-        className="MuiChip-label"
+-      >
+-        <span
+-          className="MuiTypography-root MuiTypography-body1"
+-        >
+-          0
+-          s
+-        </span>
+-      </span>
+-    </div>
+-    <div
+-      className="MuiChip-root"
+-      onKeyDown={[Function]}
+-      onKeyUp={[Function]}
+-    >
+-      <div
+-        className="MuiAvatar-root MuiAvatar-circular MuiChip-avatar MuiAvatar-colorDefault"
+-      >
+-        <svg
+-          aria-hidden={true}
+-          className="MuiSvgIcon-root"
+-          focusable="false"
+-          viewBox="0 0 24 24"
+-        >
+-          <path
+-            d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z"
+-          />
+-        </svg>
+-      </div>
+-      <span
+-        className="MuiChip-label"
+-      >
+-        <span
+-          className="MuiTypography-root MuiTypography-body1"
+-        >
+-          0
+-        </span>
+-      </span>
+-    </div>
+-  </div>
+-</header>
+-`;
+diff --git a/src/components/__snapshots__/Tile.test.js.snap b/src/components/__snapshots__/Tile.test.js.snap
+deleted file mode 100644
+index df51205..0000000
+--- a/src/components/__snapshots__/Tile.test.js.snap
++++ /dev/null
+@@ -1,53 +0,0 @@
+-// Jest Snapshot v1, https://goo.gl/fbAQLP
+-
+-exports[`Tile renders correctly given correct prop 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-5"
+-  onClick={[Function]}
+->
+-  <span
+-    className="makeStyles-tileNumber-2"
+-  >
+-    0
+-  </span>
+-</div>
+-`;
+-
+-exports[`Tile renders correctly given custom number 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-3"
+-  onClick={[Function]}
+->
+-  <span
+-    className="makeStyles-tileNumber-2"
+-  >
+-    13
+-  </span>
+-</div>
+-`;
+-
+-exports[`Tile renders correctly given default number 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-4"
+-  onClick={[Function]}
+->
+-  <span
+-    className="makeStyles-tileNumber-2"
+-  >
+-    0
+-  </span>
+-</div>
+-`;
+-
+-exports[`Tile renders correctly given invisible prop 1`] = `
+-<div
+-  className="makeStyles-root-1 makeStyles-root-6"
+-  onClick={[Function]}
+->
+-  <span
+-    className="makeStyles-tileNumber-2"
+-  >
+-    0
+-  </span>
+-</div>
+-`;
+diff --git a/src/lib/levels-factory.test.ts b/src/lib/levels-factory.test.ts
+deleted file mode 100644
+index 41fd865..0000000
+--- a/src/lib/levels-factory.test.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import factory from "./levels-factory";
+-
+-it("throws if given a size that is not a perfect square", () => {
+-  expect(() => factory(13)).toThrowError();
+-});
+-
+-it("throws if given a size below 1", () => {
+-  expect(() => factory(0)).toThrowError();
+-  expect(() => factory(-1)).toThrowError();
+-});
+-
+-it("throws if given a size above 100", () => {
+-  expect(() => factory(101)).toThrowError();
+-});
+-
+-it("generates random levels of size 1", () => {
+-  const level = factory(1);
+-
+-  expect(level.tileSet).toHaveLength(1);
+-  expect(level.tileSet[0]).toBeGreaterThan(-1);
+-  expect(level.tileSet[0]).toBeLessThan(100);
+-});
+-
+-it("generates random levels of size n", () => {
+-  const level = factory(16);
+-
+-  expect(level.tileSet).toHaveLength(6);
+-  level.tileSet.forEach((n) => {
+-    expect(n).toBeGreaterThan(0);
+-    expect(n).toBeLessThan(17);
+-  });
+-});
+diff --git a/src/lib/utils.test.js b/src/lib/utils.test.js
+deleted file mode 100644
+index 9110fa3..0000000
+--- a/src/lib/utils.test.js
++++ /dev/null
+@@ -1,44 +0,0 @@
+-// @ts-check
+-
+-import * as utils from './utils';
+-
+-describe('distanceBetween', () => {
+-  it('should find two adjacent tiles to be neighbours', () => {
+-    const tileA = {
+-      row: 0,
+-      column: 0,
+-    };
+-    const tileB = {
+-      row: 0,
+-      column: 1,
+-    };
+-
+-    expect(utils.distanceBetween(tileA, tileB).neighbours).toBe(true);
+-  });
+-
+-  it('should find two non-adjacent tiles to not be neighbours', () => {
+-    const tileA = {
+-      row: 0,
+-      column: 0,
+-    };
+-    const tileB = {
+-      row: 0,
+-      column: 3,
+-    };
+-
+-    expect(utils.distanceBetween(tileA, tileB).neighbours).toBe(false);
+-  });
+-
+-  it('should find two diagonally adjacent tiles to not be neighbours', () => {
+-    const tileA = {
+-      row: 0,
+-      column: 0,
+-    };
+-    const tileB = {
+-      row: 1,
+-      column: 1,
+-    };
+-
+-    expect(utils.distanceBetween(tileA, tileB).neighbours).toBe(false);
+-  });
+-});

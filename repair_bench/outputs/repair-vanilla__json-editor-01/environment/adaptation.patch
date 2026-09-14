@@ -1,0 +1,42 @@
+diff --git a/build/demo-bundle.js b/build/demo-bundle.js
+new file mode 100644
+index 0000000..037ea2e
+--- /dev/null
++++ b/build/demo-bundle.js
+@@ -0,0 +1,23 @@
++/*
++ * demo-bundle.mjs - bundle the advanced demo into dist/ so the built library
++ * can be served (and verified) fully offline from the dist/ directory.
++ * Rewrites the CDN script reference to the locally built bundle and copies
++ * the demo's $ref schema fixtures next to the page.
++ */
++const fs = require('fs')
++const path = require('path')
++
++const root = path.join(__dirname, '..')
++const dist = path.join(root, 'dist')
++fs.mkdirSync(dist, { recursive: true })
++
++let html = fs.readFileSync(path.join(root, 'docs', 'advanced.html'), 'utf8')
++const cdn = '<script src="https://cdn.jsdelivr.net/npm/@json-editor/json-editor@latest/dist/jsoneditor.min.js"></script>'
++if (!html.includes(cdn)) throw new Error('demo-bundle: CDN script tag not found in docs/advanced.html')
++html = html.replace(cdn, '<script src="jsoneditor.js"></script>')
++fs.writeFileSync(path.join(dist, 'index.html'), html)
++
++for (const f of ['basic_person.json', 'person.json']) {
++  fs.copyFileSync(path.join(root, 'docs', f), path.join(dist, f))
++}
++console.log('demo-bundle: dist/index.html + schema fixtures ready')
+diff --git a/package.json b/package.json
+index 1ab3b1f..61c2eec 100644
+--- a/package.json
++++ b/package.json
+@@ -26,7 +26,7 @@
+     "prepare": "npm run build",
+     "clean": "npm run clean.css.js",
+     "clean.css.js": "find ./src -name *.css.js -type f -delete",
+-    "build": "npm run build.prod && npm run build.nonmin",
++    "build": "npm run build.prod && npm run build.nonmin && node build/demo-bundle.js",
+     "build.prod": "webpack --config config/webpack.prod.js --progress --profile --bail",
+     "build.nonmin": "webpack --config config/webpack.nonmin.js --progress --profile --bail",
+     "build.nonmin.travis": "webpack --config config/webpack.nonmin.js --env travis --progress --profile --bail",

@@ -1,0 +1,462 @@
+@import "tailwindcss";
+
+/* Ensure Tailwind scans Markdown files and partials that Vite never touches,
+   so that all Markdown content keeps their classes. */
+@source "./**/*.md";
+
+/* Prefer deterministic fonts: Inter for UI sans-serif and Cascadia Code for
+monospace. These variables override the Tailwind-generated defaults and
+ensure the app uses the desired families when available. Avoid serif
+fonts by keeping sans-family fallbacks only. */
+:root {
+    --font-sans:
+        "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    --font-mono:
+        "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    --header-height: calc(var(--spacing) * 14);
+}
+
+body {
+    @apply min-h-svh font-sans overflow-x-hidden bg-white dark:bg-[#181818] text-black dark:text-[#cccccc];
+
+    /* Global layouting */
+    display: grid;
+    grid-template-areas:
+        "header"
+        "main"
+        "footer";
+    grid-template-rows: auto 1fr auto;
+
+    header {
+        grid-area: header;
+    }
+    .main {
+        grid-area: main;
+        @apply overflow-x-hidden max-w-full;
+    }
+    footer {
+        grid-area: footer;
+    }
+}
+
+/* SolidJS mounts into <div id="app"> which would otherwise be the only direct
+   child of body participating in the grid, preventing header/main from
+   claiming their named grid areas. display:contents makes the div layout-
+   transparent so its children (header, main) act as direct body grid items. */
+#app {
+    display: contents;
+}
+
+@layer components {
+    .section-container {
+        @apply bg-white dark:bg-[#1e1e1e] shadow-md rounded-lg overflow-x-auto overflow-y-hidden;
+    }
+
+    .section-title {
+        @apply text-lg sm:text-xl font-semibold text-black dark:text-[#cccccc] mb-3 sm:mb-4;
+    }
+
+    .code-container {
+        @apply bg-[#f3f3f3] dark:bg-[#252526] rounded-lg border border-[#e5e5e5] dark:border-[#3e3e42] py-2 px-3 relative overflow-x-auto;
+        .copy-button {
+            /* vertically center the button inside the code container so it doesn't overlap wrapped text */
+            @apply inline-flex items-center gap-1 absolute right-2 bg-[#005fb8] dark:bg-[#0078d4] text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm transition-all duration-200 cursor-pointer active:scale-95;
+            &:hover {
+                @apply bg-[#004a94] dark:bg-[#006cbe] shadow-sm;
+            }
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .code-block {
+            /* add extra right padding so the copy button doesn't overlap wrapped content */
+            @apply block font-mono text-xs sm:text-sm wrap-break-word whitespace-pre-wrap max-w-full pr-12;
+        }
+    }
+
+    .description-text {
+        @apply mt-2 text-[#616161] dark:text-[#9d9d9d] text-sm sm:text-base;
+    }
+
+    .touch-description {
+        display: none;
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        .touch-description {
+            display: block;
+        }
+    }
+
+    /* Vertical padding shared by buttons and peer row items (e.g. host name link) */
+    .btn-height {
+        @apply py-1 sm:py-2;
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center gap-1 w-full sm:w-auto text-white px-2 sm:px-3 text-xs sm:text-sm rounded transition-colors cursor-pointer;
+        &.btn-green {
+            @apply bg-[#007a4d] dark:bg-[rgba(46,193,100,0.85)] dark:text-black;
+            &:hover {
+                @apply bg-[#006f3f] dark:bg-[rgba(40,168,88,0.90)];
+            }
+        }
+        &.btn-red {
+            @apply bg-[#e04b4b] dark:bg-[#d36f78] text-white dark:text-black;
+            &:hover {
+                @apply bg-[#c13a3a] dark:bg-[#b85a62];
+            }
+        }
+        &.btn-yellow {
+            @apply bg-[#a16207] dark:bg-[rgba(234,179,8,0.75)] text-white dark:text-black;
+            &:hover {
+                @apply bg-[#854d0e] dark:bg-[rgba(234,179,8,0.90)];
+            }
+        }
+        &:disabled {
+            @apply cursor-not-allowed bg-[#e5e5e5] dark:bg-[#2d2d30] text-[#616161] dark:text-[#858585];
+        }
+    }
+
+    .host-status-badge {
+        @apply px-2 py-0.5 rounded-full text-xs font-semibold;
+    }
+
+    /* Architecture documentation styles */
+    .architecture-section {
+        @apply mt-6;
+        .architecture-title {
+            @apply text-lg font-semibold text-black dark:text-[#cccccc] mb-3;
+        }
+        .architecture-diagram-container {
+            @apply bg-[#f3f3f3] dark:bg-[#252526] rounded-lg border border-[#e5e5e5] dark:border-[#3e3e42] flex justify-center;
+            .architecture-diagram {
+                /* TODO: I cant seem to figure out how to scale the diagrams "naturally", so that the element size between the diagram contents remains consistent. It doesn't e.g. respect the viewport sizes at all*/
+                @apply h-auto w-auto bg-transparent rounded max-w-full;
+            }
+        }
+        .architecture-content {
+            @apply mt-4 space-y-3;
+        }
+        .architecture-when-to-use {
+            @apply text-sm text-[#616161] dark:text-[#9d9d9d];
+        }
+        .architecture-separator {
+            @apply mt-8;
+        }
+        .architecture-key-points {
+            @apply mt-6;
+        }
+    }
+
+    /* table-wrapper makes tables horizontally scrollable if they're too large */
+    .table-wrapper {
+        @apply w-full overflow-x-auto;
+    }
+
+    table.actions-table {
+        @apply border-collapse w-full;
+        table-layout: auto;
+        .status-column,
+        .actions-column,
+        .table-cell.status,
+        .table-cell.actions {
+            width: max-content;
+            min-width: max-content;
+            white-space: nowrap;
+        }
+        .table-header {
+            @apply px-4 py-3 bg-[#f3f3f3] dark:bg-[#252526] text-left font-semibold text-black dark:text-[#cccccc] text-sm sm:text-base border-b border-[#e5e5e5] dark:border-[#3e3e42];
+        }
+        .table-row {
+            @apply transition-colors;
+            &:hover {
+                @apply bg-[#f0f0f0] dark:bg-[#252526];
+            }
+            th[scope="row"] {
+                @apply font-normal text-black dark:text-[#cccccc] bg-transparent px-4 py-1.5 text-sm sm:text-base border-b border-[#e5e5e5] dark:border-[#3e3e42] text-left;
+                font-weight: 500;
+                /* Slightly bolder than td, but not as bold as header */
+            }
+        }
+        .table-cell {
+            @apply px-4 py-1.5 text-sm sm:text-base border-b border-[#e5e5e5] dark:border-[#3e3e42] text-black dark:text-[#cccccc];
+        }
+        .table-cell.status {
+            white-space: nowrap;
+        }
+
+        .reserve-container {
+            display: inline-grid;
+            align-items: center;
+
+            > .reserve-label {
+                visibility: hidden;
+                white-space: nowrap;
+            }
+            > .reserve-label,
+            > span:first-child {
+                grid-area: 1 / 1;
+            }
+        }
+    }
+
+    .actions-cell {
+        @apply py-1.5;
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: center;
+        > button {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        .take-lease {
+            visibility: visible;
+        }
+        .release-lease {
+            visibility: hidden;
+        }
+    }
+
+    [data-has-lease="true"] {
+        .actions-cell {
+            .take-lease {
+                visibility: hidden;
+            }
+            .release-lease {
+                visibility: visible;
+            }
+        }
+    }
+
+    /* Mobile card view (below md breakpoint) */
+    .actions-card {
+        @apply rounded-lg border border-[#e5e5e5] dark:border-[#3e3e42] pt-3 bg-white dark:bg-[#1e1e1e] flex flex-col gap-2;
+        .actions-card-header {
+            @apply flex items-center justify-between gap-2 px-3;
+        }
+        .actions-card-status {
+            @apply text-sm text-[#616161] dark:text-[#9d9d9d] inline-flex items-center shrink-0;
+        }
+        .actions-card-id {
+            @apply font-medium text-sm text-black dark:text-[#cccccc] px-3;
+        }
+        .actions-card-row {
+            @apply text-sm text-black dark:text-[#cccccc] px-3;
+        }
+        .actions-card-label {
+            @apply text-[#616161] dark:text-[#9d9d9d];
+        }
+        .actions-cell {
+            padding: 0;
+        }
+    }
+
+    /* Update tab styles */
+    .tab {
+        @apply px-4 py-4 text-sm font-medium text-[#616161] border-b-2 border-transparent transition-colors cursor-pointer dark:text-[#a0a0a0];
+        &:hover {
+            @apply text-black border-[#e5e5e5] dark:text-[#e0e0e0] dark:border-[#3e3e42];
+        }
+        &:focus {
+            @apply text-black border-[#e5e5e5] dark:text-[#e0e0e0] dark:border-[#3e3e42] outline-none;
+        }
+        &.active {
+            @apply text-[#005fb8] border-[#005fb8] dark:text-[#3794ff] dark:border-[#0078d4];
+            &:hover {
+                @apply text-[#004a94] border-[#004a94] dark:text-[#6fb6ff] dark:border-[#006cbe];
+            }
+        }
+    }
+
+    details {
+        /* Hide the native details marker and ensure summary visuals match header */
+        summary {
+            &.collapsible-header {
+                @apply flex items-center justify-between cursor-pointer px-4 py-2 transition-colors;
+                &:hover {
+                    @apply bg-[#f0f0f0] dark:bg-[#252526];
+                }
+                &::marker {
+                    @apply content-none;
+                }
+            }
+        }
+
+        .collapsible-content {
+            @apply px-4 py-2 border-t border-[#e5e5e5] dark:border-[#3e3e42];
+        }
+
+        .collapsible-icon::before {
+            transform: rotate(45deg);
+        }
+        &[open] .collapsible-icon::before {
+            transform: rotate(-135deg);
+        }
+
+        .collapsible-icon {
+            @apply relative inline-block transition-transform dark:text-[#cccccc];
+            width: 20px;
+            height: 20px;
+            &::before {
+                @apply absolute origin-center;
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-right: 2px solid currentColor;
+                border-bottom: 2px solid currentColor;
+                transition: transform 0.2s;
+                left: 6px;
+                top: 4px;
+                border-color: currentColor;
+                color: inherit;
+            }
+        }
+    }
+
+    /* Platform support table */
+    table.info-table {
+        @apply w-full text-sm border-separate border-spacing-0 rounded-lg border border-[#e5e5e5] dark:border-[#3e3e42];
+        thead {
+            @apply bg-[#f3f3f3] dark:bg-[#252526];
+        }
+        th {
+            @apply px-4 py-3 text-left font-semibold text-black dark:text-[#cccccc] border-b border-[#e5e5e5] dark:border-[#3e3e42];
+        }
+        td {
+            @apply px-4 py-3 text-black dark:text-[#cccccc] border-b border-[#e5e5e5] dark:border-[#3e3e42] align-top;
+        }
+        tr:last-child td {
+            @apply border-b-0;
+        }
+        tbody {
+            tr:hover {
+                @apply bg-[#f9f9f9] dark:bg-[#1e1e1e];
+            }
+        }
+        th + th,
+        td + td {
+            @apply border-l border-[#e5e5e5] dark:border-[#3e3e42];
+        }
+    }
+
+    /* Alert styles */
+    .alert {
+        @apply rounded-lg p-3 my-3;
+        ul {
+            @apply my-2 pl-5;
+        }
+        li {
+            @apply mb-1;
+        }
+        .alert-title {
+            @apply font-semibold mb-1;
+        }
+        a {
+            @apply underline decoration-2;
+        }
+        &.alert-warning {
+            @apply bg-[#fff3cc] border-l-4 border-[#ffc107] text-[#6b4500] dark:bg-[rgba(204,167,0,0.10)] dark:border-[#cca700] dark:text-[#ffd54f];
+        }
+        &.alert-info {
+            @apply bg-[#d8f3ff] border-l-4 border-[#64b5f6] text-[#005fb8] dark:bg-[rgba(0,120,212,0.10)] dark:border-[#0078d4] dark:text-[#4fc3f7];
+        }
+        &.alert-error {
+            @apply bg-[#ffdddd] border-l-4 border-[#ef5350] text-[#8b0000] dark:bg-[rgba(244,135,113,0.10)] dark:border-[#f48771] dark:text-[#ff9090];
+        }
+    }
+
+    .license-title {
+        @apply text-base sm:text-lg font-semibold text-black dark:text-[#cccccc];
+    }
+
+    .license-listing {
+        @apply bg-[#f3f3f3] dark:bg-[#252526] rounded-lg border border-[#e5e5e5] dark:border-[#3e3e42] p-3 overflow-x-auto text-xs sm:text-sm font-mono whitespace-pre-wrap wrap-break-word;
+    }
+
+    /* Link styles */
+    .link {
+        @apply text-[#005fb8] dark:text-[#3794ff] hover:underline;
+    }
+
+    /* Hamburger menu styles */
+    .hamburger {
+        @apply flex flex-col cursor-pointer p-2 rounded-sm;
+        transition: background-color 0.2s;
+        &:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        .hamburger-line {
+            width: 20px;
+            height: 2px;
+            background-color: currentColor;
+            margin: 2px 0;
+            transition:
+                transform 0.3s,
+                opacity 0.3s;
+        }
+    }
+
+    /* Mobile menu styles */
+    .nav-tabs {
+        display: flex;
+        transition: left 0.3s ease;
+    }
+
+    /* Mobile: Position as side menu */
+    @media (max-width: 767px) {
+        .nav-tabs {
+            width: 250px;
+            @apply fixed flex-col p-4 gap-4 bg-white dark:bg-[#1e1e1e] shadow-lg;
+            z-index: 1000;
+            .tab {
+                @apply w-full px-4 py-3 text-left border-none bg-none text-black dark:text-[#cccccc] rounded transition-colors;
+                &:hover {
+                    @apply bg-[#f0f0f0] dark:bg-[#252526];
+                }
+                &.active {
+                    @apply bg-[#005fb8] text-white dark:bg-[#0078d4];
+                    &:hover {
+                        @apply bg-[#004a94] dark:bg-[#006cbe];
+                    }
+                }
+            }
+            left: -100%;
+        }
+        .nav-tabs.open {
+            left: 0;
+        }
+        .hamburger.open .hamburger-line {
+            &:nth-child(1) {
+                transform: translateY(6px) rotate(45deg);
+            }
+            &:nth-child(2) {
+                opacity: 0;
+            }
+            &:nth-child(3) {
+                transform: translateY(-6px) rotate(-45deg);
+            }
+        }
+        /* place nav tabs and backdrop below header */
+        .mobile-menu-backdrop,
+        .nav-tabs {
+            @apply top-(--header-height) h-[calc(100lvh-var(--header-height))];
+        }
+        .mobile-menu-backdrop {
+            @apply block fixed left-0 right-0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+    }
+
+    /* Desktop: Keep nav inline */
+    @media (min-width: 768px) {
+        .nav-tabs {
+            @apply static w-auto h-auto flex-row bg-none shadow-none p-0 gap-0;
+            .tab {
+                @apply w-auto text-center p-4;
+            }
+        }
+    }
+}

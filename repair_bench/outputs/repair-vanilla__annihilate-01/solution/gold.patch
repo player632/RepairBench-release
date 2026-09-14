@@ -1,0 +1,159 @@
+diff --git a/index.html b/index.html
+index 32566d5..c246445 100644
+--- a/index.html
++++ b/index.html
+@@ -38,7 +38,7 @@
+     <button id="domPaladin" data-testid="role-paladin">paladin (2)</button>
+     <button id="domRobot" data-testid="role-robot">robot (3)</button>
+     <button id="domParrot" data-testid="role-parrot">parrot (4)</button>
+-    <button id="domMutant" data-testid="role-mutant">mutant (6)</button>
++    <button id="domMutant" data-testid="role-mutant">mutant (5)</button>
+     <button id="domRobotBoss" data-testid="role-robot-boss">robotBoss (6)</button>
+   </div>
+ 
+diff --git a/src/Ai.js b/src/Ai.js
+index ac93e97..1cf9ec3 100644
+--- a/src/Ai.js
++++ b/src/Ai.js
+@@ -20,7 +20,7 @@ class Ai {
+     this.detector = new CANNON.Body({
+       mass: 0,
+       collisionFilterGroup: g.GROUP_TRIGGER,
+-      collisionFilterMask: g.GROUP_ROLE_ATTACKER,
++      collisionFilterMask: g.GROUP_ROLE,
+     })
+     this.detector.belongTo = this
+     this.detector.collisionResponse = false
+diff --git a/src/Maria.js b/src/Maria.js
+index 6e5bc84..e55fe17 100644
+--- a/src/Maria.js
++++ b/src/Maria.js
+@@ -97,7 +97,7 @@ class Maria {
+             entry: 'playBlock',
+             on: {
+               keyLUp: { target: 'idle' },
+-              hadouken: { target: 'idle' },
++              hadouken: { target: 'hadouken' },
+               shoryuken: { target: 'shoryuken' },
+               ajejebloken: { target: 'ajejebloken' },
+               // Caution: Synchronize the state of roleControls' keyLUp/Down, if add more transitions/states below.
+@@ -645,7 +645,7 @@ class Maria {
+               attack: { target: 'dashAttack' },
+             },
+             after: {
+-              3000: { target: 'idle' },
++              300: { target: 'idle' },
+             },
+           },
+           dashAttack: {
+diff --git a/src/Mutant.js b/src/Mutant.js
+index e882e7f..33bb1c3 100644
+--- a/src/Mutant.js
++++ b/src/Mutant.js
+@@ -575,7 +575,7 @@ class Mutant {
+     //   Both?
+     // console.log(this.health)
+     this.service.send('hit', { collideEvent })
+-    if (this.health < 0) {
++    if (this.health <= 0) {
+       this.service.send('dead', { collideEvent })
+     }
+   }
+@@ -585,7 +585,7 @@ class Mutant {
+     if (g.isDamage) this.health -= 17 // todo: Merge with hit(). // need decrease in playKnockDown().
+     // console.log(this.health)
+     this.service.send('knockDown', { collideEvent })
+-    if (this.health < 0) {
++    if (this.health <= 0) {
+       this.service.send('dead', { collideEvent })
+     }
+   }
+diff --git a/src/MutantAi.js b/src/MutantAi.js
+index d632243..c5e1655 100644
+--- a/src/MutantAi.js
++++ b/src/MutantAi.js
+@@ -23,7 +23,7 @@ class MutantAi extends Ai {
+           },
+           canNotAttack: {
+             after: {
+-              1200: { target: 'canAttack' },
++              4000: { target: 'canAttack' },
+             },
+           },
+         },
+diff --git a/src/RoleControls.js b/src/RoleControls.js
+index 4e28f72..e4156fd 100644
+--- a/src/RoleControls.js
++++ b/src/RoleControls.js
+@@ -135,7 +135,7 @@ class RoleControls {
+         case 'Numpad7':
+           this.role.service.send('bash')
+           break
+-        case 'KeyP':
++        case 'KeyL':
+         case 'Numpad6':
+           this.role.service.send('block')
+           break
+@@ -221,6 +221,7 @@ class RoleControls {
+   }
+   setRole(role) {
+     this.role = role
++    window.role = role
+   }
+ }
+ 
+diff --git a/src/Shield.js b/src/Shield.js
+index 3f079ab..2004097 100644
+--- a/src/Shield.js
++++ b/src/Shield.js
+@@ -8,7 +8,7 @@ class Shield {
+     this.owner = null
+ 
+     this.is_hit = false
+-    this.collisionFilterGroup = g.GROUP_ENEMY
++    this.collisionFilterGroup = g.GROUP_ENEMY_SHIELD
+ 
+     // body
+ 
+diff --git a/src/Teleporter.js b/src/Teleporter.js
+index 0282cdb..15ea9cc 100644
+--- a/src/Teleporter.js
++++ b/src/Teleporter.js
+@@ -27,7 +27,7 @@ class Teleporter {
+     this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
+     this.body.addEventListener('beginContact', (event) => {
+       if (event.body.belongTo?.isCharacter) {
+-        event.body.belongTo.mesh.position.copy(this.dest)
++        event.body.position.copy(this.dest)
+       }
+     })
+     world.addBody(this.body)
+diff --git a/src/index.js b/src/index.js
+index db190c7..8bd935b 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -138,6 +138,7 @@ function init_xstate() {
+         },
+         entryRobot: () => {
+           if (!window.roleControls) window.roleControls = new RoleControls(robot) ///todo: Use ECS?
++          roleControls.setRole(robot)
+ 
+           // ai.setTarget(robot)
+ 
+@@ -160,7 +161,7 @@ function init_xstate() {
+           Array.prototype.forEach.call(domRoles.children, (domRole) => {
+             domRole.disabled = false
+           })
+-          domRobot.disabled = true
++          domRobotBoss.disabled = true
+ 
+           if (robotBoss.ai) robotBoss.ai.enabled = false
+         },
+@@ -444,6 +445,7 @@ function init() {
+     'defeat all mutants (0)': () => {
+       window.mutants.forEach((mutant) => {
+         mutant.health = 0
++        mutant.hit()
+       })
+     },
+     'add flail': () => {

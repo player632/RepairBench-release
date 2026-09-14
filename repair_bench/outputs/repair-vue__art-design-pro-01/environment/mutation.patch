@@ -1,0 +1,156 @@
+diff --git a/src/components/core/layouts/art-breadcrumb/index.vue b/src/components/core/layouts/art-breadcrumb/index.vue
+index 948a47f..4ebfbda 100755
+--- a/src/components/core/layouts/art-breadcrumb/index.vue
++++ b/src/components/core/layouts/art-breadcrumb/index.vue
+@@ -111,7 +111,7 @@
+     route.children?.find((child) => !child.redirect && !child.meta?.isHide)
+ 
+   // 辅助函数：构建完整路径
+-  const buildFullPath = (childPath: string): string => `/${childPath}`.replace('//', '/')
++  const buildFullPath = (childPath: string): string => `/${childPath}`
+ 
+   // 处理面包屑点击事件
+   async function handleBreadcrumbClick(item: BreadcrumbItem, index: number): Promise<void> {
+diff --git a/src/components/core/layouts/art-global-search/index.vue b/src/components/core/layouts/art-global-search/index.vue
+index 86fab4b..2c5b3ab 100644
+--- a/src/components/core/layouts/art-global-search/index.vue
++++ b/src/components/core/layouts/art-global-search/index.vue
+@@ -322,7 +322,7 @@
+     const itemKey = item.path || String(item.meta.link || '')
+     const hasItemIndex = historyResult.value.findIndex(
+       (historyItem: AppRouteRecord) =>
+-        (historyItem.path || String(historyItem.meta.link || '')) === itemKey
++        (historyItem.path || String(historyItem.meta.link || '')) !== itemKey
+     )
+ 
+     if (hasItemIndex !== -1) {
+diff --git a/src/components/core/layouts/art-page-content/index.vue b/src/components/core/layouts/art-page-content/index.vue
+index a862df1..3b7549c 100644
+--- a/src/components/core/layouts/art-page-content/index.vue
++++ b/src/components/core/layouts/art-page-content/index.vue
+@@ -119,9 +119,6 @@
+ 
+   const reload = () => {
+     isRefresh.value = false
+-    nextTick(() => {
+-      isRefresh.value = true
+-    })
+   }
+ 
+   watch(refresh, reload, { flush: 'post' })
+diff --git a/src/components/core/layouts/art-work-tab/index.vue b/src/components/core/layouts/art-work-tab/index.vue
+index 2131021..b29a894 100755
+--- a/src/components/core/layouts/art-work-tab/index.vue
++++ b/src/components/core/layouts/art-work-tab/index.vue
+@@ -422,7 +422,7 @@
+       const clickedIndex = list.value.findIndex((tab) => tab.path === clickedPath.value)
+ 
+       const navigationRules = {
+-        left: activeIndex < clickedIndex,
++        left: activeIndex > clickedIndex,
+         right: activeIndex > clickedIndex,
+         other: true
+       } as const
+diff --git a/src/hooks/core/useTable.ts b/src/hooks/core/useTable.ts
+index d9def4f..25908a4 100644
+--- a/src/hooks/core/useTable.ts
++++ b/src/hooks/core/useTable.ts
+@@ -514,9 +514,7 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
+ 
+     const paramsRecord = searchParams as Record<string, unknown>
+     pagination.size = newSize
+-    pagination.current = 1
+     paramsRecord[sizeKey] = newSize
+-    paramsRecord[pageKey] = 1
+ 
+     clearCache(CacheInvalidationStrategy.CLEAR_CURRENT, '分页大小变化')
+ 
+diff --git a/src/store/modules/user.ts b/src/store/modules/user.ts
+index 08f7684..2201a95 100755
+--- a/src/store/modules/user.ts
++++ b/src/store/modules/user.ts
+@@ -155,8 +155,6 @@ export const useUserStore = defineStore(
+       isLock.value = false
+       // 清空锁屏密码
+       lockPassword.value = ''
+-      // 清空访问令牌
+-      accessToken.value = ''
+       // 清空刷新令牌
+       refreshToken.value = ''
+       // 注意：不清空工作台标签页，等下次登录时根据用户判断
+diff --git a/src/store/modules/worktab.ts b/src/store/modules/worktab.ts
+index caa0d90..02ff7b7 100755
+--- a/src/store/modules/worktab.ts
++++ b/src/store/modules/worktab.ts
+@@ -247,7 +247,7 @@ export const useWorktabStore = defineStore(
+ 
+       // 移除左侧可关闭的标签页
+       opened.value = opened.value.filter(
+-        (tab, index) => index >= targetIndex || !isTabClosable(tab)
++        (tab, index) => index > targetIndex || !isTabClosable(tab)
+       )
+ 
+       // 确保当前标签是激活状态
+@@ -298,7 +298,7 @@ export const useWorktabStore = defineStore(
+     const removeOthers = (path: string): void => {
+       const targetTab = getTab(path)
+ 
+-      if (!targetTab) {
++      if (targetTab) {
+         console.warn(`尝试关闭其他标签页，但目标标签页不存在: ${path}`)
+         return
+       }
+@@ -316,7 +316,7 @@ export const useWorktabStore = defineStore(
+       markTabsToRemove(closableTabs)
+ 
+       // 只保留当前标签和固定标签
+-      opened.value = opened.value.filter((tab) => tab.path === path || !isTabClosable(tab))
++      opened.value = opened.value.filter((tab) => tab.path !== path || !isTabClosable(tab))
+ 
+       // 确保当前标签是激活状态
+       current.value = targetTab
+diff --git a/src/utils/navigation/route.ts b/src/utils/navigation/route.ts
+index 518bcb9..b5b8f7d 100644
+--- a/src/utils/navigation/route.ts
++++ b/src/utils/navigation/route.ts
+@@ -69,14 +69,6 @@ export const getFirstMenuPath = (menuList: AppRouteRecord[]): string => {
+       continue
+     }
+ 
+-    // 如果有子菜单，优先查找子菜单
+-    if (menuItem.children?.length) {
+-      const childPath = getFirstMenuPath(menuItem.children)
+-      if (childPath) {
+-        return childPath
+-      }
+-    }
+-
+     // 返回当前菜单项的标准化路径
+     return normalizePath(menuItem.path!)
+   }
+diff --git a/src/utils/table/tableUtils.ts b/src/utils/table/tableUtils.ts
+index 3ca9db1..6df1d36 100644
+--- a/src/utils/table/tableUtils.ts
++++ b/src/utils/table/tableUtils.ts
+@@ -190,7 +190,7 @@ export const updatePaginationFromResponse = <T>(
+     pagination.current = response.current
+   }
+ 
+-  const maxPage = Math.max(1, Math.ceil(pagination.total / (pagination.size || 1)))
++  const maxPage = Math.max(1, Math.floor(pagination.total / (pagination.size || 1)))
+   if (pagination.current > maxPage) {
+     pagination.current = maxPage
+   }
+diff --git a/src/utils/ui/animation.ts b/src/utils/ui/animation.ts
+index 5efd02a..b3e26f2 100644
+--- a/src/utils/ui/animation.ts
++++ b/src/utils/ui/animation.ts
+@@ -59,7 +59,7 @@ export const themeAnimation = (e: any) => {
+  * 切换主题
+  */
+ const toggleTheme = () => {
+-  useTheme().switchThemeStyles(useSettingStore().systemThemeType === LIGHT ? DARK : LIGHT)
++  useTheme().switchThemeStyles(useSettingStore().systemThemeType === DARK ? DARK : LIGHT)
+   useCommon().refresh()
+ }
+ 

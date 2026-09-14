@@ -1,0 +1,137 @@
+diff --git a/src/components/Menu.jsx b/src/components/Menu.jsx
+index 514a255..1ef9724 100644
+--- a/src/components/Menu.jsx
++++ b/src/components/Menu.jsx
+@@ -22,7 +22,8 @@ function MenuItem(props) {
+                 <Show
+                   when={
+                     item == 'Accordion' ||
+-                    item == 'Drag And Drop'
++                    item == 'Drag And Drop' ||
++                    item == 'Input OTP'
+                   }
+                 >
+                   <span class='italic opacity-50' data-testid='menu-beta-badge'>Beta</span>
+diff --git a/src/components/NavBar.jsx b/src/components/NavBar.jsx
+index 942be78..f621f58 100644
+--- a/src/components/NavBar.jsx
++++ b/src/components/NavBar.jsx
+@@ -12,11 +12,11 @@ import nightIcon from '../../assets/night-svgrepo-com.svg';
+ 
+ export default function NavBar() {
+   const { components } = useContext(ComponentContext);
+-  const href = `/component/${components[1].toLowerCase().replaceAll(' ', '')}`;
++  const href = `/component/${components[0].toLowerCase().replaceAll(' ', '')}`;
+   const [isDarkMode, setIsDarkMode] = createSignal(false);
+ 
+   function handleClick() {
+-    setIsDarkMode(isDarkMode()); // Toggle dark mode
++    setIsDarkMode(!isDarkMode()); // Toggle dark mode
+   }
+ 
+   // Effect to update icon and theme based on dark mode state
+diff --git a/src/containers/MainContainer.jsx b/src/containers/MainContainer.jsx
+index 4c9ce9b..04233d0 100644
+--- a/src/containers/MainContainer.jsx
++++ b/src/containers/MainContainer.jsx
+@@ -24,7 +24,7 @@ export default function MainContainer() {
+         <For each={components}>
+           {(component) => (
+             <Route
+-              path={`/component/${component.toLowerCase()}`}
++              path={`/component/${component.toLowerCase().replaceAll(' ', '')}`}
+               component={() => <ContentComponent component={component} />}
+             />
+           )}
+diff --git a/src/lib/DragAndDrop.jsx b/src/lib/DragAndDrop.jsx
+index b7c7c5c..6a08da2 100644
+--- a/src/lib/DragAndDrop.jsx
++++ b/src/lib/DragAndDrop.jsx
+@@ -253,7 +253,7 @@ const Item = (props) => {
+         data-testid='dnd-delete-item'
+         aria-roledescription='click to delete the item from current column'
+         class='flex size-4 items-center justify-center rounded-md bg-orange-200 text-white focus:outline-none focus:ring-2 focus:ring-orange-200 focus:ring-opacity-50'
+-        onClick={() => props.updateItems('delete', { itemID: Object.keys(props.items)[0] })}
++        onClick={() => props.updateItems('delete', { itemID: props.itemID })}
+       >
+         <svg
+           class='size-3'
+diff --git a/src/lib/accordion/Accordion.jsx b/src/lib/accordion/Accordion.jsx
+index 1585b0c..eea64e3 100644
+--- a/src/lib/accordion/Accordion.jsx
++++ b/src/lib/accordion/Accordion.jsx
+@@ -29,7 +29,7 @@ export default function Accordion() {
+   const [activeID, setActiveID] = createStore(Array(data.length).fill(false));
+ 
+   function toggleAccordion(index) {
+-    setActiveID(activeID.map((_, i) => (i === index ? !activeID[i] : activeID[i])));
++    setActiveID(activeID.map((_, i) => (i === index ? !activeID[i] : false)));
+   }
+ 
+   return (
+@@ -51,7 +51,7 @@ export default function Accordion() {
+                     type='button'
+                     class='flex w-full items-center justify-between gap-10 px-2 py-3 text-sm font-bold hover:bg-orange-200/[0.1]'
+                     data-accordion-target={`#accordion-collapse-body-${i()}`}
+-                    aria-expanded={activeID[0]}
++                    aria-expanded={activeID[i()]}
+                     aria-controls={`accordion-collapse-body-${i()}`}
+                     data-testid='accordion-toggle'
+                     onClick={() => toggleAccordion(i())}
+diff --git a/src/lib/inputForm/GenerateOTP.tsx b/src/lib/inputForm/GenerateOTP.tsx
+index 1101c3f..d3c6fc8 100644
+--- a/src/lib/inputForm/GenerateOTP.tsx
++++ b/src/lib/inputForm/GenerateOTP.tsx
+@@ -10,7 +10,7 @@ function GenerateOTP() {
+   }
+ 
+   function regenerateOTP() {
+-    setOTP(otp());
++    setOTP(generateOTP());
+   }
+ 
+   const copyOTP = async () => {
+diff --git a/src/lib/inputForm/InputOTP.jsx b/src/lib/inputForm/InputOTP.jsx
+index a92f5f4..7f5e357 100644
+--- a/src/lib/inputForm/InputOTP.jsx
++++ b/src/lib/inputForm/InputOTP.jsx
+@@ -28,7 +28,7 @@ function InputOTP() {
+     }
+ 
+     otpDigits.map((el, index) => {
+-      setOtpDigits(0, '');
++      setOtpDigits(index, '');
+     });
+   }
+ 
+@@ -84,7 +84,7 @@ function InputOTP() {
+     const prevId =
+       index() > 0 ? `otpInput${index() - 1}` : `otpInput${index()}`;
+     const nextId =
+-      index() < 4 ? `otpInput${index() + 1}` : `otpInput${index()}`;
++      index() < 5 ? `otpInput${index() + 1}` : `otpInput${index()}`;
+ 
+     if (e.key >= 0 && e.key <= 9) {
+       setOtpDigits(index(), parseInt(e.key));
+diff --git a/src/lib/inputForm/ToDoList.tsx b/src/lib/inputForm/ToDoList.tsx
+index ddb12ec..90ce5cb 100644
+--- a/src/lib/inputForm/ToDoList.tsx
++++ b/src/lib/inputForm/ToDoList.tsx
+@@ -6,7 +6,7 @@ export default function ToDoList() {
+   let todoId = 0;
+   const [todos, setTodos] = createSignal<Todo[]>([]);
+   const addTodo = (text: string) => {
+-    setTodos([...todos(), { id: ++todoId, text, completed: true }]);
++    setTodos([...todos(), { id: ++todoId, text, completed: false }]);
+   };
+   const toggleTodo = (id: number) => {
+     setTodos(
+@@ -29,7 +29,7 @@ export default function ToDoList() {
+           class='ml-2 rounded-md bg-orange-200 p-1 px-2 text-white'
+           data-testid='todo-add'
+           onClick={() => {
+-            if (input.value.trim()) return;
++            if (!input.value.trim()) return;
+             addTodo(input.value);
+             input.value = '';
+           }}

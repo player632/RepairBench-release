@@ -1,0 +1,129 @@
+diff --git a/src/control/states.js b/src/control/states.js
+index 484fa9d..4787b2f 100644
+--- a/src/control/states.js
++++ b/src/control/states.js
+@@ -99,7 +99,7 @@ const states = {
+       stopDownTrigger();
+     }
+ 
+-    const addPoints = (store.getState().get('points') + 1) +
++    const addPoints = (store.getState().get('points') + 10) +
+       ((store.getState().get('speedRun') - 1) * 2); // 速度越快, 得分越高
+ 
+     states.dispatchPoints(addPoints);
+@@ -142,8 +142,10 @@ const states = {
+   pause: (isPause) => {
+     store.dispatch(actions.pause(isPause));
+     if (isPause) {
++      clearTimeout(states.fallInterval);
+       return;
+     }
++    states.auto();
+   },
+ 
+   // 消除行
+@@ -159,7 +161,7 @@ const states = {
+     store.dispatch(actions.nextBlock());
+     states.auto();
+     store.dispatch(actions.lock(false));
+-    const clearLines = state.get('clearLines') + 1;
++    const clearLines = state.get('clearLines') + lines.length;
+     store.dispatch(actions.clearLines(clearLines)); // 更新消除行
+ 
+     const addPoints = store.getState().get('points') +
+@@ -192,7 +194,7 @@ const states = {
+   // 写入分数
+   dispatchPoints: (point) => { // 写入分数, 同时判断是否创造最高分
+     store.dispatch(actions.points(point));
+-    if (point > 0 && point < store.getState().get('max')) {
++    if (point > 0 && point > store.getState().get('max')) {
+       store.dispatch(actions.max(point));
+     }
+   },
+diff --git a/src/control/todo/down.js b/src/control/todo/down.js
+index 3709425..b74deea 100644
+--- a/src/control/todo/down.js
++++ b/src/control/todo/down.js
+@@ -66,7 +66,7 @@ const down = (store) => {
+           music.move();
+         }
+         let startLines = state.get('startLines');
+-        startLines = startLines + 1 > 10 ? 0 : startLines + 1;
++        startLines = startLines - 1 < 0 ? 10 : startLines - 1;
+         store.dispatch(actions.startLines(startLines));
+       },
+     });
+diff --git a/src/control/todo/left.js b/src/control/todo/left.js
+index 6d03322..718e1b2 100644
+--- a/src/control/todo/left.js
++++ b/src/control/todo/left.js
+@@ -25,7 +25,7 @@ const down = (store) => {
+           states.pause(false);
+           return;
+         }
+-        const next = cur.right();
++        const next = cur.left();
+         const delay = delays[state.get('speedRun') - 1];
+         let timeStamp;
+         if (want(next, state.get('matrix'))) {
+diff --git a/src/control/todo/space.js b/src/control/todo/space.js
+index a79fedd..700659d 100644
+--- a/src/control/todo/space.js
++++ b/src/control/todo/space.js
+@@ -30,7 +30,7 @@ const down = (store) => {
+           index++;
+         }
+         let matrix = state.get('matrix');
+-        bottom = cur.fall(index - 4);
++        bottom = cur.fall(index - 2);
+         store.dispatch(actions.moveBlock(bottom));
+         const shape = bottom.shape;
+         const xy = bottom.xy;
+diff --git a/src/reducers/points/index.js b/src/reducers/points/index.js
+index 09a4e88..a42aee8 100644
+--- a/src/reducers/points/index.js
++++ b/src/reducers/points/index.js
+@@ -2,7 +2,7 @@ import * as reducerType from '../../unit/reducerType';
+ import { lastRecord, maxPoint } from '../../unit/const';
+ 
+ let initState = lastRecord && !isNaN(parseInt(lastRecord.points, 10)) ?
+-  parseInt(lastRecord.max, 10) : 0;
++  parseInt(lastRecord.points, 10) : 0;
+ 
+ if (initState < 0) {
+   initState = 0;
+diff --git a/src/unit/const.js b/src/unit/const.js
+index 547edfc..14c3006 100644
+--- a/src/unit/const.js
++++ b/src/unit/const.js
+@@ -38,7 +38,7 @@ const origin = {
+   Z: [[0, 0]],
+   S: [[0, 0]],
+   O: [[0, 0]],
+-  T: [[0, 0], [1, 1], [-1, 1], [0, -1]],
++  T: [[0, 0], [1, 0], [-1, 1], [0, -1]],
+ };
+ 
+ const blockType = Object.keys(blockShape);
+@@ -70,7 +70,7 @@ const lastRecord = (() => { // 上一把的状态
+   }
+   try {
+     if (window.btoa) {
+-      data = btoa(data);
++      data = atob(data);
+     }
+     data = decodeURIComponent(data);
+     data = JSON.parse(data);
+diff --git a/src/unit/index.js b/src/unit/index.js
+index 7005b92..e954b23 100644
+--- a/src/unit/index.js
++++ b/src/unit/index.js
+@@ -71,7 +71,7 @@ const unit = {
+     return clearLines;
+   },
+   isOver(matrix) { // 游戏是否结束, 第一行落下方块为依据
+-    return matrix.get(2).some(n => !!n);
++    return matrix.get(0).some(n => !!n);
+   },
+   subscribeRecord(store) { // 将状态记录到 localStorage
+     store.subscribe(() => {

@@ -1,0 +1,141 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2021-2026 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+<template>
+    <modal class="preferences">
+        <template #header>
+            <h2 class="component__title">{{ t( "preferences" ) }}</h2>
+        </template>
+        <template #content>
+            <div class="form" @keyup.enter="save()">
+                <div class="wrapper wrapper--toggle">
+                    <label>{{ t( "lowMemoryMode" ) }}</label>
+                    <toggle-button
+                        v-model="internalValue.lowMemory"
+                        sync
+                    />
+                </div>
+                <p class="expl">{{ t( "lowMemoryExpl" ) }}</p>
+                <div class="wrapper wrapper--toggle">
+                    <label>{{ t( "layerThumbnails" ) }}</label>
+                    <toggle-button
+                        v-model="internalValue.thumbnails"
+                        sync
+                    />
+                </div>
+                <p class="expl">{{ t( "layerThumbnailsExpl" ) }}</p>
+                <div class="wrapper wrapper--toggle">
+                    <label>{{ t( "autoAlias" ) }}</label>
+                    <toggle-button
+                        v-model="internalValue.autoAlias"
+                        sync
+                    />
+                </div>
+                <p class="expl">{{ t( "autoAliasExpl" ) }}</p>
+                <template v-if="hasWebAssembly">
+                    <div class="wrapper wrapper--toggle">
+                        <label>{{ t( "wasmFilters" ) }}</label>
+                        <toggle-button
+                            v-model="internalValue.wasmFilters"
+                            sync
+                        />
+                    </div>
+                    <p class="expl">{{ t( "wasmFiltersExpl" ) }}</p>
+                </template>
+            </div>
+        </template>
+        <template #actions>
+            <button
+                type="button"
+                class="button"
+                @click="save()"
+            >{{ t( "save" ) }}</button>
+            <button
+                type="button"
+                class="button"
+                @click="closeModal()"
+            >{{ t( "cancel" ) }}</button>
+        </template>
+    </modal>
+</template>
+
+<script lang="ts">
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapGetters, mapMutations, mapActions } from "vuex";
+import Modal from "@/components/modal/modal.vue";
+import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import messages from "./messages.json";
+
+export default {
+    components: {
+        Modal,
+        ToggleButton,
+    },
+    data: () => ({
+        internalValue: null,
+    }),
+    setup(): { t: ComposerTranslation } {
+        const { t } = useI18n({ messages });
+        return { t };
+    },
+    computed: {
+        ...mapGetters([
+            "preferences",
+            "supportWASM",
+        ]),
+        hasWebAssembly(): boolean {
+            return this.supportWASM;
+        },
+    },
+    created(): void {
+        this.internalValue = { ...this.preferences };
+    },
+    methods: {
+        ...mapMutations([
+            "closeModal",
+            "setPreferences",
+        ]),
+        ...mapActions([
+            "storePreferences",
+        ]),
+        async save(): Promise<void> {
+            this.setPreferences( this.internalValue );
+            await this.storePreferences();
+            this.closeModal();
+        },
+    },
+};
+</script>
+
+<style lang="scss" scoped>
+@use "@/styles/_variables";
+@use "@/styles/typography";
+@use "@/styles/ui";
+
+.preferences {
+    @include ui.modalBase( 480px, 440px );
+}
+
+.expl {
+    @include typography.smallText();
+}
+</style>

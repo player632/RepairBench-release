@@ -1,0 +1,470 @@
+diff --git a/src/components/Hamburger/index.vue b/src/components/Hamburger/index.vue
+index 368b002..8a0989a 100644
+--- a/src/components/Hamburger/index.vue
++++ b/src/components/Hamburger/index.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div style="padding: 0 15px;" @click="toggleClick">
++  <div style="padding: 0 15px;" data-testid="sidebar-hamburger" @click="toggleClick">
+     <svg
+       :class="{'is-active':isActive}"
+       class="hamburger"
+diff --git a/src/components/HeaderSearch/index.vue b/src/components/HeaderSearch/index.vue
+index 6026ebb..c9d7784 100644
+--- a/src/components/HeaderSearch/index.vue
++++ b/src/components/HeaderSearch/index.vue
+@@ -1,6 +1,6 @@
+ <template>
+   <div :class="{'show':show}" class="header-search">
+-    <svg-icon class-name="search-icon" icon-class="search" @click.stop="click" />
++    <svg-icon class-name="search-icon" icon-class="search" data-testid="header-search-icon" @click.stop="click" />
+     <el-select
+       ref="headerSearchSelect"
+       v-model="search"
+@@ -12,7 +12,7 @@
+       class="header-search-select"
+       @change="change"
+     >
+-      <el-option v-for="item in options" :key="item.path" :value="item" :label="item.title.join(' > ')" />
++      <el-option v-for="item in options" :key="item.path" :value="item" :label="item.title.join(' > ')" data-testid="header-search-option" />
+     </el-select>
+   </div>
+ </template>
+diff --git a/src/layout/components/Sidebar/SidebarItem.vue b/src/layout/components/Sidebar/SidebarItem.vue
+index a418c3d..30c79c6 100644
+--- a/src/layout/components/Sidebar/SidebarItem.vue
++++ b/src/layout/components/Sidebar/SidebarItem.vue
+@@ -2,7 +2,7 @@
+   <div v-if="!item.hidden">
+     <template v-if="hasOneShowingChild(item.children,item) && (!onlyOneChild.children||onlyOneChild.noShowingChildren)&&!item.alwaysShow">
+       <app-link v-if="onlyOneChild.meta" :to="resolvePath(onlyOneChild.path)">
+-        <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{'submenu-title-noDropdown':!isNest}">
++        <el-menu-item :index="resolvePath(onlyOneChild.path)" :data-testid="'sb-' + resolvePath(onlyOneChild.path)" :class="{'submenu-title-noDropdown':!isNest}">
+           <item :icon="onlyOneChild.meta.icon||(item.meta&&item.meta.icon)" :title="onlyOneChild.meta.title" />
+         </el-menu-item>
+       </app-link>
+@@ -10,7 +10,9 @@
+ 
+     <el-submenu v-else ref="subMenu" :index="resolvePath(item.path)" popper-append-to-body>
+       <template slot="title">
+-        <item v-if="item.meta" :icon="item.meta && item.meta.icon" :title="item.meta.title" />
++        <span :data-testid="'sb-sub-' + item.path">
++          <item v-if="item.meta" :icon="item.meta && item.meta.icon" :title="item.meta.title" />
++        </span>
+       </template>
+       <sidebar-item
+         v-for="child in item.children"
+diff --git a/src/layout/components/Sidebar/index.vue b/src/layout/components/Sidebar/index.vue
+index fb014a2..9efadf7 100644
+--- a/src/layout/components/Sidebar/index.vue
++++ b/src/layout/components/Sidebar/index.vue
+@@ -3,6 +3,8 @@
+     <logo v-if="showLogo" :collapse="isCollapse" />
+     <el-scrollbar wrap-class="scrollbar-wrapper">
+       <el-menu
++        data-testid="sidebar-menu"
++        :data-collapsed="String(isCollapse)"
+         :default-active="activeMenu"
+         :collapse="isCollapse"
+         :background-color="variables.menuBg"
+diff --git a/src/layout/components/TagsView/index.vue b/src/layout/components/TagsView/index.vue
+index d2a56e7..4bdf279 100644
+--- a/src/layout/components/TagsView/index.vue
++++ b/src/layout/components/TagsView/index.vue
+@@ -2,13 +2,15 @@
+   <div id="tags-view-container" class="tags-view-container">
+     <scroll-pane ref="scrollPane" class="tags-view-wrapper" @scroll="handleScroll">
+       <router-link
+-        v-for="tag in visitedViews"
++        v-for="(tag, index) in visitedViews"
+         ref="tag"
+         :key="tag.path"
+         :class="isActive(tag)?'active':''"
+         :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
+         tag="span"
+         class="tags-view-item"
++        :data-testid="'tag-item-' + index"
++        :data-active="isActive(tag) ? 'true' : 'false'"
+         @click.middle.native="!isAffix(tag)?closeSelectedTag(tag):''"
+         @contextmenu.prevent.native="openMenu(tag,$event)"
+       >
+diff --git a/src/views/dashboard/admin/components/LineChart.vue b/src/views/dashboard/admin/components/LineChart.vue
+index e654168..5e8e49c 100644
+--- a/src/views/dashboard/admin/components/LineChart.vue
++++ b/src/views/dashboard/admin/components/LineChart.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div :class="className" :style="{height:height,width:width}" />
++  <div data-testid="line-chart" :class="className" :style="{height:height,width:width}" :data-series="renderedSeries" />
+ </template>
+ 
+ <script>
+@@ -33,7 +33,8 @@ export default {
+   },
+   data() {
+     return {
+-      chart: null
++      chart: null,
++      renderedSeries: ''
+     }
+   },
+   watch: {
+@@ -62,6 +63,7 @@ export default {
+       this.setOptions(this.chartData)
+     },
+     setOptions({ expectedData, actualData } = {}) {
++      this.renderedSeries = expectedData ? expectedData[0] : ''
+       this.chart.setOption({
+         xAxis: {
+           data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+diff --git a/src/views/dashboard/admin/components/PanelGroup.vue b/src/views/dashboard/admin/components/PanelGroup.vue
+index 589236e..56e649f 100644
+--- a/src/views/dashboard/admin/components/PanelGroup.vue
++++ b/src/views/dashboard/admin/components/PanelGroup.vue
+@@ -1,7 +1,7 @@
+ <template>
+-  <el-row :gutter="40" class="panel-group">
++  <el-row :gutter="40" class="panel-group" data-testid="dash-panel-group">
+     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+-      <div class="card-panel" @click="handleSetLineChartData('newVisitis')">
++      <div class="card-panel" data-testid="dash-panel-visits" @click="handleSetLineChartData('newVisitis')">
+         <div class="card-panel-icon-wrapper icon-people">
+           <svg-icon icon-class="peoples" class-name="card-panel-icon" />
+         </div>
+@@ -14,7 +14,7 @@
+       </div>
+     </el-col>
+     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+-      <div class="card-panel" @click="handleSetLineChartData('messages')">
++      <div class="card-panel" data-testid="dash-panel-messages" @click="handleSetLineChartData('messages')">
+         <div class="card-panel-icon-wrapper icon-message">
+           <svg-icon icon-class="message" class-name="card-panel-icon" />
+         </div>
+@@ -27,7 +27,7 @@
+       </div>
+     </el-col>
+     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+-      <div class="card-panel" @click="handleSetLineChartData('purchases')">
++      <div class="card-panel" data-testid="dash-panel-purchases" @click="handleSetLineChartData('purchases')">
+         <div class="card-panel-icon-wrapper icon-money">
+           <svg-icon icon-class="money" class-name="card-panel-icon" />
+         </div>
+@@ -40,7 +40,7 @@
+       </div>
+     </el-col>
+     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+-      <div class="card-panel" @click="handleSetLineChartData('shoppings')">
++      <div class="card-panel" data-testid="dash-panel-shoppings" @click="handleSetLineChartData('shoppings')">
+         <div class="card-panel-icon-wrapper icon-shopping">
+           <svg-icon icon-class="shopping" class-name="card-panel-icon" />
+         </div>
+diff --git a/src/views/dashboard/admin/components/TodoList/index.vue b/src/views/dashboard/admin/components/TodoList/index.vue
+index 8000d41..54aca18 100644
+--- a/src/views/dashboard/admin/components/TodoList/index.vue
++++ b/src/views/dashboard/admin/components/TodoList/index.vue
+@@ -2,17 +2,18 @@
+   <section class="todoapp">
+     <!-- header -->
+     <header class="header">
+-      <input class="new-todo" autocomplete="off" placeholder="Todo List" @keyup.enter="addTodo">
++      <input class="new-todo" autocomplete="off" placeholder="Todo List" data-testid="todo-new" @keyup.enter="addTodo">
+     </header>
+     <!-- main section -->
+     <section v-show="todos.length" class="main">
+-      <input id="toggle-all" :checked="allChecked" class="toggle-all" type="checkbox" @change="toggleAll({ done: !allChecked })">
+-      <label for="toggle-all" />
++      <input id="toggle-all" :checked="allChecked" class="toggle-all" type="checkbox" data-testid="todo-toggle-all" @change="toggleAll({ done: !allChecked })">
++      <label for="toggle-all" data-testid="todo-toggle-label" />
+       <ul class="todo-list">
+         <todo
+           v-for="(todo, index) in filteredTodos"
+           :key="index"
+           :todo="todo"
++          :data-testid="'todo-item-' + index"
+           @toggleTodo="toggleTodo"
+           @editTodo="editTodo"
+           @deleteTodo="deleteTodo"
+@@ -22,7 +23,7 @@
+     <!-- footer -->
+     <footer v-show="todos.length" class="footer">
+       <span class="todo-count">
+-        <strong>{{ remaining }}</strong>
++        <strong data-testid="todo-remaining">{{ remaining }}</strong>
+         {{ remaining | pluralize('item') }} left
+       </span>
+       <ul class="filters">
+diff --git a/src/views/login/index.vue b/src/views/login/index.vue
+index 2590640..1ddbe5c 100644
+--- a/src/views/login/index.vue
++++ b/src/views/login/index.vue
+@@ -18,6 +18,7 @@
+           type="text"
+           tabindex="1"
+           autocomplete="on"
++          data-testid="login-username"
+         />
+       </el-form-item>
+ 
+@@ -35,6 +36,7 @@
+             name="password"
+             tabindex="2"
+             autocomplete="on"
++            data-testid="login-password"
+             @keyup.native="checkCapslock"
+             @blur="capsTooltip = false"
+             @keyup.enter.native="handleLogin"
+@@ -45,7 +47,7 @@
+         </el-form-item>
+       </el-tooltip>
+ 
+-      <el-button :loading="loading" type="primary" style="width:100%;margin-bottom:30px;" @click.native.prevent="handleLogin">Login</el-button>
++      <el-button :loading="loading" type="primary" style="width:100%;margin-bottom:30px;" data-testid="login-submit" @click.native.prevent="handleLogin">Login</el-button>
+ 
+       <div style="position:relative">
+         <div class="tips">
+diff --git a/src/views/permission/components/SwitchRoles.vue b/src/views/permission/components/SwitchRoles.vue
+index 9fabbe1..23f45e1 100644
+--- a/src/views/permission/components/SwitchRoles.vue
++++ b/src/views/permission/components/SwitchRoles.vue
+@@ -5,8 +5,8 @@
+     </div>
+     Switch roles:
+     <el-radio-group v-model="switchRoles">
+-      <el-radio-button label="editor" />
+-      <el-radio-button label="admin" />
++      <el-radio-button label="editor" data-testid="role-switch-editor" />
++      <el-radio-button label="admin" data-testid="role-switch-admin" />
+     </el-radio-group>
+   </div>
+ </template>
+diff --git a/src/views/permission/directive.vue b/src/views/permission/directive.vue
+index 4a49792..a7862ae 100644
+--- a/src/views/permission/directive.vue
++++ b/src/views/permission/directive.vue
+@@ -3,7 +3,7 @@
+     <switch-roles @change="handleRolesChange" />
+     <div :key="key" style="margin-top:30px;">
+       <div>
+-        <span v-permission="['admin']" class="permission-alert">
++        <span v-permission="['admin']" data-testid="perm-admin-alert" class="permission-alert">
+           Only
+           <el-tag class="permission-tag" size="small">admin</el-tag> can see this
+         </span>
+@@ -13,7 +13,7 @@
+       </div>
+ 
+       <div>
+-        <span v-permission="['editor']" class="permission-alert">
++        <span v-permission="['editor']" data-testid="perm-editor-alert" class="permission-alert">
+           Only
+           <el-tag class="permission-tag" size="small">editor</el-tag> can see this
+         </span>
+diff --git a/src/views/table/complex-table.vue b/src/views/table/complex-table.vue
+index 295c5fc..c4d1d4b 100644
+--- a/src/views/table/complex-table.vue
++++ b/src/views/table/complex-table.vue
+@@ -14,7 +14,7 @@
+       <el-button v-waves class="filter-item" type="primary" icon="el-icon-search" @click="handleFilter">
+         Search
+       </el-button>
+-      <el-button class="filter-item" style="margin-left: 10px;" type="primary" icon="el-icon-edit" @click="handleCreate">
++      <el-button class="filter-item" style="margin-left: 10px;" type="primary" icon="el-icon-edit" data-testid="ct-add" @click="handleCreate">
+         Add
+       </el-button>
+       <el-button v-waves :loading="downloadLoading" class="filter-item" type="primary" icon="el-icon-download" @click="handleDownload">
+@@ -36,8 +36,11 @@
+       @sort-change="sortChange"
+     >
+       <el-table-column label="ID" prop="id" sortable="custom" align="center" width="80" :class-name="getSortClass('id')">
+-        <template slot-scope="{row}">
+-          <span>{{ row.id }}</span>
++        <template slot="header">
++          <span data-testid="ct-sort-id">ID</span>
++        </template>
++        <template slot-scope="{row,$index}">
++          <span :data-testid="'ct-id-' + $index">{{ row.id }}</span>
+         </template>
+       </el-table-column>
+       <el-table-column label="Date" width="150px" align="center">
+@@ -46,8 +49,8 @@
+         </template>
+       </el-table-column>
+       <el-table-column label="Title" min-width="150px">
+-        <template slot-scope="{row}">
+-          <span class="link-type" @click="handleUpdate(row)">{{ row.title }}</span>
++        <template slot-scope="{row,$index}">
++          <span class="link-type" :data-testid="'ct-title-' + $index" @click="handleUpdate(row)">{{ row.title }}</span>
+           <el-tag>{{ row.type | typeFilter }}</el-tag>
+         </template>
+       </el-table-column>
+@@ -67,21 +70,21 @@
+         </template>
+       </el-table-column>
+       <el-table-column label="Readings" align="center" width="95">
+-        <template slot-scope="{row}">
+-          <span v-if="row.pageviews" class="link-type" @click="handleFetchPv(row.pageviews)">{{ row.pageviews }}</span>
++        <template slot-scope="{row,$index}">
++          <span v-if="row.pageviews" class="link-type" :data-testid="'ct-pv-' + $index" @click="handleFetchPv(row.pageviews)">{{ row.pageviews }}</span>
+           <span v-else>0</span>
+         </template>
+       </el-table-column>
+       <el-table-column label="Status" class-name="status-col" width="100">
+-        <template slot-scope="{row}">
+-          <el-tag :type="row.status | statusFilter">
++        <template slot-scope="{row,$index}">
++          <el-tag :type="row.status | statusFilter" :data-testid="'ct-status-' + $index">
+             {{ row.status }}
+           </el-tag>
+         </template>
+       </el-table-column>
+       <el-table-column label="Actions" align="center" width="230" class-name="small-padding fixed-width">
+         <template slot-scope="{row,$index}">
+-          <el-button type="primary" size="mini" @click="handleUpdate(row)">
++          <el-button type="primary" size="mini" :data-testid="'ct-edit-' + $index" @click="handleUpdate(row)">
+             Edit
+           </el-button>
+           <el-button v-if="row.status!='published'" size="mini" type="success" @click="handleModifyStatus(row,'published')">
+@@ -90,27 +93,27 @@
+           <el-button v-if="row.status!='draft'" size="mini" @click="handleModifyStatus(row,'draft')">
+             Draft
+           </el-button>
+-          <el-button v-if="row.status!='deleted'" size="mini" type="danger" @click="handleDelete(row,$index)">
++          <el-button v-if="row.status!='deleted'" size="mini" type="danger" :data-testid="'ct-delete-' + $index" @click="handleDelete(row,$index)">
+             Delete
+           </el-button>
+         </template>
+       </el-table-column>
+     </el-table>
+ 
+-    <pagination v-show="total>0" :total="total" :page.sync="listQuery.page" :limit.sync="listQuery.limit" @pagination="getList" />
++    <pagination v-show="total>0" :total="total" :page.sync="listQuery.page" :limit.sync="listQuery.limit" data-testid="ct-pager" @pagination="getList" />
+ 
+     <el-dialog :title="textMap[dialogStatus]" :visible.sync="dialogFormVisible">
+       <el-form ref="dataForm" :rules="rules" :model="temp" label-position="left" label-width="70px" style="width: 400px; margin-left:50px;">
+         <el-form-item label="Type" prop="type">
+-          <el-select v-model="temp.type" class="filter-item" placeholder="Please select">
+-            <el-option v-for="item in calendarTypeOptions" :key="item.key" :label="item.display_name" :value="item.key" />
++          <el-select v-model="temp.type" class="filter-item" placeholder="Please select" data-testid="ct-dialog-type">
++            <el-option v-for="item in calendarTypeOptions" :key="item.key" :label="item.display_name" :value="item.key" :data-testid="'ct-type-opt-' + item.key" />
+           </el-select>
+         </el-form-item>
+         <el-form-item label="Date" prop="timestamp">
+           <el-date-picker v-model="temp.timestamp" type="datetime" placeholder="Please pick a date" />
+         </el-form-item>
+         <el-form-item label="Title" prop="title">
+-          <el-input v-model="temp.title" />
++          <el-input v-model="temp.title" data-testid="ct-dialog-title" />
+         </el-form-item>
+         <el-form-item label="Status">
+           <el-select v-model="temp.status" class="filter-item" placeholder="Please select">
+@@ -125,10 +128,10 @@
+         </el-form-item>
+       </el-form>
+       <div slot="footer" class="dialog-footer">
+-        <el-button @click="dialogFormVisible = false">
++        <el-button data-testid="ct-dialog-cancel" @click="dialogFormVisible = false">
+           Cancel
+         </el-button>
+-        <el-button type="primary" @click="dialogStatus==='create'?createData():updateData()">
++        <el-button type="primary" data-testid="ct-dialog-confirm" @click="dialogStatus==='create'?createData():updateData()">
+           Confirm
+         </el-button>
+       </div>
+@@ -136,8 +139,16 @@
+ 
+     <el-dialog :visible.sync="dialogPvVisible" title="Reading statistics">
+       <el-table :data="pvData" border fit highlight-current-row style="width: 100%">
+-        <el-table-column prop="key" label="Channel" />
+-        <el-table-column prop="pv" label="Pv" />
++        <el-table-column prop="key" label="Channel">
++          <template slot-scope="{row,$index}">
++            <span :data-testid="'pv-key-' + $index">{{ row.key }}</span>
++          </template>
++        </el-table-column>
++        <el-table-column prop="pv" label="Pv">
++          <template slot-scope="{row,$index}">
++            <span :data-testid="'pv-val-' + $index">{{ row.pv }}</span>
++          </template>
++        </el-table-column>
+       </el-table>
+       <span slot="footer" class="dialog-footer">
+         <el-button type="primary" @click="dialogPvVisible = false">Confirm</el-button>
+diff --git a/src/views/table/dynamic-table/components/FixedThead.vue b/src/views/table/dynamic-table/components/FixedThead.vue
+index c3deb92..37c2710 100644
+--- a/src/views/table/dynamic-table/components/FixedThead.vue
++++ b/src/views/table/dynamic-table/components/FixedThead.vue
+@@ -2,13 +2,13 @@
+   <div class="app-container">
+     <div class="filter-container">
+       <el-checkbox-group v-model="checkboxVal">
+-        <el-checkbox label="apple">
++        <el-checkbox label="apple" data-testid="dt-check-apple">
+           apple
+         </el-checkbox>
+-        <el-checkbox label="banana">
++        <el-checkbox label="banana" data-testid="dt-check-banana">
+           banana
+         </el-checkbox>
+-        <el-checkbox label="orange">
++        <el-checkbox label="orange" data-testid="dt-check-orange">
+           orange
+         </el-checkbox>
+       </el-checkbox-group>
+@@ -18,7 +18,7 @@
+       <el-table-column prop="name" label="fruitName" width="180" />
+       <el-table-column v-for="fruit in formThead" :key="fruit" :label="fruit">
+         <template slot-scope="scope">
+-          {{ scope.row[fruit] }}
++          <span :data-testid="'dt-cell-' + fruit">{{ scope.row[fruit] }}</span>
+         </template>
+       </el-table-column>
+     </el-table>
+diff --git a/src/views/table/inline-edit-table.vue b/src/views/table/inline-edit-table.vue
+index 31e0065..0b9107f 100644
+--- a/src/views/table/inline-edit-table.vue
++++ b/src/views/table/inline-edit-table.vue
+@@ -34,30 +34,32 @@
+       </el-table-column>
+ 
+       <el-table-column min-width="300px" label="Title">
+-        <template slot-scope="{row}">
++        <template slot-scope="{row,$index}">
+           <template v-if="row.edit">
+-            <el-input v-model="row.title" class="edit-input" size="small" />
++            <el-input v-model="row.title" class="edit-input" size="small" :data-testid="'iet-input-' + $index" />
+             <el-button
+               class="cancel-btn"
+               size="small"
+               icon="el-icon-refresh"
+               type="warning"
++              :data-testid="'iet-cancel-' + $index"
+               @click="cancelEdit(row)"
+             >
+               cancel
+             </el-button>
+           </template>
+-          <span v-else>{{ row.title }}</span>
++          <span v-else :data-testid="'iet-title-' + $index">{{ row.title }}</span>
+         </template>
+       </el-table-column>
+ 
+       <el-table-column align="center" label="Actions" width="120">
+-        <template slot-scope="{row}">
++        <template slot-scope="{row,$index}">
+           <el-button
+             v-if="row.edit"
+             type="success"
+             size="small"
+             icon="el-icon-circle-check-outline"
++            :data-testid="'iet-ok-' + $index"
+             @click="confirmEdit(row)"
+           >
+             Ok
+@@ -67,6 +69,7 @@
+             type="primary"
+             size="small"
+             icon="el-icon-edit"
++            :data-testid="'iet-edit-' + $index"
+             @click="row.edit=!row.edit"
+           >
+             Edit

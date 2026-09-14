@@ -1,0 +1,166 @@
+diff --git a/js/Actor.js b/js/Actor.js
+index 026e538..0d7d4de 100644
+--- a/js/Actor.js
++++ b/js/Actor.js
+@@ -65,10 +65,10 @@ function Actor(ctx, startPosition, canvas, camera, collisionHandler, resources)
+ 
+         if(_this.jetFuel < 0){
+ 
+-            _this.jetPackUsable = true;
++            _this.jetPackUsable = false;
+         }else if(_this.jetFuel > 50){
+ 
+-            _this.jetPackUsable = false;
++            _this.jetPackUsable = true;
+         }
+ 
+         if (_this.commands['W'] && _this.jetPackUsable){
+@@ -310,9 +310,9 @@ function Actor(ctx, startPosition, canvas, camera, collisionHandler, resources)
+         if(_this.mousePos === undefined)
+             _this.mousePos = {x: _this.position.x + 500, y: _this.position.y};
+         if (_this.mousePos.x >= _this.position.x && _this.faceSide == 'left')
+-            _this.faceSide = 'left';
+-        else if (_this.mousePos.x < _this.position.x && _this.faceSide == 'right')
+             _this.faceSide = 'right';
++        else if (_this.mousePos.x < _this.position.x && _this.faceSide == 'right')
++            _this.faceSide = 'left';
+     };
+ 
+     this._init();
+diff --git a/js/Bullet.js b/js/Bullet.js
+index 742bb0e..5b8be9c 100644
+--- a/js/Bullet.js
++++ b/js/Bullet.js
+@@ -22,8 +22,8 @@ function Bullet(ctx, startPosition, endPosition, mapArray, gunOffset, actorType)
+         var vectorX = this.startPosition.x - this.endPosition.x  + this.gunOffset.x;
+         var vectorY = this.startPosition.y - this.endPosition.y + this.gunOffset.y;
+         var distance = this.calculateDistance(_this.startPosition.x + _this.gunOffset.x, _this.startPosition.y + _this.gunOffset.y, _this.endPosition.x, _this.endPosition.y);
+-        vectorX = vectorX / distance;
+-        vectorY = vectorY / distance;
++        vectorX = -vectorX / distance;
++        vectorY = -vectorY / distance;
+ 
+         this.fromPosition = {x: _this.startPosition.x + _this.gunOffset.x, y: _this.startPosition.y + _this.gunOffset.y};
+         this.toPosition = {x: 0, y: 0};
+diff --git a/js/Camera.js b/js/Camera.js
+index 893f68e..e701d5f 100644
+--- a/js/Camera.js
++++ b/js/Camera.js
+@@ -21,9 +21,9 @@ function Camera(ctx, shyame) {
+         if(diffCurrPos != 600) {
+             if (diffCurrPos > 600) {
+ 
+-                _this.moveLeft();
+-            } else {
+                 _this.moveRight();
++            } else {
++                _this.moveLeft();
+             }
+         }
+     };
+diff --git a/js/CollisionHandler.js b/js/CollisionHandler.js
+index 2e47661..dee4678 100644
+--- a/js/CollisionHandler.js
++++ b/js/CollisionHandler.js
+@@ -15,7 +15,7 @@ function CollisionHandler(ctx, camera, mapArray){
+     this.hasReachedGround = function (actor) {
+ 
+         var y = Math.round((actor.position.y + actor.actorHeight) / TILE_SIZE) - 1;
+-        var x = Math.round((actor.position.x + actor.actorWidth) / TILE_SIZE) - 1;
++        var x = Math.round((actor.position.x + actor.actorWidth) / TILE_SIZE) - 2;
+ 
+         if (_this.mapArray[y] !== undefined){
+             if (_this.mapArray[y][x] !== undefined) {
+@@ -47,7 +47,7 @@ function CollisionHandler(ctx, camera, mapArray){
+         for(var i = fromY; i < toY; i++) {
+             if (_this.mapArray[i] !== undefined) {
+                 if (_this.mapArray[i][x] !== undefined) {
+-                    if(_this.mapArray[i][x].tileType == 1 || _this.mapArray[i][x].tileType == 2) {
++                    if(_this.mapArray[i][x].tileType == 1 || _this.mapArray[i][x].tileType == 2 || _this.mapArray[i][x].tileType == 4) {
+                         return true;
+                     }
+                     if(_this.mapArray[i][x + 2] !== undefined)
+diff --git a/js/Game.js b/js/Game.js
+index 0869da6..2b5cc03 100644
+--- a/js/Game.js
++++ b/js/Game.js
+@@ -122,6 +122,7 @@ function Game(canvas, resources) {
+         _this.ctx.clearRect(0, 0, _this.ctx.canvas.width, _this.ctx.canvas.height);
+         _this.ground.drawGround();
+         _this.camera.move();
++        _this.drawRobotUnits();
+         _this.showEnemyDirection();
+         _this.shyame.actor.move();
+         _this.shyame.actor.drawWeapon();
+@@ -306,10 +307,10 @@ function Game(canvas, resources) {
+                 _this.shyame.actor.commands['W'] = true;
+                 break;
+             case 83:
+-                _this.shyame.actor.commands['D'] = true;
++                _this.shyame.actor.commands['S'] = true;
+                 break;
+             case 68:
+-                _this.shyame.actor.commands['S'] = true;
++                _this.shyame.actor.commands['D'] = true;
+                 break;
+             case 65:
+                 _this.shyame.actor.commands['A'] = true;
+diff --git a/js/Preload.js b/js/Preload.js
+index d505e1d..10280f1 100644
+--- a/js/Preload.js
++++ b/js/Preload.js
+@@ -48,7 +48,7 @@ function Preload(){
+             }else{
+                 // console.log('here');
+             }
+-        }, 500);
++        }, 5000);
+     }
+ 
+     this._init();
+diff --git a/js/RobotUnit.js b/js/RobotUnit.js
+index 5cff81f..3fa4f10 100644
+--- a/js/RobotUnit.js
++++ b/js/RobotUnit.js
+@@ -301,6 +301,7 @@ function RobotUnit(id, ctx, startPosition, shyame, robotUnits, mapArray, collisi
+         _this.commands['A'] = false;
+         _this.commands['S'] = false;
+         _this.commands['D'] = false;
++        _this.commands['W'] = false;
+     };
+ 
+     this.death = function(){
+diff --git a/js/TileGround.js b/js/TileGround.js
+index e3099c2..8347e44 100644
+--- a/js/TileGround.js
++++ b/js/TileGround.js
+@@ -80,7 +80,7 @@ function TileGround(ctx) {
+         var fromY =  Math.round(obstaclePosition.y / TILE_SIZE) - 2;
+         var fromX = Math.round(obstaclePosition.x / TILE_SIZE) - 2;
+         var toY = Math.round((obstaclePosition.y + obstacleHeight) / TILE_SIZE) - 3;
+-        var toX = Math.round((obstaclePosition.x + obstacleWidth) / TILE_SIZE) - 1;
++        var toX = Math.round((obstaclePosition.x + obstacleWidth) / TILE_SIZE) - 2;
+ 
+         for(i = fromY; i < toY; i++){
+ 
+diff --git a/js/Weapon.js b/js/Weapon.js
+index 98c7fd3..7d5dec9 100644
+--- a/js/Weapon.js
++++ b/js/Weapon.js
+@@ -15,12 +15,12 @@ function Weapon(ctx, collisionHandler, actorType, resources){
+         this.actorType = actorType;
+         if(actorType == 'shyame') {
+ 
+-            this.weaponImageRight = this.resources.getImage('enemy_gun');
+-            this.weaponImageLeft = this.resources.getImage('enemy_gun_left');
+-        }else if(actorType == 'robot-unit'){
+-
+             this.weaponImageRight = this.resources.getImage('hand_with_gun');
+             this.weaponImageLeft = this.resources.getImage('hand_with_gun_left');
++        }else if(actorType == 'robot-unit'){
++
++            this.weaponImageRight = this.resources.getImage('enemy_gun');
++            this.weaponImageLeft = this.resources.getImage('enemy_gun_left');
+         }
+     };
+     

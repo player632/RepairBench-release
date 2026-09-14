@@ -1,0 +1,130 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 57da471..f60542f 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -153,7 +153,6 @@ function App() {
+   }
+ 
+   const addLetter = (letter: string) => {
+-    setSubmittedInvalidWord(false)
+     setBoard((prev: string[][]) => {
+       if (currentCol > 4) {
+         return prev
+@@ -178,7 +177,7 @@ function App() {
+     )
+     const yellowsUsed = guessedLetters.every(([letter, _]) => word.includes(letter))
+     const greensUsed = Object.entries(exactGuesses).every(
+-      ([position, letter]) => word[parseInt(position)] === letter
++      ([position, letter]) => word[parseInt(position)] !== letter
+     )
+     if (!yellowsUsed || !greensUsed)
+       return [false, `In hard mode, you must use all the hints you've been given.`]
+@@ -215,7 +214,7 @@ function App() {
+ 
+     setBoard((prev: any) => {
+       const newBoard = [...prev]
+-      newBoard[currentRow][currentCol - 1] = ''
++      newBoard[currentRow][currentCol] = ''
+       return newBoard
+     })
+ 
+@@ -231,7 +230,7 @@ function App() {
+       const answerLetters: string[] = answer.split('')
+ 
+       // set all to gray
+-      for (let i = 0; i < wordLength; i++) {
++      for (let i = 0; i < wordLength - 1; i++) {
+         newCellStatuses[rowNumber][i] = status.gray
+       }
+ 
+@@ -283,7 +282,7 @@ function App() {
+       var streak = currentStreak + 1
+       setCurrentStreak(streak)
+       setLongestStreak((prev: number) => (streak > prev ? streak : prev))
+-    } else if (gameState === state.playing && currentRow === 6) {
++    } else if (gameState === state.playing && currentRow === 5) {
+       setGameState(state.lost)
+       setCurrentStreak(0)
+     }
+@@ -302,7 +301,7 @@ function App() {
+       const newLetterStatuses = { ...prev }
+       const wordLength = word.length
+       for (let i = 0; i < wordLength; i++) {
+-        if (newLetterStatuses[word[i]] === status.green) continue
++        if (newLetterStatuses[word[i]] === status.yellow) continue
+ 
+         if (word[i] === answer[i]) {
+           newLetterStatuses[word[i]] = status.green
+diff --git a/src/components/EndGameModal.tsx b/src/components/EndGameModal.tsx
+index e4f3333..8f7baf6 100644
+--- a/src/components/EndGameModal.tsx
++++ b/src/components/EndGameModal.tsx
+@@ -27,7 +27,7 @@ const streakGoodThreshold = 20
+ const streakGreatThreshold = 50
+ 
+ function avgGuessesClass(avgGuessesPerGame: number): string {
+-  if (avgGuessesPerGame <= avgGuessesPerGameGreatThreshold) {
++  if (avgGuessesPerGame < avgGuessesPerGameGreatThreshold) {
+     return 'text-red-600'
+   } else if (avgGuessesPerGame <= avgGuessesPerGameGoodThreshold) {
+     return 'text-orange-500'
+@@ -101,7 +101,7 @@ export const EndGameModal = ({
+           >
+             <Close />
+           </button>
+-          {gameState === state.won && (
++          {gameState === state.lost && (
+             <>
+               <h1 data-testid="endgame-won-title" className=" text-3xl">Congrats! 🎉</h1>
+               <dl className="mt-5 grid grid-cols-1 gap-5">
+diff --git a/src/components/Keyboard.tsx b/src/components/Keyboard.tsx
+index b2df07f..8844afa 100644
+--- a/src/components/Keyboard.tsx
++++ b/src/components/Keyboard.tsx
+@@ -51,7 +51,7 @@ const Keyboard = ({
+       } else if (letter === 'ENTER') {
+         onEnterPress()
+         event.preventDefault()
+-      } else if (letter === 'BACKSPACE') {
++      } else if (letter === 'DELETE') {
+         onDeletePress()
+         event.preventDefault()
+       }
+diff --git a/src/components/SettingsModal.tsx b/src/components/SettingsModal.tsx
+index 80225bb..89a2a85 100644
+--- a/src/components/SettingsModal.tsx
++++ b/src/components/SettingsModal.tsx
+@@ -50,7 +50,7 @@ export const SettingsModal = ({
+ 
+             <Switch.Group as="div" className="flex items-center">
+               <Switch
+-                checked={darkMode}
++                checked={!darkMode}
+                 onChange={toggleDarkMode}
+                 className={`${
+                   darkMode
+diff --git a/src/constants.tsx b/src/constants.tsx
+index fc5296c..7c164d5 100644
+--- a/src/constants.tsx
++++ b/src/constants.tsx
+@@ -21,7 +21,6 @@ export const letters = [
+   'N',
+   'O',
+   'P',
+-  'Q',
+   'R',
+   'S',
+   'T',
+diff --git a/src/hooks/useLocalStorage.tsx b/src/hooks/useLocalStorage.tsx
+index 7dda485..75b02db 100644
+--- a/src/hooks/useLocalStorage.tsx
++++ b/src/hooks/useLocalStorage.tsx
+@@ -20,7 +20,7 @@ export const useLocalStorage = <Type,>(key: string, initialValue: Type): [Type,
+     }
+   }
+ 
+-  window.localStorage.setItem(key, JSON.stringify(storedValue))
++  window.localStorage.setItem(key, JSON.stringify(initialValue))
+ 
+   return [storedValue, setValue]
+ }

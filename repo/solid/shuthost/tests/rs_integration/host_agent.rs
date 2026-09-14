@@ -1,0 +1,153 @@
+//! Integration tests for `host_agent` functionality
+
+use core::time::Duration;
+use std::{env, fs as fs_sync, process};
+
+use crate::common::{
+    get_free_port, host_agent_bin_path, runtime_test_config, spawn_coordinator_with_config,
+    spawn_host_agent, wait_for_agent_ready, wait_for_host_state, wait_for_listening,
+};
+use secrecy::SecretString;
+use shuthost_coordinator::app::HostState;
+use tokio::{fs, time};
+
+#[test]
+fn host_agent_binary_runs() {
+    let mut child = process::Command::new(host_agent_bin_path())
+        .args(["--help"])
+        .stdout(process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn host_agent binary");
+    let status = child.wait().expect("failed to wait");
+    assert!(status.success());
+}
+
+#[tokio::test]
+async fn shutdown_command_execution() {
+    let shutdown_file = env::temp_dir().join("shuthost_shutdown_test");
+    let coord_port = get_free_port();
+    let agent_port = get_free_port();
+    let shared_secret = "testsecret";
+
+    let _coordinator_child = spawn_coordinator_with_config(
+        coord_port,
+        &(format!(
+            r#"
+        [server]
+        port = {coord_port}
+        bind = "127.0.0.1"
+
+        [hosts.testhost]
+        ip = "127.0.0.1"
+        mac = "00:11:22:33:44:55"
+        port = {agent_port}
+        shared_secret = "{shared_secret}"
+
+        [clients]
+    "#
+        ) + &runtime_test_config()),
+    );
+    wait_for_listening(coord_port, 5).await;
+
+    let _agent = spawn_host_agent(
+        shared_secret,
+        agent_port,
+        // default broadcast port used here (unused by coordinator)
+        shuthost_common::DEFAULT_COORDINATOR_BROADCAST_PORT,
+        &format!("echo SHUTDOWN > {}", shutdown_file.to_string_lossy()),
+    );
+
+    // Wait for agent to be ready
+    wait_for_agent_ready(agent_port, &SecretString::from(shared_secret), 5).await;
+
+    assert!(
+        wait_for_host_state(coord_port, "testhost", HostState::Online, 10).await,
+        "Host should be online before triggering shutdown"
+    );
+    let client = reqwest::Client::new();
+
+    let url = format!("http://127.0.0.1:{coord_port}/api/lease/testhost/release");
+    let resp = client
+        .post(&url)
+        .send()
+        .await
+        .expect("failed to send shutdown lease");
+    assert!(resp.status().is_success());
+
+    time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        shutdown_file.exists(),
+        "Shutdown file should exist after shutdown command"
+    );
+    let contents = fs::read_to_string(&shutdown_file).await.unwrap_or_default();
+    assert_eq!(
+        contents.trim(),
+        "SHUTDOWN",
+        "Shutdown file should contain 'SHUTDOWN'"
+    );
+    drop(fs::remove_file(shutdown_file).await); // Clean up after test
+}
+
+#[cfg(unix)]
+const SELF_EXTRACTING_SCRIPT: &str = "self-extracting-shell";
+#[cfg(windows)]
+const SELF_EXTRACTING_SCRIPT: &str = "self-extracting-pwsh";
+
+#[cfg(unix)]
+const SELF_EXTRACTING_SCRIPT_NAME: &str = "shuthost_host_agent_self_extracting";
+#[cfg(windows)]
+const SELF_EXTRACTING_SCRIPT_NAME: &str = "shuthost_host_agent_self_extracting.ps1";
+
+#[test]
+fn self_extracting_install_and_registration() {
+    let temp_dir = env::temp_dir().join(format!("shuthost_test_{}", process::id()));
+    fs_sync::create_dir(&temp_dir).expect("failed to create temp dir");
+
+    let secret = "testsecret123";
+    let port = get_free_port();
+
+    // Run install
+    let status = process::Command::new(host_agent_bin_path())
+        .args([
+            "install",
+            "--init-system",
+            SELF_EXTRACTING_SCRIPT,
+            "--shared-secret",
+            secret,
+            "--port",
+            &port.to_string(),
+        ])
+        .stdout(process::Stdio::null())
+        .current_dir(&temp_dir)
+        .status()
+        .expect("failed to run install");
+
+    assert!(status.success(), "install should succeed");
+
+    // Find the script
+    let script_path = temp_dir.join(SELF_EXTRACTING_SCRIPT_NAME);
+    assert!(script_path.exists(), "script should exist");
+
+    // Run registration
+    let output = process::Command::new(&script_path)
+        .arg("registration")
+        .output()
+        .expect("failed to run registration");
+
+    assert!(output.status.success(), "registration should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify output contains secret and port
+    assert!(
+        stdout.contains(secret),
+        "output should contain secret: {stdout}"
+    );
+    assert!(
+        stdout.contains(&port.to_string()),
+        "output should contain port: {stdout}"
+    );
+
+    // Clean up
+    drop(fs_sync::remove_dir_all(&temp_dir));
+}

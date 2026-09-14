@@ -1,0 +1,25 @@
+import { Title } from '@solidjs/meta';
+import type { AnyComponent } from '../helpers/utils/solid';
+import { Footer } from '../sharedComponents/Footer';
+import { SimpleHeader } from '../sharedComponents/Header';
+import { JsErrorBox } from '../sharedComponents/JsErrorBox';
+
+/**
+ * Static HTML shell served to all routes before JS loads.
+ * This is mostly to be able to have the JS error box available as soon as possible,
+ * while having it properly integrated in the layout
+ *
+ * Renders only the page chrome (header, footer, JS error box) with an empty
+ * main area. JS calls render() after load, clears this, and mounts the real
+ * component tree for the correct route.
+ */
+export const PrerenderedShell = (() => (
+    <>
+        <Title>ShutHost Coordinator</Title>
+        <SimpleHeader />
+        <main id="main-content" class="main flex flex-col" tabindex="-1">
+            <JsErrorBox />
+        </main>
+        <Footer />
+    </>
+)) satisfies AnyComponent;

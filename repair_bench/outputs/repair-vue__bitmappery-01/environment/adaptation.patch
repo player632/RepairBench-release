@@ -1,0 +1,78 @@
+diff --git a/src/components/menus/header-menu/header-menu.vue b/src/components/menus/header-menu/header-menu.vue
+index 09f02ca..7beeabd 100644
+--- a/src/components/menus/header-menu/header-menu.vue
++++ b/src/components/menus/header-menu/header-menu.vue
+@@ -354,7 +354,12 @@
+             </li>
+             <!-- help menu -->
+             <li>
+-                <a href="https://www.igorski.nl/bitmappery/help" target="_blank" class="title" @click="close()">{{ t( "help" ) }}</a>
++                <!-- OFFLINE ADAPTATION (repair-bench): the upstream anchor navigates to an
++                     external help site in a new tab. The benchmark runs with
++                     allow_internet = false and assert-pages/storage guards would see a
++                     cross-origin navigation, so the outbound href and target are dropped
++                     and the entry stays a plain in-app menu item. -->
++                <a class="title" @click.prevent="close()">{{ t( "help" ) }}</a>
+             </li>
+         </ul>
+         <!-- fullscreen button -->
+diff --git a/src/services/font-service.ts b/src/services/font-service.ts
+index 278da8c..bcddf6b 100644
+--- a/src/services/font-service.ts
++++ b/src/services/font-service.ts
+@@ -22,7 +22,7 @@
+  */
+ import { createCanvas } from "@/utils/canvas-util";
+ 
+-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css?family=";
++// OFFLINE ADAPTATION (repair-bench): the remote stylesheet origin is no longer referenced.
+ 
+ const loadedFonts: Set<string> = new Set();
+ 
+@@ -43,6 +43,15 @@ export const rejectFonts = (): void => {
+  * or false when it has just been loaded (and added to the cache)
+  */
+ export const loadGoogleFont = ( fontName: string ): Promise<boolean> => {
++    // OFFLINE ADAPTATION (repair-bench, environment/adaptation.patch).
++    // Upstream appends <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=...">
++    // and resolves only once that stylesheet (and the font file it requests) has arrived.
++    // The benchmark runs with allow_internet = false, so the request would hang until the
++    // CSS onerror fired and any text-layer interaction would stall on a dead network.
++    // The face is now resolved against the locally available font stack: the same canvas
++    // probe upstream uses to warm the face runs, but no <link> is appended and no request
++    // is made. The consent gate, the loadedFonts cache and the resolve contract
++    // (true = already cached, false = just resolved) are unchanged.
+     return new Promise(( resolve, reject ) => {
+         if ( !fontsConsented() ) {
+             reject();
+@@ -52,25 +61,10 @@ export const loadGoogleFont = ( fontName: string ): Promise<boolean> => {
+             resolve( true );
+             return;
+         }
+-        const css = document.createElement( "link" );
+-        css.setAttribute( "rel", "stylesheet" );
+-        css.setAttribute( "type", "text/css" );
+-        css.onload = (): void => {
+-            loadedFonts.add( fontName );
+-            // CSS file has loaded, but font hasn't, create first request for font render
+-            const { ctx } = createCanvas();
+-            ctx.font = `16px ${fontName}`;
+-            ctx.fillText( "foo", 0, 0 );
+-            // the above will have requested the font file, resolve Promise after slight delay
+-            window.setTimeout(() => {
+-                resolve( false );
+-            }, 250 );
+-        };
+-        css.onerror = ( e: Event ): void => {
+-            console.error( `Could not load font ${fontName}`, e );
+-            reject();
+-        }
+-        css.setAttribute( "href", `${GOOGLE_FONTS_URL}${fontName}` );
+-        document.getElementsByTagName( "head" )[ 0 ].appendChild( css );
++        const { ctx } = createCanvas();
++        ctx.font = `16px ${fontName}`;
++        ctx.fillText( "foo", 0, 0 );
++        loadedFonts.add( fontName );
++        resolve( false );
+     });
+ };

@@ -1,0 +1,20 @@
+import { signal, WritableSignal } from '@angular/core';
+
+type StorageKey = 'preferences' | 'router';
+
+export function getStoredValue(key: StorageKey): string | undefined {
+  return localStorage.getItem(key) ?? undefined;
+}
+
+export function storeValue(key: StorageKey, value: string | undefined): void {
+  if (!value) localStorage.removeItem(key);
+  else localStorage.setItem(key, value);
+}
+
+export function storedSignal(
+  key: StorageKey,
+): WritableSignal<string | undefined> {
+  const result = signal(getStoredValue(key));
+
+  return result;
+}

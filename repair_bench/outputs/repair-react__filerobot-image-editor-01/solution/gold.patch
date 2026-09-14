@@ -1,0 +1,172 @@
+diff --git a/packages/react-filerobot-image-editor/src/actions/changeRotation.js b/packages/react-filerobot-image-editor/src/actions/changeRotation.js
+index 0e57555..729c83f 100644
+--- a/packages/react-filerobot-image-editor/src/actions/changeRotation.js
++++ b/packages/react-filerobot-image-editor/src/actions/changeRotation.js
+@@ -1,7 +1,7 @@
+ export const CHANGE_ROTATION = 'CHANGE_ROTATION';
+ 
+ const changeRotation = (state, payload) =>
+-  state.adjustments.rotation === payload.rotation
++  state.adjustments.rotation !== payload.rotation
+     ? {
+         ...state,
+         isDesignState: !payload.dismissHistory,
+diff --git a/packages/react-filerobot-image-editor/src/actions/selectTab.js b/packages/react-filerobot-image-editor/src/actions/selectTab.js
+index 5314d31..75d68a7 100644
+--- a/packages/react-filerobot-image-editor/src/actions/selectTab.js
++++ b/packages/react-filerobot-image-editor/src/actions/selectTab.js
+@@ -1,3 +1,4 @@
++import { TABS_TOOLS } from 'components/tools/tools.constants';
+ import { POINTER_ICONS, TABS_IDS } from 'utils/constants';
+ 
+ export const SELECT_TAB = 'SELECT_TAB';
+@@ -8,6 +9,7 @@ const selectTab = (state, payload) =>
+     : {
+         ...state,
+         tabId: payload.tabId,
++        toolId: TABS_TOOLS[payload.tabId][0],
+         selectionsIds: [],
+         pointerCssIcon:
+           payload.tabId === TABS_IDS.ANNOTATE
+diff --git a/packages/react-filerobot-image-editor/src/actions/setFinetune.js b/packages/react-filerobot-image-editor/src/actions/setFinetune.js
+index 4785a20..5ae4299 100644
+--- a/packages/react-filerobot-image-editor/src/actions/setFinetune.js
++++ b/packages/react-filerobot-image-editor/src/actions/setFinetune.js
+@@ -8,6 +8,7 @@ const setFinetune = (state, payload) => ({
+       ? state.finetunes
+       : [...state.finetunes, payload.finetune],
+   finetunesProps: {
++    ...state.finetunesProps,
+     ...payload.finetuneProps,
+   },
+ });
+diff --git a/packages/react-filerobot-image-editor/src/actions/undo.js b/packages/react-filerobot-image-editor/src/actions/undo.js
+index f69e182..6a8459b 100644
+--- a/packages/react-filerobot-image-editor/src/actions/undo.js
++++ b/packages/react-filerobot-image-editor/src/actions/undo.js
+@@ -14,6 +14,7 @@ const undo = (state) => {
+ 
+     return {
+       ...state,
++      ...presentDesignState,
+       selectionsIds: [],
+       pastDesignStates: newPastDesignStates,
+       futureDesignStates: newFutureDesignStates,
+diff --git a/packages/react-filerobot-image-editor/src/components/Tabs/index.jsx b/packages/react-filerobot-image-editor/src/components/Tabs/index.jsx
+index 531c975..de1c6f8 100644
+--- a/packages/react-filerobot-image-editor/src/components/Tabs/index.jsx
++++ b/packages/react-filerobot-image-editor/src/components/Tabs/index.jsx
+@@ -12,11 +12,12 @@ import { AVAILABLE_TABS } from './Tabs.constants';
+ const Tabs = ({ toggleMainMenu, isDrawer }) => {
+   const {
+     t,
++    tabId = null,
+     dispatch,
+     config: { defaultTabId, tabsIds, useCloudimage },
+   } = useStore();
+ 
+-  const currentTabId = defaultTabId;
++  const currentTabId = tabId || defaultTabId;
+ 
+   const selectTab = useCallback((newTabId) => {
+     dispatch({
+diff --git a/packages/react-filerobot-image-editor/src/components/ToolsBar/index.jsx b/packages/react-filerobot-image-editor/src/components/ToolsBar/index.jsx
+index 8cf9365..7274ade 100644
+--- a/packages/react-filerobot-image-editor/src/components/ToolsBar/index.jsx
++++ b/packages/react-filerobot-image-editor/src/components/ToolsBar/index.jsx
+@@ -58,7 +58,7 @@ const ToolsBar = ({ isPhoneScreen }) => {
+           )
+         );
+       }),
+-    [tabTools],
++    [tabTools, currentToolId],
+   );
+ 
+   const ToolOptionsComponent = useMemo(() => {
+diff --git a/packages/react-filerobot-image-editor/src/components/Topbar/CanvasZooming.jsx b/packages/react-filerobot-image-editor/src/components/Topbar/CanvasZooming.jsx
+index 1838228..52a8b76 100644
+--- a/packages/react-filerobot-image-editor/src/components/Topbar/CanvasZooming.jsx
++++ b/packages/react-filerobot-image-editor/src/components/Topbar/CanvasZooming.jsx
+@@ -1,5 +1,5 @@
+ /** External Dependencies */
+-import React, { useCallback, useState } from 'react';
++import React, { useState } from 'react';
+ import PropTypes from 'prop-types';
+ import { MinusOutline, PlusOutline } from '@scaleflex/icons';
+ import Menu from '@scaleflex/ui/core/menu';
+@@ -46,9 +46,9 @@ const CanvasZooming = ({ showBackButton }) => {
+     });
+   };
+ 
+-  const zoomIn = useCallback(() => {
++  const zoomIn = () => {
+     saveZoom(zoom.factor * MULTIPLY_ZOOM_FACTOR);
+-  }, []);
++  };
+ 
+   const fitCanvas = () => {
+     const usedAsOrgDimens =
+diff --git a/packages/react-filerobot-image-editor/src/components/Topbar/ConfirmationModal.jsx b/packages/react-filerobot-image-editor/src/components/Topbar/ConfirmationModal.jsx
+index 01f83ac..f3572e5 100644
+--- a/packages/react-filerobot-image-editor/src/components/Topbar/ConfirmationModal.jsx
++++ b/packages/react-filerobot-image-editor/src/components/Topbar/ConfirmationModal.jsx
+@@ -52,7 +52,7 @@ const ConfirmationModal = ({ children, isReset }) => {
+   return (
+     <>
+       {React.cloneElement(children, {
+-        onClick: isResetted ? openModal : closeWithReason,
++        onClick: isResetted ? closeWithReason : openModal,
+       })}
+ 
+       {isModalOpened && (
+diff --git a/packages/react-filerobot-image-editor/src/components/tools/Crop/CropPresetsOption.jsx b/packages/react-filerobot-image-editor/src/components/tools/Crop/CropPresetsOption.jsx
+index 3459927..edb7514 100644
+--- a/packages/react-filerobot-image-editor/src/components/tools/Crop/CropPresetsOption.jsx
++++ b/packages/react-filerobot-image-editor/src/components/tools/Crop/CropPresetsOption.jsx
+@@ -52,6 +52,7 @@ const CropPresetsOption = ({ anchorEl, onClose }) => {
+ 
+     const newCrop = {
+       ratio: newCropRatio,
++      ratioTitleKey: cropProps.ratioTitleKey,
+       ratioGroupKey: cropProps.ratioGroupKey,
+       ratioFolderKey: cropProps.ratioFolderKey,
+       noEffect: cropProps.noEffect,
+diff --git a/packages/react-filerobot-image-editor/src/components/tools/Resize/Resize.jsx b/packages/react-filerobot-image-editor/src/components/tools/Resize/Resize.jsx
+index 308e3eb..1d1090b 100644
+--- a/packages/react-filerobot-image-editor/src/components/tools/Resize/Resize.jsx
++++ b/packages/react-filerobot-image-editor/src/components/tools/Resize/Resize.jsx
+@@ -187,7 +187,7 @@ const Resize = ({ onChange, currentSize, hideResetButton, alignment }) => {
+       </StyledRatioLockIcon>
+       <StyledResizeInput
+         className="FIE_resize-height-option"
+-        defaultValue={isEmptyEditedHeight ? '' : dimensions.height}
++        value={isEmptyEditedHeight ? '' : dimensions.height}
+         name="height"
+         onChange={isManualChangeDisabled ? undefined : changeResize}
+         inputMode="numeric"
+diff --git a/packages/react-filerobot-image-editor/src/hooks/useAppReducer.js b/packages/react-filerobot-image-editor/src/hooks/useAppReducer.js
+index 65e312e..4d86eb9 100644
+--- a/packages/react-filerobot-image-editor/src/hooks/useAppReducer.js
++++ b/packages/react-filerobot-image-editor/src/hooks/useAppReducer.js
+@@ -46,7 +46,7 @@ const useAppReducer = (reducer, initialState, passedConfig = {}) => {
+       const newState = {
+         ...neededNewPresentState,
+         pastDesignStates: [currentState, ...state.pastDesignStates],
+-        hasUndo: state.pastDesignStates.length > 0,
++        hasUndo: true,
+         hasRedo: false,
+         futureDesignStates: [],
+         isResetted: false,
+diff --git a/packages/react-filerobot-image-editor/src/hooks/useFilter.js b/packages/react-filerobot-image-editor/src/hooks/useFilter.js
+index 85a4d18..30e73e0 100644
+--- a/packages/react-filerobot-image-editor/src/hooks/useFilter.js
++++ b/packages/react-filerobot-image-editor/src/hooks/useFilter.js
+@@ -17,7 +17,7 @@ const useFilter = () => {
+     });
+   }, []);
+ 
+-  return useMemo(() => [filter, setFilter], [setFilter]);
++  return useMemo(() => [filter, setFilter], [filter]);
+ };
+ 
+ export default useFilter;

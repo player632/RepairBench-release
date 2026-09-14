@@ -1,0 +1,156 @@
+diff --git a/src/app/app-routing.module.ts b/src/app/app-routing.module.ts
+index b69b787b525863d1f746944926f7271689be8965..b85902eca68d1072d0e9c370a0fa08a2502621db 100644
+--- a/src/app/app-routing.module.ts
++++ b/src/app/app-routing.module.ts
+@@ -17,7 +17,7 @@ const routes: Routes = [{
+ }];
+ 
+ @NgModule({
+-  imports: [RouterModule.forRoot(routes)],
++  imports: [RouterModule.forRoot(routes, { useHash: true })],
+   exports: [RouterModule]
+ })
+ export class AppRoutingModule { }
+diff --git a/src/app/layouts/default/default.component.html b/src/app/layouts/default/default.component.html
+index 02e6a40eb8a07d9b4954ccd4c194ab9c26612a16..e35b425051dc53dd077f2ffd4ffede8b9cc6b4f7 100644
+--- a/src/app/layouts/default/default.component.html
++++ b/src/app/layouts/default/default.component.html
+@@ -1,7 +1,7 @@
+ <app-header (toggleSideBarForMe)="sideBarToggler($event)"></app-header>
+ 
+ <mat-drawer-container>
+-    <mat-drawer mode="side" [opened]="sideBarOpen">
++    <mat-drawer mode="over" [opened]="sideBarOpen">
+         <app-sidebar></app-sidebar>
+     </mat-drawer>
+     <mat-drawer-content>
+diff --git a/src/app/layouts/default/default.component.ts b/src/app/layouts/default/default.component.ts
+index 9b14423de6eefbfa0356a6bff7699829185b3b02..e2a1b17bc6859255460beb37de9cce2619feb61a 100644
+--- a/src/app/layouts/default/default.component.ts
++++ b/src/app/layouts/default/default.component.ts
+@@ -7,7 +7,7 @@ import { Component, OnInit } from '@angular/core';
+ })
+ export class DefaultComponent implements OnInit {
+ 
+-  sideBarOpen = true;
++  sideBarOpen = false;
+ 
+   constructor() { }
+ 
+diff --git a/src/app/modules/dashboard.service.ts b/src/app/modules/dashboard.service.ts
+index 1d91bf8be7d03b07fa5683ff3162669fcfcbdf36..daff96a52b32de2935bbea5ca1220a5b6fff3f61 100644
+--- a/src/app/modules/dashboard.service.ts
++++ b/src/app/modules/dashboard.service.ts
+@@ -20,9 +20,6 @@ export class DashboardService {
+     }, {
+       name: 'America',
+       data: [18, 31, 54, 156, 339, 818, 1201]
+-    }, {
+-      name: 'Oceania',
+-      data: [2, 2, 2, 6, 13, 30, 46]
+     }];
+   }
+ 
+diff --git a/src/app/modules/dashboard/dashboard.component.html b/src/app/modules/dashboard/dashboard.component.html
+index 396a56439951c0dfb0d8447fbda65f8719b6a791..7b3aca7643d3e573eb669dfeaa191d2f600f7af6 100644
+--- a/src/app/modules/dashboard/dashboard.component.html
++++ b/src/app/modules/dashboard/dashboard.component.html
+@@ -55,7 +55,7 @@
+                 <!-- Symbol Column -->
+                 <ng-container matColumnDef="symbol">
+                     <th mat-header-cell *matHeaderCellDef> Symbol </th>
+-                    <td mat-cell *matCellDef="let element"> {{element.symbol}} </td>
++                    <td mat-cell *matCellDef="let element"> {{element.name}} </td>
+                 </ng-container>
+ 
+                 <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+diff --git a/src/app/modules/dashboard/dashboard.component.ts b/src/app/modules/dashboard/dashboard.component.ts
+index d5817a14ed0e7b359d227c95fc65902415522c6c..283351e9cb34d1bbf4fb418680b7e6a48105e3e6 100644
+--- a/src/app/modules/dashboard/dashboard.component.ts
++++ b/src/app/modules/dashboard/dashboard.component.ts
+@@ -42,7 +42,7 @@ export class DashboardComponent implements OnInit {
+   cards = [];
+   pieChart = [];
+ 
+-  displayedColumns: string[] = ['position', 'name', 'weight', 'symbol'];
++  displayedColumns: string[] = ['position', 'name', 'weight'];
+   dataSource = new MatTableDataSource<PeriodicElement>(ELEMENT_DATA);
+ 
+   @ViewChild(MatPaginator, { static: true }) paginator: MatPaginator;
+diff --git a/src/app/shared/components/header/header.component.html b/src/app/shared/components/header/header.component.html
+index ee85257bd2e13b1dbe41a26a8c0fd8c87c70c007..e8a8193db85318b3273128fdc38de43fc07d8b5f 100644
+--- a/src/app/shared/components/header/header.component.html
++++ b/src/app/shared/components/header/header.component.html
+@@ -19,7 +19,7 @@
+                     </button>
+                 </li>
+                 <li>
+-                    <button mat-button [matMenuTriggerFor]="menu">
++                    <button mat-button>
+                         <mat-icon>person_outline</mat-icon>
+                     </button>
+                     <mat-menu #menu="matMenu">
+diff --git a/src/app/shared/components/header/header.component.ts b/src/app/shared/components/header/header.component.ts
+index 4702e2a43996804c953b2142ac6aff3f1377efe8..8b7d31406a210aec018b38cbf3fafefa9c875c52 100644
+--- a/src/app/shared/components/header/header.component.ts
++++ b/src/app/shared/components/header/header.component.ts
+@@ -14,7 +14,6 @@ export class HeaderComponent implements OnInit {
+   ngOnInit() { }
+ 
+   toggleSideBar() {
+-    this.toggleSideBarForMe.emit();
+     setTimeout(() => {
+       window.dispatchEvent(
+         new Event('resize')
+diff --git a/src/app/shared/widgets/area/area.component.ts b/src/app/shared/widgets/area/area.component.ts
+index 4f033d646f8ab0d246161d1616b1e382c6460b12..070d13b31b8feed6d53dc1c7082c286c4722d282 100644
+--- a/src/app/shared/widgets/area/area.component.ts
++++ b/src/app/shared/widgets/area/area.component.ts
+@@ -20,7 +20,7 @@ export class AreaComponent implements OnInit {
+   ngOnInit() {
+     this.chartOptions = {
+       chart: {
+-        type: 'area'
++        type: 'line'
+       },
+       title: {
+         text: 'Random DATA'
+diff --git a/src/app/shared/widgets/card/card.component.html b/src/app/shared/widgets/card/card.component.html
+index 2c716ce79f4ac899aebf5545aa9e363d7e678722..1732b7a20e7ff20cc11fc4cb5cfc9cea6985290a 100644
+--- a/src/app/shared/widgets/card/card.component.html
++++ b/src/app/shared/widgets/card/card.component.html
+@@ -4,7 +4,7 @@
+     <span class="total">{{ total }}</span>
+ 
+     <span>
+-        <mat-icon color="primary">trending_up</mat-icon>
++        <mat-icon color="warn">trending_up</mat-icon>
+     </span>
+ 
+     <span class="description">
+diff --git a/src/app/shared/widgets/card/card.component.ts b/src/app/shared/widgets/card/card.component.ts
+index 839b6749a0c0391a9f2fae35ff85e59b487a6cc7..97e9f7ee627f97b44fc98198b044ab284920f0aa 100644
+--- a/src/app/shared/widgets/card/card.component.ts
++++ b/src/app/shared/widgets/card/card.component.ts
+@@ -45,7 +45,7 @@ export class CardComponent implements OnInit {
+         enabled: false
+       },
+       exporting: {
+-        enabled: false,
++        enabled: true,
+       },
+       xAxis: {
+         labels: {
+diff --git a/src/app/shared/widgets/pie/pie.component.ts b/src/app/shared/widgets/pie/pie.component.ts
+index 0d59d9a4fb8b88d4c04a2dc68df487493ee373d7..b6703916f0164fcc8bfa24b3b0624a4552317590 100644
+--- a/src/app/shared/widgets/pie/pie.component.ts
++++ b/src/app/shared/widgets/pie/pie.component.ts
+@@ -44,7 +44,7 @@ export class PieComponent implements OnInit {
+         enabled: true
+       },
+       credits: {
+-        enabled: false
++        enabled: true
+       },
+       series: [{
+         name: 'Brands',

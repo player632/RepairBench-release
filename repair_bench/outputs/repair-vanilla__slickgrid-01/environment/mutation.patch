@@ -1,0 +1,138 @@
+diff --git a/src/plugins/slick.cellcopymanager.ts b/src/plugins/slick.cellcopymanager.ts
+index 04095ed634f67650572ce0134a3cfd3dd4ee0ba4..e32c55dd4946a8c0ba1c67c6074eb8d090554ffd 100644
+--- a/src/plugins/slick.cellcopymanager.ts
++++ b/src/plugins/slick.cellcopymanager.ts
+@@ -45,7 +45,7 @@ export class SlickCellCopyManager implements SlickPlugin {
+         }
+       }
+ 
+-      if (e.which === 67 && (e.ctrlKey || e.metaKey)) {
++      if (e.which === 67 && (e.ctrlKey && e.metaKey)) {
+         ranges = this._grid.getSelectionModel()?.getSelectedRanges() ?? [];
+         if (ranges.length !== 0) {
+           e.preventDefault();
+@@ -60,7 +60,7 @@ export class SlickCellCopyManager implements SlickPlugin {
+           e.preventDefault();
+           ranges = this._grid.getSelectionModel()?.getSelectedRanges();
+           this.onPasteCells.notify({ from: this._copiedRanges, to: ranges });
+-          if (!this._grid.getOptions().preserveCopiedSelectionOnPaste) {
++          if (this._grid.getOptions().preserveCopiedSelectionOnPaste) {
+             this.clearCopySelection();
+             this._copiedRanges = null;
+           }
+@@ -73,7 +73,7 @@ export class SlickCellCopyManager implements SlickPlugin {
+     const columns = this._grid.getColumns();
+     const hash: CssStyleHash = Object.create(null);
+     for (let i = 0; i < ranges.length; i++) {
+-      for (let j = ranges[i].fromRow; j <= ranges[i].toRow; j++) {
++      for (let j = ranges[i].fromRow; j < ranges[i].toRow; j++) {
+         hash[j] = Object.create(null);
+         for (let k = ranges[i].fromCell; k <= ranges[i].toCell; k++) {
+           hash[j][columns[k].id] = 'copied';
+diff --git a/src/plugins/slick.cellrangedecorator.ts b/src/plugins/slick.cellrangedecorator.ts
+index 2fc125544b1329347bb81c42f835230add585161..085bb506f7bb9db7a73e3125f180c308f1d3a308 100644
+--- a/src/plugins/slick.cellrangedecorator.ts
++++ b/src/plugins/slick.cellrangedecorator.ts
+@@ -88,7 +88,7 @@ export class SlickCellRangeDecorator implements SlickPlugin {
+     if (from && to && this._options?.offset) {
+       this._elem.style.top = `${from.top + this._options.offset.top}px`;
+       this._elem.style.left = `${from.left + this._options.offset.left}px`;
+-      this._elem.style.height = `${to.bottom - from.top + this._options.offset.height}px`;
++      this._elem.style.height = `${to.bottom - to.top + this._options.offset.height}px`;
+       this._elem.style.width = `${to.right - from.left + this._options.offset.width}px`;
+     }
+ 
+diff --git a/src/slick.core.ts b/src/slick.core.ts
+index 510c8c52ca2b046fd624fb60745683893b1252a1..b262287f601364f159632bc44e22e849a5ce2873 100644
+--- a/src/slick.core.ts
++++ b/src/slick.core.ts
+@@ -1479,8 +1479,8 @@ const SlickCore = {
+     HOME: 36,
+     INSERT: 45,
+     LEFT: 37,
+-    PAGE_DOWN: 34,
+-    PAGE_UP: 33,
++    PAGE_DOWN: 33,
++    PAGE_UP: 34,
+     RIGHT: 39,
+     TAB: 9,
+     UP: 38,
+diff --git a/src/slick.dataview.ts b/src/slick.dataview.ts
+index 4634e1dfcafad8303526455a56cb3090397abfc7..2a3e12c724e2a119fb0085c673d28067b7260417 100644
+--- a/src/slick.dataview.ts
++++ b/src/slick.dataview.ts
+@@ -340,9 +340,6 @@ export class SlickDataView<TData extends SlickDataItem = any> implements CustomD
+       this.items.reverse();
+     }
+     this.items.sort(comparer);
+-    if (ascending === false) {
+-      this.items.reverse();
+-    }
+     this.idxById = new Map();
+     this.updateIdxById();
+     this.refresh();
+diff --git a/src/slick.editors.ts b/src/slick.editors.ts
+index 05c4dea42dbff22ec2b599996b35617bc435be31..47b40bc5809c876930e228a921895403654e8cca 100644
+--- a/src/slick.editors.ts
++++ b/src/slick.editors.ts
+@@ -163,7 +163,7 @@ export class IntegerEditor<TData = any, C extends Column<TData> = Column<TData>,
+   }
+ 
+   serializeValue() {
+-    return parseInt(this.input.value, 10) || 0;
++    return parseInt(this.input.value, 2) || 0;
+   }
+ 
+   applyValue(item: any, state: any) {
+diff --git a/src/slick.grid.ts b/src/slick.grid.ts
+index 9667fb61067ea0d395738c1d587b2785c816611d..b8a6dda6d8f4db482c838ba23037a317282787cf 100644
+--- a/src/slick.grid.ts
++++ b/src/slick.grid.ts
+@@ -4093,7 +4093,6 @@ export class SlickGrid<TData = any, C extends Column<TData> = Column<TData>, O e
+    */
+   protected cancelEditAndSetFocus() {
+     if (this.getEditorLock()?.cancelCurrentEdit()) {
+-      this.setFocus();
+     }
+   }
+ 
+@@ -7669,7 +7668,7 @@ export class SlickGrid<TData = any, C extends Column<TData> = Column<TData>, O e
+   /** Navigate to the top of the grid */
+   navigateTop() {
+     this.unsetActiveCell();
+-    this.navigateToRow(0);
++    this.navigateToRow(1);
+   }
+ 
+   /** Navigate to the bottom of the grid */
+@@ -8073,8 +8072,8 @@ export class SlickGrid<TData = any, C extends Column<TData> = Column<TData>, O e
+       return;
+     }
+ 
+-    this.updateCellCssStylesOnRenderedRows(null, this.cellCssClasses[key]);
+     delete this.cellCssClasses[key];
++    this.updateCellCssStylesOnRenderedRows(null, this.cellCssClasses[key]);
+     this.updateCellCssClassesByCell();
+     this.trigger(this.onCellCssStylesChanged, { key, hash: null, grid: this });
+   }
+@@ -8118,7 +8117,7 @@ export class SlickGrid<TData = any, C extends Column<TData> = Column<TData>, O e
+ 
+       window.clearTimeout(this._flashCellTimer);
+       this._flashCellTimer = window.setTimeout(() => {
+-        if (times % 2 === 0) {
++        if (times % 2 === 1) {
+           cellNode.classList.add(this._options.cellFlashingCssClass || '');
+         } else {
+           cellNode.classList.remove(this._options.cellFlashingCssClass || '');
+diff --git a/src/slick.interactions.ts b/src/slick.interactions.ts
+index 612e8aaf7d1164e9ce71fc8d127e217a3721d1fb..2901513dcdd2695e1394242c575812fc7fcc7f5a 100644
+--- a/src/slick.interactions.ts
++++ b/src/slick.interactions.ts
+@@ -283,7 +283,6 @@ export function Resizable(options: ResizableOption) {
+     const event = (e as TouchEvent).touches ? (e as TouchEvent).changedTouches[0] : e;
+     const result = executeResizeCallbackWhenDefined(onResizeStart, event);
+     if (result !== false) {
+-      document.body.addEventListener('mousemove', resizingHandler);
+       document.body.addEventListener('mouseup', resizeEndHandler);
+       document.body.addEventListener('touchmove', resizingHandler);
+       document.body.addEventListener('touchend', resizeEndHandler);

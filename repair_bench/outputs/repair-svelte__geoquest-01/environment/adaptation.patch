@@ -1,0 +1,187 @@
+diff --git a/src/app.html b/src/app.html
+index cbf80bc..c482679 100644
+--- a/src/app.html
++++ b/src/app.html
+@@ -30,8 +30,5 @@
+     </head>
+     <body class="overflow-hidden">
+         <div id="svelte" class="bg-background">%sveltekit.body%</div>
+-        <!-- Cloudflare Web Analytics -->
+-        <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "f77c4b53fb6f4664bd168a1e34fe748e"}'></script>
+-        <!-- End Cloudflare Web Analytics -->
+     </body>
+ </html>
+diff --git a/src/lib/ui/BuyMeACoffee.svelte b/src/lib/ui/BuyMeACoffee.svelte
+deleted file mode 100644
+index bcd3ca2..0000000
+--- a/src/lib/ui/BuyMeACoffee.svelte
++++ /dev/null
+@@ -1,51 +0,0 @@
+-<script lang="ts">
+-    import Cookies from 'js-cookie'
+-    import {isSupporter} from '$lib/jwt'
+-    import {onMount} from 'svelte'
+-
+-    const cookieName = 'buymeacoffeevisible'
+-
+-    let timer = 300
+-    let el: HTMLElement | null
+-
+-    onMount(async () => {
+-        el = document.getElementById('bmc-wbtn')
+-        const supporter = await isSupporter()
+-
+-        const interval = setInterval(() => {
+-            if ((timer <= 0 || Cookies.get(cookieName)) && !supporter) {
+-                el?.classList?.add('show')
+-                Cookies.set(cookieName, true)
+-                clearInterval(interval)
+-                return
+-            }
+-            timer = timer - 1
+-        }, 1000)
+-    })
+-</script>
+-
+-<svelte:head>
+-    <script
+-        defer
+-        data-name="BMC-Widget"
+-        data-cfasync="false"
+-        src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
+-        data-id="woutdp"
+-        data-description="Support me on Buy me a coffee!"
+-        data-message=""
+-        data-color="#FE8019"
+-        data-position="Right"
+-        data-x_margin="20"
+-        data-y_margin="20"
+-    >
+-    </script>
+-</svelte:head>
+-
+-<style global lang="stylus">
+-    #bmc-wbtn
+-        transform translateY(100px)
+-        &.show
+-            transform translateY(0)
+-        @media screen and (max-width: 767px)
+-            display none !important
+-</style>
+diff --git a/src/lib/ui/UI.svelte b/src/lib/ui/UI.svelte
+index d76e8dd..8d03444 100644
+--- a/src/lib/ui/UI.svelte
++++ b/src/lib/ui/UI.svelte
+@@ -11,7 +11,6 @@
+     import IconMistake from '$lib/icons/IconMistake.svelte'
+     import {chosenMap, noPanNoZoom, showFlagOnly, showTimer} from '$lib/store'
+     import {t} from '$lib/translations'
+-    import BuyMeACoffee from '$lib/ui/BuyMeACoffee.svelte'
+     import Menu from '$lib/ui/menu/Menu.svelte'
+     import Notifications from '$lib/ui/Notifications.svelte'
+     import {achieveAchievement, getTimeStringFromMs} from '$lib/utils'
+@@ -186,5 +185,3 @@
+ {/if}
+ 
+ <Notifications />
+-
+-<BuyMeACoffee />
+diff --git a/src/lib/ui/menu/AboutMenu.svelte b/src/lib/ui/menu/AboutMenu.svelte
+index e23ea40..e697ac7 100644
+--- a/src/lib/ui/menu/AboutMenu.svelte
++++ b/src/lib/ui/menu/AboutMenu.svelte
+@@ -38,11 +38,6 @@
+     >
+         <span class="ml-4 mr-2 text-gray"><IconEmail /></span>geoquest@wout.space
+     </a>
+-    <div class="min-w-full bg-brand-buy-me-a-coffee rounded-full hover:scale-[1.02] transition-all">
+-        <a href="https://www.buymeacoffee.com/woutdp" target="_blank" class="flex" rel="noreferrer">
+-            <img class="h-[47px] w-[170px] ml-4" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" />
+-        </a>
+-    </div>
+     {#if inIframe || dev}
+         <a class="bg-background text-foreground p-3 rounded-full hover:scale-[1.02] transition-all flex items-center" target="_blank" href="https://geoquest.gg/">
+             <span class="ml-3 mr-2 text-foreground"><IconWorld /></span><span class="font-black underline">geoquest.gg</span>
+diff --git a/src/routes/api/webhooks/coffee/+server.ts b/src/routes/api/webhooks/coffee/+server.ts
+deleted file mode 100644
+index 84ca10a..0000000
+--- a/src/routes/api/webhooks/coffee/+server.ts
++++ /dev/null
+@@ -1,77 +0,0 @@
+-import {json} from '@sveltejs/kit'
+-import {dev} from '$app/environment'
+-
+-export async function POST({request, platform}) {
+-    const secret = platform.env.COFFEE_WEBHOOK_SECRET || 'SECRET'
+-    const signature = request.headers.get('x-signature-sha256')
+-
+-    if (!signature) return json({error: 'missing signature'}, {status: 400})
+-
+-    const rawBody = await request.text()
+-
+-    if ((await generateSignature(secret, rawBody)) !== signature && !dev) {
+-        return json({error: 'Invalid signature'}, {status: 401})
+-    }
+-
+-    let result = await platform.env.DB.prepare('SELECT * FROM users').run()
+-
+-    const data = JSON.parse(rawBody)
+-
+-    if (data.type === 'donation.created') {
+-        const code = generateCode(6)
+-        const email = data.data.supporter_email
+-        let queryResult = await platform.env.DB.prepare('INSERT OR IGNORE INTO users (email, code) VALUES (?, ?)').bind(email, code).run()
+-        if (queryResult.meta.changes > 0) await sendEmail(email, code, platform.env.MAILGUN_API_KEY)
+-        return json({success: true}, {status: 200})
+-    }
+-
+-    if (data.type === 'donation.refunded') {
+-        const email = data.data.supporter_email
+-        await platform.env.DB.prepare('DELETE FROM users WHERE email=(?)').bind(email).run()
+-        return json({success: true}, {status: 200})
+-    }
+-
+-    return json({success: false}, {status: 204})
+-}
+-
+-async function generateSignature(secret, rawBody) {
+-    const encoder = new TextEncoder()
+-    const keyData = encoder.encode(secret)
+-    const key = await crypto.subtle.importKey('raw', keyData, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign'])
+-    const dataBuffer = encoder.encode(rawBody)
+-    const signatureBuffer = await crypto.subtle.sign('HMAC', key, dataBuffer)
+-    return Array.from(new Uint8Array(signatureBuffer))
+-        .map(b => b.toString(16).padStart(2, '0'))
+-        .join('')
+-}
+-
+-function generateCode(length = 10) {
+-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+-    return Array.from({length}, () => characters[Math.floor(Math.random() * characters.length)]).join('')
+-}
+-
+-async function sendEmail(email, code, api_key) {
+-    const domain = 'geoquest.gg'
+-    const url = `https://api.mailgun.net/v3/${domain}/messages`
+-    const params = new URLSearchParams()
+-    params.append('from', 'noreply@geoquest.gg')
+-    params.append('to', email)
+-    params.append('subject', 'GeoQuest.gg - Your passcode')
+-    params.append('text', `Thank you for your support! Your GeoQuest passcode is: ${code}`)
+-    params.append('html', `Thank you for your support! Your <a href="https://geoquest.gg">GeoQuest</a> passcode is: <b>${code}</b>`)
+-
+-    const response = await fetch(url, {
+-        method: 'POST',
+-        headers: {
+-            Authorization: 'Basic ' + Buffer.from(`api:${api_key}`).toString('base64'),
+-            'Content-Type': 'application/x-www-form-urlencoded'
+-        },
+-        body: params.toString()
+-    })
+-
+-    if (!response.ok) {
+-        console.error('Error sending email:', await response.text())
+-    } else {
+-        console.log('Email sent:', await response.json())
+-    }
+-}

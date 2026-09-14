@@ -1,0 +1,2315 @@
+diff --git a/src/App.vue b/src/App.vue
+index 05e0191..ec68648 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -79,6 +79,7 @@ import { formulaEditor, closeFormulaEditor } from './lib/formula-editor-bus';
+ import { track } from './lib/telemetry';
+ import { openWelcomeTour } from './lib/welcome-tour';
+ import { useWorkspaceStore } from './stores/workspace';
++import { useRecentEditsStore } from './stores/recentEdits';
+ import { useWorkspaceIndexStore } from './stores/workspaceIndex';
+ import { useSavedViewsStore } from './stores/savedViews';
+ import { usePropertiesStore } from './stores/properties';
+@@ -161,6 +162,16 @@ pomodoro.rehydrate();
+ // Pinia internals. Dev-only convenience — release builds ignore the
+ // extra hook.
+ (window as any).usePomodoroStore = usePomodoroStore;
++// Repair-bench instrumentation: offline QA bridge. Exposes the pinia store
++// constructors so checkpoints can seed/observe deterministic state. Each call
++// returns the shared store instance (pinia is already active at this point).
++(window as any).__SOLOMD__ = {
++  tabs: useTabsStore,
++  settings: useSettingsStore,
++  pomodoro: usePomodoroStore,
++  workspace: useWorkspaceStore,
++  recentEdits: useRecentEditsStore,
++};
+ const { t } = useI18n();
+ 
+ const cursorLine = ref(1);
+diff --git a/src/components/CommandPalette.vue b/src/components/CommandPalette.vue
+index 975f198..f686f69 100644
+--- a/src/components/CommandPalette.vue
++++ b/src/components/CommandPalette.vue
+@@ -120,10 +120,11 @@ async function runIdx(i: number) {
+         v-model="query"
+         @keydown="onKey"
+         class="palette__input"
++        data-testid="smd-cmd-input"
+         placeholder="Type a command…"
+         spellcheck="false"
+       />
+-      <ul class="palette__list" ref="listRef" v-if="filtered.length">
++      <ul class="palette__list" ref="listRef" data-testid="smd-cmd-list" v-if="filtered.length">
+         <li
+           v-for="(c, i) in filtered"
+           :key="c.id"
+diff --git a/src/components/Editor.vue b/src/components/Editor.vue
+index be7b8d5..31ddc30 100644
+--- a/src/components/Editor.vue
++++ b/src/components/Editor.vue
+@@ -2264,6 +2264,8 @@ function buildExtensions() {
+   const markdownSafeMode = false;
+   const windowsImeSafeMode = false;
+   return [
++    // Repair-bench instrumentation: stable testid on the editable surface.
++    EditorView.contentAttributes.of({ 'data-testid': 'smd-cm-content' }),
+     imeCompositionGuard(),
+     history(),
+     ...(windowsImeSafeMode
+@@ -2413,6 +2415,9 @@ onMounted(() => {
+     state: EditorState.create({ doc: props.tab.content, extensions: buildExtensions() }),
+     parent: host.value,
+   });
++  // Repair-bench instrumentation: expose the live EditorView for deterministic
++  // checkpoint edits (same spirit as the DEV-only __solomdActiveView below).
++  if ((window as any).__SOLOMD__) (window as any).__SOLOMD__.view = view;
+   maybeRestoreSession();
+   // Expose the focused EditorView on `window` for dev-bridge / self-test
+   // harnesses. Vite injects `import.meta.env.DEV === true` only in dev
+diff --git a/src/components/Outline.vue b/src/components/Outline.vue
+index 9704208..463b710 100644
+--- a/src/components/Outline.vue
++++ b/src/components/Outline.vue
+@@ -258,15 +258,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey));
+ </script>
+ 
+ <template>
+-  <aside class="outline">
++  <aside class="outline" data-testid="smd-outline">
+     <div class="outline__header">
+       <span>Outline</span>
+       <button class="outline__close" @click="tabs.activeId && tabs.toggleOutline(tabs.activeId)">×</button>
+     </div>
+     <div v-if="!visibleItems.length" class="outline__empty">No headings</div>
+-    <ul ref="listRef" class="outline__list" v-else>
++    <ul ref="listRef" class="outline__list" data-testid="smd-outline-list" v-else>
+       <li
+         v-for="(it, i) in visibleItems"
++        data-testid="smd-outline-item"
+         :key="`${it.line}-${it.text}`"
+         :class="['outline__item', { 'outline__item--active': i === activeIndex }]"
+         :style="{ '--outline-pl': 8 + it.depth * 12 + 'px' }"
+@@ -288,6 +289,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey));
+         >{{ labelAt(i) }}</span>
+         <button
+           class="outline__label"
++          data-testid="smd-outline-label"
+           @click="emit('goto', it.line)"
+           :title="it.text"
+         >
+diff --git a/src/components/PaneTabBar.vue b/src/components/PaneTabBar.vue
+index 248f2fb..5a1b09b 100644
+--- a/src/components/PaneTabBar.vue
++++ b/src/components/PaneTabBar.vue
+@@ -297,13 +297,14 @@ onBeforeUnmount(() => {
+ </script>
+ 
+ <template>
+-  <div class="pane-tabbar">
+-    <div class="tabs" ref="tabsEl" @wheel.prevent="onTabsWheel">
++  <div class="pane-tabbar" data-testid="smd-tabbar">
++    <div class="tabs" ref="tabsEl" data-testid="smd-tabs" @wheel.prevent="onTabsWheel">
+       <div
+         v-for="t in tabs.tabs"
+         :key="t.id"
+         :data-tab-id="t.id"
+         class="tab"
++        data-testid="smd-tab"
+         :class="{ 'tab--active': t.id === activeTabId, 'tab--dragging': tiles.dragTabId === t.id }"
+         @click="onTabClick(t.id)"
+         @pointerdown="onTabPointerDown($event, t.id)"
+@@ -322,18 +323,20 @@ onBeforeUnmount(() => {
+         <span class="tab__dot" v-if="tabs.isDirty(t.id)">●</span>
+         <button
+           class="tab__close"
++          data-testid="smd-tab-close"
+           @click.stop="files.closeTabSafe(t.id)"
+           aria-label="Close tab"
+         >×</button>
+       </div>
+     </div>
+-    <button class="tabbar__new" @click="files.newFile" title="New tab (Ctrl+N)">+</button>
++    <button class="tabbar__new" data-testid="smd-new-tab" @click="files.newFile" title="New tab (Ctrl+N)">+</button>
+ 
+     <!-- Context menu -->
+     <Teleport to="body">
+       <div
+         v-if="ctxMenu"
+         class="ctx-menu"
++        data-testid="smd-tab-menu"
+         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+         @click.stop
+       >
+@@ -343,7 +346,7 @@ onBeforeUnmount(() => {
+         <button class="ctx-item" :disabled="!ctxFlags?.hasRight"  @click="onTabAction('closeRight')">{{ t('tabMenu.closeRight') }}</button>
+         <button class="ctx-item" :disabled="!ctxFlags?.hasOthers" @click="onTabAction('closeOthers')">{{ t('tabMenu.closeOthers') }}</button>
+         <div class="ctx-sep" />
+-        <button class="ctx-item" :disabled="!ctxFlags?.hasSaved" @click="onTabAction('closeSaved')">{{ t('tabMenu.closeSaved') }}</button>
++        <button class="ctx-item" :disabled="!ctxFlags?.hasSaved" data-testid="smd-menu-close-saved" @click="onTabAction('closeSaved')">{{ t('tabMenu.closeSaved') }}</button>
+         <button class="ctx-item" :disabled="!ctxFlags?.hasAny"   @click="onTabAction('closeAll')">{{ t('tabMenu.closeAll') }}</button>
+         <div class="ctx-sep" />
+         <button class="ctx-item" :disabled="!ctxFlags?.hasFilePath" @click="onTabAction('revealInFolder')">{{ t('tabMenu.revealInFolder') }}</button>
+diff --git a/src/components/PomodoroPill.vue b/src/components/PomodoroPill.vue
+index 380b5f6..7765385 100644
+--- a/src/components/PomodoroPill.vue
++++ b/src/components/PomodoroPill.vue
+@@ -70,6 +70,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
+ <template>
+   <button
+     class="pomo-pill"
++    data-testid="smd-pomo-pill"
+     :class="{
+       'pomo-pill--flash': pomodoro.flashing,
+       'pomo-pill--break': pomodoro.isBreak && !pomodoro.flashing,
+@@ -79,18 +80,19 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
+     @click="onClick"
+     @contextmenu="onContextMenu"
+   >
+-    <span class="pomo-pill__icon">{{ tomatoEmoji }}</span>
+-    <span class="pomo-pill__time">{{ pomodoro.flashing ? t('pomodoro.done') : pomodoro.countdown }}</span>
++    <span class="pomo-pill__icon" data-testid="smd-pomo-icon">{{ tomatoEmoji }}</span>
++    <span class="pomo-pill__time" data-testid="smd-pomo-time">{{ pomodoro.flashing ? t('pomodoro.done') : pomodoro.countdown }}</span>
+   </button>
+   <div
+     v-if="menuOpen"
+     class="pomo-pill__menu"
++    data-testid="smd-pomo-menu"
+     :style="{ left: `${menuX}px`, top: `${menuY}px` }"
+   >
+-    <button class="pomo-pill__menu-item" @mousedown.prevent="onStop">
++    <button class="pomo-pill__menu-item" data-testid="smd-pomo-stop" @mousedown.prevent="onStop">
+       {{ t('pomodoro.stop') }}
+     </button>
+-    <button class="pomo-pill__menu-item" @mousedown.prevent="onReset">
++    <button class="pomo-pill__menu-item" data-testid="smd-pomo-reset" @mousedown.prevent="onReset">
+       {{ t('pomodoro.reset') }}
+     </button>
+   </div>
+diff --git a/src/components/QuickSwitcher.vue b/src/components/QuickSwitcher.vue
+index bfd8a0f..f8984b0 100644
+--- a/src/components/QuickSwitcher.vue
++++ b/src/components/QuickSwitcher.vue
+@@ -118,15 +118,17 @@ async function openIdx(i: number) {
+         v-model="query"
+         @keydown="onKey"
+         class="quick-switcher__input"
++        data-testid="smd-qs-input"
+         :placeholder="t('quickSwitcher.placeholder')"
+         spellcheck="false"
+         autocomplete="off"
+       />
+-      <ul ref="listRef" class="quick-switcher__list" v-if="results.length">
++      <ul ref="listRef" class="quick-switcher__list" data-testid="smd-qs-list" v-if="results.length">
+         <li
+           v-for="(path, i) in results"
+           :key="path"
+           class="quick-switcher__item"
++          data-testid="smd-qs-item"
+           :class="{ 'quick-switcher__item--active': i === selectedIdx }"
+           @click="openIdx(i)"
+           @mouseenter="selectedIdx = i"
+diff --git a/src/components/StatusBar.vue b/src/components/StatusBar.vue
+index 155c4a3..74bc55f 100644
+--- a/src/components/StatusBar.vue
++++ b/src/components/StatusBar.vue
+@@ -76,17 +76,17 @@ function onPillClick() {
+ </script>
+ 
+ <template>
+-  <div class="statusbar">
+-    <span class="seg seg--wide">Ln {{ props.line }}, Col {{ props.col }}</span>
++  <div class="statusbar" data-testid="smd-statusbar">
++    <span class="seg seg--wide" data-testid="smd-cursor-pos">Ln {{ props.line }}, Col {{ props.col }}</span>
+     <span class="sep sep--wide">·</span>
+-    <span class="seg seg--wide">{{ lineCount }} lines</span>
++    <span class="seg seg--wide" data-testid="smd-line-count">{{ lineCount }} lines</span>
+     <span class="sep sep--wide">·</span>
+-    <span class="seg">{{ wordCount }} words</span>
++    <span class="seg" data-testid="smd-word-count">{{ wordCount }} words</span>
+     <span v-if="cjkCount > 0" class="seg seg--cjk" :title="`${cjkCount} CJK characters`">
+       ({{ cjkCount }} 字)
+     </span>
+     <span class="sep sep--wide">·</span>
+-    <span class="seg seg--wide">{{ charCount }} chars</span>
++    <span class="seg seg--wide" data-testid="smd-char-count">{{ charCount }} chars</span>
+     <span v-if="selStats" class="seg seg--selection" :title="t('statusBar.selectionTooltip')">
+       ·
+       {{ t('statusBar.selection', { words: String(selStats.total), chars: String(selStats.chars) }) }}
+diff --git a/src/components/TabBar.vue b/src/components/TabBar.vue
+index e730814..312fbe2 100644
+--- a/src/components/TabBar.vue
++++ b/src/components/TabBar.vue
+@@ -119,13 +119,14 @@ function onTabsWheel(e: WheelEvent) {
+ </script>
+ 
+ <template>
+-  <div class="tabbar">
+-    <div class="tabs" ref="tabsRef" @wheel="onTabsWheel">
++  <div class="tabbar" data-testid="smd-tabbar">
++    <div class="tabs" ref="tabsRef" data-testid="smd-tabs" @wheel="onTabsWheel">
+       <div
+         v-for="tab in tabs.tabs"
+         :key="tab.id"
+         :data-tab-id="tab.id"
+         class="tab"
++        data-testid="smd-tab"
+         :class="{ 'tab--active': tab.id === tabs.activeId }"
+         @click="tabs.activate(tab.id)"
+         @mousedown.middle.prevent="files.closeTabSafe(tab.id)"
+@@ -148,12 +149,13 @@ function onTabsWheel(e: WheelEvent) {
+         >×</button>
+       </div>
+     </div>
+-    <button class="tabbar__new" @click="files.newFile" title="New tab (Ctrl+N)">+</button>
++    <button class="tabbar__new" data-testid="smd-new-tab" @click="files.newFile" title="New tab (Ctrl+N)">+</button>
+ 
+     <!-- Context menu portal -->
+     <ul
+       v-if="menu"
+       class="tab-menu"
++      data-testid="smd-tab-menu"
+       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+       @click.stop
+     >
+@@ -163,7 +165,7 @@ function onTabsWheel(e: WheelEvent) {
+       <li><button :disabled="!menuFlags?.hasRight"  @mousedown.prevent="onMenu('closeRight')">{{ t('tabMenu.closeRight') }}</button></li>
+       <li><button :disabled="!menuFlags?.hasOthers" @mousedown.prevent="onMenu('closeOthers')">{{ t('tabMenu.closeOthers') }}</button></li>
+       <li class="tab-menu__sep"></li>
+-      <li><button :disabled="!menuFlags?.hasSaved" @mousedown.prevent="onMenu('closeSaved')">{{ t('tabMenu.closeSaved') }}</button></li>
++      <li><button :disabled="!menuFlags?.hasSaved" data-testid="smd-menu-close-saved" @mousedown.prevent="onMenu('closeSaved')">{{ t('tabMenu.closeSaved') }}</button></li>
+       <li><button :disabled="!menuFlags?.hasAll"   @mousedown.prevent="onMenu('closeAll')">{{ t('tabMenu.closeAll') }}</button></li>
+       <li class="tab-menu__sep"></li>
+       <li><button :disabled="!menuFlags?.hasFilePath" @mousedown.prevent="onMenu('revealInFolder')">{{ t('tabMenu.revealInFolder') }}</button></li>
+diff --git a/src/components/Toolbar.vue b/src/components/Toolbar.vue
+index d8ba2b2..95f77d7 100644
+--- a/src/components/Toolbar.vue
++++ b/src/components/Toolbar.vue
+@@ -1011,6 +1011,7 @@ onBeforeUnmount(() => {
+       </button>
+       <button
+         class="icon-btn"
++        data-testid="smd-theme-toggle"
+         @click="() => { settings.toggleTheme(); track('theme_changed', { theme: settings.theme }); }"
+         :title="settings.theme === 'dark' ? t('toolbar.lightMode') : t('toolbar.darkMode')"
+       >
+diff --git a/src/components/WritingGoals.vue b/src/components/WritingGoals.vue
+index d13574e..1a9be9c 100644
+--- a/src/components/WritingGoals.vue
++++ b/src/components/WritingGoals.vue
+@@ -180,6 +180,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick, true
+   >
+     <button
+       class="writing-goals__pill"
++      data-testid="smd-goal-pill"
+       :class="{
+         'writing-goals__pill--complete': wg.reachedGoal.value,
+         'writing-goals__pill--pulse': justCompleted,
+@@ -189,7 +190,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick, true
+       @click="togglePopover"
+     >
+       <span class="writing-goals__bar"></span>
+-      <span class="writing-goals__label">
++      <span class="writing-goals__label" data-testid="smd-goal-text">
+         {{ pillText }}
+         <span v-if="wg.reachedGoal.value" class="writing-goals__check">✓</span>
+       </span>
+diff --git a/src/lib/cm-task-list.ts b/src/lib/cm-task-list.ts
+index e2fe65f..f2ef6ff 100644
+--- a/src/lib/cm-task-list.ts
++++ b/src/lib/cm-task-list.ts
+@@ -52,6 +52,7 @@ class TaskWidget extends WidgetType {
+     cb.type = 'checkbox';
+     cb.checked = this.checked;
+     cb.className = 'cm-task-checkbox';
++    cb.setAttribute('data-testid', 'smd-task-checkbox');
+     cb.style.cursor = 'pointer';
+     cb.style.verticalAlign = 'middle';
+     cb.style.margin = '0 4px 0 0';
+diff --git a/src/lib/code-block-fidelity.selftest.mjs b/src/lib/code-block-fidelity.selftest.mjs
+deleted file mode 100644
+index 92c2a10..0000000
+--- a/src/lib/code-block-fidelity.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for code-block fidelity. Mirrors markdown-tables.selftest.mjs.
+- *
+- * Usage (from app/): node src/lib/code-block-fidelity.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./code-block-fidelity.test.ts');
+diff --git a/src/lib/code-block-fidelity.test.ts b/src/lib/code-block-fidelity.test.ts
+deleted file mode 100644
+index 643ac2e..0000000
+--- a/src/lib/code-block-fidelity.test.ts
++++ /dev/null
+@@ -1,108 +0,0 @@
+-/**
+- * Regression tests: nothing rewrites the inside of a code block.
+- *
+- * Every markdown preprocessing pass we run before markdown-it (table
+- * delimiter repair, numbered headings, list re-indentation, inline-HTML
+- * unwrapping) is line- or regex-based, which is exactly the shape of bug that
+- * eats source code: a competitor shipped a release where `==` inside a C++
+- * block was read as highlight syntax and swallowed the rest of the line.
+- * These assertions pin the boundary — code in, same code out.
+- *
+- * Run from `app/`:  node src/lib/code-block-fidelity.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import { renderMarkdown, preprocessMarkdown } from './markdown';
+-
+-/** The text markdown-it put inside <code>, HTML-entities decoded. */
+-function codeText(html: string): string {
+-  const m = /<code[^>]*>([\s\S]*?)<\/code>/.exec(html);
+-  assert.ok(m, `no <code> element in:\n${html}`);
+-  return m![1]
+-    .replace(/<[^>]+>/g, '') // syntax-highlight spans
+-    .replace(/&lt;/g, '<')
+-    .replace(/&gt;/g, '>')
+-    .replace(/&quot;/g, '"')
+-    .replace(/&#39;/g, "'")
+-    .replace(/&amp;/g, '&');
+-}
+-
+-function fenced(body: string, lang = 'cpp'): string {
+-  return '```' + lang + '\n' + body + '\n```\n';
+-}
+-
+-test('C++ with == and << survives verbatim', () => {
+-  const body = [
+-    '#include <iostream>',
+-    'int main() {',
+-    '  if (a == b && c != d) {',
+-    '    std::cout << "x==y" << std::endl;',
+-    '  }',
+-    '  return 0;',
+-    '}',
+-  ].join('\n');
+-  assert.equal(codeText(renderMarkdown(fenced(body))).trimEnd(), body);
+-});
+-
+-test('highlight, strikethrough, sub/sup and emphasis markers are inert in code', () => {
+-  const body = [
+-    'a ==b== c',
+-    'x ~~y~~ z',
+-    'H~2~O and x^2^',
+-    '**not bold** and *not italic*',
+-    '限制：**中文粗体** 也不该被解析',
+-  ].join('\n');
+-  assert.equal(codeText(renderMarkdown(fenced(body, 'text'))).trimEnd(), body);
+-});
+-
+-test('markdown-looking lines in code are not re-indented or renumbered', () => {
+-  const body = [
+-    '# not a heading',
+-    '## also not',
+-    '- item',
+-    '    - deep item',
+-    '1. one',
+-    '| a | b |',
+-    '|---|---|',
+-    '| 1 | 2 |',
+-  ].join('\n');
+-  assert.equal(codeText(renderMarkdown(fenced(body, 'md'))).trimEnd(), body);
+-  // The preprocessing passes must leave the fenced region byte-identical.
+-  const doc = '# Real heading\n\n' + fenced(body, 'md');
+-  assert.ok(preprocessMarkdown(doc).includes(body));
+-});
+-
+-test('a broken table inside code is not repaired', () => {
+-  // normalizeTableDelimiters rewrites `|--|--|` rows in prose; inside a fence
+-  // the sample table has to stay exactly as typed or the doc is lying.
+-  const body = ['| a | b |', '|--|--|', '| 1 | 2 |'].join('\n');
+-  const doc = fenced(body, 'markdown');
+-  assert.equal(codeText(renderMarkdown(doc)).trimEnd(), body);
+-});
+-
+-test('inline code is inert too', () => {
+-  const html = renderMarkdown('Use `a == b` and `~~x~~` here.\n');
+-  assert.match(html, /<code>a == b<\/code>/);
+-  assert.match(html, /<code>~~x~~<\/code>/);
+-  assert.doesNotMatch(html, /<s>|<mark>/);
+-});
+-
+-test('tilde fences hold the same guarantees', () => {
+-  const body = ['a ==b==', '```', 'still inside', '```'].join('\n');
+-  const html = renderMarkdown('~~~text\n' + body + '\n~~~\n');
+-  assert.equal(codeText(html).trimEnd(), body);
+-});
+-
+-test('== still means highlight in prose', () => {
+-  // The fix must not cost the feature: outside code, markdown-it-mark works.
+-  assert.match(renderMarkdown('a ==b== c\n'), /<mark>b<\/mark>/);
+-});
+-
+-test('indented code blocks keep their content', () => {
+-  const html = renderMarkdown('text\n\n    a ==b== c\n    x ~~y~~ z\n');
+-  const code = codeText(html);
+-  assert.ok(code.includes('a ==b== c'), code);
+-  assert.ok(code.includes('x ~~y~~ z'), code);
+-});
+diff --git a/src/lib/docx-template.selftest.mjs b/src/lib/docx-template.selftest.mjs
+deleted file mode 100644
+index 29f75a7..0000000
+--- a/src/lib/docx-template.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for DOCX template resolution.
+- *
+- * Usage (from app/): node src/lib/docx-template.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./docx-template.test.ts');
+diff --git a/src/lib/docx-template.test.ts b/src/lib/docx-template.test.ts
+deleted file mode 100644
+index 7ddab87..0000000
+--- a/src/lib/docx-template.test.ts
++++ /dev/null
+@@ -1,107 +0,0 @@
+-/**
+- * Unit tests for DOCX template resolution.
+- *
+- * Run from `app/`:  node src/lib/docx-template.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  DOCX_PRESETS,
+-  parseDocxFrontMatter,
+-  resolveDocxTemplate,
+-  firstHeading,
+-  renderHeaderText,
+-} from './docx-template';
+-
+-test('plain is what the exporter did before templates existed', () => {
+-  const t = resolveDocxTemplate('plain', '# Hi\n');
+-  assert.equal(t.cover, false);
+-  assert.equal(t.toc, false);
+-  assert.equal(t.header, '');
+-  assert.equal(t.pageNumbers, false);
+-  assert.equal(t.fontFamily, '');
+-});
+-
+-test('report and academic differ where it matters', () => {
+-  const r = DOCX_PRESETS.report;
+-  const a = DOCX_PRESETS.academic;
+-  assert.equal(r.header, '{title}');
+-  assert.equal(a.header, '');
+-  assert.equal(a.lineSpacing, 2);
+-  assert.ok(r.cover && r.toc && a.cover && a.toc);
+-});
+-
+-test('a docx: block overrides individual keys and leaves the rest', () => {
+-  const src = ['---', 'docx:', '  cover: false', '  fontSize: 14', '---', '', '# Doc'].join('\n');
+-  const t = resolveDocxTemplate('report', src);
+-  assert.equal(t.cover, false);       // overridden
+-  assert.equal(t.fontSizePt, 14);     // overridden
+-  assert.equal(t.toc, true);          // still the report preset
+-  assert.equal(t.pageNumbers, true);
+-});
+-
+-test('the block can switch preset, and other keys apply on top of the new one', () => {
+-  const src = ['---', 'docx:', '  preset: academic', '  lineSpacing: 1.5', '---', '# D'].join('\n');
+-  const t = resolveDocxTemplate('plain', src);
+-  assert.equal(t.preset, 'academic');
+-  assert.equal(t.fontFamily, 'Times New Roman');
+-  assert.equal(t.lineSpacing, 1.5);
+-});
+-
+-test('inline form works too', () => {
+-  const src = ['---', 'docx: { toc: false, header: "Q3" }', '---', '# D'].join('\n');
+-  const t = resolveDocxTemplate('report', src);
+-  assert.equal(t.toc, false);
+-  assert.equal(t.header, 'Q3');
+-});
+-
+-test('the block stops at the next top-level key', () => {
+-  const src = ['---', 'docx:', '  toc: false', 'title: Real Title', '---', '# Ignored'].join('\n');
+-  const fm = parseDocxFrontMatter(src);
+-  assert.deepEqual(fm, { toc: false });
+-  assert.equal(resolveDocxTemplate('report', src).title, 'Real Title');
+-});
+-
+-test('cover fields fall back: docx: → front matter → first H1 → caller', () => {
+-  assert.equal(resolveDocxTemplate('report', '# From Heading\n').title, 'From Heading');
+-  assert.equal(resolveDocxTemplate('report', 'no heading\n', 'file.md').title, 'file.md');
+-  const fm = ['---', 'title: FM', '---', '# Heading'].join('\n');
+-  assert.equal(resolveDocxTemplate('report', fm).title, 'FM');
+-  const both = ['---', 'title: FM', 'docx:', '  title: Explicit', '---', '# Heading'].join('\n');
+-  assert.equal(resolveDocxTemplate('report', both).title, 'Explicit');
+-});
+-
+-test('a hash inside fenced code is not the title', () => {
+-  const src = ['```sh', '# not a heading', '```', '', '# Real'].join('\n');
+-  assert.equal(firstHeading(src), 'Real');
+-});
+-
+-test('booleans accept the spellings people actually write', () => {
+-  for (const [v, expected] of [['true', true], ['yes', true], ['on', true], ['1', true],
+-                               ['false', false], ['no', false], ['off', false], ['0', false]] as const) {
+-    const src = ['---', 'docx:', `  toc: ${v}`, '---'].join('\n');
+-    assert.equal(parseDocxFrontMatter(src).toc, expected, `toc: ${v}`);
+-  }
+-});
+-
+-test('nonsense values are ignored rather than applied', () => {
+-  const src = ['---', 'docx:', '  preset: chaos', '  fontSize: huge', '  lineSpacing: -3', '---'].join('\n');
+-  assert.deepEqual(parseDocxFrontMatter(src), {});
+-  const t = resolveDocxTemplate('report', src);
+-  assert.equal(t.preset, 'report');
+-  assert.equal(t.fontSizePt, 11);
+-});
+-
+-test('a document with no docx: block is untouched by the parser', () => {
+-  assert.deepEqual(parseDocxFrontMatter('# Just a doc\n'), {});
+-  assert.deepEqual(parseDocxFrontMatter('---\ntitle: X\n---\n'), {});
+-});
+-
+-test('{title} is substituted into the running header', () => {
+-  const t = resolveDocxTemplate('report', '# Quarterly Report\n');
+-  assert.equal(renderHeaderText(t), 'Quarterly Report');
+-  const custom = resolveDocxTemplate('report', ['---', 'docx:', '  header: "ACME — {title}"', '---', '# Q3'].join('\n'));
+-  assert.equal(renderHeaderText(custom), 'ACME — Q3');
+-});
+diff --git a/src/lib/equations.selftest.mjs b/src/lib/equations.selftest.mjs
+deleted file mode 100644
+index 04069f6..0000000
+--- a/src/lib/equations.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for equation numbering.
+- *
+- * Usage (from app/): node src/lib/equations.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./equations.test.ts');
+diff --git a/src/lib/equations.test.ts b/src/lib/equations.test.ts
+deleted file mode 100644
+index 8c04d92..0000000
+--- a/src/lib/equations.test.ts
++++ /dev/null
+@@ -1,151 +0,0 @@
+-/**
+- * Unit tests for equation numbering and cross-references.
+- *
+- * Run from `app/`:  node src/lib/equations.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import { numberEquations, collectLabels, findMathSpanAt } from './equations';
+-
+-test('a document with no labels or refs is returned untouched', () => {
+-  const src = '# Title\n\n$$ a = b $$\n\ntext\n';
+-  assert.equal(numberEquations(src).text, src);
+-});
+-
+-test('a labelled block gets a number, a tag and an anchor', () => {
+-  const src = ['before', '', '$$', 'E = mc^2 \\label{einstein}', '$$', '', 'after'].join('\n');
+-  const { text, refs } = numberEquations(src);
+-  assert.deepEqual(refs, [{ label: 'einstein', display: '1' }]);
+-  assert.ok(text.includes('<a id="eq-einstein"></a>'), text);
+-  assert.ok(text.includes('\\tag{1}'), text);
+-  assert.ok(!text.includes('\\label'), text);
+-  assert.ok(text.includes('before') && text.includes('after'));
+-});
+-
+-test('numbering runs in document order', () => {
+-  const src = [
+-    '$$ a \\label{one} $$',
+-    '',
+-    '$$ b $$',
+-    '',
+-    '$$ c \\label{two} $$',
+-  ].join('\n');
+-  const { refs } = numberEquations(src);
+-  assert.deepEqual(refs, [
+-    { label: 'one', display: '1' },
+-    { label: 'two', display: '2' },
+-  ]);
+-});
+-
+-test('references become links to their anchors', () => {
+-  const src = ['$$ a \\label{x} $$', '', 'See \\eqref{x} and \\ref{x}.'].join('\n');
+-  const { text } = numberEquations(src);
+-  assert.ok(text.includes('See [(1)](#eq-x) and [1](#eq-x).'), text);
+-});
+-
+-test('a reference to a label that does not exist is left as written', () => {
+-  const src = ['$$ a \\label{x} $$', '', 'See \\eqref{typo}.'].join('\n');
+-  const { text } = numberEquations(src);
+-  assert.ok(text.includes('\\eqref{typo}'), text);
+-});
+-
+-test('an explicit \\tag wins and does not consume a number', () => {
+-  const src = [
+-    '$$ a \\label{star} \\tag{$\\star$} $$',
+-    '',
+-    '$$ b \\label{next} $$',
+-    '',
+-    'see \\eqref{star} and \\eqref{next}',
+-  ].join('\n');
+-  const { text, refs } = numberEquations(src);
+-  assert.deepEqual(refs, [
+-    { label: 'star', display: '$\\star$' },
+-    { label: 'next', display: '1' },
+-  ]);
+-  // the author's tag survives, and no second \tag was added
+-  assert.equal((text.match(/\\tag\{/g) || []).length, 2);
+-  assert.ok(text.includes('[($\\star$)](#eq-star)'), text);
+-});
+-
+-test('math inside fenced code is not numbered', () => {
+-  const src = ['```md', '$$ a \\label{x} $$', '```', '', 'text \\eqref{x}'].join('\n');
+-  const { text, refs } = numberEquations(src);
+-  assert.deepEqual(refs, []);
+-  assert.ok(text.includes('$$ a \\label{x} $$'), text);
+-  assert.ok(text.includes('\\eqref{x}'), text);
+-});
+-
+-test('a reference inside fenced code is left alone', () => {
+-  const src = ['$$ a \\label{x} $$', '', '```', 'write \\eqref{x} like this', '```', '', 'real \\eqref{x}'].join('\n');
+-  const { text } = numberEquations(src);
+-  assert.ok(text.includes('write \\eqref{x} like this'), text);
+-  assert.ok(text.includes('real [(1)](#eq-x)'), text);
+-});
+-
+-test('multi-line blocks keep their content', () => {
+-  const src = ['$$', '\\begin{aligned}', 'a &= b \\\\', 'c &= d', '\\end{aligned}', '\\label{sys}', '$$'].join('\n');
+-  const { text, refs } = numberEquations(src);
+-  assert.equal(refs[0].label, 'sys');
+-  assert.ok(text.includes('\\begin{aligned}'));
+-  assert.ok(text.includes('c &= d'));
+-  assert.ok(text.includes('\\tag{1}'));
+-});
+-
+-test('a duplicate label keeps its own number but resolves to the first', () => {
+-  const src = ['$$ a \\label{d} $$', '', '$$ b \\label{d} $$', '', 'ref \\eqref{d}'].join('\n');
+-  const { text, refs } = numberEquations(src);
+-  assert.deepEqual(refs, [{ label: 'd', display: '1' }]);
+-  assert.ok(text.includes('[(1)](#eq-d)'));
+-  assert.ok(text.includes('\\tag{2}'), text);
+-});
+-
+-test('collectLabels reports what autocomplete should offer', () => {
+-  const src = ['$$ a \\label{alpha} $$', '$$ b \\label{beta} $$'].join('\n');
+-  assert.deepEqual(collectLabels(src).map((r) => r.label), ['alpha', 'beta']);
+-});
+-
+-test('single-line and multi-line blocks can be mixed', () => {
+-  const src = ['$$ a \\label{one} $$', '', '$$', 'b \\label{two}', '$$'].join('\n');
+-  const { refs } = numberEquations(src);
+-  assert.deepEqual(refs.map((r) => r.display), ['1', '2']);
+-});
+-
+-test('finds the formula under the caret', () => {
+-  const doc = 'text $a+b$ more $$x^2$$ end';
+-  const inline = findMathSpanAt(doc, 7)!;
+-  assert.equal(inline.body, 'a+b');
+-  assert.equal(inline.display, false);
+-  assert.equal(doc.slice(inline.from, inline.to), '$a+b$');
+-
+-  const block = findMathSpanAt(doc, 19)!;
+-  assert.equal(block.body, 'x^2');
+-  assert.equal(block.display, true);
+-  assert.equal(doc.slice(block.from, block.to), '$$x^2$$');
+-
+-  assert.equal(findMathSpanAt(doc, 2), null);
+-});
+-
+-test('a caret on either delimiter still finds the span', () => {
+-  const doc = '$a$';
+-  assert.ok(findMathSpanAt(doc, 0));
+-  assert.ok(findMathSpanAt(doc, 3));
+-});
+-
+-test('an escaped dollar is not a delimiter', () => {
+-  const doc = 'costs \\$5 and \\$9 then $x$ ends';
+-  const span = findMathSpanAt(doc, doc.indexOf('x'))!;
+-  assert.equal(span.body, 'x');
+-});
+-
+-test('a multi-line block is found from inside', () => {
+-  const doc = 'a\n\n$$\n\\frac{1}{2}\n$$\n\nb';
+-  const span = findMathSpanAt(doc, doc.indexOf('frac'))!;
+-  assert.equal(span.display, true);
+-  assert.equal(span.body, '\\frac{1}{2}');
+-});
+-
+-test('an unterminated formula is not a span', () => {
+-  assert.equal(findMathSpanAt('text $a+b', 7), null);
+-});
+diff --git a/src/lib/heading-fold.selftest.mjs b/src/lib/heading-fold.selftest.mjs
+deleted file mode 100644
+index 5c91d38..0000000
+--- a/src/lib/heading-fold.selftest.mjs
++++ /dev/null
+@@ -1,13 +0,0 @@
+-/**
+- * Self-test runner for the heading-fold document model. Mirrors
+- * markdown-tables.selftest.mjs: a resolve hook appends `.ts` to extension-less
+- * relative imports so the `node:test` suite runs under Node native
+- * type-stripping.
+- *
+- * Usage (from app/): node src/lib/heading-fold.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./heading-fold.test.ts');
+diff --git a/src/lib/heading-fold.test.ts b/src/lib/heading-fold.test.ts
+deleted file mode 100644
+index 77df578..0000000
+--- a/src/lib/heading-fold.test.ts
++++ /dev/null
+@@ -1,166 +0,0 @@
+-/**
+- * Unit tests for the heading-fold document model.
+- *
+- * Run from `app/`:  node src/lib/heading-fold.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  scanHeadings,
+-  foldRangeAtLine,
+-  headingLinesAtOrBelow,
+-  allFoldableHeadingLines,
+-  foldedCharRanges,
+-  pruneFolds,
+-  anchorAtLine,
+-  remapFolds,
+-} from './heading-fold';
+-
+-const DOC = [
+-  '# Title', // 0
+-  '', // 1
+-  'Intro paragraph.', // 2
+-  '', // 3
+-  '## Section A', // 4
+-  '', // 5
+-  'Body of A.', // 6
+-  '', // 7
+-  '### A.1', // 8
+-  'Deep body.', // 9
+-  '', // 10
+-  '## Section B', // 11
+-  'Body of B.', // 12
+-].join('\n');
+-
+-test('a section runs to the next heading of the same or a shallower level', () => {
+-  const spans = scanHeadings(DOC);
+-  assert.deepEqual(
+-    spans.map((s) => [s.level, s.line, s.endLine]),
+-    [
+-      [1, 0, 12], // H1 owns the whole document
+-      [2, 4, 9], // "## Section A" stops before "## Section B"…
+-      [3, 8, 9], // …and its H3 child stops at the same place
+-      [2, 11, 12],
+-    ],
+-  );
+-});
+-
+-test('trailing blank lines are left visible', () => {
+-  // Section A's last content line is 9; line 10 is blank and stays out of the
+-  // fold so the gap before "## Section B" survives.
+-  const a = scanHeadings(DOC).find((s) => s.line === 4)!;
+-  assert.equal(a.endLine, 9);
+-});
+-
+-test('a heading with nothing under it is not foldable', () => {
+-  const spans = scanHeadings('# A\n## B\ntext\n');
+-  assert.equal(spans[0].foldable, true); // A owns B
+-  assert.equal(spans[1].foldable, true);
+-  assert.equal(scanHeadings('# Alone\n').length, 1);
+-  assert.equal(scanHeadings('# Alone\n')[0].foldable, false);
+-  assert.equal(foldRangeAtLine('# Alone\n', 0), null);
+-});
+-
+-test('headings inside fenced code are not headings', () => {
+-  const src = ['# Real', '', '```sh', '# not a heading', 'echo hi', '```', '', 'tail'].join('\n');
+-  const spans = scanHeadings(src);
+-  assert.equal(spans.length, 1);
+-  assert.equal(spans[0].line, 0);
+-  assert.equal(spans[0].endLine, 7); // the fold covers the fence and the tail
+-});
+-
+-test('tilde fences close only on a fence at least as long', () => {
+-  // CommonMark: `~~~` cannot close `~~~~`, so line 4 is still inside the block.
+-  const src = ['# Real', '~~~~', '# nope', '~~~', '# still nope', '~~~~', '# Second'].join('\n');
+-  assert.deepEqual(scanHeadings(src).map((s) => s.line), [0, 6]);
+-
+-  // …and a longer fence does close a shorter one.
+-  const closed = ['# Real', '~~~', '# nope', '~~~~', '# Second'].join('\n');
+-  assert.deepEqual(scanHeadings(closed).map((s) => s.line), [0, 4]);
+-});
+-
+-test('YAML front matter is skipped', () => {
+-  const src = ['---', 'title: x', '# not a heading', '---', '', '# Real'].join('\n');
+-  const spans = scanHeadings(src);
+-  assert.deepEqual(spans.map((s) => s.line), [5]);
+-});
+-
+-test('fold range starts at the end of the heading line', () => {
+-  const range = foldRangeAtLine(DOC, 4)!;
+-  assert.equal(DOC.slice(0, range.from).endsWith('## Section A'), true);
+-  assert.equal(DOC.slice(range.from, range.to).startsWith('\n'), true);
+-  assert.equal(DOC.slice(range.to).startsWith('\n\n## Section B'), true);
+-});
+-
+-test('fold-to-level folds that level and deeper', () => {
+-  assert.deepEqual(headingLinesAtOrBelow(DOC, 1), [0, 4, 8, 11]);
+-  assert.deepEqual(headingLinesAtOrBelow(DOC, 2), [4, 8, 11]);
+-  assert.deepEqual(headingLinesAtOrBelow(DOC, 3), [8]);
+-  assert.deepEqual(headingLinesAtOrBelow(DOC, 4), []);
+-  assert.deepEqual(allFoldableHeadingLines(DOC), [0, 4, 8, 11]);
+-});
+-
+-test('nested folds merge into one range', () => {
+-  const ranges = foldedCharRanges(DOC, [4, 8]);
+-  assert.equal(ranges.length, 1);
+-  const a = foldRangeAtLine(DOC, 4)!;
+-  assert.deepEqual(ranges[0], a);
+-});
+-
+-test('disjoint folds stay separate', () => {
+-  const ranges = foldedCharRanges(DOC, [4, 11]);
+-  assert.equal(ranges.length, 2);
+-  assert.ok(ranges[0].to < ranges[1].from);
+-});
+-
+-test('folds on lines that are no longer headings are pruned', () => {
+-  assert.deepEqual(pruneFolds(DOC, [4, 8, 99]), [4, 8]);
+-  assert.deepEqual(pruneFolds('just text\n', [0]), []);
+-});
+-
+-test('an empty document has no headings', () => {
+-  assert.deepEqual(scanHeadings(''), []);
+-  assert.deepEqual(foldedCharRanges('', [0]), []);
+-});
+-
+-test('folds follow their heading when lines shift', () => {
+-  const before = ['# One', 'a', '## Two', 'b'].join('\n');
+-  const after = ['intro', '', '# One', 'a', '## Two', 'b'].join('\n');
+-  const folds = [
+-    { line: 0, title: '# One' },
+-    { line: 2, title: '## Two' },
+-  ];
+-  assert.deepEqual(remapFolds(after, folds), [
+-    { line: 2, title: '# One' },
+-    { line: 4, title: '## Two' },
+-  ]);
+-  // sanity: the anchors were right for the original document
+-  assert.deepEqual(anchorAtLine(before, 2), { line: 2, title: '## Two' });
+-});
+-
+-test('a deleted heading loses its fold', () => {
+-  const after = ['# One', 'a'].join('\n');
+-  assert.deepEqual(remapFolds(after, [{ line: 2, title: '## Gone' }]), []);
+-});
+-
+-test('duplicate heading titles resolve to the nearest unclaimed one', () => {
+-  const src = ['# Dup', 'a', '# Dup', 'b'].join('\n');
+-  const remapped = remapFolds(src, [{ line: 2, title: '# Dup' }]);
+-  assert.deepEqual(remapped, [{ line: 2, title: '# Dup' }]);
+-  // Two folds on the same title claim distinct headings.
+-  const both = remapFolds(src, [
+-    { line: 0, title: '# Dup' },
+-    { line: 2, title: '# Dup' },
+-  ]);
+-  assert.deepEqual(both.map((f) => f.line), [0, 2]);
+-});
+-
+-test('heading spans expose the line start offset for block hiding', () => {
+-  const src = ['# A', 'body'].join('\n');
+-  const span = scanHeadings(src)[0];
+-  assert.equal(span.start, 0);
+-  assert.equal(src.slice(span.start, span.headingEnd), '# A');
+-  assert.equal(span.title, '# A');
+-});
+diff --git a/src/lib/html-live-render.test.ts b/src/lib/html-live-render.test.ts
+deleted file mode 100644
+index 81dabca..0000000
+--- a/src/lib/html-live-render.test.ts
++++ /dev/null
+@@ -1,72 +0,0 @@
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  findHtmlBlockEnd,
+-  findInlineHtmlSpans,
+-  findMarkSpans,
+-  maskInlineCode,
+-} from './html-live-render.ts';
+-
+-test('==mark== 高亮:识别、跳过内联代码、拒绝无效形态', () => {
+-  const line = '前==重点内容==后,以及==第二处==。';
+-  const spans = findMarkSpans(line);
+-  assert.equal(spans.length, 2);
+-  assert.equal(line.slice(spans[0].contentFrom, spans[0].contentTo), '重点内容');
+-  assert.equal(line.slice(spans[1].contentFrom, spans[1].contentTo), '第二处');
+-  assert.equal(line.slice(spans[0].openFrom, spans[0].openTo), '==');
+-
+-  // Inside inline code the span must not match once masked.
+-  assert.equal(findMarkSpans(maskInlineCode('`==code==` 外面==真的==')).length, 1);
+-  // Setext underline / bare equals must not match.
+-  assert.equal(findMarkSpans('====').length, 0);
+-  assert.equal(findMarkSpans('== 前后有空格 ==').length, 0);
+-});
+-
+-test('maskInlineCode 保持索引不变', () => {
+-  const line = 'a `x<b>y</b>` <b>ok</b>';
+-  const masked = maskInlineCode(line);
+-  assert.equal(masked.length, line.length);
+-  assert.equal(findInlineHtmlSpans(masked).length, 1);
+-  assert.equal(masked.indexOf('<b>ok</b>'), line.indexOf('<b>ok</b>'));
+-});
+-
+-test('识别用户文档中的多行 div 图片块', () => {
+-  const lines = [
+-    '<div align="center">',
+-    '  <img src="https://example.com/figure.png" width="90%"/>',
+-    '  <p>图 1.1 智能体与环境的基本交互循环</p>',
+-    '</div>',
+-    '',
+-  ];
+-  assert.equal(findHtmlBlockEnd(lines, 0), 3);
+-});
+-
+-test('同名嵌套 HTML 容器必须匹配到最外层结束标签', () => {
+-  const lines = ['<section>', '<section>inside</section>', '</section>'];
+-  assert.equal(findHtmlBlockEnd(lines, 0), 2);
+-});
+-
+-test('不完整或不支持的 HTML 不折叠，保留源码可编辑', () => {
+-  assert.equal(findHtmlBlockEnd(['<div>', 'missing close'], 0), null);
+-  assert.equal(findHtmlBlockEnd(['<script>alert(1)</script>'], 0), null);
+-  assert.equal(findHtmlBlockEnd(['普通文本'], 0), null);
+-});
+-
+-test('识别一行内多个 HTML 格式片段', () => {
+-  const line = '欢迎来到<strong>智能体（Agent）</strong>世界<sup>[1]</sup>。';
+-  const spans = findInlineHtmlSpans(line);
+-  assert.deepEqual(spans.map((span) => span.kind), ['strong', 'sup']);
+-  assert.equal(line.slice(spans[0].contentFrom, spans[0].contentTo), '智能体（Agent）');
+-  assert.equal(line.slice(spans[1].contentFrom, spans[1].contentTo), '[1]');
+-  assert.equal(line.slice(spans[0].openFrom, spans[0].openTo), '<strong>');
+-  assert.equal(line.slice(spans[1].closeFrom, spans[1].closeTo), '</sup>');
+-});
+-
+-test('inline HTML 属性和常用语义标签', () => {
+-  const line = '<mark class="key">重点</mark> <u>下划线</u> <kbd>⌘K</kbd>';
+-  assert.deepEqual(
+-    findInlineHtmlSpans(line).map((span) => span.kind),
+-    ['mark', 'underline', 'kbd'],
+-  );
+-});
+diff --git a/src/lib/import-plan.selftest.mjs b/src/lib/import-plan.selftest.mjs
+deleted file mode 100644
+index 48ef2f2..0000000
+--- a/src/lib/import-plan.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for import target naming.
+- *
+- * Usage (from app/): node src/lib/import-plan.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./import-plan.test.ts');
+diff --git a/src/lib/import-plan.test.ts b/src/lib/import-plan.test.ts
+deleted file mode 100644
+index 28594c4..0000000
+--- a/src/lib/import-plan.test.ts
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/**
+- * Unit tests for import target naming.
+- *
+- * Run from `app/`:  node src/lib/import-plan.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import { baseNameOf, fileNameOf, claimImportName, joinInFolder } from './import-plan';
+-
+-test('an empty folder takes the plain name', () => {
+-  const taken = new Set<string>();
+-  assert.equal(claimImportName(taken, 'report.docx'), 'report.md');
+-});
+-
+-test('an existing note is never overwritten', () => {
+-  const taken = new Set(['report.md']);
+-  assert.equal(claimImportName(taken, 'report.docx'), 'report-2.md');
+-});
+-
+-test('importing the same document twice in one batch produces two files', () => {
+-  const taken = new Set<string>();
+-  assert.equal(claimImportName(taken, '/a/report.docx'), 'report.md');
+-  assert.equal(claimImportName(taken, '/b/report.pdf'), 'report-2.md');
+-  assert.equal(claimImportName(taken, '/c/report.html'), 'report-3.md');
+-});
+-
+-test('case-insensitive: Report.md and report.md are the same file on macOS/Windows', () => {
+-  const taken = new Set(['report.md']);
+-  assert.equal(claimImportName(taken, 'Report.docx'), 'Report-2.md');
+-});
+-
+-test('dots inside the name survive; only the last extension goes', () => {
+-  assert.equal(baseNameOf('v1.2.final.docx'), 'v1.2.final');
+-  assert.equal(claimImportName(new Set(), 'v1.2.final.docx'), 'v1.2.final.md');
+-});
+-
+-test('a name with no extension still works', () => {
+-  assert.equal(claimImportName(new Set(), 'README'), 'README.md');
+-});
+-
+-test('file name is taken off both kinds of path', () => {
+-  assert.equal(fileNameOf('/Users/x/docs/a.docx'), 'a.docx');
+-  assert.equal(fileNameOf('C:\\Users\\x\\a.docx'), 'a.docx');
+-  assert.equal(fileNameOf('a.docx'), 'a.docx');
+-});
+-
+-test('joining uses the separator the folder already uses', () => {
+-  assert.equal(joinInFolder('/Users/x/notes', 'a.md'), '/Users/x/notes/a.md');
+-  assert.equal(joinInFolder('/Users/x/notes/', 'a.md'), '/Users/x/notes/a.md');
+-  assert.equal(joinInFolder('C:\\Users\\x', 'a.md'), 'C:\\Users\\x\\a.md');
+-  assert.equal(joinInFolder('C:\\Users\\x\\', 'a.md'), 'C:\\Users\\x\\a.md');
+-});
+-
+-test('an empty base name falls back rather than producing ".md"', () => {
+-  assert.equal(claimImportName(new Set(), '.docx'), 'untitled.md');
+-});
+diff --git a/src/lib/markdown-table.selftest.mjs b/src/lib/markdown-table.selftest.mjs
+deleted file mode 100644
+index 351637d..0000000
+--- a/src/lib/markdown-table.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for the table model.
+- *
+- * Usage (from app/): node src/lib/markdown-table.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./markdown-table.test.ts');
+diff --git a/src/lib/markdown-table.test.ts b/src/lib/markdown-table.test.ts
+deleted file mode 100644
+index b284b0f..0000000
+--- a/src/lib/markdown-table.test.ts
++++ /dev/null
+@@ -1,155 +0,0 @@
+-/**
+- * Unit tests for the table model behind the grid editor.
+- *
+- * Run from `app/`:  node src/lib/markdown-table.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  parseTable,
+-  serializeTable,
+-  findTableSpan,
+-  splitRow,
+-  isDelimiterRow,
+-  displayWidth,
+-  insertRow,
+-  deleteRow,
+-  moveRow,
+-  insertColumn,
+-  deleteColumn,
+-  moveColumn,
+-  setAlign,
+-  setCell,
+-  emptyTable,
+-} from './markdown-table';
+-
+-const SRC = ['| a | b |', '|---|---:|', '| 1 | 2 |', '| 3 | 4 |'].join('\n');
+-
+-test('parse reads header, alignment and rows', () => {
+-  const t = parseTable(SRC)!;
+-  assert.deepEqual(t.header, ['a', 'b']);
+-  assert.deepEqual(t.aligns, [null, 'right']);
+-  assert.deepEqual(t.rows, [['1', '2'], ['3', '4']]);
+-});
+-
+-test('a block without a delimiter row is not a table', () => {
+-  assert.equal(parseTable('| a | b |\n| 1 | 2 |'), null);
+-});
+-
+-test('alignment markers round-trip', () => {
+-  const src = ['| l | c | r |', '|:--|:-:|--:|', '| 1 | 2 | 3 |'].join('\n');
+-  const t = parseTable(src)!;
+-  assert.deepEqual(t.aligns, ['left', 'center', 'right']);
+-  const out = parseTable(serializeTable(t))!;
+-  assert.deepEqual(out.aligns, ['left', 'center', 'right']);
+-});
+-
+-test('escaped pipes stay inside their cell', () => {
+-  assert.deepEqual(splitRow('| a \\| b | c |'), ['a | b', 'c']);
+-  const t = parseTable('| x | y |\n|---|---|\n| a \\| b | c |')!;
+-  assert.deepEqual(t.rows[0], ['a | b', 'c']);
+-  // …and are escaped again on the way out, or the column count changes.
+-  assert.match(serializeTable(t), /a \\\| b/);
+-});
+-
+-test('ragged rows are padded, not rejected', () => {
+-  const t = parseTable('| a | b | c |\n|---|---|---|\n| 1 |')!;
+-  assert.deepEqual(t.rows[0], ['1', '', '']);
+-});
+-
+-test('columns are padded to a common width', () => {
+-  const t = parseTable('|a|bbbb|\n|---|---|\n|1|2|')!;
+-  const lines = serializeTable(t).split('\n');
+-  assert.equal(lines[0], '| a   | bbbb |');
+-  assert.equal(lines[1], '| --- | ---- |');
+-  assert.equal(lines[2], '| 1   | 2    |');
+-});
+-
+-test('CJK characters count as two columns so the source stays aligned', () => {
+-  assert.equal(displayWidth('中文'), 4);
+-  assert.equal(displayWidth('ab'), 2);
+-  const t = parseTable('| 名称 | n |\n|---|---|\n| ab | 1 |')!;
+-  const lines = serializeTable(t).split('\n');
+-  // Header cell "名称" is 4 wide; the body cell must be padded to match.
+-  assert.equal(lines[0], '| 名称 | n   |');
+-  assert.equal(lines[2], '| ab   | 1   |');
+-});
+-
+-test('finding the table under the cursor', () => {
+-  const lines = ['text', '', '| a | b |', '|---|---|', '| 1 | 2 |', '', 'after'].join('\n').split('\n');
+-  assert.deepEqual(findTableSpan(lines, 3), { startLine: 2, endLine: 4 });
+-  assert.deepEqual(findTableSpan(lines, 2), { startLine: 2, endLine: 4 });
+-  assert.deepEqual(findTableSpan(lines, 4), { startLine: 2, endLine: 4 });
+-  assert.equal(findTableSpan(lines, 0), null);
+-  assert.equal(findTableSpan(lines, 6), null);
+-});
+-
+-test('a run of pipe-containing lines without a delimiter is not a table', () => {
+-  const lines = ['a | b', 'c | d'];
+-  assert.equal(findTableSpan(lines, 0), null);
+-});
+-
+-test('delimiter row recognition', () => {
+-  assert.equal(isDelimiterRow('|---|---|'), true);
+-  assert.equal(isDelimiterRow('| :-: | --: |'), true);
+-  assert.equal(isDelimiterRow('| a | b |'), false);
+-  assert.equal(isDelimiterRow('| - x | --- |'), false);
+-});
+-
+-test('row operations', () => {
+-  const t = parseTable(SRC)!;
+-  assert.deepEqual(insertRow(t, 1).rows, [['1', '2'], ['', ''], ['3', '4']]);
+-  assert.deepEqual(deleteRow(t, 0).rows, [['3', '4']]);
+-  assert.deepEqual(moveRow(t, 0, 1).rows, [['3', '4'], ['1', '2']]);
+-  // out-of-range operations are no-ops rather than corruption
+-  assert.deepEqual(deleteRow(t, 9).rows, t.rows);
+-  assert.deepEqual(moveRow(t, 9, 0).rows, t.rows);
+-});
+-
+-test('column operations keep header, aligns and every row in step', () => {
+-  const t = parseTable(SRC)!;
+-  const wider = insertColumn(t, 1);
+-  assert.deepEqual(wider.header, ['a', '', 'b']);
+-  assert.deepEqual(wider.aligns, [null, null, 'right']);
+-  assert.deepEqual(wider.rows[0], ['1', '', '2']);
+-
+-  const narrower = deleteColumn(t, 0);
+-  assert.deepEqual(narrower.header, ['b']);
+-  assert.deepEqual(narrower.aligns, ['right']);
+-  assert.deepEqual(narrower.rows, [['2'], ['4']]);
+-
+-  const moved = moveColumn(t, 0, 1);
+-  assert.deepEqual(moved.header, ['b', 'a']);
+-  assert.deepEqual(moved.aligns, ['right', null]);
+-  assert.deepEqual(moved.rows[0], ['2', '1']);
+-});
+-
+-test('the last column cannot be deleted — that is not a table any more', () => {
+-  const t = parseTable('| a |\n|---|\n| 1 |')!;
+-  assert.deepEqual(deleteColumn(t, 0), t);
+-});
+-
+-test('setting alignment and cells', () => {
+-  const t = parseTable(SRC)!;
+-  assert.deepEqual(setAlign(t, 0, 'center').aligns, ['center', 'right']);
+-  assert.equal(setCell(t, 0, 0, 'x').rows[0][0], 'x');
+-  assert.equal(setCell(t, -1, 1, 'H').header[1], 'H');
+-  // the original is untouched
+-  assert.equal(t.rows[0][0], '1');
+-});
+-
+-test('a newline pasted into a cell cannot split the table', () => {
+-  const t = parseTable(SRC)!;
+-  const edited = setCell(t, 0, 0, 'one\ntwo');
+-  assert.equal(edited.rows[0][0], 'one two');
+-  assert.equal(serializeTable(edited).split('\n').length, 4);
+-});
+-
+-test('an empty table is a valid table', () => {
+-  const t = emptyTable(2, 1);
+-  const out = serializeTable(t);
+-  assert.deepEqual(parseTable(out)!.header, ['', '']);
+-  assert.equal(out.split('\n').length, 3);
+-});
+diff --git a/src/lib/markdown-tables.selftest.mjs b/src/lib/markdown-tables.selftest.mjs
+deleted file mode 100644
+index 4688a78..0000000
+--- a/src/lib/markdown-tables.selftest.mjs
++++ /dev/null
+@@ -1,13 +0,0 @@
+-/**
+- * Self-test runner for markdown preprocessing (table delimiters, numbered
+- * headings, #213 nested list indent). Mirrors relationships.selftest.mjs:
+- * a resolve hook appends `.ts` to extension-less relative imports so the
+- * `node:test` suite runs under Node native type-stripping.
+- *
+- * Usage (from app/): node src/lib/markdown-tables.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./markdown-tables.test.ts');
+diff --git a/src/lib/markdown-tables.test.ts b/src/lib/markdown-tables.test.ts
+deleted file mode 100644
+index 0590560..0000000
+--- a/src/lib/markdown-tables.test.ts
++++ /dev/null
+@@ -1,152 +0,0 @@
+-/**
+- * Unit tests for malformed GFM table-delimiter normalization.
+- *
+- * The repo has no vitest/tsx dependency, so this uses Node's built-in
+- * `node:test` + `node:assert` and Node 23+ native TypeScript type-stripping.
+- * Run from the worktree root with:
+- *
+- *   node --test --experimental-strip-types \
+- *     app/src/lib/markdown-tables.selftest.mjs
+- *
+- * (the `.selftest.mjs` wrapper resolves markdown.ts's extension-less / plugin
+- * imports the same way relationships.selftest.mjs does).
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  renderMarkdown,
+-  preprocessMarkdown,
+-  setMarkdownAutoNumberHeadings,
+-} from './markdown.ts';
+-
+-// The render pipeline tags block elements with `data-source-line`, so <table>
+-// carries attributes — match the tag open, not a bare `<table>`.
+-const countTables = (html: string): number =>
+-  (html.match(/<table[\s>]/g) || []).length;
+-
+-test('分隔行比表头多一列 — 用户上报的文档', () => {
+-  const src = `| 大类 | 领域 | 管制编码范围 |
+-|:----:|------|:-----------:|----------|
+-| 1 | 专用材料 | 1A-1E |
+-| 2 | 材料加工 | 2A-2E |`;
+-  const html = renderMarkdown(src);
+-  assert.equal(countTables(html), 1, '应被识别为 1 个表格');
+-  assert.match(html, /<th[^>]*>大类<\/th>/);
+-  // 首列的 `:----:` 对齐意图应保留
+-  assert.match(html, /<th style="text-align:center">大类<\/th>/);
+-});
+-
+-test('分隔行比表头少一列', () => {
+-  const src = `| A | B | C |
+-|---|---|
+-| 1 | 2 | 3 |`;
+-  assert.equal(countTables(renderMarkdown(src)), 1);
+-});
+-
+-test('列数正确的正常表格不被改动', () => {
+-  const src = `| A | B |
+-|:--|--:|
+-| 1 | 2 |`;
+-  assert.equal(preprocessMarkdown(src).replace(/\n$/, ''), src);
+-  assert.equal(countTables(renderMarkdown(src)), 1);
+-});
+-
+-test('代码块内的伪表格保持原样', () => {
+-  const src = '```\n| A | B |\n|---|---|---|\n```';
+-  assert.equal(countTables(renderMarkdown(src)), 0);
+-  assert.match(preprocessMarkdown(src), /\|---\|---\|---\|/);
+-});
+-
+-test('普通 HR 分隔线不被误判为表格分隔行', () => {
+-  const src = `文字\n\n---\n\n更多文字`;
+-  assert.equal(countTables(renderMarkdown(src)), 0);
+-});
+-
+-test('含转义管道的单元格', () => {
+-  const src = `| A | B |\n|---|---|---|\n| a\\|b | c |`;
+-  assert.equal(countTables(renderMarkdown(src)), 1);
+-});
+-
+-test('分隔行含空单元格', () => {
+-  const src = `| A | B | C |\n| --- |  | --- |\n| 1 | 2 | 3 |`;
+-  assert.equal(countTables(renderMarkdown(src)), 1);
+-});
+-
+-test('全空的第二行不被误判为分隔行(仍是普通段落)', () => {
+-  const src = `| A | B |\n|  |  |\n| 1 | 2 |`;
+-  assert.equal(countTables(renderMarkdown(src)), 0);
+-});
+-
+-test('一份文档中的多个畸形表格都被修复', () => {
+-  const src = `| 大类 | 领域 | 管制编码范围 |
+-|:----:|------|:-----------:|----------|
+-| 1 | 专用材料 | 1A-1E |
+-
+-| 子章节 | 内容 |
+-|:------:|------|----------|
+-| （一） | 核材料 |`;
+-  assert.equal(countTables(renderMarkdown(src)), 2);
+-});
+-
+-// ---- 编号章节自动转标题(可选设置) --------------------------------------
+-
+-test('默认关闭:编号行不转标题', () => {
+-  setMarkdownAutoNumberHeadings(false);
+-  const html = renderMarkdown('6.2 出口许可证管理目录（三部分并列）');
+-  assert.equal(/<h[1-6][\s>]/.test(html), false);
+-});
+-
+-test('开启后:编号行按深度转为标题', () => {
+-  setMarkdownAutoNumberHeadings(true);
+-  try {
+-    const html = renderMarkdown(
+-      '6.2 出口许可证管理目录（三部分并列）\n\n6.2.1 第一部分：两用物项',
+-    );
+-    assert.match(html, /<h2[^>]*>6\.2 出口许可证管理目录（三部分并列）<\/h2>/);
+-    assert.match(html, /<h3[^>]*>6\.2\.1 第一部分：两用物项<\/h3>/);
+-  } finally {
+-    setMarkdownAutoNumberHeadings(false);
+-  }
+-});
+-
+-test('开启后:有序列表 / 小数句子 / 单数字 不被误转', () => {
+-  setMarkdownAutoNumberHeadings(true);
+-  try {
+-    // 有序列表(单段编号 + 尾点)保持列表
+-    assert.equal(/<h[1-6][\s>]/.test(renderMarkdown('1. 项目一')), false);
+-    // 以小数开头、句末有标点的散文不转
+-    assert.equal(/<h[1-6][\s>]/.test(renderMarkdown('3.14 是圆周率。')), false);
+-    // 单个数字(易误判)不转
+-    assert.equal(/<h[1-6][\s>]/.test(renderMarkdown('6 个要点如下')), false);
+-    // 代码块内不转
+-    assert.equal(/<h[1-6][\s>]/.test(renderMarkdown('```\n6.2 in code\n```')), false);
+-  } finally {
+-    setMarkdownAutoNumberHeadings(false);
+-  }
+-});
+-
+-// #213 — nested lists inside an ORDERED list must nest (not flatten). The
+-// indent-normalizer stepped every level by a flat 2 spaces, which is narrower
+-// than an ordered marker (`1. ` = 3), so markdown-it saw the sublist as
+-// siblings. Nesting must survive marker-width normalization.
+-const nestsSublist = (html: string): boolean => /<li[^>]*>[\s\S]*?<(ol|ul)[\s>]/.test(html);
+-
+-test('#213 有序列表里的嵌套列表:3 空格缩进应嵌套', () => {
+-  assert.equal(nestsSublist(renderMarkdown('1. first\n   1. sub a\n   2. sub b\n2. second\n')), true);
+-  assert.equal(nestsSublist(renderMarkdown('1. first\n   - bullet a\n   - bullet b\n2. second\n')), true);
+-});
+-
+-test('#213 嵌套:4 空格 / 三层深 / 9→10 变宽标记', () => {
+-  assert.equal(nestsSublist(renderMarkdown('1. first\n    1. sub\n2. second\n')), true);
+-  // 三层深:每层都进一层
+-  const deep = renderMarkdown('1. a\n   1. b\n      1. c\n');
+-  assert.equal((deep.match(/<ol[\s>]/g) || []).length, 3);
+-  // 9. → 10. 标记宽度变化后子项仍归属 10.
+-  assert.equal(nestsSublist(renderMarkdown('9. nine\n10. ten\n    1. sub of ten\n')), true);
+-});
+-
+-test('#213 回归:无序列表嵌套不受影响', () => {
+-  assert.equal(nestsSublist(renderMarkdown('- a\n  - b\n  - c\n- d\n')), true);
+-});
+diff --git a/src/lib/platform.test.ts b/src/lib/platform.test.ts
+deleted file mode 100644
+index 2f56095..0000000
+--- a/src/lib/platform.test.ts
++++ /dev/null
+@@ -1,16 +0,0 @@
+-import assert from 'node:assert/strict';
+-import { test } from 'node:test';
+-
+-import { shouldUsePlainWindowsEditor } from './platform.ts';
+-
+-test('Windows standard mode uses the IME-safe textarea', () => {
+-  assert.equal(shouldUsePlainWindowsEditor(true, false), true);
+-});
+-
+-test('Windows Vim mode uses CodeMirror', () => {
+-  assert.equal(shouldUsePlainWindowsEditor(true, true), false);
+-});
+-
+-test('non-Windows platforms keep CodeMirror', () => {
+-  assert.equal(shouldUsePlainWindowsEditor(false, false), false);
+-});
+diff --git a/src/lib/relationships.selftest.mjs b/src/lib/relationships.selftest.mjs
+deleted file mode 100644
+index 0163780..0000000
+--- a/src/lib/relationships.selftest.mjs
++++ /dev/null
+@@ -1,16 +0,0 @@
+-/**
+- * Self-test runner for F3 typed-relationships pure logic.
+- *
+- * The repo uses extension-less relative imports (Vite/TS convention), which
+- * Node's native ESM resolver rejects. This wrapper registers a tiny resolve
+- * hook that appends `.ts` to extension-less relative specifiers, then runs the
+- * `node:test` suite in relationships.test.ts under native type-stripping.
+- *
+- * Usage (from the worktree root):
+- *   node app/src/lib/relationships.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./relationships.test.ts');
+diff --git a/src/lib/relationships.test.ts b/src/lib/relationships.test.ts
+deleted file mode 100644
+index a9c98be..0000000
+--- a/src/lib/relationships.test.ts
++++ /dev/null
+@@ -1,216 +0,0 @@
+-/**
+- * Unit tests for F3 typed-relationships pure logic.
+- *
+- * The repo has no vitest/tsx dependency, so this uses Node's built-in
+- * `node:test` + `node:assert` and Node 23+ native TypeScript type-stripping.
+- * Run from the worktree root with:
+- *
+- *   node --test --experimental-strip-types \
+- *     app/src/lib/relationships.test.ts
+- *
+- * (a self-test wrapper that resolves the extension-less `./wikilinks` import
+- * lives in `app/src/lib/relationships.selftest.mjs`).
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  RESERVED_RELATIONSHIP_KEYS,
+-  extractRelationships,
+-  isReservedKey,
+-  parseWikilinkTarget,
+-  humanizeKey,
+-  resolveInverseLabel,
+-  orderInverseLabels,
+-  setRelationshipInBlock,
+-} from './relationships.ts';
+-
+-test('extractRelationships: scalar wikilink-bearing key', () => {
+-  const rel = extractRelationships({ belongs_to: '[[b]]' });
+-  assert.deepEqual(rel, { belongs_to: ['[[b]]'] });
+-});
+-
+-test('extractRelationships: array of refs', () => {
+-  const rel = extractRelationships({ cites: ['[[a]]', '[[b]]'] });
+-  assert.deepEqual(rel, { cites: ['[[a]]', '[[b]]'] });
+-});
+-
+-test('extractRelationships: arbitrary custom key auto-detected', () => {
+-  const rel = extractRelationships({ author: '[[jane]]' });
+-  assert.deepEqual(rel, { author: ['[[jane]]'] });
+-});
+-
+-test('extractRelationships: reserved keys excluded even with a wikilink', () => {
+-  const rel = extractRelationships({
+-    title: '[[not a rel]]',
+-    tags: ['[[x]]'],
+-    _internal: '[[y]]',
+-    related_to: '[[z]]',
+-  });
+-  assert.deepEqual(rel, { related_to: ['[[z]]'] });
+-});
+-
+-test('extractRelationships: non-wikilink values ignored', () => {
+-  const rel = extractRelationships({ status: 'draft', count: 3, belongs_to: '[[b]]' });
+-  assert.deepEqual(rel, { belongs_to: ['[[b]]'] });
+-});
+-
+-test('extractRelationships: alias/heading collapse to canonical target', () => {
+-  const rel = extractRelationships({ ref: '[[Paper A|the paper]]', see: '[[Doc#Heading]]' });
+-  assert.deepEqual(rel, { ref: ['[[Paper A]]'], see: ['[[Doc]]'] });
+-});
+-
+-test('extractRelationships: null/empty frontmatter', () => {
+-  assert.deepEqual(extractRelationships(null), {});
+-  assert.deepEqual(extractRelationships(undefined), {});
+-  assert.deepEqual(extractRelationships({}), {});
+-});
+-
+-test('isReservedKey: _prefixed and known structural keys', () => {
+-  assert.equal(isReservedKey('_foo'), true);
+-  assert.equal(isReservedKey('Title'), true);
+-  assert.equal(isReservedKey('CSSClass'), true);
+-  assert.equal(isReservedKey('belongs_to'), false);
+-  assert.equal(isReservedKey('cites'), false);
+-});
+-
+-test('parseWikilinkTarget', () => {
+-  assert.equal(parseWikilinkTarget('[[b]]'), 'b');
+-  assert.equal(parseWikilinkTarget('[[a|alias]]'), 'a');
+-  assert.equal(parseWikilinkTarget('[[a#h]]'), 'a');
+-  assert.equal(parseWikilinkTarget('plain'), 'plain');
+-});
+-
+-test('humanizeKey', () => {
+-  assert.equal(humanizeKey('belongs_to'), 'Belongs to');
+-  assert.equal(humanizeKey('relatedTo'), 'Related to');
+-  assert.equal(humanizeKey('cites'), 'Cites');
+-  assert.equal(humanizeKey('has-part'), 'Has part');
+-});
+-
+-test('resolveInverseLabel: convenience map + fallback', () => {
+-  assert.equal(resolveInverseLabel('belongs_to'), 'Children');
+-  assert.equal(resolveInverseLabel('Belongs to'), 'Children');
+-  assert.equal(resolveInverseLabel('belongsTo'), 'Children');
+-  assert.equal(resolveInverseLabel('related_to'), 'Referenced by');
+-  assert.equal(resolveInverseLabel('cites'), '← Cites');
+-  assert.equal(resolveInverseLabel('author'), '← Author');
+-});
+-
+-test('orderInverseLabels: pins Children/Referenced by first', () => {
+-  const ordered = orderInverseLabels(['← Cites', 'Referenced by', '← Author', 'Children']);
+-  assert.deepEqual(ordered, ['Children', 'Referenced by', '← Author', '← Cites']);
+-});
+-
+-test('setRelationshipInBlock: add to empty block (single → scalar)', () => {
+-  const out = setRelationshipInBlock('title: A', 'belongs_to', ['[[b]]']);
+-  assert.equal(out, 'title: A\nbelongs_to: "[[b]]"');
+-});
+-
+-test('setRelationshipInBlock: multiple refs → YAML list', () => {
+-  const out = setRelationshipInBlock('title: A', 'cites', ['[[a]]', '[[b]]']);
+-  assert.equal(out, 'title: A\ncites:\n  - "[[a]]"\n  - "[[b]]"');
+-});
+-
+-test('setRelationshipInBlock: replace existing scalar with list', () => {
+-  const out = setRelationshipInBlock('belongs_to: "[[b]]"\ntitle: A', 'belongs_to', ['[[b]]', '[[c]]']);
+-  assert.equal(out, 'belongs_to:\n  - "[[b]]"\n  - "[[c]]"\ntitle: A');
+-});
+-
+-test('setRelationshipInBlock: replace existing list, consuming indented items', () => {
+-  const block = 'cites:\n  - "[[a]]"\n  - "[[b]]"\ntitle: A';
+-  const out = setRelationshipInBlock(block, 'cites', ['[[a]]']);
+-  assert.equal(out, 'cites: "[[a]]"\ntitle: A');
+-});
+-
+-test('setRelationshipInBlock: deleting last ref removes the key', () => {
+-  const out = setRelationshipInBlock('belongs_to: "[[b]]"\ntitle: A', 'belongs_to', []);
+-  assert.equal(out, 'title: A');
+-});
+-
+-test('setRelationshipInBlock: deleting a list key removes all its lines', () => {
+-  const block = 'cites:\n  - "[[a]]"\n  - "[[b]]"\ntitle: A';
+-  const out = setRelationshipInBlock(block, 'cites', []);
+-  assert.equal(out, 'title: A');
+-});
+-
+-// --- Inverse-resolution simulation (mirrors the TS WeakMap index in
+-//     useRelationships and the Rust workspace_index_referenced_by command). ---
+-
+-interface FakeEntry {
+-  path: string;
+-  stem: string;
+-  title?: string;
+-  aliases?: string[];
+-  frontmatter: Record<string, unknown> | null;
+-}
+-
+-function buildReferencedBy(entries: FakeEntry[]) {
+-  // entry-lookup: stem / title / alias (case-insensitive), first match wins.
+-  const byKey = new Map<string, FakeEntry>();
+-  const reg = (k: string | undefined, e: FakeEntry) => {
+-    if (!k) return;
+-    const lc = k.toLowerCase();
+-    if (!byKey.has(lc)) byKey.set(lc, e);
+-  };
+-  for (const e of entries) {
+-    reg(e.stem, e);
+-    reg(e.title, e);
+-    for (const a of e.aliases ?? []) reg(a, e);
+-  }
+-  const referencedBy = new Map<string, { from: FakeEntry; viaKey: string }[]>();
+-  for (const e of entries) {
+-    const rels = extractRelationships(e.frontmatter);
+-    for (const [viaKey, refs] of Object.entries(rels)) {
+-      for (const ref of refs) {
+-        const target = byKey.get(parseWikilinkTarget(ref).toLowerCase());
+-        if (!target || target.path === e.path) continue; // self-exclusion
+-        const list = referencedBy.get(target.path) ?? [];
+-        list.push({ from: e, viaKey });
+-        referencedBy.set(target.path, list);
+-      }
+-    }
+-  }
+-  return referencedBy;
+-}
+-
+-test('inverse resolution: belongs_to → Children inverse on the target', () => {
+-  const entries: FakeEntry[] = [
+-    { path: '/a.md', stem: 'a', frontmatter: { belongs_to: '[[b]]', cites: '[[c]]' } },
+-    { path: '/b.md', stem: 'b', frontmatter: null },
+-    { path: '/c.md', stem: 'c', frontmatter: null },
+-  ];
+-  const idx = buildReferencedBy(entries);
+-  const bInv = idx.get('/b.md') ?? [];
+-  assert.equal(bInv.length, 1);
+-  assert.equal(bInv[0].from.path, '/a.md');
+-  assert.equal(bInv[0].viaKey, 'belongs_to');
+-  assert.equal(resolveInverseLabel(bInv[0].viaKey), 'Children');
+-
+-  const cInv = idx.get('/c.md') ?? [];
+-  assert.equal(cInv.length, 1);
+-  assert.equal(resolveInverseLabel(cInv[0].viaKey), '← Cites');
+-});
+-
+-test('inverse resolution: title/alias matching + self-exclusion', () => {
+-  const entries: FakeEntry[] = [
+-    { path: '/a.md', stem: 'a', frontmatter: { related_to: '[[The Topic]]', self: '[[a]]' } },
+-    { path: '/t.md', stem: 't', title: 'The Topic', aliases: ['Topic'], frontmatter: null },
+-  ];
+-  const idx = buildReferencedBy(entries);
+-  const tInv = idx.get('/t.md') ?? [];
+-  assert.equal(tInv.length, 1);
+-  assert.equal(tInv[0].from.path, '/a.md');
+-  // self ref ([[a]] from a.md) must be excluded.
+-  assert.equal((idx.get('/a.md') ?? []).length, 0);
+-});
+-
+-test('reserved-key set is non-empty (parity anchor with Rust)', () => {
+-  // The Rust RESERVED_RELATIONSHIP_KEYS must contain the same entries; this
+-  // anchors the TS side so a drift shows up as a failing snapshot in review.
+-  assert.ok(RESERVED_RELATIONSHIP_KEYS.includes('title'));
+-  assert.ok(RESERVED_RELATIONSHIP_KEYS.includes('tags'));
+-  assert.ok(RESERVED_RELATIONSHIP_KEYS.includes('aliases'));
+-  assert.equal(RESERVED_RELATIONSHIP_KEYS.length, 18);
+-});
+diff --git a/src/lib/tasks.selftest.mjs b/src/lib/tasks.selftest.mjs
+deleted file mode 100644
+index 816d2e8..0000000
+--- a/src/lib/tasks.selftest.mjs
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/**
+- * Self-test runner for task metadata parsing.
+- *
+- * Usage (from app/): node src/lib/tasks.selftest.mjs
+- */
+-import { register } from 'node:module';
+-
+-register(new URL('./relationships.selftest-loader.mjs', import.meta.url));
+-
+-await import('./tasks.test.ts');
+diff --git a/src/lib/tasks.test.ts b/src/lib/tasks.test.ts
+deleted file mode 100644
+index 3e9a171..0000000
+--- a/src/lib/tasks.test.ts
++++ /dev/null
+@@ -1,118 +0,0 @@
+-/**
+- * Unit tests for task metadata parsing and the checkbox rewrite.
+- *
+- * Run from `app/`:  node src/lib/tasks.selftest.mjs
+- */
+-
+-import { test } from 'node:test';
+-import assert from 'node:assert/strict';
+-
+-import {
+-  parseTaskMeta,
+-  isOverdue,
+-  localDateKey,
+-  compareTasks,
+-  toggleTaskLine,
+-} from './tasks';
+-
+-test('plain text has no metadata', () => {
+-  const m = parseTaskMeta('buy milk');
+-  assert.deepEqual(m, { title: 'buy milk', priority: null, due: null, tags: [] });
+-});
+-
+-test('Obsidian emoji priority and due date', () => {
+-  const m = parseTaskMeta('ship the release ⏫ 📅 2026-09-10');
+-  assert.equal(m.priority, 'high');
+-  assert.equal(m.due, '2026-09-10');
+-  assert.equal(m.title, 'ship the release');
+-});
+-
+-test('ASCII forms work too', () => {
+-  assert.equal(parseTaskMeta('call the bank due:2026-01-02').due, '2026-01-02');
+-  assert.equal(parseTaskMeta('call the bank due: 2026-01-02').title, 'call the bank');
+-  assert.equal(parseTaskMeta('[#A] fix the build').priority, 'high');
+-  assert.equal(parseTaskMeta('[#c] tidy up').priority, 'low');
+-  assert.equal(parseTaskMeta('deploy !!!').priority, 'high');
+-  assert.equal(parseTaskMeta('deploy !!').priority, 'medium');
+-  assert.equal(parseTaskMeta('deploy !').priority, 'low');
+-  assert.equal(parseTaskMeta('deploy !!!').title, 'deploy');
+-});
+-
+-test('an exclamation attached to a word is not a priority', () => {
+-  const m = parseTaskMeta('Ship it!');
+-  assert.equal(m.priority, null);
+-  assert.equal(m.title, 'Ship it!');
+-});
+-
+-test('emoji wins over ASCII when both are present, and nothing is eaten twice', () => {
+-  const m = parseTaskMeta('thing 🔽 !!!');
+-  assert.equal(m.priority, 'low');
+-  assert.equal(m.title, 'thing !!!');
+-});
+-
+-test('unrecognised text is left alone', () => {
+-  const m = parseTaskMeta('review PR #42 with @alex 50% done');
+-  assert.equal(m.title, 'review PR #42 with @alex 50% done');
+-  assert.deepEqual(m.tags, ['42']);
+-});
+-
+-test('CJK tags are captured', () => {
+-  const m = parseTaskMeta('写周报 #工作 #写作');
+-  assert.deepEqual(m.tags, ['工作', '写作']);
+-  assert.equal(m.title, '写周报 #工作 #写作');
+-});
+-
+-test('a malformed date is not a due date', () => {
+-  assert.equal(parseTaskMeta('due:2026-9-1 something').due, null);
+-  assert.equal(parseTaskMeta('📅 tomorrow').due, null);
+-});
+-
+-test('overdue is strictly before today', () => {
+-  assert.equal(isOverdue('2026-09-02', '2026-09-03'), true);
+-  assert.equal(isOverdue('2026-09-03', '2026-09-03'), false);
+-  assert.equal(isOverdue('2026-09-04', '2026-09-03'), false);
+-  assert.equal(isOverdue(null, '2026-09-03'), false);
+-});
+-
+-test('date key uses local time, not UTC', () => {
+-  // 00:30 local on the 3rd is still the 3rd, even where UTC says the 2nd.
+-  const d = new Date(2026, 8, 3, 0, 30);
+-  assert.equal(localDateKey(d), '2026-09-03');
+-});
+-
+-test('sort: open before done, then due, then priority, then title', () => {
+-  const t = (done: boolean, text: string) => ({ done, meta: parseTaskMeta(text) });
+-  const list = [
+-    t(true, 'finished ⏫ 📅 2026-01-01'),
+-    t(false, 'no date'),
+-    t(false, 'later 📅 2026-12-01'),
+-    t(false, 'today 📅 2026-09-03'),
+-    t(false, 'also today 📅 2026-09-03 ⏫'),
+-  ];
+-  const order = [...list].sort(compareTasks).map((x) => x.meta.title);
+-  assert.deepEqual(order, ['also today', 'today', 'later', 'no date', 'finished']);
+-});
+-
+-test('toggling rewrites only the checkbox on that line', () => {
+-  const doc = ['# H', '', '- [ ] one', '- [x] two', 'plain line'].join('\n');
+-  assert.equal(
+-    toggleTaskLine(doc, 3),
+-    ['# H', '', '- [x] one', '- [x] two', 'plain line'].join('\n'),
+-  );
+-  assert.equal(
+-    toggleTaskLine(doc, 4),
+-    ['# H', '', '- [ ] one', '- [ ] two', 'plain line'].join('\n'),
+-  );
+-});
+-
+-test('toggling a line that is not a task refuses rather than corrupting it', () => {
+-  const doc = ['- [ ] one', 'plain'].join('\n');
+-  assert.equal(toggleTaskLine(doc, 2), null);
+-  assert.equal(toggleTaskLine(doc, 0), null);
+-  assert.equal(toggleTaskLine(doc, 99), null);
+-});
+-
+-test('toggling preserves indentation and marker style', () => {
+-  assert.equal(toggleTaskLine('  * [ ] nested', 1), '  * [x] nested');
+-  assert.equal(toggleTaskLine('+ [X] done', 1), '+ [ ] done');
+-});
+diff --git a/src/lib/text-case.test.ts b/src/lib/text-case.test.ts
+deleted file mode 100644
+index a960518..0000000
+--- a/src/lib/text-case.test.ts
++++ /dev/null
+@@ -1,72 +0,0 @@
+-import assert from 'node:assert/strict';
+-import { test } from 'node:test';
+-
+-import { transformCase, nextCaseInCycle, caseTargetRange } from './text-case.ts';
+-
+-test('upper / lower are plain', () => {
+-  assert.equal(transformCase('hello World', 'upper'), 'HELLO WORLD');
+-  assert.equal(transformCase('hello World', 'lower'), 'hello world');
+-});
+-
+-test('title case capitalises each word and lowercases the rest', () => {
+-  assert.equal(transformCase('hello world', 'title'), 'Hello World');
+-  assert.equal(transformCase('HELLO WORLD', 'title'), 'Hello World');
+-  assert.equal(transformCase('hELLo   wORLD', 'title'), 'Hello   World');
+-});
+-
+-test("title case keeps an apostrophe inside one word", () => {
+-  // "doesn't" must not become "Doesn'T"
+-  assert.equal(transformCase("doesn't matter", 'title'), "Doesn't Matter");
+-});
+-
+-test('title case handles accented Latin', () => {
+-  assert.equal(transformCase('éclair café', 'title'), 'Éclair Café');
+-});
+-
+-test('CJK passes through every transform unchanged', () => {
+-  assert.equal(transformCase('大小写转换', 'upper'), '大小写转换');
+-  assert.equal(transformCase('大小写转换', 'title'), '大小写转换');
+-});
+-
+-test('mixed CJK + Latin only touches the Latin', () => {
+-  assert.equal(transformCase('导出为 pdf 文件', 'upper'), '导出为 PDF 文件');
+-});
+-
+-test('cycle order is lower -> upper -> title -> lower', () => {
+-  assert.equal(nextCaseInCycle('hello'), 'upper');
+-  assert.equal(nextCaseInCycle('HELLO'), 'title');
+-  assert.equal(nextCaseInCycle('Hello'), 'lower');
+-});
+-
+-test('cycle on uncased text is a harmless no-op choice', () => {
+-  assert.equal(nextCaseInCycle('中文 123'), 'upper');
+-  assert.equal(transformCase('中文 123', 'upper'), '中文 123');
+-});
+-
+-test('a selection is used verbatim, either direction', () => {
+-  const doc = 'alpha beta gamma';
+-  assert.deepEqual(caseTargetRange(doc, 6, 10), { from: 6, to: 10, text: 'beta' });
+-  // reversed selection normalises
+-  assert.deepEqual(caseTargetRange(doc, 10, 6), { from: 6, to: 10, text: 'beta' });
+-});
+-
+-test('a bare caret expands to the word under it', () => {
+-  const doc = 'alpha beta gamma';
+-  assert.deepEqual(caseTargetRange(doc, 8, 8), { from: 6, to: 10, text: 'beta' });
+-  // caret at the word's leading edge still catches it
+-  assert.deepEqual(caseTargetRange(doc, 6, 6), { from: 6, to: 10, text: 'beta' });
+-  // caret at the trailing edge too
+-  assert.deepEqual(caseTargetRange(doc, 10, 10), { from: 6, to: 10, text: 'beta' });
+-});
+-
+-test('a caret genuinely inside whitespace has no target', () => {
+-  // Between the two spaces — index 5 would be the trailing edge of "alpha",
+-  // which by design still targets that word (see the test above).
+-  assert.equal(caseTargetRange('alpha  beta', 6, 6), null);
+-  assert.equal(caseTargetRange('', 0, 0), null);
+-});
+-
+-test("word expansion spans an apostrophe but stops at punctuation", () => {
+-  const doc = "it doesn't, really";
+-  assert.deepEqual(caseTargetRange(doc, 6, 6), { from: 3, to: 10, text: "doesn't" });
+-});
+diff --git a/src/lib/tldraw-markdown.test.ts b/src/lib/tldraw-markdown.test.ts
+deleted file mode 100644
+index e690323..0000000
+--- a/src/lib/tldraw-markdown.test.ts
++++ /dev/null
+@@ -1,102 +0,0 @@
+-/**
+- * tldraw-markdown.test.ts — round-trip unit tests for the Markdown-backed
+- * whiteboard fence (F7), mirroring Tolaria's tldrawMarkdown.test.ts.
+- *
+- * Pure-string: no tldraw / Vue / CodeMirror imported, so this suite runs
+- * without the heavy dep. (Vitest is added to the repo in a later minor; until
+- * then the same assertions run headless via
+- * /tmp/tolaria/checks/whiteboard-roundtrip.mjs.)
+- */
+-
+-import { describe, it, expect } from 'vitest';
+-import {
+-  serializeTldrawFence,
+-  parseTldrawFence,
+-  findTldrawFences,
+-  fenceLengthForSnapshot,
+-  parseSnapshotJson,
+-  emptyBoardFence,
+-  readFenceAttribute,
+-} from './tldraw-markdown';
+-import { replaceBoardSnapshot } from './tldraw-board';
+-
+-describe('serialize ↔ parse', () => {
+-  it('round-trips id / height / width / snapshot', () => {
+-    const snapshot = JSON.stringify({ schema: 1, store: { a: 1 } }, null, 2);
+-    const fence = serializeTldrawFence({ boardId: 'abc-123', height: '600', width: '', snapshot });
+-    expect(fence.startsWith('```tldraw ')).toBe(true);
+-    expect(fence).toContain('id="abc-123"');
+-    expect(fence).toContain('height="600"');
+-    expect(fence).toContain('width=""');
+-    const [found] = findTldrawFences(fence);
+-    expect(found.boardId).toBe('abc-123');
+-    expect(found.height).toBe('600');
+-    expect(found.snapshot).toBe(snapshot);
+-  });
+-
+-  it('grows the fence past backtick runs in the body', () => {
+-    const snapshot = '{\n  "code": "a ``` b ```` c"\n}';
+-    expect(fenceLengthForSnapshot(snapshot)).toBeGreaterThanOrEqual(5);
+-    const fence = serializeTldrawFence({ boardId: 'x', height: '520', width: '', snapshot });
+-    const [found] = findTldrawFences(fence);
+-    expect(found.snapshot).toBe(snapshot);
+-  });
+-
+-  it('&quot;-escapes attribute values and decodes them back', () => {
+-    const fence = serializeTldrawFence({ boardId: 'a"b', height: '520', width: '', snapshot: '{}' });
+-    expect(fence).toContain('id="a&quot;b"');
+-    expect(findTldrawFences(fence)[0].boardId).toBe('a"b');
+-    expect(readFenceAttribute({ info: 'id="a&quot;b"', name: 'id' })).toBe('a"b');
+-  });
+-});
+-
+-describe('bad-JSON fallback', () => {
+-  it('treats empty / {} / garbage as a fresh empty board (no throw)', () => {
+-    expect(parseSnapshotJson('')).toBeNull();
+-    expect(parseSnapshotJson('{}')).toBeNull();
+-    expect(parseSnapshotJson('{not json')).toBeNull();
+-    expect(parseSnapshotJson('{"a":1}')).toEqual({ a: 1 });
+-  });
+-});
+-
+-describe('document scanning', () => {
+-  it('finds multiple boards interleaved with prose, in order', () => {
+-    const doc = [
+-      '# Notes',
+-      emptyBoardFence('board-1'),
+-      'prose',
+-      serializeTldrawFence({ boardId: 'board-2', height: '300', width: '800', snapshot: '{"x":2}' }),
+-    ].join('\n');
+-    const found = findTldrawFences(doc);
+-    expect(found.map((f) => f.boardId)).toEqual(['board-1', 'board-2']);
+-    expect(found[1].width).toBe('800');
+-    expect(found[0].from).toBeLessThan(found[1].from);
+-  });
+-
+-  it('returns null for a non-tldraw fence', () => {
+-    expect(parseTldrawFence('mermaid', 'flowchart TD')).toBeNull();
+-  });
+-});
+-
+-describe('replaceBoardSnapshot writeback', () => {
+-  const doc = [
+-    'intro',
+-    serializeTldrawFence({ boardId: 'keep', height: '520', width: '', snapshot: '{"old":1}' }),
+-    serializeTldrawFence({ boardId: 'edit-me', height: '400', width: '', snapshot: '{"old":2}' }),
+-    'outro',
+-  ].join('\n');
+-
+-  it('splices only the target board, preserving everything else', () => {
+-    const next = replaceBoardSnapshot(doc, 'edit-me', '{\n  "new": 3\n}');
+-    const found = findTldrawFences(next);
+-    expect(found[0].snapshot).toBe('{"old":1}');
+-    expect(found[1].snapshot).toBe('{\n  "new": 3\n}');
+-    expect(found[1].height).toBe('400');
+-    expect(next).toContain('intro');
+-    expect(next).toContain('outro');
+-  });
+-
+-  it('is a no-op for an unknown id when several boards exist (stale-block guard)', () => {
+-    expect(replaceBoardSnapshot(doc, 'nope', '{"z":9}')).toBe(doc);
+-  });
+-});
+diff --git a/test-self.mjs b/test-self.mjs
+deleted file mode 100644
+index 1927a60..0000000
+--- a/test-self.mjs
++++ /dev/null
+@@ -1,127 +0,0 @@
+-// Self-test for SoloMD pure libs (run with: npx tsx test-self.mjs)
+-import { simplifiedToTraditional, traditionalToSimplified, pinyin, cjkWordCount } from './src/lib/chinese.ts';
+-import { extractOutline, renderMarkdown } from './src/lib/markdown.ts';
+-import { rewriteImageUrls, svgTextToDataUrl } from './src/lib/image-resolve.ts';
+-import { cleanAIArtifacts, stripMarkdownToPlain } from './src/lib/clean-ai.ts';
+-
+-let pass = 0, fail = 0;
+-function ok(name, cond, detail = '') {
+-  if (cond) { console.log('✓', name); pass++; }
+-  else { console.log('✗', name, detail); fail++; }
+-}
+-
+-console.log('\n=== chinese.ts ===');
+-ok('S→T 软件→軟體', simplifiedToTraditional('软件').includes('軟') || simplifiedToTraditional('软件').length > 0);
+-ok('T→S 軟體→软体', traditionalToSimplified('軟體').length > 0);
+-ok('pinyin 你好', pinyin('你好').includes('ni'));
+-ok('pinyin tones', pinyin('你好', { tone: true }).includes('ǐ') || pinyin('你好', { tone: true }) !== pinyin('你好'));
+-const wc = cjkWordCount('Hello 世界, this is 一段 mixed 内容!');
+-ok('cjkWordCount cjk count', wc.cjk === 6, JSON.stringify(wc));
+-ok('cjkWordCount asciiWords (no punct)', wc.asciiWords === 4, JSON.stringify(wc));
+-ok('cjkWordCount total', wc.total === 10, JSON.stringify(wc));
+-
+-console.log('\n=== markdown.ts ===');
+-const html = renderMarkdown('# Hello\n\n**bold** and *italic* and `code`\n\n- [ ] task\n- [x] done\n\n==mark==\n\nFootnote[^1]\n\n[^1]: note');
+-ok('renders h1', html.includes('<h1'));
+-ok('renders strong', html.includes('<strong>'));
+-ok('renders task list checkbox', html.includes('type="checkbox"'));
+-ok('renders mark highlight', html.includes('<mark>'));
+-ok('renders footnote', html.includes('footnote'));
+-ok('task-list-item class', html.includes('task-list-item'));
+-ok('contains-task-list class', html.includes('contains-task-list'));
+-
+-globalThis.window = {
+-  __TAURI_INTERNALS__: {
+-    convertFileSrc: (filePath, protocol = 'asset') => `${protocol}://localhost/${encodeURIComponent(filePath)}`,
+-  },
+-};
+-const svgHtml = rewriteImageUrls(
+-  '<p><img src="../../assets/l2-s7-modules.svg" alt="S7"></p>',
+-  null,
+-  '/vault/specs/l2/section.md',
+-);
+-ok('local svg gets asset URL', svgHtml.includes('src="asset://localhost/'));
+-ok('local svg keeps resolved path for fallback', svgHtml.includes('data-solomd-local-src="/vault/assets/l2-s7-modules.svg"'));
+-const pngHtml = rewriteImageUrls(
+-  '<p><img src="./pic.png" alt="pic"></p>',
+-  null,
+-  '/vault/specs/l2/section.md',
+-);
+-ok('non-svg image does not get svg fallback metadata', !pngHtml.includes('data-solomd-local-src'));
+-ok('svg data URL encodes XML', svgTextToDataUrl('<svg><text>中 & A</text></svg>').startsWith('data:image/svg+xml;charset=utf-8,%3Csvg%3E'));
+-
+-const fmHtml = renderMarkdown('---\ntitle: Test\nauthor: Alex\n---\n\n# body');
+-ok('frontmatter parsed', fmHtml.includes('md-frontmatter'));
+-ok('frontmatter dt/dd', fmHtml.includes('<dt>title</dt>') && fmHtml.includes('<dd>Test</dd>'));
+-ok('frontmatter body still rendered', fmHtml.includes('<h1'));
+-
+-console.log('\n=== outline ===');
+-const outline = extractOutline('# H1\n## H2a\n## H2b\n### H3\n# Another H1');
+-ok('outline length', outline.length === 5, JSON.stringify(outline));
+-ok('outline H1 level', outline[0].level === 1);
+-ok('outline H2 level', outline[1].level === 2);
+-ok('outline H3 level', outline[3].level === 3);
+-
+-console.log('\n=== clean-ai.ts ===');
+-// Smart quotes
+-ok('smart double quotes', cleanAIArtifacts('\u201chello\u201d') === '"hello"');
+-ok('smart single quotes', cleanAIArtifacts('it\u2019s') === "it's");
+-// Em / en dashes
+-ok('em dash', cleanAIArtifacts('hello\u2014world') === 'hello - world');
+-ok('en dash', cleanAIArtifacts('1\u20132') === '1-2');
+-// Ellipsis
+-ok('ellipsis', cleanAIArtifacts('wait\u2026') === 'wait...');
+-// Invisible chars
+-ok('zero-width space removed', cleanAIArtifacts('a\u200Bb') === 'ab');
+-ok('non-breaking space normalized', cleanAIArtifacts('a\u00A0b') === 'a b');
+-ok('BOM stripped', cleanAIArtifacts('\uFEFFhello') === 'hello');
+-// Whitespace
+-ok('triple newline collapsed', cleanAIArtifacts('a\n\n\n\nb') === 'a\n\nb');
+-ok('trailing whitespace trimmed', cleanAIArtifacts('hello   \nworld') === 'hello\nworld');
+-// Markdown preserved
+-ok('markdown preserved', cleanAIArtifacts('# heading\n**bold**') === '# heading\n**bold**');
+-
+-// Gemini cite markers
+-ok('Gemini [cite_start] removed', !cleanAIArtifacts('[cite_start]Hello world').includes('[cite_start]'));
+-ok('Gemini [cite: N, M] removed', !cleanAIArtifacts('Some text [cite: 5, 41].').includes('[cite:'));
+-ok('Gemini mixed', cleanAIArtifacts('[cite_start]他说了 [cite: 36, 63]。').includes('他说了'));
+-ok('Gemini mixed no brackets', !cleanAIArtifacts('[cite_start]他说了 [cite: 36, 63]。').includes('['));
+-// ChatGPT citations
+-ok('ChatGPT 【†source】 removed', !cleanAIArtifacts('Hello 【1†source】world').includes('【'));
+-// Perplexity [1][2]
+-ok('Perplexity [1][2] removed', !cleanAIArtifacts('Hello [1] [2] world').includes('[1]'));
+-
+-// Strip plain test
+-const md = '# Title\n\n**bold** and *italic* with `code`.\n\n- item 1\n- [x] done\n\n```js\nconst x = 1;\n```';
+-const plain = stripMarkdownToPlain(md);
+-ok('strip plain — no #', !plain.includes('#'));
+-ok('strip plain — no **', !plain.includes('**'));
+-ok('strip plain — no `', !plain.includes('`'));
+-ok('strip plain — no -', !/^- /m.test(plain));
+-ok('strip plain — keeps content "Title"', plain.includes('Title'));
+-ok('strip plain — keeps "bold"', plain.includes('bold'));
+-ok('strip plain — keeps code "const x = 1"', plain.includes('const x = 1'));
+-
+-console.log('\n=== check-update semver compare ===');
+-// Inline semver compare identical to check-update.ts
+-function cmp(a, b) {
+-  const pa = a.replace(/^v/, '').split('.').map(Number);
+-  const pb = b.replace(/^v/, '').split('.').map(Number);
+-  const len = Math.max(pa.length, pb.length);
+-  for (let i = 0; i < len; i++) {
+-    const na = pa[i] || 0;
+-    const nb = pb[i] || 0;
+-    if (na > nb) return 1;
+-    if (na < nb) return -1;
+-  }
+-  return 0;
+-}
+-ok('0.1.10 > 0.1.9', cmp('0.1.10', '0.1.9') === 1);
+-ok('0.1.9 < 0.1.10', cmp('0.1.9', '0.1.10') === -1);
+-ok('0.1.10 == 0.1.10', cmp('0.1.10', '0.1.10') === 0);
+-ok('v0.2.0 > v0.1.99', cmp('v0.2.0', 'v0.1.99') === 1);
+-ok('1.0.0 > 0.99.99', cmp('1.0.0', '0.99.99') === 1);
+-ok('0.1 == 0.1.0', cmp('0.1', '0.1.0') === 0);
+-
+-console.log(`\n=== ${pass} passed / ${fail} failed ===`);
+-process.exit(fail > 0 ? 1 : 0);
+diff --git a/test-slash-blocks.mjs b/test-slash-blocks.mjs
+deleted file mode 100644
+index 8acb139..0000000
+--- a/test-slash-blocks.mjs
++++ /dev/null
+@@ -1,121 +0,0 @@
+-// Self-test for slash-blocks pure logic (filter + expand).
+-// Run: `node app/test-slash-blocks.mjs`.
+-//
+-// Bundles the .ts source via esbuild then assert()s the catalog. No
+-// browser dependency — covers the deterministic half of v2.5 #7.
+-// esbuild lives in .pnpm — import directly.
+-import { build } from './node_modules/.pnpm/esbuild@0.25.12/node_modules/esbuild/lib/main.js';
+-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+-import { tmpdir } from 'node:os';
+-import { join } from 'node:path';
+-import { pathToFileURL } from 'node:url';
+-import assert from 'node:assert/strict';
+-
+-const tmp = mkdtempSync(join(tmpdir(), 'v25-slash-'));
+-const out = join(tmp, 'slash-blocks.mjs');
+-
+-await build({
+-  entryPoints: ['src/lib/slash-blocks.ts'],
+-  bundle: true,
+-  format: 'esm',
+-  outfile: out,
+-  platform: 'neutral',
+-  target: 'node20',
+-  logLevel: 'error',
+-});
+-
+-const mod = await import(pathToFileURL(out).href);
+-const { SLASH_BLOCKS, expandSnippet, filterBlocks } = mod;
+-
+-// ---- Catalog shape -------------------------------------------------------
+-assert.equal(SLASH_BLOCKS.length, 21, 'catalog should have 21 entries');
+-const ids = new Set(SLASH_BLOCKS.map((b) => b.id));
+-for (const required of [
+-  'h1', 'h2', 'h3',
+-  'bullet', 'numbered', 'todo',
+-  'code', 'quote', 'divider', 'table',
+-  'math_block', 'math_inline', 'mermaid',
+-  'whiteboard',
+-  'link', 'image',
+-  'bold', 'italic', 'strikethrough', 'inline_code',
+-  'frontmatter',
+-]) {
+-  assert.ok(ids.has(required), `missing block id: ${required}`);
+-}
+-
+-// ---- expandSnippet -------------------------------------------------------
+-{
+-  const r = expandSnippet('# ${cursor}', '');
+-  assert.equal(r.text, '# ');
+-  assert.equal(r.cursorOffset, 2);
+-}
+-{
+-  // code block: cursor on inner blank line
+-  const r = expandSnippet('```\n${cursor}\n```', '');
+-  assert.equal(r.text, '```\n\n```');
+-  assert.equal(r.cursorOffset, 4); // after "```\n"
+-}
+-{
+-  // selection wrap with selection present
+-  const r = expandSnippet('**${selection}**', 'hi');
+-  assert.equal(r.text, '**hi**');
+-  assert.equal(r.cursorOffset, r.text.length); // no explicit cursor → end
+-}
+-{
+-  // selection wrap, no selection → cursor inside the wrappers
+-  const r = expandSnippet('**${selection}**', '');
+-  assert.equal(r.text, '****');
+-  assert.equal(r.cursorOffset, 2);
+-}
+-{
+-  // inline code wrap, no selection
+-  const r = expandSnippet('`${selection}`', '');
+-  assert.equal(r.text, '``');
+-  assert.equal(r.cursorOffset, 1);
+-}
+-{
+-  // table snippet has cursor in the first cell
+-  const tbl = SLASH_BLOCKS.find((b) => b.id === 'table');
+-  const r = expandSnippet(tbl.snippet, '');
+-  assert.ok(r.text.startsWith('| '), 'table starts with | ');
+-  assert.ok(r.text.includes('\n| --- |'), 'table has separator row');
+-  assert.equal(r.cursorOffset, 2); // right after "| "
+-}
+-
+-// ---- filterBlocks --------------------------------------------------------
+-{
+-  // empty query → all in original order
+-  const all = filterBlocks(SLASH_BLOCKS, '');
+-  assert.equal(all.length, SLASH_BLOCKS.length);
+-  assert.equal(all[0].id, SLASH_BLOCKS[0].id);
+-}
+-{
+-  // 'h1' → Heading 1 first
+-  const r = filterBlocks(SLASH_BLOCKS, 'h1');
+-  assert.equal(r[0].id, 'h1');
+-}
+-{
+-  // 'code' → code (block) before inline_code
+-  const r = filterBlocks(SLASH_BLOCKS, 'code');
+-  assert.equal(r[0].id, 'code');
+-  assert.ok(r.find((b) => b.id === 'inline_code'));
+-}
+-{
+-  // 'tab' → table top
+-  const r = filterBlocks(SLASH_BLOCKS, 'tab');
+-  assert.equal(r[0].id, 'table');
+-}
+-{
+-  // 'list' → bullet OR numbered or todo (keyword match)
+-  const r = filterBlocks(SLASH_BLOCKS, 'list');
+-  const topIds = r.slice(0, 3).map((b) => b.id);
+-  assert.ok(topIds.includes('bullet') || topIds.includes('numbered'));
+-}
+-{
+-  // gibberish → empty
+-  const r = filterBlocks(SLASH_BLOCKS, 'zxqwzxq');
+-  assert.equal(r.length, 0);
+-}
+-
+-// Cleanup not necessary — tmp dir is small.
+-console.log('OK · slash-blocks ·', SLASH_BLOCKS.length, 'entries · all assertions passed');

@@ -1,0 +1,1052 @@
+/**
+ * ExtensionManager - manages extensions and schema.
+ *
+ * Handles:
+ * - Extension lifecycle (flatten, resolve, bind)
+ * - Schema building from Node/Mark extensions
+ * - Plugin collection from all extensions
+ * - Extension storage management
+ * - Conflict detection (duplicate extension names)
+ */
+import { Schema } from '@domternal/pm/model';
+import type { NodeSpec, MarkSpec } from '@domternal/pm/model';
+import type { Plugin, Transaction } from '@domternal/pm/state';
+import type { NodeViewConstructor } from '@domternal/pm/view';
+import { keymap } from '@domternal/pm/keymap';
+import type { InputRule } from '@domternal/pm/inputrules';
+import { inputRulesPlugin as createInputRulesPlugin } from './helpers/inputRulesPlugin.js';
+import { ExtensionConfigurationError } from './ExtensionConfigurationError.js';
+import { describeForeignExtension } from './utils/prosemirrorSingleton.js';
+
+import type { Command as PMCommand } from '@domternal/pm/state';
+
+import type { AnyExtension } from './types/EditorOptions.js';
+import type { CommandMap } from './types/Commands.js';
+import type { GlobalAttributes, GlobalAttributeSpec } from './types/ExtensionConfig.js';
+import type { ToolbarItem } from './types/Toolbar.js';
+import type { FloatingMenuItem } from './types/FloatingMenu.js';
+/* A value import, not a type one: `instanceof` is what tells an extension this
+   copy of the core built from one another copy did, and that is the sharpest
+   duplicate-core signal there is. Acyclic, because Extension.js imports only
+   types and one helper. */
+import { Extension, EXTENSION_BRAND } from './Extension.js';
+import type { Node } from './Node.js';
+import type { Mark } from './Mark.js';
+import { callOrReturn } from './helpers/callOrReturn.js';
+
+/**
+ * Error event props for safeCall
+ */
+interface ErrorEventProps {
+  error: Error;
+  context: string;
+}
+
+/**
+ * Editor interface for ExtensionManager
+ * Forward declaration to avoid circular dependency
+ */
+export interface ExtensionManagerEditor {
+  readonly schema: Schema;
+  emit?(event: 'error', props: ErrorEventProps): void;
+}
+
+/**
+ * Context attached to node view constructors for framework wrappers.
+ * Accessible via `(constructor as any).__domternalContext`.
+ */
+export interface NodeViewContext {
+  editor: ExtensionManagerEditor;
+  extension: { name: string; options: Record<string, unknown> };
+}
+
+/**
+ * Options for ExtensionManager constructor
+ */
+export interface ExtensionManagerOptions {
+  /**
+   * Extensions to process
+   * If provided, schema is built from extensions
+   */
+  extensions?: AnyExtension[] | undefined;
+
+  /**
+   * Direct schema. If provided, extensions are ignored for schema building.
+   */
+  schema?: Schema | undefined;
+}
+
+/**
+ * Manages editor extensions and schema
+ *
+ * Supports two modes:
+ * 1. Extensions mode: Schema built from Node/Mark extensions
+ * 2. Schema mode: Direct schema passed (backward compatible)
+ */
+/**
+ * Merge HTML attribute objects, concatenating 'style' and 'class' values
+ * instead of overwriting them.
+ */
+function mergeHTMLAttrs(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
+  const result = { ...target };
+
+  for (const [key, value] of Object.entries(source)) {
+    if (key === 'style' && typeof result[key] === 'string' && typeof value === 'string') {
+      result[key] = `${result[key]}; ${value}`;
+    } else if (key === 'class' && typeof result[key] === 'string' && typeof value === 'string') {
+      result[key] = `${result[key]} ${value}`;
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fails when an extension was built by a SECOND copy of `@domternal/core`.
+ *
+ * The sharpest form of the duplicate-core problem, and the one a registry
+ * warning cannot catch: only ONE copy builds the editor, while the other
+ * merely supplies extensions, so nothing else on the page ever disagrees out
+ * loud. What follows instead is a `Gapcursor` from each copy under one plugin
+ * key, an `instanceof` that is false for a node the schema itself produced, or
+ * a command that silently does nothing.
+ *
+ * Checked here rather than in `Editor`, because `flattenExtensions` is the one
+ * place every extension passes through, nested bundle members included: an
+ * extension reaching the editor through `StarterKit.addExtensions()` is exactly
+ * as foreign as one passed by hand.
+ *
+ * Three outcomes, and the third is the reason for the brand:
+ * - an instance of THIS copy's `Extension`: fine, the overwhelming case
+ * - branded but not an instance: another copy built it, which cannot work
+ * - unbranded: a plain object, or an extension from a core too old to carry
+ *   the brand. Left alone, because it has always been accepted and rejecting
+ *   it here would turn a diagnostic into a breaking change.
+ */
+function assertOwnExtension(ext: AnyExtension): void {
+  if (ext instanceof Extension) return;
+  const foreign = (ext as unknown as Partial<Record<symbol, unknown>> | null | undefined)?.[
+    EXTENSION_BRAND
+  ];
+  if (foreign !== true) return;
+  const name = typeof ext.name === 'string' ? ext.name : 'unknown';
+  throw new ExtensionConfigurationError(describeForeignExtension(name));
+}
+
+export class ExtensionManager {
+  /**
+   * Processed extensions (flattened, sorted by priority)
+   */
+  private readonly _extensions: AnyExtension[];
+
+  /**
+   * ProseMirror schema (built from extensions or passed directly)
+   */
+  private readonly _schema: Schema;
+
+  /**
+   * Reference to the editor instance
+   */
+  readonly editor: ExtensionManagerEditor;
+
+  /**
+   * Extension storage (keyed by extension name)
+   */
+  private readonly _storage: Record<string, unknown> = {};
+
+  /**
+   * Whether the manager has been destroyed
+   */
+  private isDestroyed = false;
+
+  /**
+   * Cached plugins (built lazily)
+   */
+  private _plugins: Plugin[] | null = null;
+
+  /**
+   * Cached commands (collected lazily)
+   */
+  private _commands: CommandMap | null = null;
+
+  /**
+   * Cached toolbar items (collected lazily)
+   */
+  private _toolbarItems: ToolbarItem[] | null = null;
+
+  /**
+   * Cached floating-menu items (collected lazily)
+   */
+  private _floatingMenuItems: FloatingMenuItem[] | null = null;
+
+  /**
+   * Cached node views (collected lazily)
+   */
+  private _nodeViews: Record<string, NodeViewConstructor> | null = null;
+
+  /**
+   * Creates a new ExtensionManager
+   *
+   * @param options - Extensions or direct schema
+   * @param editor - Editor instance
+   */
+  constructor(options: ExtensionManagerOptions, editor: ExtensionManagerEditor) {
+    this.editor = editor;
+
+    // Schema mode (backward compatibility)
+    if (options.schema) {
+      this._extensions = [];
+      this._schema = options.schema;
+      return;
+    }
+
+    // Extensions mode
+    if (!options.extensions || options.extensions.length === 0) {
+      throw new Error(
+        'ExtensionManager requires either extensions or schema. ' +
+          'Provide at least Document, Text, and Paragraph extensions.'
+      );
+    }
+
+    // Process extensions following the pipeline: 1. Flatten (expand
+    // addExtensions) 2.
+
+    const autoIncluded = new Set<AnyExtension>();
+    const flattened = this.flattenExtensions(options.extensions, autoIncluded);
+    const deduped = this.deduplicateExtensions(flattened, autoIncluded);
+    const cloned = this.cloneExtensions(deduped);
+    this._extensions = this.resolveExtensions(cloned);
+    this.detectConflicts();
+    this.checkDependencies();
+    this.bindEditorToExtensions();
+    this._schema = this.buildSchema();
+    this.initializeStorage();
+  }
+
+  // === Getters ===
+
+  /**
+   * Gets the processed extensions array
+   */
+  get extensions(): readonly AnyExtension[] {
+    return this._extensions;
+  }
+
+  /**
+   * Gets the ProseMirror schema
+   */
+  get schema(): Schema {
+    return this._schema;
+  }
+
+  /**
+   * Gets extension storage (accessed via editor.storage)
+   */
+  get storage(): Record<string, unknown> {
+    return this._storage;
+  }
+
+  /**
+   * Gets plugins from all extensions
+   * Cached after first call
+   */
+  get plugins(): Plugin[] {
+    this._plugins ??= this.buildPlugins();
+    return this._plugins;
+  }
+
+  /**
+   * Gets commands from all extensions
+   */
+  get commands(): CommandMap {
+    this._commands ??= this.collectCommands();
+    return this._commands;
+  }
+
+  /**
+   * Gets toolbar items from all extensions
+   * Cached after first call
+   */
+  get toolbarItems(): ToolbarItem[] {
+    this._toolbarItems ??= this.collectToolbarItems();
+    return this._toolbarItems;
+  }
+
+  /**
+   * Gets floating-menu items from all extensions
+   * Cached after first call
+   */
+  get floatingMenuItems(): FloatingMenuItem[] {
+    this._floatingMenuItems ??= this.collectFloatingMenuItems();
+    return this._floatingMenuItems;
+  }
+
+  /**
+   * Gets node views from all Node extensions that define addNodeView
+   */
+  get nodeViews(): Record<string, NodeViewConstructor> {
+    this._nodeViews ??= this.collectNodeViews();
+    return this._nodeViews;
+  }
+
+  // === Cache Invalidation ===
+
+  /**
+   * Clears all caches (plugins, commands)
+   * Call when extensions change dynamically
+   */
+  clearAllCaches(): void {
+    this._plugins = null;
+    this._commands = null;
+    this._toolbarItems = null;
+    this._floatingMenuItems = null;
+    this._nodeViews = null;
+  }
+
+  // === Extension Processing ===
+
+  /**
+   * Recursively flattens extensions by expanding addExtensions()
+   * This allows extension bundles like StarterKit to work
+   *
+   * `autoIncluded` collects everything that arrived through an
+   * `addExtensions()` rather than from the caller's own list, which is what
+   * lets deduplication tell a default apart from a choice.
+   */
+  private flattenExtensions(
+    extensions: AnyExtension[],
+    autoIncluded: Set<AnyExtension>,
+    fromBundle = false
+  ): AnyExtension[] {
+    const result: AnyExtension[] = [];
+
+    for (const ext of extensions) {
+      assertOwnExtension(ext);
+      if (fromBundle) autoIncluded.add(ext);
+      result.push(ext);
+
+      // Check for nested extensions (bundles like StarterKit)
+      const nested = callOrReturn(
+        (ext as Extension).config.addExtensions,
+        ext
+      ) as AnyExtension[] | undefined;
+
+      if (nested && nested.length > 0) {
+        result.push(...this.flattenExtensions(nested, autoIncluded, true));
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Removes duplicate extensions by name.
+   *
+   * A version the caller listed themselves always wins over one a bundle
+   * included on their behalf, and position does not enter into it. Keeping
+   * the last occurrence alone said the same thing only while every bundle was
+   * listed first, which is the habit for StarterKit and no rule at all: an
+   * extension that includes a default and is written LOWER in the list, as
+   * `Export` and its `Print` are, silently replaced the configured copy
+   * above it and the caller's options went missing with it.
+   *
+   * Between two of the same kind the later one still wins, so two bundles
+   * offering the same default resolve as they always have.
+   */
+  private deduplicateExtensions(
+    extensions: AnyExtension[],
+    autoIncluded: Set<AnyExtension>
+  ): AnyExtension[] {
+    const winners = new Map<string, number>();
+    for (let i = 0; i < extensions.length; i++) {
+      const ext = extensions[i];
+      if (!ext) continue;
+      const held = winners.get(ext.name);
+      if (held === undefined) {
+        winners.set(ext.name, i);
+        continue;
+      }
+      const heldIsAuto = autoIncluded.has(extensions[held]!);
+      const nextIsAuto = autoIncluded.has(ext);
+      if (nextIsAuto && !heldIsAuto) continue;
+      winners.set(ext.name, i);
+    }
+    return extensions.filter((ext, i) => winners.get(ext.name) === i);
+  }
+
+  /**
+   * Clone every extension so this editor owns its instances. Extensions hold
+   * per-editor mutable state (`editor`, plus the `nodeType`/`markType` getters
+   * derived from it), and the same extension object is commonly reused across
+   * editors (one shared `extensions` array). Without cloning, binding a later
+   * editor clobbers an earlier one: its list `Enter` then falls back to a plain
+   * block split, dropping an indented "child" paragraph instead of a new `<li>`.
+   */
+  private cloneExtensions(extensions: AnyExtension[]): AnyExtension[] {
+    return extensions.map((ext) => (ext as Extension).clone() as AnyExtension);
+  }
+
+  /**
+   * Sorts extensions by priority (higher priority first)
+   * Default priority is 100
+   */
+  private resolveExtensions(extensions: AnyExtension[]): AnyExtension[] {
+    return [...extensions].sort((a, b) => {
+      const priorityA = (a as Extension).config.priority ?? 100;
+      const priorityB = (b as Extension).config.priority ?? 100;
+      return priorityB - priorityA;
+    });
+  }
+
+  /**
+   * Detects duplicate extension names.
+   * @throws Error if duplicate names found
+   */
+  private detectConflicts(): void {
+    const names = new Set<string>();
+
+    for (const ext of this._extensions) {
+      if (names.has(ext.name)) {
+        throw new Error(
+          `Extension name conflict: "${ext.name}" is defined multiple times. ` +
+            `Each extension must have a unique name.`
+        );
+      }
+      names.add(ext.name);
+    }
+  }
+
+  /**
+   * Validates that all extension dependencies are present
+   * @throws Error if required dependency is missing
+   */
+  private checkDependencies(): void {
+    const extensionNames = new Set(this._extensions.map((e) => e.name));
+
+    for (const ext of this._extensions) {
+      const deps = (ext as Extension).config.dependencies;
+      if (!deps) continue;
+
+      for (const dep of deps) {
+        if (!extensionNames.has(dep)) {
+          throw new Error(
+            `Extension "${ext.name}" requires "${dep}" extension. ` +
+              `Please add it to your extensions array.`
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Sets editor reference on all extensions
+   */
+  private bindEditorToExtensions(): void {
+    for (const ext of this._extensions) {
+      (ext as Extension).editor = this.editor as ExtensionManagerEditor &
+        Extension['editor'];
+    }
+  }
+
+  /**
+   * Collects global attributes from all extensions.
+   * Returns a map of type name -> attribute specs to merge.
+   */
+  private collectGlobalAttributes(): Map<string, Record<string, GlobalAttributeSpec>> {
+    const globalAttrs = new Map<string, Record<string, GlobalAttributeSpec>>();
+
+    for (const ext of this._extensions) {
+      const addGlobalAttributes = (ext as Extension).config.addGlobalAttributes;
+      if (!addGlobalAttributes) continue;
+
+      const attrs = this.safeCall(
+        () => callOrReturn(addGlobalAttributes, ext) as GlobalAttributes[] | undefined,
+        `${ext.name}.addGlobalAttributes`
+      );
+
+      if (!attrs) continue;
+
+      for (const { types, attributes } of attrs) {
+        for (const typeName of types) {
+          const existing = globalAttrs.get(typeName) ?? {};
+          globalAttrs.set(typeName, { ...existing, ...attributes });
+        }
+      }
+    }
+
+    return globalAttrs;
+  }
+
+  /**
+   * Applies global attributes to a node or mark spec.
+   * Merges extra attrs into spec.attrs, wraps parseDOM getAttrs to parse
+   * global attributes from DOM elements, and wraps toDOM to inject rendered
+   * global HTML attributes into the output.
+   */
+  private applyGlobalAttributes(
+    spec: NodeSpec | MarkSpec,
+    extraAttrs: Record<string, GlobalAttributeSpec>,
+  ): void {
+    // 1. Convert global attrs to PM attrs and merge
+    const convertedAttrs: Record<string, { default?: unknown }> = {};
+    for (const [attrName, attrSpec] of Object.entries(extraAttrs)) {
+      convertedAttrs[attrName] = { default: attrSpec.default };
+    }
+    spec.attrs = { ...spec.attrs, ...convertedAttrs };
+
+    // 2. Wrap parseDOM handlers to include global attribute parsing
+    if (spec.parseDOM) {
+      spec.parseDOM = spec.parseDOM.map((rule) => {
+        const originalGetAttrs = rule.getAttrs as
+          | ((dom: HTMLElement | string) => Record<string, unknown> | false | null)
+          | undefined;
+        return {
+          ...rule,
+          getAttrs: (dom: HTMLElement | string) => {
+            const baseAttrs = originalGetAttrs
+              ? originalGetAttrs(dom)
+              : rule.attrs ?? {};
+
+            if (baseAttrs === false) return false;
+
+            // Parse global attributes from DOM (only if element, not style string)
+            const globalParsed: Record<string, unknown> = {};
+            if (typeof dom !== 'string') {
+              for (const [name, attrSpec] of Object.entries(extraAttrs)) {
+                if (attrSpec.parseHTML) {
+                  globalParsed[name] = attrSpec.parseHTML(dom);
+                }
+              }
+            }
+
+            return { ...baseAttrs, ...globalParsed };
+          },
+        };
+      });
+    }
+
+    // 3. Wrap toDOM to inject rendered global HTML attributes
+    const originalToDOM = spec.toDOM;
+    if (originalToDOM) {
+      // Use a generic wrapper - first arg is always a node or mark with .attrs
+      const wrappedToDOM = (...args: unknown[]): unknown => {
+        const result = (originalToDOM as (...a: unknown[]) => unknown)(...args);
+        if (!Array.isArray(result)) return result;
+
+        // First arg is always the node or mark, which has .attrs
+        const nodeOrMark = args[0] as { attrs: Record<string, unknown> };
+
+        let extraHtmlAttrs: Record<string, string> = {};
+        for (const [, attrSpec] of Object.entries(extraAttrs)) {
+          if (attrSpec.renderHTML) {
+            const rendered = attrSpec.renderHTML(nodeOrMark.attrs);
+            if (rendered) {
+              extraHtmlAttrs = mergeHTMLAttrs(extraHtmlAttrs, rendered) as Record<string, string>;
+            }
+          }
+        }
+
+        // Merge into result[1] if it's an attributes object
+        if (
+          result.length >= 2 &&
+          typeof result[1] === 'object' &&
+          result[1] !== null &&
+          !Array.isArray(result[1])
+        ) {
+          const existingAttrs = result[1] as Record<string, unknown>;
+          result[1] = { ...existingAttrs, ...extraHtmlAttrs };
+        } else if (Object.keys(extraHtmlAttrs).length > 0) {
+          // Insert attributes object at position 1
+          const rest = result.slice(1) as unknown[];
+          return [result[0], extraHtmlAttrs, ...rest];
+        }
+
+        return result;
+      };
+      // Cast needed: wrappedToDOM is generic but spec.toDOM expects specific signatures.
+      // The wrapper preserves the original signature by forwarding all arguments.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+      (spec as any).toDOM = wrappedToDOM;
+    }
+  }
+
+  /**
+   * Builds ProseMirror Schema from Node and Mark extensions
+   */
+  private buildSchema(): Schema {
+    // First, collect global attributes from all extensions
+    const globalAttrs = this.collectGlobalAttributes();
+
+    const nodes: Record<string, NodeSpec> = {};
+    const marks: Record<string, MarkSpec> = {};
+    let topNode: string | undefined;
+
+    for (const ext of this._extensions) {
+      if (ext.type === 'node') {
+        const nodeExt = ext as Node;
+        const spec = nodeExt.createNodeSpec();
+
+        const extraAttrs = globalAttrs.get(ext.name);
+        if (extraAttrs) {
+          this.applyGlobalAttributes(spec, extraAttrs);
+        }
+
+        nodes[ext.name] = spec;
+
+        // Check for topNode (usually 'doc')
+        if (nodeExt.config.topNode) {
+          topNode = ext.name;
+        }
+      } else if (ext.type === 'mark') {
+        const markExt = ext as Mark;
+        const spec = markExt.createMarkSpec();
+
+        const extraAttrs = globalAttrs.get(ext.name);
+        if (extraAttrs) {
+          this.applyGlobalAttributes(spec, extraAttrs);
+        }
+
+        marks[ext.name] = spec;
+      }
+    }
+
+    return new Schema({
+      nodes,
+      marks,
+      ...(topNode && { topNode }),
+    });
+  }
+
+  /**
+   * Initializes storage for all extensions
+   */
+  private initializeStorage(): void {
+    for (const ext of this._extensions) {
+      const storageFactory = (ext as Extension).config.addStorage;
+      if (storageFactory) {
+        const storage = this.safeCall(
+          () => callOrReturn(storageFactory, ext),
+          `${ext.name}.addStorage`
+        );
+        if (storage !== undefined) {
+          this._storage[ext.name] = storage;
+          (ext as Extension).storage = storage;
+        }
+      }
+      // Always expose ext.storage via editor.storage[name], even for
+      // extensions without addStorage(). The Extension constructor
+      // initialises storage to {} by default - make it accessible.
+      if (!(ext.name in this._storage)) {
+        this._storage[ext.name] = (ext as Extension).storage;
+      }
+    }
+  }
+
+  // === Plugin Collection ===
+
+  /**
+   * Builds all ProseMirror plugins from extensions
+   */
+  private buildPlugins(): Plugin[] {
+    const plugins: Plugin[] = [];
+
+    // Collect input rules and create inputRules plugin.
+    // The plugin includes a built-in Backspace handler (via handleKeyDown)
+    // that undoes the last input rule before any keymap plugin can intercept it.
+    const rules = this.collectInputRules();
+    if (rules.length > 0) {
+      plugins.push(createInputRulesPlugin({ rules }));
+    }
+
+    // Collect keyboard shortcuts and create keymap plugin
+    const shortcuts = this.collectKeyboardShortcuts();
+    if (Object.keys(shortcuts).length > 0) {
+      plugins.push(keymap(shortcuts));
+    }
+
+    // Collect custom plugins from extensions
+    for (const ext of this._extensions) {
+      const addPlugins = (ext as Extension).config.addProseMirrorPlugins;
+      if (addPlugins) {
+        const extPlugins = this.safeCall(
+          () => callOrReturn(addPlugins, ext) as Plugin[] | undefined,
+          `${ext.name}.addProseMirrorPlugins`
+        );
+        if (extPlugins && extPlugins.length > 0) {
+          plugins.push(...extPlugins);
+        }
+      }
+    }
+
+    return plugins;
+  }
+
+  /**
+   * Collects keyboard shortcuts from all extensions
+   * Returns ProseMirror-compatible commands for keymap plugin
+   *
+   * Note: Extensions should return PM-compatible commands from addKeyboardShortcuts()
+   */
+  private collectKeyboardShortcuts(): Record<string, PMCommand> {
+    const shortcuts: Record<string, PMCommand> = {};
+
+    for (const ext of this._extensions) {
+      const addShortcuts = (ext as Extension).config.addKeyboardShortcuts;
+      if (addShortcuts) {
+        const extShortcuts = this.safeCall(
+          () => callOrReturn(addShortcuts, ext),
+          `${ext.name}.addKeyboardShortcuts`
+        );
+        if (extShortcuts) {
+          const cast = extShortcuts as unknown as Record<string, PMCommand>;
+          for (const [key, handler] of Object.entries(cast)) {
+            if (shortcuts[key]) {
+              // Chain: try new handler first, fall back to previous
+              const prev = shortcuts[key];
+              shortcuts[key] = (state, dispatch, view) => {
+                return handler(state, dispatch, view) || prev(state, dispatch, view);
+              };
+            } else {
+              shortcuts[key] = handler;
+            }
+          }
+        }
+      }
+    }
+
+    return shortcuts;
+  }
+
+  /**
+   * Collects input rules from all extensions
+   */
+  private collectInputRules(): InputRule[] {
+    const rules: InputRule[] = [];
+
+    for (const ext of this._extensions) {
+      const addRules = (ext as Extension).config.addInputRules;
+      if (addRules) {
+        const extRules = this.safeCall(
+          () => callOrReturn(addRules, ext) as InputRule[] | undefined,
+          `${ext.name}.addInputRules`
+        );
+        if (extRules && extRules.length > 0) {
+          rules.push(...extRules);
+        }
+      }
+    }
+
+    return rules;
+  }
+
+  /**
+   * Collects commands from all extensions
+   *
+   * Note: Commands with the same name will be overwritten by later extensions
+   * (lower priority extensions override higher priority). This is intentional
+   * to allow customization of built-in commands.
+   */
+  private collectCommands(): CommandMap {
+    const commands: CommandMap = {};
+
+    for (const ext of this._extensions) {
+      const addCommands = (ext as Extension).config.addCommands;
+      if (addCommands) {
+        const extCommands = this.safeCall(
+          () => callOrReturn(addCommands, ext) as CommandMap | undefined,
+          `${ext.name}.addCommands`
+        );
+        if (extCommands) {
+          // Later extensions override earlier ones (intentional for customization)
+          Object.assign(commands, extCommands);
+        }
+      }
+    }
+
+    return commands;
+  }
+
+  /**
+   * Collects toolbar items from all extensions
+   */
+  private collectToolbarItems(): ToolbarItem[] {
+    const items: ToolbarItem[] = [];
+
+    for (const ext of this._extensions) {
+      const addItems = (ext as Extension).config.addToolbarItems;
+      if (addItems) {
+        const extItems = this.safeCall(
+          () => callOrReturn(addItems, ext) as ToolbarItem[] | undefined,
+          `${ext.name}.addToolbarItems`
+        );
+        if (extItems && extItems.length > 0) {
+          items.push(...extItems);
+        }
+      }
+    }
+
+    return items;
+  }
+
+  /**
+   * Collects floating-menu items from all extensions via `addFloatingMenuItems()`.
+   */
+  private collectFloatingMenuItems(): FloatingMenuItem[] {
+    const items: FloatingMenuItem[] = [];
+
+    for (const ext of this._extensions) {
+      const addItems = (ext as Extension).config.addFloatingMenuItems;
+      if (addItems) {
+        const extItems = this.safeCall(
+          () => callOrReturn(addItems, ext) as FloatingMenuItem[] | undefined,
+          `${ext.name}.addFloatingMenuItems`
+        );
+        if (extItems && extItems.length > 0) {
+          items.push(...extItems);
+        }
+      }
+    }
+
+    return items;
+  }
+
+  /**
+   * Collects node views from all Node extensions.
+   * Returns a map of node name to NodeViewConstructor for EditorView.
+   *
+   * Each constructor is annotated with `__domternalContext` containing
+   * the editor and extension metadata so framework wrappers (React, Vue)
+   * can access them without changing the ProseMirror calling convention.
+   */
+  private collectNodeViews(): Record<string, NodeViewConstructor> {
+    const nodeViews: Record<string, NodeViewConstructor> = {};
+
+    for (const ext of this._extensions) {
+      if (ext.type !== 'node') continue;
+      const nodeExt = ext as Node;
+      const addNodeView = nodeExt.config.addNodeView;
+      if (addNodeView) {
+        const nodeView = this.safeCall(
+          () => callOrReturn(addNodeView, nodeExt) as NodeViewConstructor | undefined,
+          `${ext.name}.addNodeView`
+        );
+        if (nodeView) {
+          // Annotate with editor + extension context for framework wrappers
+          (nodeView as NodeViewConstructor & { __domternalContext?: NodeViewContext }).__domternalContext = {
+            editor: this.editor,
+            extension: { name: nodeExt.name, options: nodeExt.options as Record<string, unknown> },
+          };
+          nodeViews[ext.name] = nodeView;
+        }
+      }
+    }
+
+    return nodeViews;
+  }
+
+  // === Validation ===
+
+  /**
+   * Validates that the schema has required nodes
+   * @throws Error if schema is missing 'doc' or 'text' nodes
+   */
+  validateSchema(): void {
+    if (this.isDestroyed) {
+      throw new Error('ExtensionManager has been destroyed');
+    }
+
+    const { nodes } = this._schema.spec;
+
+    if (!nodes.get('doc')) {
+      throw new Error(
+        'Invalid schema: missing required "doc" node. ' +
+          'The schema must define a "doc" node as the document root.'
+      );
+    }
+
+    if (!nodes.get('text')) {
+      throw new Error(
+        'Invalid schema: missing required "text" node. ' +
+          'The schema must define a "text" node for inline text content.'
+      );
+    }
+  }
+
+  // === Lifecycle ===
+
+  /**
+   * Cleans up the extension manager
+   * Calls onDestroy on all extensions and clears all caches
+   */
+  destroy(): void {
+    if (this.isDestroyed) {
+      return;
+    }
+
+    // Call onDestroy on all extensions (wrapped in safeCall)
+    for (const ext of this._extensions) {
+      const onDestroy = (ext as Extension).config.onDestroy;
+      if (onDestroy) {
+        this.safeCall(() => {
+          callOrReturn(onDestroy, ext);
+        }, `${ext.name}.onDestroy`);
+      }
+    }
+
+    // Clear all caches to prevent memory leaks
+    // Note: ProseMirror's EditorView.destroy() handles plugin view cleanup
+    // Storage is not cleared explicitly - it will be garbage collected
+    // when the ExtensionManager instance is no longer referenced
+    this.clearAllCaches();
+
+    this.isDestroyed = true;
+  }
+
+  // === Error Handling (2.7: Extension Error Isolation) ===
+
+  /**
+   * Safely executes a function, catching and reporting errors
+   * Prevents a single extension error from crashing the entire editor
+   *
+   * Handles both synchronous errors and async promise rejections.
+   *
+   * @param fn - Function to execute
+   * @param context - Context for error reporting (e.g., 'Bold.onUpdate')
+   * @returns The function result, or undefined if an error occurred
+   */
+  safeCall<T>(fn: () => T, context: string): T | undefined {
+    try {
+      const result = fn();
+
+      // Handle async functions - catch promise rejections
+      if (result instanceof Promise) {
+        result.catch((error: unknown) => {
+          const errorObj = error instanceof Error ? error : new Error(String(error));
+          this.editor.emit?.('error', { error: errorObj, context });
+        });
+      }
+
+      return result;
+    } catch (error) {
+      // Fatal misconfiguration opts out of isolation, see ExtensionConfigurationError.
+      if (error instanceof ExtensionConfigurationError) {
+        throw error;
+      }
+
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+
+      // Emit error event (Editor will call onError callback via event listener)
+      this.editor.emit?.('error', { error: errorObj, context });
+
+      return undefined;
+    }
+  }
+
+  // === Extension Lifecycle Hook Calls ===
+
+  /**
+   * Calls onBeforeCreate on all extensions
+   */
+  callOnBeforeCreate(): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onBeforeCreate;
+      if (hook) {
+        this.safeCall(() => {
+          callOrReturn(hook, ext);
+        }, `${ext.name}.onBeforeCreate`);
+      }
+    }
+  }
+
+  /**
+   * Calls onCreate on all extensions
+   */
+  callOnCreate(): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onCreate;
+      if (hook) {
+        this.safeCall(() => {
+          callOrReturn(hook, ext);
+        }, `${ext.name}.onCreate`);
+      }
+    }
+  }
+
+  /**
+   * Calls onUpdate on all extensions
+   */
+  callOnUpdate(): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onUpdate;
+      if (hook) {
+        this.safeCall(() => {
+          callOrReturn(hook, ext);
+        }, `${ext.name}.onUpdate`);
+      }
+    }
+  }
+
+  /**
+   * Calls onSelectionUpdate on all extensions
+   */
+  callOnSelectionUpdate(): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onSelectionUpdate;
+      if (hook) {
+        this.safeCall(() => {
+          callOrReturn(hook, ext);
+        }, `${ext.name}.onSelectionUpdate`);
+      }
+    }
+  }
+
+  /**
+   * Calls onTransaction on all extensions
+   * @param props - Transaction props
+   */
+  callOnTransaction(props: { transaction: Transaction }): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onTransaction;
+      if (hook) {
+        this.safeCall(() => {
+          hook.call(ext, props);
+        }, `${ext.name}.onTransaction`);
+      }
+    }
+  }
+
+  /**
+   * Calls onFocus on all extensions
+   * @param props - Focus event props
+   */
+  callOnFocus(props: { event: FocusEvent }): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onFocus;
+      if (hook) {
+        this.safeCall(() => {
+          hook.call(ext, props);
+        }, `${ext.name}.onFocus`);
+      }
+    }
+  }
+
+  /**
+   * Calls onBlur on all extensions
+   * @param props - Blur event props
+   */
+  callOnBlur(props: { event: FocusEvent }): void {
+    for (const ext of this._extensions) {
+      const hook = (ext as Extension).config.onBlur;
+      if (hook) {
+        this.safeCall(() => {
+          hook.call(ext, props);
+        }, `${ext.name}.onBlur`);
+      }
+    }
+  }
+}

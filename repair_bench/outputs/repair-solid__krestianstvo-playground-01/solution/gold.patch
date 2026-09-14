@@ -1,0 +1,136 @@
+diff --git a/src/playground/Objects/Counter.jsx b/src/playground/Objects/Counter.jsx
+index c799a6ea5..ac53ccb2c 100644
+--- a/src/playground/Objects/Counter.jsx
++++ b/src/playground/Objects/Counter.jsx
+@@ -94,7 +94,7 @@ export default function Counter(props) {
+ 					onInput={(e) => handleTextInput(e.currentTarget.value)}
+ 				/>
+ 				<div class="flex gap-2">
+-					<div class="p-2"><button class={buttonGreen()} onClick={[handleClick, "sub"]}>-</button></div>
++					<div class="p-2"><button class={buttonGrey()} onClick={[handleClick, "sub"]}>-</button></div>
+ 					<div class="p-4 text-3xl fw200 flex"
+ 						style={{
+ 							width: "30px"
+@@ -102,7 +102,7 @@ export default function Counter(props) {
+ 					<div class="p-2"><button class={buttonGrey()} onClick={[handleClick, "add"]}>+</button></div>
+ 				</div>
+ 				<Switch fallback={<div>Not Found</div>}>
+-					<Match when={local.data.properties.ticking}>
++					<Match when={!local.data.properties.ticking}>
+ 						<button class={buttonGreen()} onClick={[handleTicking, true]}>Start</button>
+ 					</Match>
+ 					<Match when={local.data.properties.ticking}>
+diff --git a/src/playground/Objects/Fiber/Utils.js b/src/playground/Objects/Fiber/Utils.js
+index 6c83123d0..bd6e9ba0b 100644
+--- a/src/playground/Objects/Fiber/Utils.js
++++ b/src/playground/Objects/Fiber/Utils.js
+@@ -1,7 +1,7 @@
+ export function randomCostume (props, setLocal)  {
+     const geometries = ["DodecahedronGeometry", "IcosahedronGeometry", "OctahedronGeometry", "TetrahedronGeometry", "SphereGeometry", "BoxGeometry"];
+ 
+-    const random = Math.ceil(props.selo.random() * geometries.length);
++    const random = Math.floor(props.selo.random() * geometries.length);
+     console.log(random, geometries[random]);
+     setLocal("data", "properties", "costumeGeometry", geometries[random])// geometries[random]);
+ 
+diff --git a/src/playground/Objects/Info.jsx b/src/playground/Objects/Info.jsx
+index 17540ec4e..805e4fea8 100644
+--- a/src/playground/Objects/Info.jsx
++++ b/src/playground/Objects/Info.jsx
+@@ -22,7 +22,7 @@ export default function SeloInfo(props) {
+             <div class="p2 truncate">
+                 <pre>
+                     <strong>Selo</strong>
+-                    <br />World: {props.selo.id}
++                    <br />World: {props.selo.app}
+                     <br />ID: {props.selo.id}
+                     <br />Reflector: {props.selo.reflectorHost}
+                 </pre>
+diff --git a/src/playground/Objects/Utils.js b/src/playground/Objects/Utils.js
+index 48f70a4fb..51febee54 100644
+--- a/src/playground/Objects/Utils.js
++++ b/src/playground/Objects/Utils.js
+@@ -1,14 +1,14 @@
+ export const hex2rgb = (hex) => {
+     const r = parseInt(hex.slice(1, 3), 16);
+     const g = parseInt(hex.slice(3, 5), 16);
+-    const b = parseInt(hex.slice(4, 6), 16);
++    const b = parseInt(hex.slice(5, 7), 16);
+     
+     // return {r, g, b} 
+     return { r, g, b };
+ }
+ 
+ export const rgbaString = (obj) => {
+-    return "rgba(" + obj.r + ', ' +  obj.g + ', ' + obj.b + ', ' + 1 + ")"
++    return "rgba(" + obj.r + ', ' +  obj.g + ', ' + obj.b + ', ' + obj.a + ")"
+ }
+ 
+ 
+@@ -25,7 +25,7 @@ export const randomColor = (obj) => {
+     var letters = '0123456789ABCDEF';
+     var color = '#';
+     for (var i = 0; i < 6; i++) {
+-        color += letters[Math.floor(obj.random() * 15)];
++        color += letters[Math.floor(obj.random() * 16)];
+     }
+     return color;
+ }
+diff --git a/src/playground/Web/Settings.jsx b/src/playground/Web/Settings.jsx
+index c4e7c1d03..c7984e599 100644
+--- a/src/playground/Web/Settings.jsx
++++ b/src/playground/Web/Settings.jsx
+@@ -19,12 +19,12 @@ export default function Settings(props) {
+ 	}
+ 
+ 	const handleClick = (e) => {
+-		props.setConfig("devMode", inputDiv.value)
++		props.setConfig("defaultReflectorHost", inputDiv.value)
+ 		//history.back();
+ 	}
+ 
+ 	const setDevMode = (e) => {
+-		props.setConfig("devMode", !devMode.checked)
++		props.setConfig("devMode", devMode.checked)
+ 	}
+ 
+ 	return (
+diff --git a/src/playground/Web/Styles.js b/src/playground/Web/Styles.js
+index 762b3b4f8..ba372a2cb 100644
+--- a/src/playground/Web/Styles.js
++++ b/src/playground/Web/Styles.js
+@@ -2,7 +2,7 @@ function styles() {
+ 
+ 
+     const buttonGreen = () => {
+-        return "m1 bg-green-200 hover:bg-green-300 text-sm text-black font-mono font-light py-2 px-4 rounded border-2 border-green-900"
++        return "m1 bg-green-200 hover:bg-green-300 text-sm text-black font-mono font-light py-2 px-4 rounded border-2 border-green-200"
+     }
+ 
+     const buttonRed = () => {
+diff --git a/src/playground/Web/World.jsx b/src/playground/Web/World.jsx
+index 0a2d07e86..13e6c0156 100644
+--- a/src/playground/Web/World.jsx
++++ b/src/playground/Web/World.jsx
+@@ -19,7 +19,7 @@ export default function World(props) {
+     const pathname = createMemo(() => location.pathname);
+ 
+     let urlSource  = searchParams?.url ? searchParams?.url : null
+-    let reflectorHost = searchParams?.r ? searchParams?.r : "ws://rb-nonexistent:9"
++    let reflectorHost = searchParams?.r ? searchParams?.r : null
+     let parameters = searchParams?.p ? searchParams?.p : null
+     let seloID = props.seloID ? props.seloID : searchParams?.k ? searchParams?.k : generateURL(pathname, worldName, reflectorHost, parameters, urlSource)
+ 
+diff --git a/src/playground/Worlds/Simple.jsx b/src/playground/Worlds/Simple.jsx
+index ff46bdda2..2d8288645 100644
+--- a/src/playground/Worlds/Simple.jsx
++++ b/src/playground/Worlds/Simple.jsx
+@@ -27,7 +27,7 @@ export default function Simple(props) {
+ 
+ 	const inc = () => {
+ 		setLocal("data", "properties", "tick", props.selo.storeNode.tick)
+-		setLocal("data", "properties", "count", (c) => c + 2)
++		setLocal("data", "properties", "count", (c) => c + 1)
+ 		setLocal("data", "properties", "color", getRandomColor(props.selo))
+ 
+ 		props.selo.future(props.nodeID, "inc", 1)

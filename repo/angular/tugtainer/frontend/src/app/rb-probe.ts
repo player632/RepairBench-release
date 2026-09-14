@@ -1,0 +1,480 @@
+/**
+ * rb-probe.ts - READ-ONLY measurement bridge for repair-angular__tugtainer-01.
+ *
+  *
+ *  - it OBSERVES the running app (DOM census, computed style, resolved design tokens,
+ *    storage keys, route receipt, resource timing) and it performs ONLY actions a real
+ *    user can perform (element.click());
+ *  - it adds NO data-testid, edits NO template, moves NO element and adds NO binding;
+ *  - every getter is wrapped so that an unavailable reading degrades to the sentinel
+ *    '-' (string) or -1 (number) instead of throwing, which means a checkpoint can only
+ *    ever fail on a measured value and never on a bridge crash;
+ *  - the ONLY write it performs is its own namespaced carrier key '__TG_stamps__' in
+ *    sessionStorage, which holds the two-phase stamps across a same-tab navigation (a
+ *    module-level object cannot: the JS realm is discarded on every navigation). The
+ *    carrier is invisible to every reading the checkpoints take - the app reads
+ *    sessionStorage nowhere (0 hits in frontend/src outside this file) and the bridge's
+ *    own storage census (storageKeys) enumerates localStorage only;
+ *  - it is imported for its side effect from main.ts with exactly one added line.
+ */
+const PREFIX = '__TG__';
+const SENT = '-';
+
+type Api = Record<string, (...args: any[]) => any>;
+
+const q = (sel: string, root?: Element | Document | null): Element | null => {
+  try {
+    return (root || document).querySelector(sel);
+  } catch (e) {
+    return null;
+  }
+};
+
+const qa = (sel: string, root?: Element | Document | null): Element[] => {
+  try {
+    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  } catch (e) {
+    return [];
+  }
+};
+
+const authRoot = (): Element | null => q('app-auth');
+
+const authLogo = (): Element | null => q('app-logo', authRoot());
+
+const authSurface = (): Element | null => q('.auth', authRoot());
+
+const rootHost = (): Element | null => q('app-root');
+
+const cs = (el: Element | null, prop: string): string => {
+  try {
+    if (!el) return SENT;
+    const v = window.getComputedStyle(el).getPropertyValue(prop);
+    return typeof v === 'string' && v.length ? v.trim() : SENT;
+  } catch (e) {
+    return SENT;
+  }
+};
+
+const cssVar = (name: string): string => {
+  try {
+    let cur = name;
+    for (let hop = 0; hop < 6; hop++) {
+      const raw = window
+        .getComputedStyle(document.documentElement)
+        .getPropertyValue(cur)
+        .trim();
+      if (!raw) return SENT;
+      const m = raw.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+      if (!m) return raw;
+      cur = m[1];
+    }
+    return SENT;
+  } catch (e) {
+    return SENT;
+  }
+};
+
+const toRgb = (colour: string): number[] => {
+  try {
+    const c = String(colour || '').trim();
+    const hex = c.match(/^#([0-9a-f]{6})$/i);
+    if (hex) {
+      const n = parseInt(hex[1], 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    const short = c.match(/^#([0-9a-f]{3})$/i);
+    if (short) {
+      const p = short[1].split('').map((x) => parseInt(x + x, 16));
+      return [p[0], p[1], p[2]];
+    }
+    const rgb = c.match(/rgba?\(\s*(-?[\d.]+)[\s,]+(-?[\d.]+)[\s,]+(-?[\d.]+)/i);
+    if (rgb) return [Math.round(+rgb[1]), Math.round(+rgb[2]), Math.round(+rgb[3])];
+    return [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const primaryRgb = (): number[] => toRgb(cssVar('--p-primary-color'));
+
+const txt = (el: Element | null): string => {
+  try {
+    return el ? String(el.textContent || '').replace(/\s+/g, '') : SENT;
+  } catch (e) {
+    return SENT;
+  }
+};
+
+const logoSpans = (): Element[] => {
+  const host = authLogo();
+  return host ? qa('span', host) : [];
+};
+
+const sameColour = (a: string, b: string): boolean => {
+  const x = toRgb(a);
+  const y = toRgb(b);
+  return x.length === 3 && y.length === 3 && x[0] === y[0] && x[1] === y[1] && x[2] === y[2];
+};
+
+const accentIndex = (): number => {
+  const p = cssVar('--p-primary-color');
+  const spans = logoSpans();
+  for (let i = 0; i < spans.length; i++) {
+    if (sameColour(cs(spans[i], 'color'), p)) return i;
+  }
+  return -1;
+};
+
+const storageKeys = (): string[] => {
+  try {
+    const out: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) out.push(k);
+    }
+    return out.sort();
+  } catch (e) {
+    return [];
+  }
+};
+
+const rawStored = (key: string): string => {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? SENT : v;
+  } catch (e) {
+    return SENT;
+  }
+};
+
+const metaThemeColor = (scheme: string): string => {
+  const m = q('meta[name="theme-color"][media*="' + scheme + '"]');
+  return m ? String(m.getAttribute('content') || SENT) : SENT;
+};
+
+const routeReceipt = (): string => {
+  try {
+    const p = window.location.pathname || '/';
+    const h = window.location.hash || '';
+    return h.indexOf('/') === 0 ? 'hash:' + h : 'path:' + p;
+  } catch (e) {
+    return SENT;
+  }
+};
+
+const bootGlobals: string[] = Object.keys(window).filter((k) => k.indexOf('__') === 0);
+
+// Two-phase stamp carrier. P18 and P23 freeze a reading on the FIRST boot and compare it
+// after a SECOND cold navigation, so a stamp has to outlive the realm that took it. The
+// record is therefore mirrored into one namespaced sessionStorage key: sessionStorage is
+// per tab and per browser context, and every checkpoint runs in a fresh context, so no
+// stamp can leak between checkpoints, faces or legs. All access is wrapped - when the
+// carrier is unavailable the stamps degrade to the sentinel like any other reading.
+const STAMP_KEY = '__TG_stamps__';
+
+type StampStore = Record<string, Record<string, any>>;
+
+const readStampStore = (): StampStore => {
+  try {
+    const raw = window.sessionStorage.getItem(STAMP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as StampStore) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const writeStampStore = (store: StampStore): void => {
+  try {
+    window.sessionStorage.setItem(STAMP_KEY, JSON.stringify(store));
+  } catch (e) {
+    /* carrier unavailable: the in-memory mirror below still serves this realm */
+  }
+};
+
+const stamps: StampStore = readStampStore();
+
+const adoptPersistedStamps = (): void => {
+  const persisted = readStampStore();
+  for (const k of Object.keys(persisted)) {
+    if (stamps[k] === undefined) stamps[k] = persisted[k];
+  }
+};
+
+const latch = { errors: 0, rejections: 0 };
+try {
+  window.addEventListener('error', () => {
+    latch.errors++;
+  });
+  window.addEventListener('unhandledrejection', () => {
+    latch.rejections++;
+  });
+} catch (e) {
+  /* passive latch only - never throws into the app */
+}
+
+const api: Api = {
+  probeVersion: () => 'tg-1',
+  probeReady: () => 'ok',
+
+  /* ---------- document / boot census ---------- */
+  appRootCount: () => qa('app-root').length,
+  appRootHasChildren: () => {
+    const h = rootHost();
+    return h && h.children.length > 0 ? 'ok' : 'empty';
+  },
+  routerOutletCount: () => qa('router-outlet').length,
+  appAuthCount: () => qa('app-auth').length,
+  authSurfaceCount: () => (authRoot() ? qa('.auth', authRoot()).length : 0),
+  shellCensus: () =>
+    [qa('app-root .content').length, qa('app-root .content-right').length, qa('app-root .content-right-route').length].join(','),
+  toastHostCount: () => qa('p-toast').length,
+  dialogCount: () => qa('p-dialog').length,
+  faviconLinkCount: () => qa('link[rel="icon"]').length,
+
+  /* ---------- routing / title ---------- */
+  docTitle: () => {
+    try {
+      return document.title || SENT;
+    } catch (e) {
+      return SENT;
+    }
+  },
+  titleIsKey: () => {
+    const t = String(document.title || '');
+    return /^[A-Z][A-Z0-9_]*(\.[A-Z0-9_]+)*$/.test(t) ? 'raw-key' : 'translated';
+  },
+  titleMatchesTugtainer: () => (/^Tugtainer\./.test(String(document.title || '')) ? 'ok' : 'other'),
+  routeReceipt: () => routeReceipt(),
+  routeEndsAtAuth: () => {
+    const r = routeReceipt();
+    return r === 'path:/auth' || r === 'hash:#/auth' ? 'ok' : r;
+  },
+
+  /* ---------- wordmark (scoped to the authorization card) ---------- */
+  logoText: () => txt(authLogo()),
+  logoFirstText: () => {
+    const s = logoSpans();
+    return s.length > 0 ? txt(s[0]) : SENT;
+  },
+  logoSecondText: () => {
+    const s = logoSpans();
+    return s.length > 1 ? txt(s[1]) : SENT;
+  },
+  logoSpanCount: () => logoSpans().length,
+  logoClassAttr: () => {
+    const l = authLogo();
+    return l ? String(l.getAttribute('class') || SENT) : SENT;
+  },
+  logoPaddingBottom: () => cs(authLogo(), 'padding-bottom'),
+  logoDisplay: () => cs(authLogo(), 'display'),
+  logoHostFontSize: () => cs(authLogo(), 'font-size'),
+  logoTypography: () =>
+    [cs(authLogo(), 'font-size'), cs(authLogo(), 'font-weight'), cs(authLogo(), 'text-align'), cs(authLogo(), 'cursor')].join('|'),
+  accentBinding: () => {
+    const i = accentIndex();
+    return i === 0 ? 'first' : i === 1 ? 'second' : 'none';
+  },
+  accentSpanText: () => {
+    const i = accentIndex();
+    const s = logoSpans();
+    return i >= 0 && s[i] ? txt(s[i]) : SENT;
+  },
+  accentExclusivity: () => {
+    const p = cssVar('--p-primary-color');
+    const hits = logoSpans().filter((sp) => sameColour(cs(sp, 'color'), p)).length;
+    return hits === 1 ? 'ok' : 'hits-' + hits;
+  },
+
+  /* ---------- design tokens ---------- */
+  primaryChannel: () => {
+    const c = primaryRgb();
+    if (c.length !== 3) return SENT;
+    const max = Math.max(c[0], c[1], c[2]);
+    const tied = c.filter((v) => v === max).length;
+    if (tied > 1) return 'tie';
+    return max === c[0] ? 'red' : max === c[1] ? 'green' : 'blue';
+  },
+  primaryHexShape: () => (/^#[0-9a-fA-F]{6}$/.test(cssVar('--p-primary-color')) ? 'ok' : cssVar('--p-primary-color')),
+  authRadiusToken: () => cs(authSurface(), 'border-radius'),
+  authRadiusMatchesToken: () =>
+    cs(authSurface(), 'border-radius') === cssVar('--p-border-radius-lg') ? 'ok' : 'mismatch',
+  authBackgroundOpaque: () => {
+    const b = cs(authSurface(), 'background-color');
+    return b !== SENT && b !== 'transparent' && b !== 'rgba(0, 0, 0, 0)' ? 'ok' : 'transparent';
+  },
+
+  /* ---------- layout boxes ---------- */
+  authMaxWidth: () => cs(authSurface(), 'max-width'),
+  authPadding: () => cs(authSurface(), 'padding'),
+  authGap: () => cs(authSurface(), 'row-gap'),
+  authFlexDirection: () => cs(authSurface(), 'flex-direction'),
+  authSurfaceBox: () =>
+    [cs(authSurface(), 'padding'), cs(authSurface(), 'row-gap'), cs(authSurface(), 'flex-direction')].join('|'),
+  authHostBox: () =>
+    [
+      cs(authRoot(), 'display'),
+      cs(authRoot(), 'align-items'),
+      cs(authRoot(), 'justify-content'),
+      cs(authRoot(), 'padding-left'),
+    ].join('|'),
+  contentFlexDirection: () => cs(q('app-root .content'), 'flex-direction'),
+  contentDisplay: () => cs(q('app-root .content'), 'display'),
+  contentGap: () => cs(q('app-root .content'), 'row-gap'),
+  contentRightAxis: () =>
+    [cs(q('app-root .content-right'), 'flex-direction'), cs(q('app-root .content-right'), 'row-gap')].join('|'),
+  hostLayout: () =>
+    [cs(rootHost(), 'flex-direction'), cs(rootHost(), 'padding'), cs(rootHost(), 'overflow')].join('|'),
+  bodyBoxSizing: () => cs(document.body, 'box-sizing'),
+  authBoxSizing: () => cs(authSurface(), 'box-sizing'),
+  bodyMargin: () => cs(document.body, 'margin'),
+  bodyFontHasRoboto: () => (cs(document.body, 'font-family').indexOf('Roboto') >= 0 ? 'ok' : 'missing'),
+  bodyHeightMatchesViewport: () => {
+    const h = parseFloat(cs(document.body, 'height'));
+    return !isNaN(h) && Math.abs(h - window.innerHeight) <= 2 ? 'ok' : 'mismatch';
+  },
+
+  /* ---------- document shell ---------- */
+  htmlLang: () => String(document.documentElement.getAttribute('lang') || SENT),
+  htmlClass: () => String(document.documentElement.className || SENT),
+  htmlClassMembership: () =>
+    ['LIGHT', 'DARK'].indexOf(String(document.documentElement.className).trim()) >= 0 ? 'ok' : 'other',
+  htmlClassMatchesScheme: () => {
+    let dark = false;
+    try {
+      dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch (e) {
+      dark = false;
+    }
+    const want = dark ? 'DARK' : 'LIGHT';
+    return String(document.documentElement.className).trim() === want ? 'ok' : 'mismatch';
+  },
+  baseHref: () => {
+    const b = q('base');
+    return b ? String(b.getAttribute('href') || SENT) : SENT;
+  },
+  metaViewport: () => {
+    const m = q('meta[name="viewport"]');
+    return m ? String(m.getAttribute('content') || SENT) : SENT;
+  },
+  metaThemeColorLight: () => metaThemeColor('light'),
+  metaThemeColorDark: () => metaThemeColor('dark'),
+  metaThemeColorCount: () => qa('meta[name="theme-color"]').length,
+  externalRefCensus: () =>
+    qa('[href],[src]').filter((el) => /^https?:\/\//i.test(String(el.getAttribute('href') || el.getAttribute('src') || ''))).length,
+  fontsLinkCensus: () => qa('link[href*="fonts.googleapis"]').length,
+
+  /* ---------- auth surface (offline: the agent API is unreachable) ---------- */
+  authFormSurface: () => {
+    const r = authRoot();
+    if (!r) return SENT;
+    if (q('app-new-password-form', r)) return 'new-password';
+    if (q('app-auth-form', r)) return 'signin';
+    return 'absent';
+  },
+  passwordFieldCount: () => (authRoot() ? qa('input[type="password"], p-password', authRoot()).length : 0),
+  oidcButtonCount: () => (authRoot() ? qa('.oidc-button', authRoot()).length : 0),
+  authDividerCount: () => (authRoot() ? qa('p-divider', authRoot()).length : 0),
+
+  /* ---------- toolbar (hidden on the authorization route by design) ---------- */
+  menuCount: () => qa('app-menu').length,
+  leftPaneCount: () => qa('app-root .left').length,
+  breadcrumbCount: () => qa('p-breadcrumb').length,
+
+  /* ---------- storage / residue ---------- */
+  storageKeySet: () => storageKeys().join(','),
+  themeStorageRaw: () => rawStored('tugtainer-theme'),
+  langStorageRaw: () => rawStored('tugtainer-lang'),
+  unexpectedGlobals: () =>
+    Object.keys(window)
+      .filter((k) => k.indexOf('__') === 0 && k !== PREFIX && bootGlobals.indexOf(k) < 0).length,
+
+  /* ---------- build-freshness positive controls ---------- */
+  allScriptsServed: () => {
+    try {
+      const srcs = qa('script[src]').map((s) => String(s.getAttribute('src') || ''));
+      if (!srcs.length) return 'no-script';
+      const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+      let bad = 0;
+      for (const s of srcs) {
+        const url = new URL(s, window.location.href).href;
+        const hit = entries.filter((e) => e.name === url)[0];
+        const status = hit ? (hit as any).responseStatus : 0;
+        const body = hit ? hit.decodedBodySize : 0;
+        if (!(status === 200 || body > 0)) bad++;
+      }
+      return bad === 0 ? 'ok' : 'unserved-' + bad;
+    } catch (e) {
+      return SENT;
+    }
+  },
+  i18nAssetServed: () => {
+    try {
+      const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+      const hits = entries.filter((e) => e.name.indexOf('/i18n/') >= 0);
+      return hits.length > 0 ? 'ok' : 'none';
+    } catch (e) {
+      return SENT;
+    }
+  },
+  resourceEntryCount: () => {
+    try {
+      return performance.getEntriesByType('resource').length;
+    } catch (e) {
+      return -1;
+    }
+  },
+  uncaughtLatch: () => latch.errors + '/' + latch.rejections,
+
+  /* ---------- user-action drivers (only what a user can do) ---------- */
+  clickAuthLogo: () => {
+    try {
+      const l = authLogo();
+      if (!l) return 'no-logo';
+      (l as HTMLElement).click();
+      return 'clicked';
+    } catch (e) {
+      return SENT;
+    }
+  },
+
+  /* ---------- two-phase stamps ---------- */
+  stamp: (label: string) => {
+    try {
+      stamps[String(label)] = {
+        title: api.docTitle(),
+        htmlClass: api.htmlClass(),
+        htmlSchemeOk: api.htmlClassMatchesScheme(),
+        menu: api.menuCount(),
+        logo: api.logoText(),
+        accent: api.accentSpanText(),
+        surface: api.authFormSurface(),
+        route: api.routeReceipt(),
+        keys: api.storageKeySet(),
+      };
+      writeStampStore(stamps);
+      return 'stamped';
+    } catch (e) {
+      return SENT;
+    }
+  },
+  stamped: (label: string, field: string) => {
+    try {
+      if (stamps[String(label)] === undefined) adoptPersistedStamps();
+      const s = stamps[String(label)];
+      if (!s) return SENT;
+      const v = s[String(field)];
+      return v === undefined ? SENT : v;
+    } catch (e) {
+      return SENT;
+    }
+  },
+};
+
+try {
+  (window as any)[PREFIX] = api;
+} catch (e) {
+  /* the bridge must never break the app it measures */
+}

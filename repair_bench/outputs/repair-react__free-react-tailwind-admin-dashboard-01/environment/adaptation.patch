@@ -1,0 +1,182 @@
+diff --git a/src/components/ecommerce/StatisticsChart.tsx b/src/components/ecommerce/StatisticsChart.tsx
+index 270a025..d4bc68f 100644
+--- a/src/components/ecommerce/StatisticsChart.tsx
++++ b/src/components/ecommerce/StatisticsChart.tsx
+@@ -11,9 +11,10 @@ export default function StatisticsChart() {
+   useEffect(() => {
+     if (!datePickerRef.current) return;
+ 
+-    const today = new Date();
+-    const sevenDaysAgo = new Date();
+-    sevenDaysAgo.setDate(today.getDate() - 6);
++    // RB-ADAPT (offline determinism): upstream fed the flatpickr range picker the
++    // live wall clock, so the rendered range label changed every day.
++    const today = new Date("2025-08-15T00:00:00.000Z");
++    const sevenDaysAgo = new Date("2025-08-09T00:00:00.000Z");
+ 
+     const fp = flatpickr(datePickerRef.current, {
+       mode: "range",
+diff --git a/src/components/ui/videos/FourIsToThree.tsx b/src/components/ui/videos/FourIsToThree.tsx
+index 004e72f..f3fd900 100644
+--- a/src/components/ui/videos/FourIsToThree.tsx
++++ b/src/components/ui/videos/FourIsToThree.tsx
+@@ -1,8 +1,14 @@
+ export default function FourIsToThree() {
+   return (
+     <div className="aspect-4/3 overflow-hidden rounded-lg">
++      {/* RB-ADAPT (offline determinism, no application logic): upstream embedded a
++          third-party video player here, so opening this route fired live external
++          requests. The offline verifier must never depend on a third-party host; the
++          frame keeps its element, title and aspect-ratio box but loads a same-process
++          blank document (zero requests). Original URL: see meta.json
++          network.known_externals. */}
+       <iframe
+-        src="https://www.youtube.com/embed/dQw4w9WgXcQ"
++        src="about:blank"
+         title="YouTube video"
+         frameBorder="0"
+         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+diff --git a/src/components/ui/videos/OneIsToOne.tsx b/src/components/ui/videos/OneIsToOne.tsx
+index d97c88a..c5ae940 100644
+--- a/src/components/ui/videos/OneIsToOne.tsx
++++ b/src/components/ui/videos/OneIsToOne.tsx
+@@ -1,8 +1,14 @@
+ export default function OneIsToOne() {
+   return (
+     <div className="overflow-hidden rounded-lg aspect-square">
++      {/* RB-ADAPT (offline determinism, no application logic): upstream embedded a
++          third-party video player here, so opening this route fired live external
++          requests. The offline verifier must never depend on a third-party host; the
++          frame keeps its element, title and aspect-ratio box but loads a same-process
++          blank document (zero requests). Original URL: see meta.json
++          network.known_externals. */}
+       <iframe
+-        src="https://www.youtube.com/embed/dQw4w9WgXcQ"
++        src="about:blank"
+         title="YouTube video"
+         frameBorder="0"
+         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+diff --git a/src/components/ui/videos/SixteenIsToNine.tsx b/src/components/ui/videos/SixteenIsToNine.tsx
+index a4fc8f3..4cc8801 100644
+--- a/src/components/ui/videos/SixteenIsToNine.tsx
++++ b/src/components/ui/videos/SixteenIsToNine.tsx
+@@ -1,8 +1,14 @@
+ export default function SixteenIsToNine() {
+   return (
+     <div className="aspect-4/3 overflow-hidden rounded-lg">
++      {/* RB-ADAPT (offline determinism, no application logic): upstream embedded a
++          third-party video player here, so opening this route fired live external
++          requests. The offline verifier must never depend on a third-party host; the
++          frame keeps its element, title and aspect-ratio box but loads a same-process
++          blank document (zero requests). Original URL: see meta.json
++          network.known_externals. */}
+       <iframe
+-        src="https://www.youtube.com/embed/dQw4w9WgXcQ"
++        src="about:blank"
+         title="YouTube video"
+         frameBorder="0"
+         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+diff --git a/src/components/ui/videos/TwentyOneIsToNine.tsx b/src/components/ui/videos/TwentyOneIsToNine.tsx
+index 6c489e6..93576b5 100644
+--- a/src/components/ui/videos/TwentyOneIsToNine.tsx
++++ b/src/components/ui/videos/TwentyOneIsToNine.tsx
+@@ -1,8 +1,14 @@
+ export default function TwentyOneIsToNine() {
+   return (
+     <div className="aspect-21/9 overflow-hidden rounded-lg">
++      {/* RB-ADAPT (offline determinism, no application logic): upstream embedded a
++          third-party video player here, so opening this route fired live external
++          requests. The offline verifier must never depend on a third-party host; the
++          frame keeps its element, title and aspect-ratio box but loads a same-process
++          blank document (zero requests). Original URL: see meta.json
++          network.known_externals. */}
+       <iframe
+-        src="https://www.youtube.com/embed/dQw4w9WgXcQ"
++        src="about:blank"
+         title="YouTube video"
+         frameBorder="0"
+         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+diff --git a/src/index.css b/src/index.css
+index d6a2ad0..cd61aa3 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -1,6 +1,3 @@
+-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
+-layer(base);
+-
+ @import "tailwindcss";
+ 
+ @custom-variant dark (&:is(.dark *));
+diff --git a/src/pages/Calendar.tsx b/src/pages/Calendar.tsx
+index 4e4a180..9281188 100644
+--- a/src/pages/Calendar.tsx
++++ b/src/pages/Calendar.tsx
+@@ -14,6 +14,13 @@ interface CalendarEvent extends EventInput {
+   };
+ }
+ 
++// RB-ADAPT (offline determinism, no application logic): upstream derived the three
++// seed events, the new-event id and the visible month from the wall clock, so the
++// rendered calendar and the event ids differed on every run and every day.
++const RB_EPOCH_MONTH = "2025-08-01";
++const RB_SEED_EVENT_START = ["2025-08-12", "2025-08-13", "2025-08-14"];
++const RB_SEED_EVENT_END = "2025-08-15";
++
+ const Calendar: React.FC = () => {
+   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+     null
+@@ -39,20 +46,20 @@ const Calendar: React.FC = () => {
+       {
+         id: "1",
+         title: "Event Conf.",
+-        start: new Date().toISOString().split("T")[0],
++        start: RB_SEED_EVENT_START[0],
+         extendedProps: { calendar: "Danger" },
+       },
+       {
+         id: "2",
+         title: "Meeting",
+-        start: new Date(Date.now() + 86400000).toISOString().split("T")[0],
++        start: RB_SEED_EVENT_START[1],
+         extendedProps: { calendar: "Success" },
+       },
+       {
+         id: "3",
+         title: "Workshop",
+-        start: new Date(Date.now() + 172800000).toISOString().split("T")[0],
+-        end: new Date(Date.now() + 259200000).toISOString().split("T")[0],
++        start: RB_SEED_EVENT_START[2],
++        end: RB_SEED_EVENT_END,
+         extendedProps: { calendar: "Primary" },
+       },
+     ]);
+@@ -94,7 +101,7 @@ const Calendar: React.FC = () => {
+     } else {
+       // Add new event
+       const newEvent: CalendarEvent = {
+-        id: Date.now().toString(),
++        id: `rb-evt-${events.length + 1}`,
+         title: eventTitle,
+         start: eventStartDate,
+         end: eventEndDate,
+@@ -127,6 +134,7 @@ const Calendar: React.FC = () => {
+             ref={calendarRef}
+             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+             initialView="dayGridMonth"
++            initialDate={RB_EPOCH_MONTH}
+             headerToolbar={{
+               left: "prev,next addEventButton",
+               center: "title",
+diff --git a/src/pages/OtherPage/NotFound.tsx b/src/pages/OtherPage/NotFound.tsx
+index d0d1d04..d42964b 100644
+--- a/src/pages/OtherPage/NotFound.tsx
++++ b/src/pages/OtherPage/NotFound.tsx
+@@ -36,7 +36,7 @@ export default function NotFound() {
+         </div>
+         {/* <!-- Footer --> */}
+         <p className="absolute text-sm text-center text-gray-500 -translate-x-1/2 bottom-6 left-1/2 dark:text-gray-400">
+-          &copy; {new Date().getFullYear()} - TailAdmin
++          &copy; 2025 - TailAdmin
+         </p>
+       </div>
+     </>

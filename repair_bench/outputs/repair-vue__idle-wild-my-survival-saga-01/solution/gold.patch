@@ -1,0 +1,156 @@
+diff --git a/src/components/BuildingPanel.vue b/src/components/BuildingPanel.vue
+index d5bb535..a5b161b 100644
+--- a/src/components/BuildingPanel.vue
++++ b/src/components/BuildingPanel.vue
+@@ -96,7 +96,7 @@ const buildOrUpgrade = (building) => {
+     completed: false
+   }
+   // 检查是否有正在进行的建筑活动
+-  if (gameStore.buildingActivities.length <= gameStore.player.level) {
++  if (gameStore.buildingActivities.length < gameStore.player.level) {
+     // 消耗资源
+     for (const [resource, amount] of Object.entries(levelConfig.cost)) {
+       gameStore.consumeResource(resource, amount)
+diff --git a/src/components/QuestSystem.vue b/src/components/QuestSystem.vue
+index 158f6cc..d516060 100644
+--- a/src/components/QuestSystem.vue
++++ b/src/components/QuestSystem.vue
+@@ -367,7 +367,7 @@ const completeQuest = (quest) => {
+   }
+   // 检查资源要求
+   for (const [resource, amount] of Object.entries(quest.objectives)) {
+-    gameStore.resources[resource] += amount
++    gameStore.resources[resource] -= amount
+   }
+   // 从进行中列表移除任务
+   const completedQuest = gameStore.activeQuests.splice(questIndex, 1)[0]
+diff --git a/src/components/ResearchPanel.vue b/src/components/ResearchPanel.vue
+index ddd0ee6..b7fa9d7 100644
+--- a/src/components/ResearchPanel.vue
++++ b/src/components/ResearchPanel.vue
+@@ -52,7 +52,7 @@ const canResearch = computed(() => {
+   if (!tech || gameStore.researched.includes(tech.id)) return false
+   // 检查资源
+   for (const [resource, amount] of Object.entries(tech.cost)) {
+-    if (gameStore.resources[resource] > amount) return false
++    if (gameStore.resources[resource] < amount) return false
+   }
+   return true
+ })
+diff --git a/src/components/TimeControl.vue b/src/components/TimeControl.vue
+index 111baab..4216075 100644
+--- a/src/components/TimeControl.vue
++++ b/src/components/TimeControl.vue
+@@ -41,7 +41,7 @@ const dayPeriod = computed(() => {
+ // 获取当前季节（基于天数）
+ const currentSeason = computed(() => {
+   const day = gameStore.gameTime.day
+-  const seasonLength = 20 // 每个季节30天
++  const seasonLength = 30 // 每个季节30天
+   const seasonIndex = Math.floor((day - 1) % (seasonLength * 4) / seasonLength)
+   // 计算季节进度（0-100%）
+   const seasonProgress = (((day - 1) % seasonLength) / seasonLength) * 100
+diff --git a/src/components/TradingSystem.vue b/src/components/TradingSystem.vue
+index 81e791d..0deda42 100644
+--- a/src/components/TradingSystem.vue
++++ b/src/components/TradingSystem.vue
+@@ -73,7 +73,7 @@ const buyItem = (item) => {
+ 		gameStore.resources[resource] -= amount
+ 	}
+ 	// 添加物品到玩家资源，如果有amount属性则添加指定数量，否则添加1
+-	const resourceAmount = 1
++	const resourceAmount = item.amount || 1
+ 	gameStore.addResource(item.resourceId, resourceAmount)
+ 	// 减少库存
+ 	item.stock--
+diff --git a/src/plugins/achievements.js b/src/plugins/achievements.js
+index a89637a..c63edb7 100644
+--- a/src/plugins/achievements.js
++++ b/src/plugins/achievements.js
+@@ -59,7 +59,7 @@ export const achievements = [
+     description: '累计收集超过100单位的基础资源',
+     icon: '📦',
+     condition: (store) => {
+-      const basicResources = ['food', 'water', 'wood']
++      const basicResources = ['food', 'water', 'wood', 'stone']
+       return basicResources.reduce((sum, res) => sum + store.resources[res], 0) >= 100
+     },
+     reward: { exp: 50 },
+diff --git a/src/plugins/explorationRegions.js b/src/plugins/explorationRegions.js
+index 5523567..f219b22 100644
+--- a/src/plugins/explorationRegions.js
++++ b/src/plugins/explorationRegions.js
+@@ -11,7 +11,7 @@ export const explorationRegions = [
+     description: '茂密的森林，蕴含丰富的木材和草药资源',
+     difficulty: 1,
+     amount: getRandomInt(1, 20),
+-    unlockRequirements: { survival: 2 },
++    unlockRequirements: { survival: 1 },
+     resources: ['wood', 'herb', 'food'],
+     dangers: ['predator', 'storm'],
+     image: '🌲',
+diff --git a/src/plugins/merchants.js b/src/plugins/merchants.js
+index 603de54..f8ea058 100644
+--- a/src/plugins/merchants.js
++++ b/src/plugins/merchants.js
+@@ -6,7 +6,7 @@ export const merchants = [
+     description: '定期出现的神秘商人，提供各种稀有资源',
+     greeting: '你好，旅行者！我有一些稀有物品，你可能会感兴趣...',
+     availability: {
+-      minDay: 6,
++      minDay: 5,
+       frequency: 7, // 每7天出现一次
+       duration: 1,  // 持续1天
+     },
+diff --git a/src/plugins/recipes.js b/src/plugins/recipes.js
+index 280b0b3..f7dbc62 100644
+--- a/src/plugins/recipes.js
++++ b/src/plugins/recipes.js
+@@ -21,7 +21,7 @@ export const recipes = [
+ 	{
+ 		id: 'gather_wood',
+ 		name: '收集木材',
+-		inputs: { herb: 5, water: 5, energy: 15 },
++		inputs: { food: 5, water: 5, energy: 15 },
+ 		outputs: { wood: [5, 10] },
+ 		duration: 90,
+ 		skillRequired: { gathering: 1 },
+diff --git a/src/plugins/resource.js b/src/plugins/resource.js
+index 97349ce..04025c9 100644
+--- a/src/plugins/resource.js
++++ b/src/plugins/resource.js
+@@ -1,7 +1,7 @@
+ export const resourceLimits = {
+   food: 50,
+   water: 50,
+-  wood: 45,
++  wood: 50,
+   stone: 50,
+   metal: 50,
+   herb: 30,
+diff --git a/src/plugins/skillTree.js b/src/plugins/skillTree.js
+index 7c07cdf..395f290 100644
+--- a/src/plugins/skillTree.js
++++ b/src/plugins/skillTree.js
+@@ -12,7 +12,7 @@ export const skillTree = {
+         level: 1,
+         maxLevel: 3,
+         effects: { gatheringEfficiency: 0.15 },
+-        cost: { exp: 250 },
++        cost: { exp: 200 },
+         requires: null,
+         duration: 600
+       },
+diff --git a/src/stores/gameStore.js b/src/stores/gameStore.js
+index b923e79..aa8952e 100644
+--- a/src/stores/gameStore.js
++++ b/src/stores/gameStore.js
+@@ -325,7 +325,7 @@ export const useGameStore = defineStore('game', {
+         this.newSkills[skill].exp -= this.newSkills[skill].expToNextLevel
+         this.newSkills[skill].level += 1
+         // 增加下一级所需经验
+-        this.newSkills[skill].expToNextLevel = Math.floor(this.newSkills[skill].expToNextLevel * 2.0)
++        this.newSkills[skill].expToNextLevel = Math.floor(this.newSkills[skill].expToNextLevel * 1.5)
+         this.addToEventLog(`${this.getResourceName(skill)}技能提升到${this.newSkills[skill].level}级！`)
+       }
+       this.saveGame()

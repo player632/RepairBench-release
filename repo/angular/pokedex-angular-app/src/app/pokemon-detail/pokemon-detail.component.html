@@ -1,0 +1,948 @@
+<link rel="prefetch" href="assets/Mega-Evolution-Sigil.png" />
+<div class="fadeIn MainDiv" *ngIf="pokemon!==undefined">
+  <br>
+  <h1 class="text-center text-uppercase Section-Heading" data-testid="detail-name" [ngClass]="{fOut:!visible}">{{pokemon.name}}</h1>
+  <div class="text-center">
+    <!--    Had Padding Buttom 20px-->
+    <span class="genera p-1 text-capitalize {{pokemon.color}} rounded fadeIn" data-testid="detail-genus" data-toggle="modal" data-target="#descModal"
+      *ngIf="pokemonGenera!=undefined">{{pokemonGenera}}</span>
+  </div>
+  <div class="row justify-content-center position-relative pb-5 w-100" style="max-width: 1500px;">
+    <div class="bubbles" *ngIf="megaEvolving" [ngClass]="{'fIn': BubblesVisible}">
+      <div class="bubble-wrap">
+        <ng-container *ngFor="let _ of [].constructor(200)">
+          <div class="bubble"></div>
+        </ng-container>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-2 bioDiv d-flex flex-wrap justify-content-center" [ngClass]="{fOut:!visible}">
+      <div class="inner">
+        <table class="table table-borderless">
+          <tr>
+            <td class="text-right font-weight-bold">ID</td>
+            <td data-testid="detail-id">#{{pokemon.id}}</td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold">Height</td>
+            <td style="white-space: nowrap;" data-testid="detail-height">{{heightInMetres + "m ( " + heightInFeetInches + " )"}}</td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold">Weight</td>
+            <td style="white-space: nowrap;" data-testid="detail-weight">{{weightInKgs + "kg ( " + weightInPounds + "lbs. )"}}</td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold">Abilities</td>
+            <td>
+              <div *ngIf="pokemon.abilities && pokemon.abilities.length > 0; else noAbilities">
+                <span class="abilities" *ngFor="let ability of pokemon.abilities; let i=index">
+                <ng-container *ngIf="i==2"><br></ng-container>
+                <span class="ability {{pokemon.color}} text-uppercase text-nowrap" [ngClass]="{'hiddenAbility':ability['isH']}" role="button" (click)="selectAbility(i)"
+                   [ngStyle]="{'display':i==2?'inline-block':'unset','margin-top':i==2?'5px':'0px'}" data-toggle="modal"
+                  data-target="#abilityModal">{{ability['n']}}</span>
+                </span>
+              </div>
+              <ng-template #noAbilities>
+                Unknown
+              </ng-template>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold align-middle">Type</td>
+            <td>
+              <div class="row flex-nowrap" data-toggle="modal" data-target="#typesModal">
+                <div class="text-capitalize row icon {{type['n']}}" *ngFor="let type of pokemon.types"><span class="col-8 text-white">{{type['n']}}</span><span
+                    class="col-4"><img alt="" class="img-fluid" src="assets/type-icons/png/{{type['n']}}.png"></span></div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold">Forms</td>
+            <td class="formsBlock text-capitalize">
+              <span class="varieties" *ngFor="let formName of formattedFormNames;let i=index" style="white-space: pre;">
+                <span class="variety {{pokemon.color}} text-uppercase" (click)="selectForm(i)" [ngClass]="{selectedForm:selectedFormNo===i}">{{formName}}</span>
+                <ng-container *ngIf="(i+1)%2==0"><br></ng-container>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <div class="col-lg-5 d-flex">
+      <div class="image-container">
+        <img alt="" class="Image fadeInOut" data-testid="detail-img" [src]="pokemonImageUrl" (load)="imagePreload()"
+          [ngClass]="{fadeImg: !imageLoading,fOut :!imageVisible}">
+        <img alt="" class="mega-sigil" src="assets/Mega-Evolution-Sigil.png" *ngIf="megaEvolving" [ngClass]="{'fIn': SigilVisible, 'sigil-end': sigilEnd}">
+        <div class="megaSphere" *ngIf="megaEvolving" [ngClass]="{'fIn': SphereVisible}"></div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-2 statDiv my-auto mx-auto d-flex flex-wrap justify-content-center">
+      <div class="inner">
+        <table class="table table-borderless">
+          <tr>
+            <td></td>
+            <td>
+              <button class="btn rounded-pill font-weight-bold" data-testid="stats-base-btn" (click)="showStats('base')" [ngClass]="selectedStat=='base' ? pokemon.color : null">Base
+              </button>
+            </td>
+            <td>
+              <button class="btn rounded-pill font-weight-bold" data-testid="stats-min-btn" (click)="showStats('min')" [ngClass]="selectedStat=='min' ? pokemon.color : null">Min
+              </button>
+            </td>
+            <td>
+              <button class="btn rounded-pill font-weight-bold" data-testid="stats-max-btn" (click)="showStats('max')" [ngClass]="selectedStat=='max' ? pokemon.color : null">Max
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">HP</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[0]}">
+                  <span data-testid="stat-value">{{statsToShow[0]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">Attack</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[1]}">
+                  <span data-testid="stat-value">{{statsToShow[1]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">Defence</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[2]}">
+                  <span data-testid="stat-value">{{statsToShow[2]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">Sp. Attack</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[3]}">
+                  <span data-testid="stat-value">{{statsToShow[3]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap" data-testid="stat-spd-label">Sp. Defance</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[4]}">
+                  <span data-testid="stat-value">{{statsToShow[4]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">Speed</td>
+            <td colspan="3">
+              <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated rounded-sm" role="progressbar" aria-valuenow="" aria-valuemin="0"
+                  aria-valuemax="255" [ngClass]="pokemon.color" [ngStyle]="{'width': stats[5]}">
+                  <span data-testid="stat-value">{{statsToShow[5]}}</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-right font-weight-bold text-nowrap">Total</td>
+            <td colspan="3">
+              {{totalBaseStats()}}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="container pb-5" data-testid="evo-section" *ngIf="evolutionChain.length>0" >
+    <h1 class="Heading text-center text-uppercase mb-4"><span class="rounded" [ngClass]="pokemon.color"
+        style="padding: 2px 4px 4px;">Evolution
+        Chain</span>
+    </h1>
+    <div class="row justify-content-center pb-5">
+      <ng-container [ngSwitch]="exceptionalChainType">
+        <ng-container *ngSwitchCase="''">
+          <ng-container class="text-capitalize" *ngFor="let stage of evolutionChain; let i =index">
+            <div class="col-sm evo-div">
+              <div *ngIf="evolutionChain.length===1" class="DNE">This Pokémon does not evolve.</div>
+              <div>
+                <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(stage[1], 4) + '.png'}}"
+                  routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+              </div>
+              <div class="evo-id text-center">#{{stage[1]}}</div>
+              <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+                <span class="{{pokemon.color}}"
+                  [ngClass]="{'selectedEvo':selectedEvolutionId===stage[1]}">{{stage[0]}}</span>
+              </div>
+              <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[stage[1]-1]!=undefined">
+                <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[stage[1]-1].types"><img alt=""
+                    src="assets/type-icons/png/{{type['n']}}.png"></div>
+              </div>
+            </div>
+            <div class='col-sm arrow-div evo-desc' *ngIf="i<evolutionChain.length-1">
+              <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+              {{evolutionDesc[i]}}
+            </div>
+          </ng-container>
+        </ng-container>
+        <ng-container
+          *ngSwitchCase="exceptionalChainType === '112' || exceptionalChainType === '12'|| exceptionalChainType === '13'? exceptionalChainType : 'null'">
+          <ng-container class="text-capitalize" *ngFor="let stage of evolutionChain; let i =index">
+            <ng-container *ngIf="i<evolutionChain.length-1; else MultiStage">
+              <div class="col-sm evo-div">
+                <div>
+                  <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(stage[1], 4) + '.png'}}"
+                    routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+                </div>
+                <div class="evo-id text-center">#{{stage[1]}}</div>
+                <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+                  <span class="{{pokemon.color}}"
+                    [ngClass]="{'selectedEvo':selectedEvolutionId===stage[1]}">{{stage[0]}}</span>
+                </div>
+                <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[stage[1]-1]!=undefined">
+                  <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[stage[1]-1].types"><img alt=""
+                      src="assets/type-icons/png/{{type['n']}}.png"></div>
+                </div>
+              </div>
+              <ng-container *ngIf="i<evolutionChain.length-2; else MultiArrowStage">
+                <div class='col-sm arrow-div evo-desc'>
+                  <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                  {{evolutionDesc[i]}}
+                </div>
+              </ng-container>
+              <ng-template #MultiArrowStage>
+                <div class="multi-arrow-stage">
+                  <ng-container *ngFor="let evolutionSideDesc of evolutionDesc[i];">
+                    <div class="arrow-div" *ngIf="i<evolutionChain.length-1">
+                      <div class='col-sm evo-desc'>
+                        <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                        {{evolutionSideDesc}}
+                      </div>
+                    </div>
+                  </ng-container>
+                </div>
+              </ng-template>
+            </ng-container>
+            <ng-template #MultiStage>
+              <div class="col-sm multi-evo-stage">
+                <ng-container *ngFor="let sideStage of stage;">
+                  <div class="col-sm evo-div">
+                    <div>
+                      <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(sideStage[1], 4) + '.png'}}"
+                        routerLink="/pokemon/{{sideStage[1]}}" (click)="selectEvolution(sideStage[1])">
+                    </div>
+                    <div class="evo-id text-center">#{{sideStage[1]}}</div>
+                    <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{sideStage[1]}}" (click)="selectEvolution(sideStage[1])">
+                      <span class="{{pokemon.color}}" [ngClass]="{'selectedEvo':selectedEvolutionId===sideStage[1]}">{{sideStage[0]}}</span>
+                    </div>
+                    <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[sideStage[1]-1]!=undefined">
+                      <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[sideStage[1]-1].types"><img alt=""
+                          src="assets/type-icons/png/{{type['n']}}.png">
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+              </div>
+            </ng-template>
+          </ng-container>
+        </ng-container>
+        <ng-container *ngSwitchCase="'122'">
+          <ng-container class="text-capitalize" *ngFor="let stage of evolutionChain; let i =index">
+            <ng-container *ngIf="i<evolutionChain.length-2; else MultiStage">
+              <div class="col-sm evo-div">
+                <div>
+                  <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(stage[1], 4) + '.png'}}"
+                    routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+                </div>
+                <div class="evo-id text-center">#{{stage[1]}}</div>
+                <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{stage[1]}}" (click)="selectEvolution(stage[1])">
+                  <span class="{{pokemon.color}}"
+                    [ngClass]="{'selectedEvo':selectedEvolutionId===stage[1]}">{{stage[0]}}</span>
+                </div>
+                <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[stage[1]-1]!=undefined">
+                  <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[stage[1]-1].types"><img alt=""
+                      src="assets/type-icons/png/{{type['n']}}.png"></div>
+                </div>
+              </div>
+              <ng-container *ngIf="i<evolutionChain.length-3; else MultiArrowStage">
+                <div class='col-sm arrow-div evo-desc'>
+                  <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                  {{evolutionDesc[i]}}
+                </div>
+              </ng-container>
+              <ng-template #MultiArrowStage>
+                <div class="multi-arrow-stage">
+                  <ng-container *ngFor="let evolutionSideDesc of evolutionDesc[i];">
+                    <div class="arrow-div" *ngIf="i<evolutionChain.length-1">
+                      <div class='col-sm evo-desc'>
+                        <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                        {{evolutionSideDesc}}
+                      </div>
+                    </div>
+                  </ng-container>
+                </div>
+              </ng-template>
+            </ng-container>
+            <ng-template #MultiStage>
+              <div class="col-sm multi-evo-stage">
+                <ng-container *ngFor="let sideStage of stage;">
+                  <div class="col-sm evo-div">
+                    <div>
+                      <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(sideStage[1], 4) + '.png'}}"
+                        routerLink="/pokemon/{{sideStage[1]}}" (click)="selectEvolution(sideStage[1])">
+                    </div>
+                    <div class="evo-id text-center">#{{sideStage[1]}}</div>
+                    <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{sideStage[1]}}" (click)="selectEvolution(sideStage[1])">
+                      <span class="{{pokemon.color}}" [ngClass]="{'selectedEvo':selectedEvolutionId===sideStage[1]}">{{sideStage[0]}}</span>
+                    </div>
+                    <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[sideStage[1]-1]!=undefined">
+                      <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[sideStage[1]-1].types"><img alt=""
+                          src="assets/type-icons/png/{{type['n']}}.png">
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+              </div>
+              <ng-container *ngIf="i<evolutionChain.length-3; else MultiArrowStage">
+                <div class='col-sm arrow-div evo-desc'>
+                  <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                  {{evolutionDesc[i]}}
+                </div>
+              </ng-container>
+              <ng-template #MultiArrowStage>
+                <div class="multi-arrow-stage">
+                  <ng-container *ngFor="let evolutionSideDesc of evolutionDesc[i];">
+                    <div class="arrow-div" *ngIf="i<evolutionChain.length-1">
+                      <div class='col-sm evo-desc'>
+                        <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                        {{evolutionSideDesc}}
+                      </div>
+                    </div>
+                  </ng-container>
+                </div>
+              </ng-template>
+            </ng-template>
+          </ng-container>
+        </ng-container>
+        <ng-container *ngSwitchCase="'18'">
+          <div class="eeveeRow1">
+            <ng-container class="text-capitalize" *ngFor="let row1 of evolutionChain[1].slice(0,3); let i =index">
+              <div class="col-sm evo-div">
+                <div>
+                  <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(row1[1], 4) + '.png'}}"
+                    routerLink="/pokemon/{{row1[1]}}" (click)="selectEvolution(row1[1])">
+                </div>
+                <div class="evo-id text-center">#{{row1[1]}}</div>
+                <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{row1[1]}}" (click)="selectEvolution(row1[1])">
+                  <span class="{{pokemon.color}}"
+                    [ngClass]="{'selectedEvo':selectedEvolutionId===row1[1]}">{{row1[0]}}</span>
+                </div>
+                <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[row1[1]-1]!=undefined">
+                  <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[row1[1]-1].types"><img alt=""
+                      src="assets/type-icons/png/{{type['n']}}.png"></div>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+          <div class="eeveeRow2">
+            <ng-container *ngFor="let evolutionSideDesc of evolutionDesc[0].slice(0,3);let i = index;">
+              <div class="arrow-div">
+                <div class='col-sm evo-desc' [ngClass]="{'corner1':i===0,'corner2':i==2}">
+                  <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                  {{evolutionSideDesc}}
+                </div>
+              </div>
+            </ng-container>
+          </div>
+          <div class="eeveeRow3">
+            <div class="col-sm evo-div">
+              <div>
+                <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(evolutionChain[1][3][1], 4) + '.png'}}"
+                  routerLink="/pokemon/{{evolutionChain[1][3][1]}}" (click)="selectEvolution(evolutionChain[1][3][1])">
+              </div>
+              <div class="evo-id text-center">#{{evolutionChain[1][3][1]}}</div>
+              <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{evolutionChain[1][3][1]}}"
+                (click)="selectEvolution(evolutionChain[1][3][1])"><span class="{{pokemon.color}}"
+                  [ngClass]="{'selectedEvo':selectedEvolutionId===evolutionChain[1][3][1]}">{{evolutionChain[1][3][0]}}</span>
+              </div>
+              <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[evolutionChain[1][3][1]-1]!=undefined">
+                <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[evolutionChain[1][3][1]-1].types"><img alt=""
+                    src="assets/type-icons/png/{{type['n']}}.png"></div>
+              </div>
+            </div>
+            <div class="arrow-div">
+              <div class='col-sm evo-desc'>
+                <img alt="" src="assets/right-arrow.png" class="evo-arrow" style="transform: rotate(180deg)">
+                {{evolutionDesc[0][3]}}
+              </div>
+            </div>
+            <div class="col-sm evo-div">
+              <div>
+                <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(evolutionChain[0][1], 4) + '.png'}}"
+                  routerLink="/pokemon/{{evolutionChain[0][1]}}" (click)="selectEvolution(evolutionChain[0][1])">
+              </div>
+              <div class="evo-id text-center">#{{evolutionChain[0][1]}}</div>
+              <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{evolutionChain[0][1]}}" (click)="selectEvolution(evolutionChain[0][1])">
+                <span class="{{pokemon.color}}"
+                  [ngClass]="{'selectedEvo':selectedEvolutionId===evolutionChain[0][1]}">{{evolutionChain[0][0]}}</span>
+              </div>
+              <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[evolutionChain[0][1]-1]!=undefined">
+                <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[evolutionChain[0][1]-1].types"><img alt=""
+                    src="assets/type-icons/png/{{type['n']}}.png"></div>
+              </div>
+            </div>
+            <div class="arrow-div">
+              <div class='col-sm evo-desc'>
+                <img alt="" src="assets/right-arrow.png" class="evo-arrow" style="transform: rotate(0deg)">
+                {{evolutionDesc[0][4]}}
+              </div>
+            </div>
+            <div class="col-sm evo-div">
+              <div>
+                <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(evolutionChain[1][4][1], 4) + '.png'}}"
+                  routerLink="/pokemon/{{evolutionChain[1][4][1]}}" (click)="selectEvolution(evolutionChain[1][4][1])">
+              </div>
+              <div class="evo-id text-center">#{{evolutionChain[1][3][1]}}</div>
+              <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{evolutionChain[1][4][1]}}"
+                (click)="selectEvolution(evolutionChain[1][4][1])"><span class="{{pokemon.color}}"
+                  [ngClass]="{'selectedEvo':selectedEvolutionId===evolutionChain[1][4][1]}">{{evolutionChain[1][4][0]}}</span>
+              </div>
+              <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[evolutionChain[1][4][1]-1]!=undefined">
+                <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[evolutionChain[1][4][1]-1].types"><img alt=""
+                    src="assets/type-icons/png/{{type['n']}}.png"></div>
+              </div>
+            </div>
+          </div>
+          <div class="eeveeRow2">
+            <ng-container *ngFor="let evolutionSideDesc of evolutionDesc[0].slice(5,8);let i = index;">
+              <div class="arrow-div">
+                <div class='col-sm evo-desc' [ngClass]="{'corner3':i===0,'corner3-4':i==1,'corner4':i==2}">
+                  <img alt="" src="assets/right-arrow.png" class="evo-arrow">
+                  {{evolutionSideDesc}}
+                </div>
+              </div>
+            </ng-container>
+          </div>
+          <div class="eeveeRow1">
+            <ng-container class="text-capitalize" *ngFor="let row1 of evolutionChain[1].slice(5,8); let i =index">
+              <div class="col-sm evo-div">
+                <div>
+                  <img alt="" class="evo-img mx-auto d-block" src="assets/thumbnails-compressed/{{this.pad(row1[1], 4) + '.png'}}"
+                    routerLink="/pokemon/{{row1[1]}}" (click)="selectEvolution(row1[1])">
+                </div>
+                <div class="evo-id text-center">#{{row1[1]}}</div>
+                <div class="evo-name text-uppercase text-center" routerLink="/pokemon/{{row1[1]}}" (click)="selectEvolution(row1[1])">
+                  <span class="{{pokemon.color}}"
+                    [ngClass]="{'selectedEvo':selectedEvolutionId===row1[1]}">{{row1[0]}}</span>
+                </div>
+                <div class="evo-types col-xs-5" *ngIf="pokemonService.pokemons[row1[1]-1]!=undefined">
+                  <div class="icon {{type['n']}}" *ngFor="let type of pokemonService.pokemons[row1[1]-1].types"><img alt=""
+                      src="assets/type-icons/png/{{type['n']}}.png"></div>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+        </ng-container>
+      </ng-container>
+    </div>
+    <div class="row justify-content-center SubSections">
+      <div class="col-lg col-md-4 col-sm-6 justify-content-center">
+        <h1 class="Heading text-center text-uppercase">Training</h1>
+        <div class="inner">
+          <table class="table table-borderless">
+            <tr>
+              <td class="text-right font-weight-bold">EV yield</td>
+              <td>
+                <span *ngIf="pokemon.stats[0]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[0]['EV']}}</span> HP </span>
+                <span *ngIf="pokemon.stats[1]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[1]['EV']}}</span> Attack </span>
+                <span *ngIf="pokemon.stats[2]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[2]['EV']}}</span> Defence </span>
+                <span *ngIf="pokemon.stats[3]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[3]['EV']}}</span> Sp. Attack </span>
+                <span *ngIf="pokemon.stats[4]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[4]['EV']}}</span> Sp. Defence </span>
+                <span *ngIf="pokemon.stats[5]['EV']!==0"><span class="{{pokemon.color+'-text'}}">{{pokemon.stats[5]['EV']}}</span> Speed </span>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Catch Rate</td>
+              <td><span class="{{pokemon.color+'-text'}}">{{pokemon.speciesDetails['CaR']}}</span>{{" (" +
+                calculateCatchRate(pokemon.speciesDetails['CaR']) + ")"}}
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Base Friendship</td>
+              <td><span class="{{pokemon.color+'-text'}}">{{pokemon.speciesDetails['BaH']}}</span>{{' (' +
+                getFriendShip(pokemon.speciesDetails['BaH']) + ')'}}
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Base Exp.</td>
+              <td class="{{pokemon.color+'-text'}}">{{pokemon.baseExperience}}</td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Growth Rate</td>
+              <td data-testid="growth-rate"><span class="{{pokemon.color+'-text'}}">{{capitalizeSplitJoin(pokemon.speciesDetails['GrR'], '-', '
+                  ')}}</span>
+                {{" (" + getExperiencePoints(pokemon.speciesDetails['GrR']) + ' Exp.)'}}</td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Held Items</td>
+              <td><span class="{{pokemon.color+'-text'}} d-block" *ngIf="pokemon.heldItems.length===0">None</span>
+                <span class="d-block" *ngFor="let heldItem of pokemon.heldItems"><span class="{{pokemon.color+'-text'}}">{{capitalizeSplitJoin(heldItem['n'],
+                    '-', ' ')}}</span>{{'
+                  (' +
+                  heldItem['%'] + '%) '}}</span>
+              </td>
+            </tr>
+          </table>
+
+        </div>
+      </div>
+      <div class="col-lg col-md-4 col-sm-6 justify-content-center">
+        <h1 class="Heading text-center text-uppercase">Breeding</h1>
+        <div class="inner">
+          <table class="table table-borderless">
+            <tr>
+              <td class="text-right font-weight-bold">Egg Groups</td>
+              <td class="text-capitalize" class="{{pokemon.color+'-text'}}">
+                <ng-container *ngFor="let eggGroup of pokemon.speciesDetails['EgG']">
+                  {{capitalizeSplitJoin(eggGroup, '-', ' ')}}</ng-container>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Gender Distribution</td>
+              <td [innerHTML]="generateGenderRates()"></td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Egg Cycles</td>
+              <td><span class="{{pokemon.color+'-text'}}">{{pokemon.speciesDetails['HaC']}}
+                </span>{{" (" + pokemon.speciesDetails['HaC'] * 256 + " Steps)"}}</td>
+            </tr>
+          </table>
+          <h1 class="Heading text-center text-uppercase">Forms</h1>
+          <table class="table table-borderless" style="width: auto;margin: auto auto 1rem;">
+            <tr>
+              <td class="text-right font-weight-bold">Alternative Forms</td>
+              <td class="text-capitalize" class="{{pokemon.color+'-text'}}">
+                {{(pokemonForms.length - 1) === 0 ? 'No' : 'Yes'}}
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">Gender Differences</td>
+              <td class="{{pokemon.color+'-text'}}">{{pokemon.speciesDetails['GDi'] == true ? 'Yes' : 'No'}}</td>
+            </tr>
+            <tr *ngIf="pokemon.speciesDetails['FD']!==null">
+              <td colspan="2" class="text-center">
+                <span class='ColoredButton' [ngClass]="pokemon.color" data-toggle="modal" data-target="#formsModal">Forms Info.</span>
+              </td>
+            </tr>
+            <tr *ngIf="genderDifferences[pad(pokemon.id,3)]!==undefined">
+              <td colspan="2" class="text-center">
+                <span class='ColoredButton' [ngClass]="pokemon.color" data-toggle="modal" data-target="#genderModal">Gender Info.</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <div class="col-lg col-md-4 col-sm-6 justify-content-center TypeEffDiv">
+        <h1 class="Heading text-center text-uppercase">Typing</h1>
+        <div class="inner">
+          <table class="table">
+            <tr>
+              <td class="text-right font-weight-bold">0x</td>
+              <td>
+                <div class="typeDefencesRow p-0" *ngIf="typeDefences!=undefined">
+                  <div class="icon {{type}}" *ngFor="let type of typeDefences['0x']"><img alt="" src="assets/type-icons/png/{{type}}.png"></div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">0.25x</td>
+              <td>
+                <div class="typeDefencesRow p-0" *ngIf="typeDefences!=undefined">
+                  <div class="icon {{type}}" *ngFor="let type of typeDefences['0.25x']"><img alt="" src="assets/type-icons/png/{{type}}.png"></div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">0.5x</td>
+              <td>
+                <div class="typeDefencesRow p-0" *ngIf="typeDefences!=undefined">
+                  <div class="icon {{type}}" *ngFor="let type of typeDefences['0.5x']"><img alt="" src="assets/type-icons/png/{{type}}.png"></div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">2x</td>
+              <td>
+                <div class="typeDefencesRow p-0" *ngIf="typeDefences!=undefined">
+                  <div class="icon {{type}}" *ngFor="let type of typeDefences['2x']"><img alt="" src="assets/type-icons/png/{{type}}.png"></div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right font-weight-bold">4x</td>
+              <td>
+                <div class="typeDefencesRow p-0" *ngIf="typeDefences!=undefined">
+                  <div class="icon {{type}}" *ngFor="let type of typeDefences['4x']"><img alt="" src="assets/type-icons/png/{{type}}.png"></div>
+
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container MovesTable pb-5">
+    <h1 class="Heading text-center text-uppercase mb-4">
+      <span class="rounded" [ngClass]="pokemon.color" style="padding: 2px 4px 4px;">Movepool</span>
+    </h1>
+    <div class="row justify-content-center SubSections">
+      <div class="col justify-content-center">
+        <h1 class="Heading text-center text-uppercase">Learn Methods</h1>
+        <div class="row d-flex text-center">
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectMovesByLearnMethod('level-up')"
+              [ngClass]="selectedMove=='level-up' ? pokemon.color : null">Level Up
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectMovesByLearnMethod('machine')"
+              [ngClass]="selectedMove=='machine' ? pokemon.color : null">TM/HM
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectMovesByLearnMethod('egg')"
+              [ngClass]="selectedMove=='egg' ? pokemon.color : null">Egg
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectMovesByLearnMethod('tutor')"
+              [ngClass]="selectedMove=='tutor' ? pokemon.color : null">Tutor
+            </button>
+          </div>
+        </div>
+        <div class="inner scrollableTable">
+          <div class="table-responsive {{pokemon.color}} position-relative">
+            <div class="lds-dual-ring" *ngIf="!movesListLoaded"></div>
+            <table class="table table-fixed">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-1 Col1 text-center">{{selectedMoveFirstColHeader[selectedMove]}}</th>
+                  <th scope="col" class="col-4 Col2">Move</th>
+                  <th scope="col" class="col-1 Col3 text-center">Type</th>
+                  <th scope="col" class="col-1 Col4 text-truncate text-center">Category</th>
+                  <th scope="col" class="col-1 Col5 text-truncate text-center">Power</th>
+                  <th scope="col" class="col-1 Col6 text-truncate text-center">PP</th>
+                  <th scope="col" class="col-1 Col7 text-truncate text-center">Accuracy</th>
+                  <th scope="col" class="col-1 Col8 text-truncate text-center">Priority</th>
+                  <th scope="col" class="col-1 Col9 text-truncate text-center">Generation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <ng-container *ngFor="let move of movesList; let i=index">
+                  <tr data-testid="move-row" *ngIf="move!==undefined" (click)="selectMove(i)" data-toggle="modal" data-target="#moveModal">
+                    <td class="col-1 Col1 text-center">
+                      <ng-container [ngSwitch]="selectedMove">
+                        <ng-container *ngSwitchCase="'level-up'">{{move[1]}}</ng-container>
+                        <ng-container *ngSwitchCase="'machine'">{{move[4]}}</ng-container>
+                        <ng-container *ngSwitchCase="'egg'">-</ng-container>
+                        <ng-container *ngSwitchCase="'tutor'">-</ng-container>
+                      </ng-container>
+                    </td>
+                    <td class="col-4 Col2 text-truncate">{{move[0]}}</td>
+                    <td class="col-1 Col3 text-center">
+                      <div class="moveTypes p-0">
+                        <div class="icon {{types[move[2].type_id-1]}}"><img alt="" src="assets/type-icons/png/{{types[move[2].type_id-1]}}.png"></div>
+                      </div>
+                    </td>
+                    <td class="col-1 Col4 text-center"><img alt="" class="img-fluid damage-icon" data-testid="damage-icon" src="assets/damage-category-icons/{{getDamageClass(move[2].damage_class_id)}}.png">
+                    </td>
+                    <td class="col-1 Col5 text-center">{{move[2].power}}</td>
+                    <td class="col-1 Col6 text-center">{{move[2].pp}}</td>
+                    <td class="col-1 Col7 text-center">{{move[2].accuracy}}</td>
+                    <td class="col-1 Col8 text-center">{{move[2].priority}}</td>
+                    <td class="col-1 Col9 text-center">{{move[2].generation_id}}</td>
+                  </tr>
+                </ng-container>
+                <tr class="disableClicking" *ngIf="movesList.length==0&&movesListLoaded==true">
+                  <td class="col text-center NotFoundText" style="padding-top: 8.5rem;">
+                    <ng-container *ngIf="!availableInSelectedGen(pokemon.speciesDetails['Gen']); else noMovesLearnt">
+                      This Pokémon didn't exist in the selected games!
+                    </ng-container>
+                    <ng-template #noMovesLearnt>No moves learned by this method in the selected games found.
+                    </ng-template>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <h1 class="Heading text-center text-uppercase mt-4">Game Versions</h1>
+        <div class="row GameVersions text-center">
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('red-blue')"
+              [ngClass]="selectedGameVersion=='red-blue' ? pokemon.color : null">RB
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('yellow')"
+              [ngClass]="selectedGameVersion=='yellow' ? pokemon.color : null">Y
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('gold-silver')"
+              [ngClass]="selectedGameVersion=='gold-silver' ? pokemon.color : null">GS
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('crystal')"
+              [ngClass]="selectedGameVersion=='crystal' ? pokemon.color : null">C
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('ruby-sapphire')"
+              [ngClass]="selectedGameVersion=='ruby-sapphire' ? pokemon.color : null">RS
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('emerald')"
+              [ngClass]="selectedGameVersion=='emerald' ? pokemon.color : null">E
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('firered-leafgreen')"
+              [ngClass]="selectedGameVersion=='firered-leafgreen' ? pokemon.color : null">FRLG
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('diamond-pearl')"
+              [ngClass]="selectedGameVersion=='diamond-pearl' ? pokemon.color : null">DP
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('platinum')"
+              [ngClass]="selectedGameVersion=='platinum' ? pokemon.color : null">P
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('heartgold-soulsilver')"
+              [ngClass]="selectedGameVersion=='heartgold-soulsilver' ? pokemon.color : null">HGSS
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('black-white')"
+              [ngClass]="selectedGameVersion=='black-white' ? pokemon.color : null">BW
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('black-2-white-2')"
+              [ngClass]="selectedGameVersion=='black-2-white-2' ? pokemon.color : null">B2W2
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('x-y')"
+              [ngClass]="selectedGameVersion=='x-y' ? pokemon.color : null">XY
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('omega-ruby-alpha-sapphire')"
+              [ngClass]="selectedGameVersion=='omega-ruby-alpha-sapphire' ? pokemon.color : null">ORAS
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('sun-moon')"
+              [ngClass]="selectedGameVersion=='sun-moon' ? pokemon.color : null">SM
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('ultra-sun-ultra-moon')"
+              [ngClass]="selectedGameVersion=='ultra-sun-ultra-moon' ? pokemon.color : null">USUM
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" (click)="selectGameVersion('lets-go-pikachu-lets-go-eevee')"
+              [ngClass]="selectedGameVersion=='lets-go-pikachu-lets-go-eevee' ? pokemon.color : null">LGPLGE
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" data-testid="version-btn-sword" (click)="selectGameVersion('sword-shield')"
+              [ngClass]="selectedGameVersion=='sword-shield' ? pokemon.color : null">SS
+            </button>
+          </div>
+          <div class="col">
+            <button class="btn rounded-pill font-weight-bold" data-testid="version-btn-scarlet" (click)="selectGameVersion('scarlet-violet')"
+              [ngClass]="selectedGameVersion=='scarlet-violet' ? pokemon.color : null">SV
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Ability Modal -->
+  <div class="modal fade" id="abilityModal" tabindex="-1" role="dialog" aria-labelledby="abilityModal" aria-hidden="true" #abilityModal>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content" *ngIf="allAbilitiesReceived && pokemon.abilities[abilitySelected] as ability">
+        <div class="modal-header-custom">
+          <h5 class="pt-1 text-uppercase">{{ability['n']}}</h5>
+          <span class="{{pokemon.color}} rounded text-uppercase" style="padding: 4px 6px"
+              >{{selectedAbilityGeneration}}</span>
+          <span class="{{pokemon.color}} rounded ml-2 hiddenAbility" style="padding: 4px 6px"
+              *ngIf="ability['isH']">HIDDEN</span>   
+        </div>
+        <div class="modal-body text-center">
+          <p style="padding-top: 6px" *ngIf="unavailableAbilityText!=='';else availableAbility">
+            {{unavailableAbilityText}}</p>
+          <ng-template #availableAbility>
+            <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">GAME DESCRIPTION</span>
+            <p class="pt-2">{{selectedAbilityFlavorText}}</p>
+            <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">EFFECT</span>
+            <p class="pt-2">{{selectedAbilityShortEffect}}</p>
+            <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">IN-DEPTH EFFECT</span>
+            <p class="pt-2" style="white-space: pre-wrap;">{{selectedAbilityEffect}}</p>
+          </ng-template>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!--FlavorTextModal-->
+  <div class="modal fade" id="descModal" tabindex="-1" role="dialog" aria-labelledby="descModal" aria-hidden="true" #descModal>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content" *ngIf="pokemon.speciesDetails!==undefined">
+        <div class="modal-header-custom">
+          <h5 class="pt-1 text-uppercase">{{pokemon.name}}</h5>
+          <span class="{{pokemon.color}} rounded" style="padding: 4px 6px">Pokédex Entries</span>
+        </div>
+        <div class="modal-body text-center">
+          <ng-container *ngFor="let entry of pokemon.speciesDetails['FTE']">
+            <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">
+              Pokémon {{entry['v'].replace('-', ' ')|titlecase}}</span>
+            <p class="pt-2">{{entry['e'].replace('', ' ')}}</p>
+          </ng-container>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!--FormsDescModal-->
+  <div class="modal fade" id="formsModal" tabindex="-1" role="dialog" aria-labelledby="formsModal" aria-hidden="true" #formsModal>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content" *ngIf="pokemon.speciesDetails!==undefined">
+        <div class="modal-header-custom">
+          <h5 class="pt-1 text-uppercase">{{pokemonForms[0].name + "'s Forms"}}</h5>
+          <span class="{{pokemon.color}} rounded text-capitalize" style="padding: 4px 6px">
+            {{pokemon.speciesDetails['FoS'] ? 'Forms Switchable' : 'Forms Not Switchable'}}</span>
+        </div>
+        <div class="modal-body text-center">
+          <p class="my-1">{{pokemon.speciesDetails['FD']}}</p>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!--GenderDifferencesModal-->
+  <div class="modal fade" id="genderModal" tabindex="-1" role="dialog" aria-labelledby="genderModal" aria-hidden="true" #genderModal>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content" *ngIf="pokemon.speciesDetails!==undefined">
+        <div class="modal-header-custom">
+          <h5 class="pt-1 text-uppercase">Gender Differences</h5>
+        </div>
+        <div class="modal-body text-center">
+          <p class="my-1">{{genderDifferences[pad(pokemon.id, 3)]}}.</p>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!--MovesModal-->
+  <div class="modal fade" id="moveModal" tabindex="-1" role="dialog" aria-labelledby="moveModal" aria-hidden="true" #moveModal>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content" *ngIf="moveDetails.length>0&&currentMoveData!==undefined&&currentMoveID!==null">
+        <div class="modal-header-custom">
+          <h5 class="pt-1 text-uppercase">{{movesList[currentMoveID][0]}}</h5>
+          <span class="{{pokemon.color}} rounded text-uppercase" style="padding: 4px 6px">
+            {{currentMoveData.generation}}</span>
+        </div>
+        <div class="modal-header-custom">
+          <div class="d-flex flex-nowrap justify-content-center">
+              <div class="row icon {{types[movesList[currentMoveID][2].type_id-1]}} moveDetails">
+                <span class="col-8 text-white text-capitalize">{{types[movesList[currentMoveID][2].type_id-1]}}</span>
+                <span class="col-4"><img alt="" class="img-fluid" src="assets/type-icons/png/{{types[movesList[currentMoveID][2].type_id-1]}}.png">
+                </span>
+              </div>
+              <div class="row icon {{getDamageClass(movesList[currentMoveID][2].damage_class_id)}} moveDetails"><span
+                  class="col-8 text-white">{{getDamageClass(movesList[currentMoveID][2].damage_class_id)}}</span>
+                <span class="col-4">
+                  <img alt="" class="img-fluid damage-cat"
+                    src="assets/damage-category-icons/{{getDamageClass(movesList[currentMoveID][2].damage_class_id)}}-white.png"
+                    style="width: 80%;margin-left: 0;margin-right: 2px;"></span>
+              </div>
+              <ng-container *ngIf="movesList[currentMoveID][2].contest_type_id!=='-'">
+                <div class="row icon water moveDetails {{moveContestType[movesList[currentMoveID][2].contest_type_id-1]}}">
+                  <span class="col-12 text-white text-capitalize"
+                    style="align-self: center">{{moveContestType[movesList[currentMoveID][2].contest_type_id-1]}}</span>
+                </div>
+              </ng-container>
+            </div>
+        </div>
+        <div class="modal-header-custom">
+          <div class="row text-center" style="margin-right: unset; margin-left: unset;">
+            <div class="col">
+              <div class="propertyValue {{pokemon.color+'-text'}}">{{movesList[currentMoveID][2].power}}</div>
+              <div class="movePropertyName">Power</div>
+            </div>
+            <div class="col">
+              <div class="propertyValue {{pokemon.color+'-text'}}">{{movesList[currentMoveID][2].accuracy}}
+                <ng-container *ngIf="movesList[currentMoveID][2].accuracy!=='-'">%</ng-container>
+              </div>
+              <div class="movePropertyName">Accuracy</div>
+            </div>
+            <div class="col">
+              <div class="propertyValue {{pokemon.color+'-text'}}">{{movesList[currentMoveID][2].pp}}</div>
+              <div class="movePropertyName">PP</div>
+            </div>
+            <div class="col">
+              <div class="propertyValue {{pokemon.color+'-text'}}">{{movesList[currentMoveID][2].priority}}</div>
+              <div class="movePropertyName">Priority</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-body text-center">
+          <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">GAME DESCRIPTION</span>
+          <p class="pt-2">{{moveFlavorTextEntry}}</p>
+          <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">EFFECT</span>
+          <p class="pt-2">{{moveShortEffect}}</p>
+          <span class="{{pokemon.color}} rounded text-center font-weight-bolder p-1" style="font-size: larger">IN-DEPTH EFFECT</span>
+          <p class="pt-2" style="white-space: pre-wrap">{{moveEffect}}</p>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,147 @@
+diff --git a/src/core.js b/src/core.js
+index a62e502..e994623 100644
+--- a/src/core.js
++++ b/src/core.js
+@@ -101,13 +101,13 @@ export class JSONEditor {
+     this.element.classList.add('je-ready')
+ 
+     /* Fire ready event asynchronously */
+-    window.setTimeout(() => {
++    window.requestAnimationFrame(() => {
+       if (!this.ready) return
+       this.validation_results = this.validator.validate(this.root.getValue())
+       this.root.showValidationErrors(this.validation_results)
+       this.trigger('ready')
+       this.trigger('change')
+-    }, 4000)
++    })
+   }
+ 
+   getValue () {
+diff --git a/src/editor.js b/src/editor.js
+index 6a0894e..87add55 100644
+--- a/src/editor.js
++++ b/src/editor.js
+@@ -314,7 +314,7 @@ export class AbstractEditor {
+         if (!root) throw new Error(`Could not find ancestor node with id ${first}`)
+ 
+         /* Keep track of the root node and path for use when rendering the template */
+-        adjustedPath = `${root.getAttribute('data-schemapath')}.${pathParts.join('.').toUpperCase()}`
++        adjustedPath = `${root.getAttribute('data-schemapath')}.${pathParts.join('.')}`
+ 
+         if (myPath.startsWith(adjustedPath)) this.watchLoop = true
+         this.jsoneditor.watch(adjustedPath, this.watch_listener)
+diff --git a/src/editors/array.js b/src/editors/array.js
+index ef55b02..6467ef2 100644
+--- a/src/editors/array.js
++++ b/src/editors/array.js
+@@ -162,7 +162,7 @@ export class ArrayEditor extends AbstractEditor {
+ 
+   onChildEditorChange (editor, eventData) {
+     this.refreshValue()
+-    this.refreshTabs()
++    this.refreshTabs(true)
+     this.is_dirty = true
+     super.onChildEditorChange(editor, eventData)
+   }
+diff --git a/src/editors/checkbox.js b/src/editors/checkbox.js
+index f7e23e1..8d506cc 100644
+--- a/src/editors/checkbox.js
++++ b/src/editors/checkbox.js
+@@ -66,7 +66,7 @@ export class CheckboxEditor extends AbstractEditor {
+     this.input.addEventListener('change', e => {
+       e.preventDefault()
+       e.stopPropagation()
+-      this.value = !e.currentTarget.checked
++      this.value = e.currentTarget.checked
+       this.is_dirty = true
+       this.onChange(true)
+     })
+diff --git a/src/editors/integer.js b/src/editors/integer.js
+index a659fb6..af50814 100644
+--- a/src/editors/integer.js
++++ b/src/editors/integer.js
+@@ -16,7 +16,7 @@ export class IntegerEditor extends NumberEditor {
+         return undefined
+       }
+     } else {
+-      return isInteger(this.value) ? this.value : parseInt(this.value)
++      return isInteger(this.value) ? parseInt(this.value) : this.value
+     }
+   }
+ }
+diff --git a/src/editors/select.js b/src/editors/select.js
+index c116e46..4ea9573 100644
+--- a/src/editors/select.js
++++ b/src/editors/select.js
+@@ -11,7 +11,7 @@ export class SelectEditor extends AbstractEditor {
+     const haveToUseDefaultValue = !!this.jsoneditor.options.use_default_values || typeof this.schema.default !== 'undefined'
+ 
+     if (!this.hasPlaceholderOption && (!inEnum || (initial && !this.isRequired() && !haveToUseDefaultValue))) {
+-      sanitized = this.enum_values[this.enum_values.length - 1]
++      sanitized = this.enum_values[0]
+     }
+ 
+     if (this.value === sanitized) return
+diff --git a/src/editors/string.js b/src/editors/string.js
+index 884605a..cefac56 100644
+--- a/src/editors/string.js
++++ b/src/editors/string.js
+@@ -164,6 +164,7 @@ export class StringEditor extends AbstractEditor {
+         this.is_dirty = true
+ 
+         this.refreshValue()
++        this.onChange(true)
+       })
+ 
+     if (this.options.input_height) this.input.style.height = this.options.input_height
+@@ -319,13 +320,14 @@ export class StringEditor extends AbstractEditor {
+ 
+   enable () {
+     if (!this.always_disabled) {
+-      this.input.disabled = this.disabled
++      this.input.disabled = false
+       super.enable()
+     }
+   }
+ 
+   disable (alwaysDisabled) {
+     if (alwaysDisabled) this.always_disabled = true
++    this.input.disabled = true
+     super.disable()
+   }
+ 
+diff --git a/src/editors/table.js b/src/editors/table.js
+index 354af07..d4532be 100644
+--- a/src/editors/table.js
++++ b/src/editors/table.js
+@@ -431,7 +431,7 @@ export class TableEditor extends ArrayEditor {
+       const j = e.currentTarget.getAttribute('data-i') * 1
+       const value = this.getValue()
+ 
+-      value.splice(j + 2, 0, value.splice(j, 1)[0])
++      value.splice(j + 1, 0, value.splice(j, 1)[0])
+ 
+       this.setValue(value)
+       this.onChange(true)
+diff --git a/src/validator.js b/src/validator.js
+index f60db47..9b7a139 100644
+--- a/src/validator.js
++++ b/src/validator.js
+@@ -308,7 +308,7 @@ export class Validator {
+       },
+       minimum (schema, value, path) {
+         /* Vanilla JS, prone to floating point rounding errors (e.g. .999999999999999 == 1) */
+-        let valid = schema.exclusiveMinimum ? (value > schema.minimum) : (value <= schema.minimum)
++        let valid = schema.exclusiveMinimum ? (value > schema.minimum) : (value >= schema.minimum)
+ 
+         /* Use math.js is available */
+         if (window.math) {
+@@ -441,6 +441,7 @@ export class Validator {
+               message: this.translate('error_uniqueItems', null, schema)
+             }]
+           }
++          seen[valid] = true
+         }
+         return []
+       }

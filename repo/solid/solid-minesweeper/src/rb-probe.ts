@@ -1,0 +1,659 @@
+// rb-probe.ts - observation bridge for the repair-bench verifier (INSTRUMENTATION ONLY).
+//
+// Neutrality contract: this file only READS the app. It never writes a signal, never
+// changes a render branch, never alters a rule, and it is imported for its side effect
+// (installing window.__MSW__) before the app renders. Every gesture helper reproduces
+// exactly one real user gesture - element.click() on a cell span / toolbar button, a
+// bubbling MouseEvent("contextmenu") for a flag, a bubbling WheelEvent on window for the
+// zoom, and the mousedown/mousemove/mouseup triple on the board viewport for a pan - so a
+// checkpoint drives the same code path a user drives.
+//
+// Why a bridge instead of raw locators: the board is up to 480 sibling <span> elements with
+// no ids, distinguished only by their position, and the three toolbar badges differ only by
+// their content. The bridge therefore selects on structure this same instrumentation patch
+// adds (data-rb-board / data-rb-cell / data-rb-r / data-rb-c / data-rb-badge /
+// data-rb-action / data-rb-difficulty / data-rb-alert / data-rb-zoom / data-rb-settings),
+// and it reads the board's truth from the app's OWN store and signals (bound by bindGame
+// below) rather than from cell colours, so a checkpoint that asks "is this cell opened"
+// cannot be answered by a defect that only repaints it.
+//
+// Reference computations living here, and why each is only partial:
+//   1. the eight compass offsets. src/libs/util.ts spells this same table out TWICE already
+//      (calculateNeighbors' neighbourCells keys left/right/tLeft/tMiddle/tRight/bLeft/
+//      bMiddle/bRight, and doZeroOpen's neighbours keys with the identical names), so the
+//      geometry is disclosed by the seed itself and nothing new is revealed.
+//   2. nothing else. In particular the bridge never reimplements a rule: it never decides
+//      whether a cell may open, never recomputes a neighbour count, never predicts a
+//      cascade. Target pickers only READ the app's own stored fields (isMine / isFlagged /
+//      isClicked / neighbors) and choose a coordinate; every expected number lives in
+//      tests/dsl.json, which is not part of the answering environment.
+//
+// Latch protocol (R22-2): a checkpoint that has to observe "a value did NOT move" cannot be
+// a single read, because the runner polls a failing assert until its budget expires and would
+// therefore accept the very first sample. Such a checkpoint arms a DEFERRED one-shot
+// evaluation in setup (window.__L[K] = {done:false,...} -> setTimeout -> {done:true, value}),
+// asserts done === true first, and only then reads the frozen scalar. Every reader below is a
+// pure, repeatable read with no side effect, so polling is safe.
+
+const errors: any[] = [];
+let app: any = null;
+
+const installErrorTrap = () => {
+  window.addEventListener("error", (event: any) => {
+    errors.push({ kind: "error", message: String((event && event.message) || "unknown"), stack: String((event && event.error && event.error.stack) || "").split("\n").slice(0, 4).join(" @ ") });
+  });
+  window.addEventListener("unhandledrejection", (event: any) => {
+    errors.push({ kind: "unhandledrejection", message: String((event && event.reason) || "unknown") });
+  });
+  return true;
+};
+installErrorTrap();
+
+/** Called once from the Game component by the instrumentation patch. Stores live accessors only. */
+export const bindGame = (handle: any) => {
+  app = handle;
+  return true;
+};
+
+const q = (sel: any, root?: any) => (root || document).querySelector(sel);
+const qa = (sel: any, root?: any) =>
+  Array.prototype.slice.call((root || document).querySelectorAll(sel));
+const txt = (el: any) => (el ? String(el.textContent || "").replace(/\s+/g, " ").trim() : null);
+
+// ------------------------------------------------------------------ board DOM
+const viewportEl = () => q("[data-rb-viewport]");
+const boardEl = () => q("[data-rb-board]");
+const cellEls = () => qa("[data-rb-cell]");
+const cellEl = (r: any, c: any) =>
+  q('[data-rb-cell][data-rb-r="' + Number(r) + '"][data-rb-c="' + Number(c) + '"]');
+const badgeEl = (kind: any) => q('[data-rb-badge="' + kind + '"]');
+const actionEl = (name: any) => q('[data-rb-action="' + name + '"]');
+const difficultyEl = (name: any) => q('[data-rb-difficulty="' + name + '"]');
+const alertEl = (kind: any) => q('[data-rb-alert="' + kind + '"]');
+const settingsEl = () => q('[data-rb-settings="content"]');
+const zoomEl = () => q("[data-rb-zoom]");
+
+// ------------------------------------------------------------- app-state reads
+const rows = (): any => {
+  try {
+    return app && app.rows ? app.rows() : null;
+  } catch (e) {
+    return null;
+  }
+};
+const sig = (name: string): any => {
+  try {
+    return app && typeof app[name] === "function" ? app[name]() : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+/** JSON-safe snapshot of the app's own cell store (read-only). */
+const snap = () => {
+  const r = rows();
+  if (!r || typeof r.length !== "number") return [];
+  const out: any[] = [];
+  for (let i = 0; i < r.length; i++) {
+    const row: any[] = [];
+    const rr = r[i];
+    if (!rr || typeof rr.length !== "number") { out.push(row); continue; }
+    for (let j = 0; j < rr.length; j++) {
+      const c = rr[j] || {};
+      row.push({
+        isMine: !!c.isMine,
+        isFlagged: !!c.isFlagged,
+        isClicked: !!c.isClicked,
+        neighbors: Number(c.neighbors) || 0,
+      });
+    }
+    out.push(row);
+  }
+  return out;
+};
+
+// The eight compass offsets, exactly as src/libs/util.ts declares them twice.
+const OFFSETS: number[][] = [
+  [0, -1], [0, 1], [-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1],
+];
+
+const rowsCount = () => snap().length;
+const colsCount = () => { const s = snap(); return s.length ? s[0].length : 0; };
+const cellAt = (r: any, c: any) => { const s = snap(); return s[Number(r)] && s[Number(r)][Number(c)] ? s[Number(r)][Number(c)] : null; };
+const eachCell = (fn: (r: number, c: number, cell: any) => void) => {
+  const s = snap();
+  for (let i = 0; i < s.length; i++) for (let j = 0; j < s[i].length; j++) fn(i, j, s[i][j]);
+  return true;
+};
+
+// ------------------------------------------------------------------- drivers
+// lastClick is bookkeeping for the geometry readers below (which opened cell is
+// "far" from the square the user actually pressed). It is never used to change
+// the app.
+let lastClick: number[] | null = null;
+let flagTarget: number[] | null = null;
+
+const clickAt = (r: number, c: number) => {
+  const el = cellEl(r, c);
+  if (!el) return false;
+  lastClick = [r, c];
+  el.click();
+  return true;
+};
+
+const flagAt = (r: number, c: number) => {
+  const el = cellEl(r, c);
+  if (!el) return false;
+  flagTarget = [r, c];
+  el.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 8, clientY: 8 }),
+  );
+  return true;
+};
+
+/** First cell in row-major order matching a predicate over the app's own fields. */
+const pickCell = (pred: (cell: any, r: number, c: number) => boolean) => {
+  const s = snap();
+  for (let i = 0; i < s.length; i++)
+    for (let j = 0; j < s[i].length; j++) if (pred(s[i][j], i, j)) return [i, j];
+  return null;
+};
+
+const clickFirstSafe = () => {
+  const t = pickCell((cell) => !cell.isMine && !cell.isClicked && !cell.isFlagged);
+  return t ? clickAt(t[0], t[1]) : false;
+};
+const clickFirstMine = () => {
+  const t = pickCell((cell) => cell.isMine && !cell.isClicked);
+  return t ? clickAt(t[0], t[1]) : false;
+};
+const clickFirstZero = () => {
+  const t = pickCell((cell) => !cell.isMine && !cell.isClicked && cell.neighbors === 0);
+  return t ? clickAt(t[0], t[1]) : false;
+};
+const clickFirstNumbered = () => {
+  const t = pickCell((cell) => !cell.isMine && !cell.isClicked && cell.neighbors > 0);
+  return t ? clickAt(t[0], t[1]) : false;
+};
+const flagFirstSafe = () => {
+  const t = pickCell((cell) => !cell.isMine && !cell.isClicked && !cell.isFlagged);
+  return t ? flagAt(t[0], t[1]) : false;
+};
+
+/**
+ * Pick a cascade triple (Z, M, N) purely from the app's own stored fields:
+ * Z is an unopened safe cell the app itself stores as neighbors === 0, M is one of Z's eight
+ * compass neighbours that the app also stores as neighbors === 0 and safe, and N is one of M's
+ * eight compass neighbours that is safe, unopened, unflagged and at Chebyshev distance 2 from Z.
+ * No fate is predicted here: the bridge does not decide what the flood will do, it only names
+ * three coordinates the caller can flag and open. Returns null when the live board has no such
+ * triple (a checkpoint reading null must be treated as a setup failure, never as a pass).
+ */
+const cascadeTriple = () => {
+  const s = snap();
+  const inBoard = (r: number, c: number) => r >= 0 && c >= 0 && s[r] && s[r][c];
+  for (let zi = 0; zi < s.length; zi++) {
+    for (let zj = 0; zj < s[zi].length; zj++) {
+      const z = s[zi][zj];
+      if (z.isMine || z.isClicked || z.isFlagged || z.neighbors !== 0) continue;
+      for (const o1 of OFFSETS) {
+        const mi = zi + o1[0], mj = zj + o1[1];
+        if (!inBoard(mi, mj)) continue;
+        const m = s[mi][mj];
+        if (m.isMine || m.isClicked || m.isFlagged || m.neighbors !== 0) continue;
+        for (const o2 of OFFSETS) {
+          const ni = mi + o2[0], nj = mj + o2[1];
+          if (!inBoard(ni, nj)) continue;
+          if (ni === zi && nj === zj) continue;
+          if (Math.max(Math.abs(ni - zi), Math.abs(nj - zj)) !== 2) continue;
+          const n = s[ni][nj];
+          if (n.isMine || n.isClicked || n.isFlagged) continue;
+          return { z: [zi, zj], m: [mi, mj], n: [ni, nj] };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+/** Flag N, then open Z. Returns the triple, or false when the live board has none. */
+const flagCascadeTargetThenOpen = () => {
+  const t = cascadeTriple();
+  if (!t) return false;
+  if (!flagAt(t.n[0], t.n[1])) return false;
+  if (!clickAt(t.z[0], t.z[1])) return false;
+  return { z: t.z.join(","), m: t.m.join(","), n: t.n.join(",") };
+};
+
+const restart = () => { const el = actionEl("restart"); if (!el) return false; el.click(); return true; };
+const openSettings = () => { const el = actionEl("settings"); if (!el) return false; el.click(); return true; };
+const selectDifficulty = (name: any) => { const el = difficultyEl(name); if (!el) return false; el.click(); return true; };
+const startDifficulty = () => { const el = actionEl("start"); if (!el) return false; el.click(); return true; };
+
+/** n real wheel gestures on window, exactly where the app listens. */
+const wheel = (n: any, deltaY: any) => {
+  const count = Number(n) || 0;
+  const dy = Number(deltaY);
+  for (let i = 0; i < count; i++)
+    window.dispatchEvent(new WheelEvent("wheel", { deltaY: dy, bubbles: true, cancelable: true }));
+  return count;
+};
+
+/** One real pan gesture: press inside the viewport, move, release without leaving it. */
+const panBy = (dx: any, dy: any) => {
+  const el = viewportEl();
+  if (!el) return false;
+  const box = el.getBoundingClientRect();
+  const x0 = Math.round(box.left + box.width / 2);
+  const y0 = Math.round(box.top + box.height / 2);
+  const x1 = x0 + Number(dx || 0);
+  const y1 = y0 + Number(dy || 0);
+  const mk = (type: string, x: number, y: number, buttons: number) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, buttons });
+  el.dispatchEvent(mk("mousedown", x0, y0, 1));
+  el.dispatchEvent(mk("mousemove", x1, y1, 1));
+  el.dispatchEvent(mk("mouseup", x1, y1, 0));
+  return true;
+};
+
+/** Open every safe square the app itself reports as unopened; never touches a mine. */
+/** One real click on the card's own X. */
+const clickSettingsClose = () => { const el = settingsCloseEl(); if (!el) return false; el.click(); return true; };
+const sweepSafe = () => {
+  let clicks = 0;
+  for (let pass = 0; pass < 400; pass++) {
+    if (sig("isGameOver")) break;
+    const t = pickCell((cell) => !cell.isMine && !cell.isClicked && !cell.isFlagged);
+    if (!t) break;
+    if (!clickAt(t[0], t[1])) break;
+    clicks++;
+  }
+  return clicks;
+};
+
+// ------------------------------------------------------------------- readers
+const ready = () => !!app && cellEls().length > 0 && snap().length > 0;
+const errorCount = () => errors.length;
+const errorMessages = () => errors.map((e) => e.kind + ": " + e.message + (e.stack ? " [" + e.stack + "]" : "")).join(" | ");
+
+const mineCount = () => { let n = 0; eachCell((r, c, cell) => { if (cell.isMine) n++; }); return n; };
+const openedCount = () => { let n = 0; eachCell((r, c, cell) => { if (cell.isClicked) n++; }); return n; };
+const flaggedCount = () => { let n = 0; eachCell((r, c, cell) => { if (cell.isFlagged) n++; }); return n; };
+const safeCount = () => { let n = 0; eachCell((r, c, cell) => { if (!cell.isMine) n++; }); return n; };
+
+/** Mines the app placed on the last row or the last column of the live board. */
+const minesInLastLine = () => {
+  const s = snap();
+  if (!s.length) return -1;
+  const lastR = s.length - 1;
+  const lastC = s[0].length - 1;
+  let n = 0;
+  for (let i = 0; i < s.length; i++)
+    for (let j = 0; j < s[i].length; j++)
+      if (s[i][j].isMine && (i === lastR || j === lastC)) n++;
+  return n;
+};
+const mineFieldReachesLastLine = () => minesInLastLine() > 0;
+
+/**
+ * Internal-consistency census of the app's own stored neighbour counts: every count must sit in
+ * 0..8, and a cell the app itself stores as a mine must still carry the 0 it was generated with
+ * (calculateNeighbors returns early on mines, so nothing else may write to them). This reads two
+ * fields the app publishes and compares them with each other; it never recounts a neighbourhood.
+ */
+const neighborRangeOk = () => {
+  const s = snap();
+  for (let i = 0; i < s.length; i++)
+    for (let j = 0; j < s[i].length; j++) {
+      const n = s[i][j].neighbors;
+      if (!(n >= 0 && n <= 8)) return false;
+      if (s[i][j].isMine && n !== 0) return false;
+    }
+  return true;
+};
+
+/** Largest Chebyshev distance, in board coordinates, between the pressed square and an opened one. */
+const maxOpenedChebyshev = () => {
+  if (!lastClick) return -1;
+  const s = snap();
+  let best = -1;
+  for (let i = 0; i < s.length; i++)
+    for (let j = 0; j < s[i].length; j++)
+      if (s[i][j].isClicked)
+        best = Math.max(best, Math.max(Math.abs(i - lastClick[0]), Math.abs(j - lastClick[1])));
+  return best;
+};
+const cascadeReachedDistance2 = () => maxOpenedChebyshev() >= 2;
+const openedCountAfterPress = () => openedCount();
+
+/** Did the square the caller flagged before the press stay closed? (null when nothing was flagged) */
+const flaggedSurvivorClosed = () => {
+  if (!flagTarget) return null;
+  const c = cellAt(flagTarget[0], flagTarget[1]);
+  return c ? !c.isClicked : null;
+};
+const flaggedSurvivorStillFlagged = () => {
+  if (!flagTarget) return null;
+  const c = cellAt(flagTarget[0], flagTarget[1]);
+  return c ? !!c.isFlagged : null;
+};
+
+const scale = () => { const v = sig("scale"); return v === null ? null : Number(v); };
+const difficultyIndex = () => sig("difficulty");
+const difficultyName = () => {
+  const s = snap();
+  return txt(badgeEl("difficulty"));
+};
+const remainingFlags = () => { const v = sig("remainingFlags"); return v === null ? null : Number(v); };
+const timeElapsed = () => { const v = sig("timeElapsed"); return v === null ? null : Number(v); };
+const isGameOver = () => !!sig("isGameOver");
+const isGameWon = () => !!sig("isGameWon");
+const isPanning = () => !!sig("isPanning");
+const isMouseDown = () => !!sig("isMouseDown");
+const firstClickPending = () => (app && typeof app.isFirstClick === "function" ? !!app.isFirstClick() : null);
+const translate = () => {
+  const x = sig("translateX"), y = sig("translateY");
+  return x === null || y === null ? null : String(Math.round(Number(x))) + "," + String(Math.round(Number(y)));
+};
+const scaleLimits = () => {
+  try {
+    const l = app.limits();
+    return String(l.minScale) + "/" + String(l.maxScale) + "/" + String(l.stepScale);
+  } catch (e) {
+    return null;
+  }
+};
+
+const clockText = () => txt(badgeEl("clock"));
+const flagsText = () => txt(badgeEl("flags"));
+const difficultyText = () => txt(badgeEl("difficulty"));
+const titleText = () => txt(q("[data-rb-title]"));
+const boardScaleStyle = () => {
+  const el = boardEl();
+  return el ? String(el.style.scale || "") : null;
+};
+
+const domCellCount = () => cellEls().length;
+const domRow = () => qa("[data-rb-row]").length;
+const domClickedCount = () => qa('[data-rb-cell][data-is-clicked="true"]').length;
+const domMineSvgCount = () => qa('[data-rb-cell] [data-rb-icon="mine"]').length;
+const domFlagSvgCount = () => qa('[data-rb-cell] [data-rb-icon="flag"]').length;
+const domNumberSvgCount = () => qa('[data-rb-cell] [data-rb-icon="number"]').length;
+
+const cellClassAt = (r: any, c: any) => { const el = cellEl(r, c); return el ? String(el.getAttribute("class") || "") : null; };
+const cellsWithClass = (token: any) => {
+  const t = String(token);
+  let n = 0;
+  for (const el of cellEls()) {
+    const cls = String(el.getAttribute("class") || "").split(/\s+/);
+    if (cls.indexOf(t) >= 0) n++;
+  }
+  return n;
+};
+/** Squares painted as already-dug before anything was clicked. */
+const dugLookingCells = () => cellsWithClass("bg-secondary");
+const destructiveCells = () => cellsWithClass("bg-destructive");
+const backgroundCells = () => cellsWithClass("bg-background");
+const cellPointerEvents = (r: any, c: any) => {
+  const el = cellEl(r, c);
+  return el ? String(getComputedStyle(el).pointerEvents || "") : null;
+};
+const anyCellPointerEvents = () => {
+  const els = cellEls();
+  return els.length ? String(getComputedStyle(els[0]).pointerEvents || "") : null;
+};
+const cellAutoPointerEventsCount = () => {
+  let n = 0;
+  for (const el of cellEls()) if (String(getComputedStyle(el).pointerEvents || "") === "auto") n++;
+  return n;
+};
+
+const settingsCloseEl = () => q("[data-rb-settings-close]");
+const settingsCloseButtonPresent = () => !!settingsCloseEl();
+/** Is the card's own dismiss control inert? (the wrapper may hard-disable it) */
+const settingsCloseButtonDisabled = () => {
+  const el = settingsCloseEl() as any;
+  return el ? !!el.disabled : null;
+};
+const settingsCloseButtonVisible = () => {
+  const el = settingsCloseEl();
+  if (!el) return null;
+  const b = el.getBoundingClientRect();
+  return b.width > 0 && b.height > 0;
+};
+const zoomLabelText = () => {
+  const el = zoomEl();
+  if (!el) return null;
+  return txt(q("[data-rb-zoom-valuelabel]", el));
+};
+const firstNumberOf = (s: any) => {
+  const m = String(s == null ? "" : s).match(/-?\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : null;
+};
+const zoomLabelNumber = () => firstNumberOf(zoomLabelText());
+const zoomThumbValueNow = () => {
+  const el = zoomEl();
+  if (!el) return null;
+  const t = q("[data-rb-zoom-thumb]", el);
+  if (!t) return null;
+  const v = t.getAttribute("aria-valuenow");
+  return v === null ? null : Number(v);
+};
+const zoomInputValue = () => {
+  const el = zoomEl();
+  if (!el) return null;
+  const i = q("input", el);
+  return i ? firstNumberOf((i as any).value) : null;
+};
+/** Does the zoom readout the user sees agree with the scale the board is actually drawn at? */
+const zoomLabelTracksScale = () => {
+  const a = zoomLabelNumber();
+  const b = zoomThumbValueNow();
+  const s = scale();
+  if (a === null || s === null) return null;
+  const rounded = Math.round(Number(s) * 100) / 100;
+  const labelOk = Math.abs(Number(a) - rounded) < 0.000001;
+  const thumbOk = b === null ? true : Math.abs(Number(b) - rounded) < 0.000001;
+  return labelOk && thumbOk;
+};
+
+const settingsOpen = () => !!settingsEl();
+const settingsRowCount = () => qa("[data-rb-difficulty]").length;
+const settingsRowText = (name: any) => txt(difficultyEl(name));
+const settingsSelectedCount = () => qa('[data-rb-difficulty][data-rb-selected="true"]').length;
+const alertPresent = (kind: any) => !!alertEl(kind);
+const alertTitleText = (kind: any) => txt(q("[data-rb-alert-title]", alertEl(kind)));
+const alertCount = () => qa("[data-rb-alert]").length;
+
+/** The settings card's own "R x C" line, as the card prints it. */
+const settingsShapeText = (name: any) => {
+  const el = difficultyEl(name);
+  if (!el) return null;
+  const li = qa("li", el);
+  return li.length ? txt(li[0]) : null;
+};
+/** The board shape the app actually built, printed in the same "R x C" form. */
+const boardShapeText = () => rowsCount() + "\u00d7" + colsCount();
+const settingsShapeMatchesBoard = (name: any) => {
+  const a = settingsShapeText(name);
+  return a === null ? null : a === boardShapeText();
+};
+const settingsPercentText = (name: any) => {
+  const el = difficultyEl(name);
+  if (!el) return null;
+  const li = qa("li", el);
+  return li.length >= 3 ? txt(li[li.length - 1]) : null;
+};
+
+// ------------------------------------------------- state-isolation (§1.8.7)
+const storageResidueCount = () => {
+  let n = 0;
+  try { n += window.localStorage.length; } catch (e) {}
+  try { n += window.sessionStorage.length; } catch (e) {}
+  return n;
+};
+const cookieResidue = () => String(document.cookie || "");
+const urlResidue = () =>
+  String(location.pathname || "") + String(location.search || "") + String(location.hash || "");
+const globalResidueCount = () =>
+  Object.keys(window).filter((k) => /^__rb|^rb_|^__msw_|^mswHack/i.test(k)).length;
+
+// ------------------------------------------------- deferred one-shot latch (R22-1)
+// The clock is a 1 Hz interval, so "did the clock stop" cannot be a single instantaneous
+// read: the page itself measures the delta across a fixed window and freezes ONE scalar.
+// The assert then polls `done` first (bounded) and only afterwards reads the frozen delta.
+let tfArmed = false;
+let tfT0: number | null = null;
+let tfT1: number | null = null;
+let tfDone = false;
+const armTimeFrozenProbe = (delayMs: any) => {
+  if (tfArmed) return true;
+  tfArmed = true;
+  tfDone = false;
+  tfT0 = timeElapsed();
+  tfT1 = null;
+  const d = Number(delayMs) || 2600;
+  window.setTimeout(() => { tfT1 = timeElapsed(); tfDone = true; }, d);
+  return true;
+};
+const timeFrozenProbeDone = () => tfDone;
+const timeFrozenProbeStart = () => tfT0;
+const timeFrozenProbeEnd = () => tfT1;
+/** Frozen scalar: seconds the app's own clock added inside the probe window. */
+const timeFrozenProbeDelta = () =>
+  tfDone && tfT0 !== null && tfT1 !== null ? Number(tfT1) - Number(tfT0) : null;
+
+// ------------------------------------------- relational guards (layout-invariant)
+/** Does the board's own inline `scale` style agree with the scale signal it is bound to? */
+const boardScaleStyleMatchesSignal = () => {
+  const st = boardScaleStyle();
+  const sc = scale();
+  if (st === null || sc === null) return null;
+  return String(st) === String(Number(sc));
+};
+const zoomThumbCount = () => {
+  const el = zoomEl();
+  return el ? qa("[data-rb-zoom-thumb]", el).length : null;
+};
+const zoomLabelPresent = () => zoomLabelText() !== null;
+/** Does the flags badge print the same number the app's own remainingFlags signal holds? */
+const flagsTextMatchesSignal = () => {
+  const t = firstNumberOf(flagsText());
+  const v = remainingFlags();
+  if (t === null || v === null) return null;
+  return Number(t) === Number(v);
+};
+/** Did the square the user actually press end up opened (doZeroOpen's own first write)? */
+const pressedCellOpened = () => {
+  if (!lastClick) return null;
+  const c = cellAt(lastClick[0], lastClick[1]);
+  return c ? !!c.isClicked : null;
+};
+const cellClassTokenVocabularyOk = () => {
+  const KNOWN = ["bg-background", "bg-secondary", "bg-destructive"];
+  for (const el of cellEls()) {
+    const cls = String(el.getAttribute("class") || "").split(/\s+/);
+    for (const t of cls) if (/^bg-/.test(t) && KNOWN.indexOf(t) < 0) return false;
+  }
+  return true;
+};
+const difficultyNamesJoined = () => {
+  const names: any[] = [];
+  for (const el of qa("[data-rb-difficulty]")) names.push(String(el.getAttribute("data-rb-difficulty")));
+  return names.length ? names.join(",") : null;
+};
+
+
+// ------------------------------------------------- bounded panel-closed latch (R22-1)
+// Kobalte unmounts the popover content through its Presence exit step, so "is the card gone"
+// is a PHASE read, not an instantaneous one: a single `!!querySelector` at an arbitrary moment
+// can catch the element mid-exit. The page therefore polls on a bounded budget and freezes ONE
+// scalar; the assert polls `done` first and only then reads the frozen verdict.
+let pcArmed = false;
+let pcDone = false;
+let pcClosed: boolean | null = null;
+const armSettingsClosedProbe = (budgetMs: any) => {
+  if (pcArmed) return true;
+  pcArmed = true;
+  pcDone = false;
+  pcClosed = null;
+  const budget = Number(budgetMs) || 3000;
+  const t0 = Date.now();
+  const tick = () => {
+    if (!settingsOpen()) { pcClosed = true; pcDone = true; return; }
+    if (Date.now() - t0 >= budget) { pcClosed = false; pcDone = true; return; }
+    window.setTimeout(tick, 50);
+  };
+  tick();
+  return true;
+};
+const settingsClosedProbeDone = () => pcDone;
+const settingsClosedProbeValue = () => pcClosed;
+/** Did the card go away inside the probe budget, i.e. is the dismiss path live at all? */
+const settingsClosedWithinBudget = () => (pcDone ? pcClosed : null);
+
+// ---- pre-gesture latch for the settings dismiss control ------------------
+// A successful dismiss makes Kobalte's Presence exit unmount the popover content, so
+// 'was the control there and live BEFORE the gesture' cannot be read after the click.
+// Freeze it into scalars at arm time (R22-1: measure inside setup, assert the frozen bit).
+let scPreArmed = false;
+let scPre: { present: boolean; disabled: boolean | null; visible: boolean | null } | null = null;
+const latchSettingsClosePreState = () => {
+  if (scPreArmed) return true;
+  scPreArmed = true;
+  scPre = { present: settingsCloseButtonPresent(), disabled: settingsCloseButtonDisabled(), visible: settingsCloseButtonVisible() };
+  return true;
+};
+const settingsClosePreStatePresent = () => (scPre ? scPre.present : null);
+const settingsClosePreStateDisabled = () => (scPre ? scPre.disabled : null);
+const settingsClosePreStateVisible = () => (scPre ? scPre.visible : null);
+
+
+// ------------------------------------------------------------- extra drivers
+/** Right-click the SAME square again, taking the flag back (the flag budget must return). */
+const unflagSame = () => (flagTarget ? flagAt(flagTarget[0], flagTarget[1]) : false);
+/** One flag then its own unflag; returns the budget trace as "before,afterFlag,afterUnflag". */
+const flagUnflagBudgetTrace = () => {
+  const b = remainingFlags();
+  if (!flagFirstSafe()) return null;
+  const mid = remainingFlags();
+  if (!unflagSame()) return null;
+  return [b, mid, remainingFlags()].join(",");
+};
+
+const api: any = {
+  // lifecycle
+  bindGame, ready, errorCount, errorMessages,
+  // model reads
+  snap, rowsCount, colsCount, cellAt, mineCount, openedCount, flaggedCount, safeCount,
+  minesInLastLine, mineFieldReachesLastLine, neighborRangeOk,
+  scale, difficultyIndex, difficultyName, remainingFlags, timeElapsed, isGameOver, isGameWon,
+  isPanning, isMouseDown, firstClickPending, translate, scaleLimits,
+  // geometry readers
+  maxOpenedChebyshev, cascadeReachedDistance2, openedCountAfterPress,
+  flaggedSurvivorClosed, flaggedSurvivorStillFlagged, cascadeTriple,
+  // DOM reads
+  clockText, flagsText, difficultyText, titleText, boardScaleStyle,
+  domCellCount, domRow, domClickedCount, domMineSvgCount, domFlagSvgCount, domNumberSvgCount,
+  cellClassAt, cellsWithClass, dugLookingCells, destructiveCells, backgroundCells,
+  cellPointerEvents, anyCellPointerEvents, cellAutoPointerEventsCount,
+  zoomLabelText, zoomLabelNumber, zoomThumbValueNow, zoomInputValue, zoomLabelTracksScale,
+  settingsOpen, settingsRowCount, settingsRowText, settingsSelectedCount,
+  settingsCloseButtonPresent, settingsCloseButtonDisabled, settingsCloseButtonVisible, clickSettingsClose,
+  settingsShapeText, boardShapeText, settingsShapeMatchesBoard, settingsPercentText,
+  alertPresent, alertTitleText, alertCount,
+  storageResidueCount, cookieResidue, urlResidue, globalResidueCount,
+  // drivers (one real user gesture each)
+  clickAt, flagAt, clickCell: clickAt, flagCell: flagAt,
+  clickFirstSafe, clickFirstMine, clickFirstZero, clickFirstNumbered, flagFirstSafe,
+  flagCascadeTargetThenOpen, restart, openSettings, selectDifficulty, startDifficulty,
+  wheel, panBy, sweepSafe, unflagSame, flagUnflagBudgetTrace, armTimeFrozenProbe,
+  // latched / relational readers
+  timeFrozenProbeDone, timeFrozenProbeStart, timeFrozenProbeEnd, timeFrozenProbeDelta,
+  armSettingsClosedProbe, settingsClosedProbeDone, settingsClosedProbeValue, settingsClosedWithinBudget,
+  latchSettingsClosePreState, settingsClosePreStatePresent, settingsClosePreStateDisabled, settingsClosePreStateVisible,
+  boardScaleStyleMatchesSignal, zoomThumbCount, zoomLabelPresent, flagsTextMatchesSignal,
+  pressedCellOpened, cellClassTokenVocabularyOk, difficultyNamesJoined,
+};
+
+(window as any).__MSW__ = api;

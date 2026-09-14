@@ -1,0 +1,720 @@
+diff --git a/src/fabritor/UI/header/BaseInfo/index.tsx b/src/fabritor/UI/header/BaseInfo/index.tsx
+index 7406770..0ab4aef 100644
+--- a/src/fabritor/UI/header/BaseInfo/index.tsx
++++ b/src/fabritor/UI/header/BaseInfo/index.tsx
+@@ -41,6 +41,7 @@ export default function BaseInfo () {
+         rows: 1
+       }}
+       style={{ margin: 0, width: 200 }}
++      data-testid="header-desc"
+     >
+       {desc || ''}
+     </Text>
+diff --git a/src/fabritor/UI/header/Export/index.tsx b/src/fabritor/UI/header/Export/index.tsx
+index bf74ca3..47f1c6a 100644
+--- a/src/fabritor/UI/header/Export/index.tsx
++++ b/src/fabritor/UI/header/Export/index.tsx
+@@ -12,7 +12,7 @@ import { Trans, useTranslation } from '@/i18n/utils';
+ const i18nKeySuffix = 'header.export';
+ 
+ const items: MenuProps['items'] = ['jpg', 'png', 'svg', 'json', 'divider', 'clipboard'].map(
+-  item => item === 'divider' ? ({ type: 'divider' }) : ({ key: item, label: <Trans i18nKey={`${i18nKeySuffix}.${item}`} /> })
++  item => item === 'divider' ? ({ type: 'divider' }) : ({ key: item, label: <span data-testid={`export-item-${item}`}><Trans i18nKey={`${i18nKeySuffix}.${item}`} /></span> })
+ )
+ 
+ export default function Export () {
+@@ -94,7 +94,7 @@ export default function Export () {
+         paddingRight: 16
+       }}
+     >
+-      <Button onClick={selectJsonFile} icon={<FileOutlined />}>
++      <Button data-testid="export-load-btn" onClick={selectJsonFile} icon={<FileOutlined />}>
+         {t(`${i18nKeySuffix}.load`)}
+       </Button>
+       <Dropdown 
+@@ -102,7 +102,7 @@ export default function Export () {
+         arrow={{ pointAtCenter: true }}
+         placement="bottom"
+       >
+-        <Button type="primary" icon={<ExportOutlined />}>{t(`${i18nKeySuffix}.export`)}</Button>
++        <Button data-testid="export-open-btn" type="primary" icon={<ExportOutlined />}>{t(`${i18nKeySuffix}.export`)}</Button>
+       </Dropdown>
+       <LocalFileSelector accept="application/json" ref={localFileSelectorRef} onChange={handleFileChange} />
+     </CenterV>
+diff --git a/src/fabritor/UI/header/Logo/index.tsx b/src/fabritor/UI/header/Logo/index.tsx
+index 229bb01..ac2e154 100644
+--- a/src/fabritor/UI/header/Logo/index.tsx
++++ b/src/fabritor/UI/header/Logo/index.tsx
+@@ -4,7 +4,7 @@ import { PANEL_WIDTH } from '@/config';
+ 
+ export default function Logo () {
+   return (
+-    <CenterV gap={5} style={{ width: PANEL_WIDTH, paddingLeft: 16 }}>
++    <CenterV gap={5} style={{ width: PANEL_WIDTH, paddingLeft: 16 }} data-testid="header-logo">
+       <img src={LOGO_ICON} style={{ width: 28 }} />
+       <span style={{ fontWeight: 'bold', fontSize: 14 }}>
+         fabritor, A creative editor based on fabricjs.
+diff --git a/src/fabritor/UI/header/Toolbar/ToolbarItem/index.tsx b/src/fabritor/UI/header/Toolbar/ToolbarItem/index.tsx
+index 6b732a0..0b0011f 100644
+--- a/src/fabritor/UI/header/Toolbar/ToolbarItem/index.tsx
++++ b/src/fabritor/UI/header/Toolbar/ToolbarItem/index.tsx
+@@ -1,7 +1,7 @@
+ import { Tooltip } from 'antd';
+ 
+ export default function ToolbarItem (props) {
+-  const { onClick, title, disabled, tooltipProps, children } = props;
++  const { onClick, title, disabled, tooltipProps, children, ...rest } = props;
+ 
+   const handleClick = () => {
+     if (!disabled) {
+@@ -23,6 +23,7 @@ export default function ToolbarItem (props) {
+           color: disabled ? '#cccccc' : 'rgba(0, 0, 0, 0.88)'
+         }}
+         onClick={handleClick}
++        {...rest}
+       >
+         {children}
+       </span>
+diff --git a/src/fabritor/UI/header/Toolbar/index.tsx b/src/fabritor/UI/header/Toolbar/index.tsx
+index 5a0f84a..ea420a3 100644
+--- a/src/fabritor/UI/header/Toolbar/index.tsx
++++ b/src/fabritor/UI/header/Toolbar/index.tsx
+@@ -22,6 +22,7 @@ export default function Toolbar () {
+     Modal.confirm({
+       title: <Trans i18nKey={`${i18nKeySuffix}.clear_confirm`} />,
+       icon: <ExclamationCircleFilled />,
++      okButtonProps: { 'data-testid': 'clear-confirm-ok' },
+       async onOk () {
+         await editor.clearCanvas();
+         setActiveObject(editor.sketch);
+@@ -45,6 +46,7 @@ export default function Toolbar () {
+   return (
+     <CenterV gap={4} style={{ borderRight: '1px solid #e8e8e8', paddingRight: 12 }}>
+       <ToolbarItem
++        data-testid="toolbar-undo"
+         disabled={!canUndo} 
+         title={<Trans i18nKey={`${i18nKeySuffix}.undo`} />} 
+         onClick={() => { editor.fhistory.undo() }}
+@@ -52,6 +54,7 @@ export default function Toolbar () {
+         <UndoOutlined style={{ fontSize: 20 }} />
+       </ToolbarItem>
+       <ToolbarItem
++        data-testid="toolbar-redo"
+         disabled={!canRedo}
+         title={<Trans i18nKey={`${i18nKeySuffix}.redo`} />} 
+         onClick={() => { editor.fhistory.redo() }}
+@@ -60,6 +63,7 @@ export default function Toolbar () {
+       </ToolbarItem>
+       <ToolbarDivider />
+       <ToolbarItem
++        data-testid="toolbar-pan"
+         onClick={enablePan}
+         title={panEnable ? <Trans i18nKey={`${i18nKeySuffix}.select`} /> : <Trans i18nKey={`${i18nKeySuffix}.pan`} />}
+       >
+@@ -69,7 +73,7 @@ export default function Toolbar () {
+           <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(DRAG_ICON)}`} style={{ width: 22, height: 22 }} />
+         }
+       </ToolbarItem>
+-      <ToolbarItem onClick={clearCanvas} title={<Trans i18nKey={`${i18nKeySuffix}.clear`} />}>
++      <ToolbarItem data-testid="toolbar-clear" onClick={clearCanvas} title={<Trans i18nKey={`${i18nKeySuffix}.clear`} />}>
+         <ClearOutlined style={{ fontSize: 20 }} />
+       </ToolbarItem>
+     </CenterV>
+diff --git a/src/fabritor/UI/panel/AppPanel/AppSubPanel.tsx b/src/fabritor/UI/panel/AppPanel/AppSubPanel.tsx
+index ddaa33e..3442c07 100644
+--- a/src/fabritor/UI/panel/AppPanel/AppSubPanel.tsx
++++ b/src/fabritor/UI/panel/AppPanel/AppSubPanel.tsx
+@@ -15,7 +15,7 @@ export default function AppSubPanel (props) {
+       bodyStyle={{ padding: 12 }}
+       title={
+         <Flex justify="space-between">
+-          <LeftOutlined onClick={back2AppList} />
++          <LeftOutlined data-testid="app-sub-back" onClick={back2AppList} />
+           <p>{title}</p>
+         </Flex>
+       }
+diff --git a/src/fabritor/UI/panel/AppPanel/Emoji.tsx b/src/fabritor/UI/panel/AppPanel/Emoji.tsx
+index b3c6091..3489eab 100644
+--- a/src/fabritor/UI/panel/AppPanel/Emoji.tsx
++++ b/src/fabritor/UI/panel/AppPanel/Emoji.tsx
+@@ -41,6 +41,7 @@ export default function EmojiPanel (props) {
+ 
+   return (
+     <AppSubPanel title="Emoji" back={back}>
++      <div data-testid="emoji-picker-wrap">
+       <Picker
+         data={data}
+         perLine={8}
+@@ -50,6 +51,7 @@ export default function EmojiPanel (props) {
+         emojiSize={22}
+         onEmojiSelect={handleEmojiSelect}
+       />
++      </div>
+     </AppSubPanel>
+   )
+ }
+\ No newline at end of file
+diff --git a/src/fabritor/UI/panel/AppPanel/QRCode.tsx b/src/fabritor/UI/panel/AppPanel/QRCode.tsx
+index 0de8658..a2557f8 100644
+--- a/src/fabritor/UI/panel/AppPanel/QRCode.tsx
++++ b/src/fabritor/UI/panel/AppPanel/QRCode.tsx
+@@ -58,7 +58,7 @@ export default function QRCodePanel (props) {
+         onValuesChange={handleValuesChange}
+       >
+         <FormItem name="value" label={t('common.text')}>
+-          <Input />
++          <Input data-testid="qr-value-input" />
+         </FormItem>
+         <FormItem name="size" label={t('common.size')}>
+           <InputNumber />
+@@ -96,13 +96,13 @@ export default function QRCodePanel (props) {
+       />
+       {
+         QRCodeConfig.value ?
+-        <Flex vertical align="center" gap={10} style={{ marginTop: 16 }} ref={qrRef}> 
++        <Flex vertical align="center" gap={10} style={{ marginTop: 16 }} ref={qrRef} data-testid="qr-preview"> 
+           <QRCode
+             type="canvas"
+             {...QRCodeConfig}
+             style={{ maxWidth: 200 }}
+           />
+-          <Button type="primary" onClick={add2Canvas}>{t('panel.app.add')}</Button>
++          <Button data-testid="qr-add-btn" type="primary" onClick={add2Canvas}>{t('panel.app.add')}</Button>
+         </Flex> : null
+       }
+     </AppSubPanel>
+diff --git a/src/fabritor/UI/panel/AppPanel/index.tsx b/src/fabritor/UI/panel/AppPanel/index.tsx
+index 9843034..76aee88 100644
+--- a/src/fabritor/UI/panel/AppPanel/index.tsx
++++ b/src/fabritor/UI/panel/AppPanel/index.tsx
+@@ -40,6 +40,7 @@ export default function AppPanel () {
+             <Card
+               hoverable
+               style={{ width: 120, paddingTop: 12 }}
++              data-testid={`app-card-${item.key}`}
+               key={item.key}
+               cover={item.icon}
+               bodyStyle={{ padding: 12 }}
+diff --git a/src/fabritor/UI/panel/DesignPanel/index.tsx b/src/fabritor/UI/panel/DesignPanel/index.tsx
+index 0fb28e4..ae46384 100644
+--- a/src/fabritor/UI/panel/DesignPanel/index.tsx
++++ b/src/fabritor/UI/panel/DesignPanel/index.tsx
+@@ -90,14 +90,17 @@ export default function Layer () {
+   return (
+     <div
+       className="fabritor-panel-wrapper"
++      data-testid="design-panel"
+     >
+       {
+         layers.length ? 
+         <List
++          data-testid="layer-list"
+           dataSource={layers}
+-          renderItem={(item: any) => (
++          renderItem={(item: any, index: number) => (
+             <ContextMenu object={item.object} noCareOpen>
+               <List.Item
++                data-testid={`layer-item-${index}`}
+                 className="fabritor-list-item"
+                 style={{
+                   border: activeObject === item.object ? ' 2px solid #ff2222' : '2px solid transparent',
+@@ -123,7 +126,7 @@ export default function Layer () {
+               <HeartTwoTone twoToneColor="#eb2f96" style={{ fontSize: 40 }} />
+               <p style={{ color: '#aaa', fontSize: 16 }}>{t('panel.design.start')}</p>
+               <Divider />
+-              <Button onClick={loadDemo}>{t('panel.design.start_demo')}</Button>
++              <Button data-testid="design-demo-btn" onClick={loadDemo}>{t('panel.design.start_demo')}</Button>
+             </div>
+           }
+         />
+diff --git a/src/fabritor/UI/panel/PaintPanel/index.tsx b/src/fabritor/UI/panel/PaintPanel/index.tsx
+index aa60cc3..8d0029f 100644
+--- a/src/fabritor/UI/panel/PaintPanel/index.tsx
++++ b/src/fabritor/UI/panel/PaintPanel/index.tsx
+@@ -91,6 +91,7 @@ export default function PaintPanel () {
+             <Tooltip trigger="hover" title={item.title}>
+               <div
+                 key={item.key}
++                data-testid={`brush-item-${item.key}`}
+                 className="fabritor-panel-shape-item"
+                 onClick={() => {
+                   handleBrushChange(item.options);
+@@ -120,6 +121,7 @@ export default function PaintPanel () {
+       <Title>{t('common.operate')}</Title>
+       <Flex wrap="wrap" justify="space-around">
+         <Button
++          data-testid="paint-toggle-btn"
+           style={{ width: 64 }}
+           onClick={stopFreeDrawMode}
+           type={isDrawingMode ? 'default' : 'primary'} 
+diff --git a/src/fabritor/UI/panel/ShapePanel/index.tsx b/src/fabritor/UI/panel/ShapePanel/index.tsx
+index c9398d0..a918382 100644
+--- a/src/fabritor/UI/panel/ShapePanel/index.tsx
++++ b/src/fabritor/UI/panel/ShapePanel/index.tsx
+@@ -91,6 +91,7 @@ export default function ShapePanel () {
+           LineTypeList.map(item => (
+             <div
+               key={item.key}
++              data-testid={`line-item-${item.key}`}
+               onClick={() => { addLine(item) }}
+               className="fabritor-panel-shape-item"
+             >
+@@ -105,6 +106,7 @@ export default function ShapePanel () {
+           ShapeTypeList.map(item => (
+             <div
+               key={item.key}
++              data-testid={`shape-item-${item.key}`}
+               onClick={() => { addShape(item) }}
+               className="fabritor-panel-shape-item"
+             >
+@@ -124,6 +126,7 @@ export default function ShapePanel () {
+           RoughTypeList.map(item => (
+             <div
+               key={item.key}
++              data-testid={`rough-item-${item.key}`}
+               onClick={() => { addRough(item) }}
+               className="fabritor-panel-shape-item"
+             >
+diff --git a/src/fabritor/UI/panel/TextPanel/PresetFontPanel.tsx b/src/fabritor/UI/panel/TextPanel/PresetFontPanel.tsx
+index eee56b8..fe000ea 100644
+--- a/src/fabritor/UI/panel/TextPanel/PresetFontPanel.tsx
++++ b/src/fabritor/UI/panel/TextPanel/PresetFontPanel.tsx
+@@ -60,9 +60,10 @@ export default function PresetFontPanel (props) {
+     <Flex vertical gap={8} style={{ marginTop: 16 }}>
+       <Title>{t('panel.text.presets')}</Title>
+       {
+-        PRESET_FONT_LIST.map(item => (
++        PRESET_FONT_LIST.map((item, index) => (
+           <Card
+             key={item.key}
++            data-testid={`preset-card-${index}`}
+             hoverable
+             onClick={() => { handleClick(item) }}
+             bodyStyle={{
+diff --git a/src/fabritor/UI/panel/TextPanel/index.tsx b/src/fabritor/UI/panel/TextPanel/index.tsx
+index c9bf6ec..85b5c4e 100644
+--- a/src/fabritor/UI/panel/TextPanel/index.tsx
++++ b/src/fabritor/UI/panel/TextPanel/index.tsx
+@@ -15,7 +15,7 @@ export default function TextPanel () {
+ 
+   return (
+     <div className="fabritor-panel-wrapper">
+-      <Button type="primary" block onClick={() => { handleAddText({}) }} size="large">
++      <Button data-testid="text-add-btn" type="primary" block onClick={() => { handleAddText({}) }} size="large">
+         {t('panel.text.add')}
+       </Button>
+       <PresetFontPanel addTextBox={handleAddText} />
+diff --git a/src/fabritor/UI/panel/index.tsx b/src/fabritor/UI/panel/index.tsx
+index 2ec03bc..46de2b4 100644
+--- a/src/fabritor/UI/panel/index.tsx
++++ b/src/fabritor/UI/panel/index.tsx
+@@ -84,7 +84,7 @@ export default function Panel () {
+ 
+   const renderLabel = (item) => {
+     return (
+-      <Flex vertical justify="center">
++      <Flex vertical justify="center" data-testid={`panel-tab-${item.value}`}>
+         <div>{item.icon}</div>
+         <div>{item.label}</div>
+       </Flex>
+diff --git a/src/fabritor/UI/setter/CommonSetter/FlipSetter.tsx b/src/fabritor/UI/setter/CommonSetter/FlipSetter.tsx
+index 9b00bfc..c8351cc 100644
+--- a/src/fabritor/UI/setter/CommonSetter/FlipSetter.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/FlipSetter.tsx
+@@ -5,11 +5,11 @@ import { Trans } from '@/i18n/utils';
+ const items: MenuProps['items'] = [
+   {
+     key: 'flipX',
+-    label: <Trans i18nKey="setter.common.flip_x" />
++    label: <span data-testid="flip-x"><Trans i18nKey="setter.common.flip_x" /></span>
+   },
+   {
+     key: 'flipY',
+-    label: <Trans i18nKey="setter.common.flip_y" />
++    label: <span data-testid="flip-y"><Trans i18nKey="setter.common.flip_y" /></span>
+   }
+ ]
+ 
+diff --git a/src/fabritor/UI/setter/CommonSetter/OpacitySetter.tsx b/src/fabritor/UI/setter/CommonSetter/OpacitySetter.tsx
+index 137d35d..9eb0e68 100644
+--- a/src/fabritor/UI/setter/CommonSetter/OpacitySetter.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/OpacitySetter.tsx
+@@ -2,12 +2,13 @@ import SliderInputNumber from '@/fabritor/components/SliderInputNumber';
+ import { Popover } from 'antd';
+ 
+ export default function OpacitySetter (props) {
+-  const { value, onChange, onChangeComplete } = props;
++  const { value, onChange, onChangeComplete, ...rest } = props;
+ 
+   return (
+     <Popover
+       content={
+         <SliderInputNumber
++          {...rest}
+           style={{ width: 200 }}
+           min={0}
+           max={1}
+diff --git a/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx b/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
+index 753bde2..31de61a 100644
+--- a/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
+@@ -112,7 +112,7 @@ export default function PositionSetter () {
+ 
+   return (
+     <>
+-      <Button block onClick={() => { setShowMore(true) }}>{t('setter.common.adjust_position')}</Button>
++      <Button data-testid="position-open-btn" block onClick={() => { setShowMore(true) }}>{t('setter.common.adjust_position')}</Button>
+       <MoreConfigWrapper
+         open={showMore}
+         setOpen={setShowMore}
+@@ -128,12 +128,12 @@ export default function PositionSetter () {
+             <Row gutter={8}>
+               <Col span={8}>
+                 <FormItem label={`${t('setter.size.width')}(${t('setter.common.px')})`} name="width">
+-                  <PxInputNumber min={1} />
++                  <PxInputNumber min={1} data-testid="pos-w-input" />
+                 </FormItem>
+               </Col>
+               <Col span={8}>
+                 <FormItem label={`${t('setter.size.height')}(${t('setter.common.px')})`} name="height">
+-                  <PxInputNumber min={1} />
++                  <PxInputNumber min={1} data-testid="pos-h-input" />
+                 </FormItem>
+               </Col>
+               <Col span={8}>
+@@ -145,17 +145,17 @@ export default function PositionSetter () {
+             <Row gutter={8}>
+               <Col span={8}>
+                 <FormItem label={`X(${t('setter.common.px')})`} name="left">
+-                  <PxInputNumber />
++                  <PxInputNumber data-testid="pos-x-input" />
+                 </FormItem>
+               </Col>
+               <Col span={8}>
+                 <FormItem label={`Y(${t('setter.common.px')})`} name="top">
+-                  <PxInputNumber />
++                  <PxInputNumber data-testid="pos-y-input" />
+                 </FormItem>
+               </Col>
+               <Col span={8}>
+                 <FormItem label={`${t('setter.common.rotate')}(°)`} name="angle">
+-                  <PxInputNumber min={-360} max={360} precision={0} />
++                  <PxInputNumber min={-360} max={360} precision={0} data-testid="pos-angle-input" />
+                 </FormItem>
+               </Col>
+             </Row>
+diff --git a/src/fabritor/UI/setter/CommonSetter/index.tsx b/src/fabritor/UI/setter/CommonSetter/index.tsx
+index 86aabfb..005897b 100644
+--- a/src/fabritor/UI/setter/CommonSetter/index.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/index.tsx
+@@ -124,6 +124,7 @@ export default function CommonSetter () {
+     <>
+       <CenterV height={30} gap={8} justify="space-between">
+         <ToolbarItem
++          data-testid="common-lock"
+           tooltipProps={{ placement: 'top' }}
+           onClick={handleLock} title={lock ? t('setter.common.unlock') : t('setter.common.lock')}
+         >
+@@ -133,14 +134,16 @@ export default function CommonSetter () {
+             <LockOutlined style={{ fontSize: 20 }} />
+           }
+         </ToolbarItem>
+-        <ToolbarItem tooltipProps={{ placement: 'top' }} title={t('setter.common.opacity')}>
++        <ToolbarItem data-testid="common-opacity-item" tooltipProps={{ placement: 'top' }} title={t('setter.common.opacity')}>
+           <OpacitySetter
++            data-testid="opacity-slider"
+             value={opacity}
+             onChange={handleOpacity}
+             onChangeComplete={() => { editor.fireCustomModifiedEvent(); }}
+           />
+         </ToolbarItem>
+         <ToolbarItem
++          data-testid="common-copy"
+           tooltipProps={{ placement: 'top' }}
+           title={t('setter.common.create_a_copy')}
+           onClick={
+@@ -153,6 +156,7 @@ export default function CommonSetter () {
+           <CopyOutlined style={{ fontSize: 20 }} />
+         </ToolbarItem>
+         <ToolbarItem
++          data-testid="common-delete"
+           tooltipProps={{ placement: 'top' }}
+           title={t('setter.common.del')}
+           onClick={() => { removeObject(null, editor.canvas); }}
+@@ -162,6 +166,7 @@ export default function CommonSetter () {
+         {
+           object.type === 'f-image' ?
+           <ToolbarItem
++            data-testid="common-flip"
+             tooltipProps={{ placement: 'top' }}
+             title={t('setter.common.flip')}
+           >
+@@ -175,6 +180,7 @@ export default function CommonSetter () {
+         {
+           ALIGH_TYPES.map(item => (
+             <ToolbarItem
++              data-testid={`align-${item.key}`}
+               tooltipProps={{ placement: 'top' }}
+               title={item.label}
+               key={item.key}
+diff --git a/src/fabritor/UI/setter/Form/MoreConfigWrapper.tsx b/src/fabritor/UI/setter/Form/MoreConfigWrapper.tsx
+index 3eadd78..18a73e2 100644
+--- a/src/fabritor/UI/setter/Form/MoreConfigWrapper.tsx
++++ b/src/fabritor/UI/setter/Form/MoreConfigWrapper.tsx
+@@ -29,7 +29,7 @@ export default function MoreConfigWrapper (props) {
+       closeIcon={null}
+       {...rest}
+     >
+-      <div>
++      <div data-testid="more-drawer-body">
+         <Button
+           type="link"
+           href="javascript:void(0);" 
+diff --git a/src/fabritor/UI/setter/GroupSetter/index.tsx b/src/fabritor/UI/setter/GroupSetter/index.tsx
+index 0464992..15b00aa 100644
+--- a/src/fabritor/UI/setter/GroupSetter/index.tsx
++++ b/src/fabritor/UI/setter/GroupSetter/index.tsx
+@@ -14,8 +14,8 @@ export default function GroupSetter () {
+     <div>
+       {
+         object.type === 'group' ?
+-        <Button type="primary" block onClick={() => { ungroup(editor.canvas, object); }}>{t('setter.group.ung')}</Button> :
+-        <Button type="primary" block onClick={() => { groupSelection(editor.canvas, object); }}>{t('setter.group.g')}</Button>
++        <Button data-testid="group-action-btn" type="primary" block onClick={() => { ungroup(editor.canvas, object); }}>{t('setter.group.ung')}</Button> :
++        <Button data-testid="group-action-btn" type="primary" block onClick={() => { groupSelection(editor.canvas, object); }}>{t('setter.group.g')}</Button>
+       }
+     </div>
+   )
+diff --git a/src/fabritor/UI/setter/SizeSetter/index.tsx b/src/fabritor/UI/setter/SizeSetter/index.tsx
+index bf94f52..7352340 100644
+--- a/src/fabritor/UI/setter/SizeSetter/index.tsx
++++ b/src/fabritor/UI/setter/SizeSetter/index.tsx
+@@ -43,8 +43,8 @@ export default function SizeSetter (props) {
+ 
+   return (
+     <Flex gap={8}>
+-      <SizeInput value={innerValue?.[0]} onChange={(v) => { handleChange(v, 0) }} />
+-      <SizeInput prefixText={t('setter.size.height')} value={innerValue?.[1]} onChange={(v) => { handleChange(v, 1) }} />
++      <SizeInput data-testid="sketch-w-input" value={innerValue?.[0]} onChange={(v) => { handleChange(v, 0) }} />
++      <SizeInput data-testid="sketch-h-input" prefixText={t('setter.size.height')} value={innerValue?.[1]} onChange={(v) => { handleChange(v, 1) }} />
+     </Flex>
+   )
+ }
+\ No newline at end of file
+diff --git a/src/fabritor/UI/setter/TextSetter/FontStyleSetter.tsx b/src/fabritor/UI/setter/TextSetter/FontStyleSetter.tsx
+index acb5805..206054f 100644
+--- a/src/fabritor/UI/setter/TextSetter/FontStyleSetter.tsx
++++ b/src/fabritor/UI/setter/TextSetter/FontStyleSetter.tsx
+@@ -35,6 +35,7 @@ export default function FontStylePanel (props) {
+       {
+         FONT_STYLES.map(FONT_STYLE => (
+           <Button
++            data-testid={`fontstyle-${FONT_STYLE.value}`}
+             style={{ width: 46 }}
+             icon={
+               <FONT_STYLE.icon
+diff --git a/src/fabritor/UI/setter/TextSetter/index.tsx b/src/fabritor/UI/setter/TextSetter/index.tsx
+index c015df0..a5dfca5 100644
+--- a/src/fabritor/UI/setter/TextSetter/index.tsx
++++ b/src/fabritor/UI/setter/TextSetter/index.tsx
+@@ -123,6 +123,7 @@ export default function TextSetter () {
+           label={t('setter.text.font_family')}
+         >
+           <Select
++            data-testid="text-fontfamily-select"
+             options={FONT_PRESET_FAMILY_LIST}
+           />
+         </FormItem>
+@@ -130,7 +131,7 @@ export default function TextSetter () {
+           name="fontSize"
+           label={t('setter.text.font_size')}
+         >
+-          <SliderInputNumber max={400} onChangeComplete={() =>{ editor.fireCustomModifiedEvent() }} />
++          <SliderInputNumber data-testid="text-fontsize-slider" max={400} onChangeComplete={() =>{ editor.fireCustomModifiedEvent() }} />
+         </FormItem>
+         <FormItem
+           name="fill"
+@@ -142,7 +143,7 @@ export default function TextSetter () {
+           name="textAlign"
+           label={t('setter.text.text_align')}
+         >
+-          <AlignSetter />
++          <AlignSetter data-testid="text-align-group" />
+         </FormItem>
+         <FormItem
+           name="fontStyles"
+@@ -155,6 +156,7 @@ export default function TextSetter () {
+           label={t('setter.text.char_spacing')}
+         >
+           <SliderInputNumber
++            data-testid="text-charspacing-slider"
+             min={-200}
+             max={800}
+             onChangeComplete={() =>{ editor.fireCustomModifiedEvent() }}
+@@ -165,6 +167,7 @@ export default function TextSetter () {
+           label={t('setter.text.line_height')}
+         >
+           <SliderInputNumber
++            data-testid="text-lineheight-slider"
+             min={0.5}
+             max={2.5}
+             step={0.01}
+diff --git a/src/fabritor/UI/setter/index.tsx b/src/fabritor/UI/setter/index.tsx
+index e71133f..41cbcbd 100644
+--- a/src/fabritor/UI/setter/index.tsx
++++ b/src/fabritor/UI/setter/index.tsx
+@@ -127,7 +127,7 @@ export default function Setter () {
+     }
+     return (
+       <CenterV style={{ borderBottom: '1px solid #e8e8e8', paddingLeft: 16 }}>
+-        <Title level={5}>
++        <Title level={5} data-testid="setter-title">
+           {getSetterTitle()}
+         </Title>
+       </CenterV>
+diff --git a/src/fabritor/components/ContextMenu/index.tsx b/src/fabritor/components/ContextMenu/index.tsx
+index 889fbf1..21e5833 100644
+--- a/src/fabritor/components/ContextMenu/index.tsx
++++ b/src/fabritor/components/ContextMenu/index.tsx
+@@ -38,7 +38,7 @@ const ContextMenu = (props, ref) => {
+     if (!object || object.id === SKETCH_ID) {
+       return [
+         {
+-          label: <ContextMenuItem label={t('setter.common.paste')} keyboard="V" cmdKey />,
++          label: <span data-testid="ctx-paste-empty"><ContextMenuItem label={t('setter.common.paste')} keyboard="V" cmdKey /></span>,
+           key: 'paste',
+         }
+       ]
+@@ -46,19 +46,19 @@ const ContextMenu = (props, ref) => {
+ 
+     const menuItems: MenuProps['items']  = [
+       {
+-        label: <ContextMenuItem label={t('setter.common.copy')} keyboard="C" cmdKey />,
++        label: <span data-testid="ctx-copy"><ContextMenuItem label={t('setter.common.copy')} keyboard="C" cmdKey /></span>,
+         key: 'copy',
+       },
+       {
+-        label: <ContextMenuItem label={t('setter.common.paste')} keyboard="V" cmdKey />,
++        label: <span data-testid="ctx-paste"><ContextMenuItem label={t('setter.common.paste')} keyboard="V" cmdKey /></span>,
+         key: 'paste',
+       },
+       {
+-        label: <span>{t('setter.common.create_a_copy')}</span>,
++        label: <span data-testid="ctx-dup">{t('setter.common.create_a_copy')}</span>,
+         key: 'copy&paste',
+       },
+       {
+-        label: <ContextMenuItem label={t('setter.common.del')} keyboard="DEL" />,
++        label: <span data-testid="ctx-del"><ContextMenuItem label={t('setter.common.del')} keyboard="DEL" /></span>,
+         key: 'del',
+       },
+     ]
+@@ -68,7 +68,7 @@ const ContextMenu = (props, ref) => {
+         type: 'divider',
+       });
+       menuItems.push({
+-        label: t('setter.group.g'),
++        label: <span data-testid="ctx-group">{t('setter.group.g')}</span>,
+         key: 'group',
+       });
+     }
+@@ -78,7 +78,7 @@ const ContextMenu = (props, ref) => {
+         type: 'divider',
+       });
+       menuItems.push({
+-        label: t('setter.group.ung'),
++        label: <span data-testid="ctx-ungroup">{t('setter.group.ung')}</span>,
+         key: 'ungroup',
+       });
+     }
+@@ -88,23 +88,23 @@ const ContextMenu = (props, ref) => {
+         type: 'divider',
+       });
+       menuItems.push({
+-        label: t('setter.common.layer'),
++        label: <span data-testid="ctx-layer">{t('setter.common.layer')}</span>,
+         key: 'layer',
+         children: [
+           {
+-            label: t('setter.common.layer_up'),
++            label: <span data-testid="ctx-layer-up">{t('setter.common.layer_up')}</span>,
+             key: 'layer-up',
+           },
+           {
+-            label:  t('setter.common.layer_top'),
++            label: <span data-testid="ctx-layer-top">{t('setter.common.layer_top')}</span>,
+             key: 'layer-top',
+           },
+           {
+-            label:  t('setter.common.layer_down'),
++            label: <span data-testid="ctx-layer-down">{t('setter.common.layer_down')}</span>,
+             key: 'layer-down',
+           },
+           {
+-            label:  t('setter.common.layer_bottom'),
++            label: <span data-testid="ctx-layer-bottom">{t('setter.common.layer_bottom')}</span>,
+             key: 'layer-bottom'
+           }
+         ]
+diff --git a/src/fabritor/components/LocalesSwitch/index.tsx b/src/fabritor/components/LocalesSwitch/index.tsx
+index bec3227..2189a0e 100644
+--- a/src/fabritor/components/LocalesSwitch/index.tsx
++++ b/src/fabritor/components/LocalesSwitch/index.tsx
+@@ -11,6 +11,7 @@ export default function LocalesSwitch () {
+ 
+   return (
+     <Button
++      data-testid="locale-switch-btn"
+       shape="circle"
+       style={{
+         backgroundColor: '#fff', 
+diff --git a/src/fabritor/components/ObjectRotateAngleTip/index.tsx b/src/fabritor/components/ObjectRotateAngleTip/index.tsx
+index 4340f27..abe7f77 100644
+--- a/src/fabritor/components/ObjectRotateAngleTip/index.tsx
++++ b/src/fabritor/components/ObjectRotateAngleTip/index.tsx
+@@ -31,6 +31,7 @@ function ObjectRotateAngleTip () {
+ 
+   return (
+     <div
++      data-testid="rotate-tip"
+       style={{
+         fontSize: 12,
+         position: 'fixed',
+diff --git a/src/fabritor/components/SliderInputNumber/index.tsx b/src/fabritor/components/SliderInputNumber/index.tsx
+index 13aab82..adf6c2a 100644
+--- a/src/fabritor/components/SliderInputNumber/index.tsx
++++ b/src/fabritor/components/SliderInputNumber/index.tsx
+@@ -1,9 +1,9 @@
+ import { Flex, Slider, InputNumber } from 'antd';
+ 
+ export default function SliderInputNumber (props) {
+-  const { min = 1, max = 100, step = 1, style, sliderProps, inputProps, onChange, onChangeComplete, value } = props;
++  const { min = 1, max = 100, step = 1, style, sliderProps, inputProps, onChange, onChangeComplete, value, ...rest } = props;
+   return (
+-    <Flex gap={6} style={style}>
++    <Flex gap={6} style={style} {...rest}>
+       <Slider
+         style={{ flex: 1 }}
+         min={min}
+diff --git a/src/fabritor/index.tsx b/src/fabritor/index.tsx
+index 30d0921..3a78353 100644
+--- a/src/fabritor/index.tsx
++++ b/src/fabritor/index.tsx
+@@ -122,6 +122,8 @@ export default function Fabritor () {
+     if (editor) {
+       initEvent();
+       initRoughSvg();
++      // @ts-ignore instrumentation probe bridge (fresh-read contract: always re-read window.__FABRITOR__.editor)
++      window.__FABRITOR__ = { editor };
+     }
+   }, [editor]);
+ 
+@@ -154,7 +156,7 @@ export default function Fabritor () {
+           <Panel />
+           <Content style={contentStyle}>
+             <ContextMenu ref={contextMenuRef} object={activeObject}>
+-              <div style={workspaceStyle} ref={workspaceEl} className="fabritor-workspace">
++              <div style={workspaceStyle} ref={workspaceEl} className="fabritor-workspace" data-testid="canvas-workspace">
+                 <canvas ref={canvasEl} />
+               </div>
+             </ContextMenu>

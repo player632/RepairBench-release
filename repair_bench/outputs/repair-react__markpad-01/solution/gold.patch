@@ -1,0 +1,145 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 6e9a704..8876485 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -169,7 +169,7 @@ function makeUntitledLabel(existing: RecentItem[]): string {
+       if (n > max) max = n;
+     }
+   }
+-  return `Untitled-${max}`;
++  return `Untitled-${max + 1}`;
+ }
+ 
+ const kbdClass =
+diff --git a/src/components/RecentsPanel.tsx b/src/components/RecentsPanel.tsx
+index de9d929..3e58388 100644
+--- a/src/components/RecentsPanel.tsx
++++ b/src/components/RecentsPanel.tsx
+@@ -291,6 +291,7 @@ export default function RecentsPanel({
+             // Keep clicks inside the menu from reaching the window-level
+             // dismiss listener, which fires on pointerdown (before click) and
+             // would otherwise unmount the item before its onClick runs.
++            onPointerDown={(e) => e.stopPropagation()}
+             onContextMenu={(e) => e.preventDefault()}
+           >
+             {targetPath && (
+diff --git a/src/components/Toolbar.tsx b/src/components/Toolbar.tsx
+index 11a85fe..82bf6f5 100644
+--- a/src/components/Toolbar.tsx
++++ b/src/components/Toolbar.tsx
+@@ -307,7 +307,7 @@ export default function Toolbar({
+         aria-label="View mode"
+       >
+         {segments.map(({ mode, label }) => {
+-          const active = viewMode === mode;
++          const active = viewModesEnabled && viewMode === mode;
+           return (
+             <button
+               key={mode}
+diff --git a/src/lib/diagrams.ts b/src/lib/diagrams.ts
+index 9413477..a4e31dd 100644
+--- a/src/lib/diagrams.ts
++++ b/src/lib/diagrams.ts
+@@ -36,7 +36,7 @@ export const DIAGRAM_ENGINE_LABELS: Readonly<Record<DiagramFormat, string>> = {
+  * it is ignored rather than making the language unrecognizable.
+  */
+ export function resolveDiagramFormat(info: string): DiagramFormat | null {
+-  const language = info.trim().split(/\s+/, 1)[0];
++  const language = info.trim().split(/\s+/, 1)[0]?.toLowerCase();
+   if (!language) return null;
+   return FORMAT_BY_LANGUAGE[language] ?? null;
+ }
+diff --git a/src/lib/documentLanguage.ts b/src/lib/documentLanguage.ts
+index 30b9676..72f2e84 100644
+--- a/src/lib/documentLanguage.ts
++++ b/src/lib/documentLanguage.ts
+@@ -55,7 +55,7 @@ export function asDocumentLanguage(value: unknown): DocumentLanguage | null {
+ export function isDataLanguage(
+   language: DocumentLanguage,
+ ): language is DataLanguage {
+-  return language === "json";
++  return language !== "markdown";
+ }
+ 
+ /** Extension the first Save of an untitled draft suggests. `.yaml` over `.yml`
+diff --git a/src/lib/documentSearch.ts b/src/lib/documentSearch.ts
+index 103a062..62f7251 100644
+--- a/src/lib/documentSearch.ts
++++ b/src/lib/documentSearch.ts
+@@ -76,7 +76,7 @@ export function setDocumentSearch(
+   searchText: string,
+   selectNearest = true,
+ ): SearchStatus {
+-  const query = new SearchQuery({ search: searchText, literal: false });
++  const query = new SearchQuery({ search: searchText, literal: true });
+   if (query.valid) openSearchPanel(view);
+   const matches = matchesFor(view.state, query);
+ 
+@@ -109,8 +109,8 @@ export function moveDocumentSearch(
+   if (selected >= 0) {
+     index =
+       direction === "next"
+-        ? (selected - 1 + matches.length) % matches.length
+-        : (selected + 1) % matches.length;
++        ? (selected + 1) % matches.length
++        : (selected - 1 + matches.length) % matches.length;
+   } else if (direction === "next") {
+     const { to } = view.state.selection.main;
+     const after = matches.findIndex((match) => match.from >= to);
+diff --git a/src/lib/markdown.ts b/src/lib/markdown.ts
+index 8858fa5..81951ad 100644
+--- a/src/lib/markdown.ts
++++ b/src/lib/markdown.ts
+@@ -42,7 +42,7 @@ const md = new MarkdownIt({
+   html: true,
+   linkify: true,
+   typographer: true,
+-  breaks: true,
++  breaks: false,
+ });
+ 
+ // markdown-it 15 ships linkify-it v6, which turned fuzzy links OFF by default.
+@@ -74,7 +74,7 @@ md.core.ruler.push("source_line", (state) => {
+   for (const token of state.tokens) {
+     if (token.type === "inline" || token.hidden) continue;
+     if (token.nesting < 0 || !token.map) continue;
+-    token.attrSet("data-source-line", String(token.map[0]));
++    token.attrSet("data-source-line", String(token.map[0] + 1));
+   }
+ });
+ 
+diff --git a/src/lib/recentsActions.ts b/src/lib/recentsActions.ts
+index 73d9610..e22d480 100644
+--- a/src/lib/recentsActions.ts
++++ b/src/lib/recentsActions.ts
+@@ -30,7 +30,7 @@ export function idsToClose(
+   if (targetIndex < 0) return [];
+   const selected: string[] = [];
+   items.forEach((item, index) => {
+-    if (!item.unsaved) return;
++    if (item.unsaved) return;
+     const match =
+       scope === "all" ||
+       (scope === "others" && item.id !== targetId) ||
+diff --git a/src/lib/workspaceSearch.ts b/src/lib/workspaceSearch.ts
+index 02c94ca..8758bda 100644
+--- a/src/lib/workspaceSearch.ts
++++ b/src/lib/workspaceSearch.ts
+@@ -59,7 +59,7 @@ export function searchOpenFiles(
+   sources: OpenFileSearchSource[],
+   query: string,
+ ): WorkspaceSearchFile[] {
+-  const normalizedQuery = query.trim();
++  const normalizedQuery = query.trim().toLowerCase();
+   if (normalizedQuery.length === 0) return [];
+ 
+   const results: WorkspaceSearchFile[] = [];
+@@ -68,7 +68,7 @@ export function searchOpenFiles(
+     for (const [index, line] of source.content.split(/\r\n?|\n/).entries()) {
+       if (!line.toLowerCase().includes(normalizedQuery)) continue;
+       matches.push({
+-        lineNumber: index + 2,
++        lineNumber: index + 1,
+         preview: shortenPreview(line),
+       });
+     }

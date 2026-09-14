@@ -1,0 +1,127 @@
+diff --git a/index.html b/index.html
+index 36715b2..401a0fb 100644
+--- a/index.html
++++ b/index.html
+@@ -52,7 +52,7 @@ Embedded subtitles inside video files are not supported.
+       </select>
+     </div>
+     <input type="url" id="video-url" data-testid="rb-video-url" placeholder="Enter video URL">
+-    <input type="file" id="video-file" data-testid="rb-video-file" accept="video/*" style="display:none" aria-label="Select local video file">
++    <input type="file" id="video-file" data-testid="rb-video-file" accept="video/*" style="display:block" aria-label="Select local video file">
+   </fieldset>
+   <fieldset>
+     <legend>Subtitle (optional)</legend>
+@@ -60,7 +60,7 @@ Embedded subtitles inside video files are not supported.
+       <label for="subtitle-load-type">Load Type:</label>
+       <select id="subtitle-load-type" data-testid="rb-subtitle-load-type">
+         <option value="url">URL</option>
+-        <option value="local">Local File</option>
++        <option value="file">Local File</option>
+       </select>
+     </div>
+     <input type="url" id="subtitle-url" data-testid="rb-subtitle-url" placeholder="Enter subtitle URL (.vtt/.srt)">
+@@ -68,7 +68,7 @@ Embedded subtitles inside video files are not supported.
+   </fieldset>
+   <div class="action-buttons">
+     <button type="submit" id="play-button" data-testid="rb-play-button"><i class="fa-solid fa-play"></i> Play Video</button>
+-    <button type="button" id="watch-later-button" data-testid="rb-watch-later-button"><i class="fa-regular fa-clock"></i> Watch Later</button>
++    <button type="submit" id="watch-later-button" data-testid="rb-watch-later-button"><i class="fa-regular fa-clock"></i> Watch Later</button>
+     <button type="button" id="resume-button" data-testid="rb-resume-button"><i class="fa-solid fa-rotate-left"></i> Resume Last</button>
+   </div>
+   <div class="download-buttons">
+diff --git a/script.js b/script.js
+index 3c794e1..2c7cf3d 100644
+--- a/script.js
++++ b/script.js
+@@ -129,7 +129,7 @@ const state = {
+ 
+ function formatTime(totalSeconds) {
+   const hours = Math.floor(totalSeconds / 3600);
+-  const minutes = Math.floor((totalSeconds % 3600) / 60);
++  const minutes = Math.floor(totalSeconds / 60);
+   const seconds = totalSeconds % 60;
+ 
+   return (
+@@ -204,7 +204,7 @@ function loadFromQuery() {
+   if (!query) return;
+   const videoMatch = query.match(/(?:^|&)video=([^&]*)/);
+   const subtitleMatch = query.match(/(?:^|&)subtitle=([^&]*)/);
+-  const videoUrlQuery = videoMatch ? decodeURIComponent(videoMatch[1]) : null;
++  const videoUrlQuery = videoMatch ? videoMatch[1] : null;
+   const subtitleUrlQuery = subtitleMatch ? decodeURIComponent(subtitleMatch[1]) : null;
+   if (videoUrlQuery) {
+     DOM.videoUrl.value = videoUrlQuery;
+@@ -216,7 +216,7 @@ function loadFromQuery() {
+ 
+ function truncateTitle(title, maxLength = CONFIG.LIMITS.TITLE_MAX_LENGTH) {
+   if (!title) return "";
+-  return title.length > maxLength ? title.slice(0, maxLength - 3) + "..." : title;
++  return title.length > maxLength ? title.slice(0, maxLength) + "..." : title;
+ }
+ 
+ function playVideo(video, subtitle = "", title = null, videoType = "url", subtitleType = "url") {
+@@ -260,7 +260,7 @@ function saveRecent(title, video, videoType, subtitle="", subtitleType="url") {
+ 
+   recent = recent.filter(item => !(item.title===title));
+ 
+-  recent.unshift({title, video, videoType, subtitle, subtitleType, progress});
++  recent.push({title, video, videoType, subtitle, subtitleType, progress});
+   if(recent.length>CONFIG.LIMITS.RECENT_SIZE) recent = recent.slice(0,CONFIG.LIMITS.RECENT_SIZE);
+ 
+   setRecent(recent);
+@@ -328,10 +328,10 @@ function createRecentItem(item, maxLimit) {
+   if(item.videoType==="local") {
+     spanTitle.appendChild(createTag("local-tag", '<i class="fa-solid fa-hard-drive"></i>'));
+   }
+-  if(item.subtitle && item.subtitleType==="local") {
++  if(item.subtitle && item.subtitleType==="url") {
+     spanTitle.appendChild(createTag("local-tag", '<i class="fa-regular fa-file-lines"></i>'));
+   }
+-  if(item.subtitle && item.subtitleType==="url") {
++  if(item.subtitle && item.subtitleType==="local") {
+     spanTitle.appendChild(createTag("url-tag", '<i class="fa-solid fa-closed-captioning"></i>'));
+   }
+   const spanProgress = document.createElement("span");
+@@ -736,7 +736,7 @@ document.addEventListener("keydown", (event) => {
+       break;
+     
+     case "KeyM":
+-      DOM.player.muted = !DOM.player.muted;
++      DOM.player.muted = true;
+       break;
+     
+     case "KeyF":
+diff --git a/service-worker.js b/service-worker.js
+index abab04f..ffac2f7 100644
+--- a/service-worker.js
++++ b/service-worker.js
+@@ -13,6 +13,7 @@ const appShell = [
+   "assets/favicon/favicon.svg",
+   "assets/favicon/favicon.ico",
+   "assets/favicon/favicon-96x96.png",
++  "assets/favicon/favicon-32x32.png",
+   "libs/sweetalert2/sweetalert2.min.css",
+   "libs/sweetalert2/sweetalert2.min.js",
+   "libs/fontawesome/css/all.min.css",
+diff --git a/style.css b/style.css
+index 90ddaf7..2042870 100644
+--- a/style.css
++++ b/style.css
+@@ -16,7 +16,7 @@ body {
+   left: 0;
+   width: 100%;
+   background: #000;
+-  display: none;
++  display: block;
+   z-index: 9999;
+ }
+ 
+@@ -303,7 +303,7 @@ video {
+ }
+ 
+ #watch-time {
+-  display: inline;
++  display: none;
+ }
+ 
+ #watch-time-label {

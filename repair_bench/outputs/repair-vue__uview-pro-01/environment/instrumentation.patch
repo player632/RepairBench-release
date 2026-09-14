@@ -1,0 +1,515 @@
+diff --git a/src/App.root.vue b/src/App.root.vue
+--- a/src/App.root.vue
++++ b/src/App.root.vue
+@@ -1,10 +1,23 @@
+ <script setup lang="ts">
+ import { onLoad, onShow } from '@dcloudio/uni-app';
+ import { useTheme, useLocale } from 'uview-pro';
++// RB INSTRUMENTATION (repair-bench): read-only bridge + the app-level state it exposes.
++import { rbPublish, rbStorage, rbPlain } from '@/common/rb-bridge';
++import { useExperienceCenter } from '@/common/useExperienceCenter';
++import {
++    missionPool,
++    getAssignedMissionIds,
++    getCompletedMissionIds,
++    isMissionAssigned,
++    isMissionCompleted
++} from '@/common/useExperience';
++import i18n from '@/locales';
++import { getSafeLocale, getDefaultLocale } from '@/locales';
+ import { onMounted } from 'vue';
+ 
+-const { darkMode, currentTheme } = useTheme();
++const { darkMode, currentTheme, themes, getDarkMode, isInDarkMode, getAvailableThemes } = useTheme();
+ const { currentLocale, locales } = useLocale();
++// (rb-bridge reads these two refs directly; nothing else about the locale wiring changes.)
+ 
+ onLoad(() => {
+     console.log('App.root.vue onLoad');
+@@ -20,6 +33,88 @@
+ 
+ onMounted(() => {
+     console.log('App.root.vue onMounted');
++    // RB INSTRUMENTATION (repair-bench): publish the global read-only areas ONCE, from the root wrapper,
++    // through the existing render path. Nothing here writes application state.
++    const center = useExperienceCenter();
++    rbPublish('boot', {
++        appMounted: () => true,
++        rootChildren: () => {
++            const el = typeof document !== 'undefined' ? document.querySelector('#app') : null;
++            return el ? el.children.length : -1;
++        },
++        publishedAt: () => Date.now()
++    });
++    rbPublish('theme', {
++        currentName: () => (currentTheme && currentTheme.value ? currentTheme.value.name : null),
++        currentLabel: () => (currentTheme && currentTheme.value ? currentTheme.value.label : null),
++        primary: () => (currentTheme && currentTheme.value && currentTheme.value.color ? currentTheme.value.color.primary : null),
++        names: () => rbPlain((themes && themes.value ? themes.value : []).map((t: any) => t && t.name)),
++        count: () => (themes && themes.value ? themes.value.length : -1),
++        darkMode: () => (darkMode && darkMode.value !== undefined ? darkMode.value : null),
++        getDarkMode: () => (typeof getDarkMode === 'function' ? getDarkMode() : null),
++        isInDarkMode: () => (typeof isInDarkMode === 'function' ? isInDarkMode() : null),
++        available: () => rbPlain((typeof getAvailableThemes === 'function' ? getAvailableThemes() : []).map((t: any) => t && t.name))
++    });
++    rbPublish('locale', {
++        libraryName: () => (currentLocale && currentLocale.value ? currentLocale.value.name : null),
++        libraryCount: () => (locales && locales.value ? locales.value.length : -1),
++        libraryNames: () => rbPlain((locales && locales.value ? locales.value : []).map((l: any) => l && l.name)),
++        i18nLocale: () => (i18n && i18n.global && i18n.global.locale ? i18n.global.locale.value : null),
++        safeLocale: () => getSafeLocale(),
++        defaultLocale: () => getDefaultLocale(),
++        storageUniLocale: () => rbStorage('UNI_LOCALE')
++    });
++    rbPublish('xp', {
++        xp: () => (center.xp && center.xp.value !== undefined ? center.xp.value : null),
++        totalInteractions: () => (center.totalInteractions && center.totalInteractions.value !== undefined ? center.totalInteractions.value : null),
++        levelId: () => (center.levelInfo && center.levelInfo.value ? center.levelInfo.value.id : null),
++        levelTitle: () => (center.levelInfo && center.levelInfo.value ? center.levelInfo.value.title : null),
++        levelThreshold: () => (center.levelInfo && center.levelInfo.value ? center.levelInfo.value.threshold : null),
++        nextLevelId: () => (center.nextLevel && center.nextLevel.value ? center.nextLevel.value.id : null),
++        nextLevelTitle: () => (center.nextLevel && center.nextLevel.value ? center.nextLevel.value.title : null),
++        nextLevelThreshold: () => (center.nextLevel && center.nextLevel.value ? center.nextLevel.value.threshold : null),
++        levelProgress: () => (center.levelProgress && center.levelProgress.value !== undefined ? center.levelProgress.value : null),
++        mapSteps: () => rbPlain((center.mapSteps && center.mapSteps.value ? center.mapSteps.value : []).map((s: any) => ({ id: s.id, title: s.title, threshold: s.threshold, status: s.status, percent: s.percent }))),
++        recentLogs: () => rbPlain((center.recentLogs && center.recentLogs.value ? center.recentLogs.value : []).map((l: any) => l && l.message)),
++        logCount: () => (center.recentLogs && center.recentLogs.value ? center.recentLogs.value.length : -1),
++        components: () => (center.componentSummary && center.componentSummary.value ? center.componentSummary.value.components : null),
++        tasksCompleted: () => (center.componentSummary && center.componentSummary.value ? center.componentSummary.value.tasksCompleted : null),
++        totalXP: () => (center.componentSummary && center.componentSummary.value ? center.componentSummary.value.totalXP : null),
++        mostActiveKey: () => (center.componentSummary && center.componentSummary.value && center.componentSummary.value.mostActive ? center.componentSummary.value.mostActive.key : null),
++        mostActiveXp: () => (center.componentSummary && center.componentSummary.value && center.componentSummary.value.mostActive ? center.componentSummary.value.mostActive.xp : null),
++        statKeys: () => rbPlain(Object.keys((center.componentStats && center.componentStats.value) || {})),
++        lastGainAmount: () => (center.lastGain && center.lastGain.value ? center.lastGain.value.amount : null),
++        lastGainSource: () => (center.lastGain && center.lastGain.value ? center.lastGain.value.source : null),
++        lastGainComponent: () => (center.lastGain && center.lastGain.value ? center.lastGain.value.componentKey : null)
++    });
++    rbPublish('missions', {
++        poolIds: () => rbPlain(missionPool.map((m) => m.id)),
++        poolSize: () => missionPool.length,
++        rewardOf: () => rbPlain(missionPool.map((m) => ({ id: m.id, reward: m.reward, componentKey: m.componentKey }))),
++        assigned: () => rbPlain(getAssignedMissionIds()),
++        completed: () => rbPlain(getCompletedMissionIds()),
++        themeAssigned: () => isMissionAssigned('theme'),
++        themeCompleted: () => isMissionCompleted('theme')
++    });
++    rbPublish('storage', {
++        center: () => rbPlain(rbStorage('uview-experience-center')),
++        assigned: () => rbPlain(rbStorage('uview-experience-assigned-missions')),
++        completed: () => rbPlain(rbStorage('uview-experience-completed-missions')),
++        mapMission: () => rbPlain(rbStorage('experience-map-mission')),
++        uniLocale: () => rbStorage('UNI_LOCALE'),
++        lsKeys: () => {
++            try { return typeof localStorage === 'undefined' ? null : Object.keys(localStorage).sort(); } catch (e) { return null; }
++        },
++        rbResidue: () => {
++            // §1.8.7 state-isolation sentinel: the ONLY globals this bridge may create are window.__rb and
++            // the per-checkpoint freeze objects the dsl setup writes as window.__rb_<cpid>. Anything else
++            // with the __rb prefix means a repair leaked a probe-shaped global of its own.
++            try {
++                if (typeof window === 'undefined') return null;
++                return Object.keys(window).filter((k) => k.indexOf('__rb') === 0 && k !== '__rb' && !/^__rb_[a-z]\d\d$/.test(k)).sort();
++            } catch (e) { return null; }
++        }
++    });
+ });
+ </script>
+ 
+diff --git a/src/common/rb-bridge.ts b/src/common/rb-bridge.ts
+new file mode 100644
+--- /dev/null
++++ b/src/common/rb-bridge.ts
+@@ -0,0 +1,73 @@
++// RB INSTRUMENTATION (repair-bench) - read-only observation bridge.
++// Published ONCE per area, fail-close on every getter, writes NO application state and registers NO
++// listener. window.__rb is installed non-writable and non-configurable so a repair cannot repoint it,
++// and each area is sealed the first time it is published so a second publisher is a no-op (returns
++// false) rather than a silent overwrite. Every getter swallows its own error and yields null, so a
++// checkpoint degrades to a false observation instead of throwing (dsl_runner aborts a checkpoint on the
++// first thrown assertion, which would surface as a weak `setup_failure` red).
++const RB_KEY = '__rb';
++const published: Record<string, boolean> = {};
++
++export function rbPublish(area: string, getters: Record<string, () => unknown>): boolean {
++    try {
++        if (typeof window === 'undefined') return false;
++        const w = window as any;
++        if (!w[RB_KEY] || typeof w[RB_KEY] !== 'object') {
++            Object.defineProperty(w, RB_KEY, {
++                value: {},
++                writable: false,
++                configurable: false,
++                enumerable: true
++            });
++        }
++        if (published[area]) return false;
++        published[area] = true;
++        const facade: Record<string, unknown> = {};
++        for (const k of Object.keys(getters)) {
++            const fn = getters[k];
++            Object.defineProperty(facade, k, {
++                enumerable: true,
++                configurable: false,
++                get() {
++                    try {
++                        const v = fn();
++                        return v === undefined ? null : v;
++                    } catch (e) {
++                        return null;
++                    }
++                }
++            });
++        }
++        Object.defineProperty(w[RB_KEY], area, {
++            value: facade,
++            writable: false,
++            configurable: false,
++            enumerable: true
++        });
++        return true;
++    } catch (e) {
++        return false;
++    }
++}
++
++// Read-only storage peek. uni.getStorageSync returns '' for a missing key on H5, which is normalised to
++// null so a checkpoint can distinguish 'absent' from 'present but empty'.
++export function rbStorage(key: string): unknown {
++    try {
++        if (typeof uni === 'undefined') return null;
++        const v = (uni as any).getStorageSync(key);
++        return v === '' || v === undefined ? null : v;
++    } catch (e) {
++        return null;
++    }
++}
++
++// Deep-freeze-free JSON-safe snapshot helper: getters must hand back plain data, not live refs, so a
++// checkpoint can never be satisfied by a reactive proxy that changes under it.
++export function rbPlain(v: unknown): unknown {
++    try {
++        return v === undefined ? null : JSON.parse(JSON.stringify(v));
++    } catch (e) {
++        return null;
++    }
++}
+diff --git a/src/components/demo-page/demo-page.vue b/src/components/demo-page/demo-page.vue
+--- a/src/components/demo-page/demo-page.vue
++++ b/src/components/demo-page/demo-page.vue
+@@ -141,7 +141,7 @@
+             <view class="demo-page_scene" v-show="currentTabName === TAB_NAMES.interaction && enableExperience">
+                 <u-transition :show="transitionShow" :name="fabTransitionName" :duration="1300" :key="fabKey">
+                     <view class="demo-page_toolbar">
+-                        <view class="toolbar-head">
++                        <view class="toolbar-head" data-testid="rb-toolbar-head">
+                             <u-gap></u-gap>
+                             <u-line-progress
+                                 :percent="experienceProgress"
+@@ -150,7 +150,7 @@
+                                 active-color="var(--u-type-primary)"
+                                 inactive-color="rgba(0,0,0,0.08)"
+                             />
+-                            <text class="toolbar-head__tip">{{ experienceHint }}</text>
++                            <text class="toolbar-head__tip" data-testid="rb-experience-hint">{{ experienceHint }}</text>
+                         </view>
+                         <u-gap></u-gap>
+ 
+@@ -160,7 +160,7 @@
+                                     <u-icon name="thumb-up-fill" size="40" color="#ff4757"></u-icon>
+                                 </view>
+                                 <view class="stat-card__content">
+-                                    <view class="stat-card__value">{{ toolbarState.liked ? '已点赞' : '未点赞' }}</view>
++                                    <view class="stat-card__value" data-testid="rb-stat-liked">{{ toolbarState.liked ? '已点赞' : '未点赞' }}</view>
+                                     <view class="stat-card__label">点赞状态</view>
+                                 </view>
+                             </view>
+@@ -185,7 +185,7 @@
+                                     ></u-icon>
+                                 </view>
+                                 <view class="stat-card__content">
+-                                    <view class="stat-card__value">{{ toolbarState.interactions }}</view>
++                                    <view class="stat-card__value" data-testid="rb-stat-interactions">{{ toolbarState.interactions }}</view>
+                                     <view class="stat-card__label">互动次数</view>
+                                 </view>
+                             </view>
+@@ -217,7 +217,7 @@
+                         <u-gap></u-gap>
+ 
+                         <view class="toolbar-rate">
+-                            <view class="toolbar-rate__label">体验评分</view>
++                            <view class="toolbar-rate__label" data-testid="rb-rate-label">体验评分</view>
+                             <u-rate
+                                 :count="5"
+                                 :model-value="toolbarState.rating"
+@@ -225,7 +225,7 @@
+                                 active-color="var(--u-type-warning)"
+                                 @change="handleRateChange"
+                             />
+-                            <text class="toolbar-rate__desc">{{ rateText }}</text>
++                            <text class="toolbar-rate__desc" data-testid="rb-rate-text">{{ rateText }}</text>
+                         </view>
+                         <u-gap></u-gap>
+ 
+@@ -239,7 +239,7 @@
+                                 ></u-icon>
+                                 <text>体验记录</text>
+                             </view>
+-                            <view class="toolbar-log" v-if="experienceLogs && experienceLogs.length">
++                            <view class="toolbar-log" data-testid="rb-experience-log" v-if="experienceLogs && experienceLogs.length">
+                                 <view v-for="(log, index) in experienceLogs" :key="index" class="toolbar-log__item">
+                                     <view class="toolbar-log__time">{{ formatLogTime(index) }}</view>
+                                     <view class="toolbar-log__content">{{ log }}</view>
+@@ -339,8 +339,8 @@
+             </demo-guide-use>
+             <!-- 体验提示 -->
+             <u-transition name="fade" :show="Boolean(xpToast)">
+-                <view v-if="xpToast" class="experience-toast">
+-                    <view class="experience-toast__inner"> +{{ xpToast.amount }} XP · {{ xpToast.source }} </view>
++                <view v-if="xpToast" class="experience-toast" data-testid="rb-xp-toast">
++                    <view class="experience-toast__inner" data-testid="rb-xp-toast-text"> +{{ xpToast.amount }} XP · {{ xpToast.source }} </view>
+                 </view>
+             </u-transition>
+         </view>
+@@ -383,6 +383,8 @@
+ import DemoGuide from '@/components/demo-guide/demo-guide.vue';
+ import DemoGuideUse from '@/components/demo-guide-use/demo-guide-use.vue';
+ import { GUIDE_TABS_KEY, GUIDE_FAB_KEY, GUIDE_TABBAR_KEY, isPlatform } from '@/common/constant';
++// RB INSTRUMENTATION (repair-bench): read-only bridge publisher for the shared demo-page shell.
++import { rbPublish, rbStorage, rbPlain } from '@/common/rb-bridge';
+ import { useLang } from '../../common/useHooks';
+ 
+ const { darkMode, getDarkMode, setDarkMode, setTheme, currentTheme, getAvailableThemes } = useTheme();
+@@ -604,6 +606,29 @@
+ const experienceKey = computed(() => props.experienceKey || props.title || 'default');
+ const { logs: experienceLogs, recordAction } = useExperience(experienceKey.value);
+ const { lastGain } = useExperienceCenter();
++// RB INSTRUMENTATION (repair-bench): publish the demo shell state ONCE per page instance, read-only.
++// The area name is suffixed with the page key so two demo pages can never overwrite each other, and
++// rbPublish seals the first publisher of each name (a second call is a documented no-op).
++rbPublish(`demo:${props.experienceKey || props.title || 'default'}`, {
++    experienceKey: () => experienceKey.value,
++    storageKey: () => storageKey.value,
++    liked: () => toolbarState.value.liked,
++    bookmarked: () => toolbarState.value.bookmarked,
++    rating: () => toolbarState.value.rating,
++    interactions: () => toolbarState.value.interactions,
++    experienceProgress: () => experienceProgress.value,
++    rateText: () => rateText.value,
++    experienceHint: () => experienceHint.value,
++    toastPresent: () => xpToast.value !== null,
++    toastAmount: () => (xpToast.value ? xpToast.value.amount : null),
++    toastSource: () => (xpToast.value ? xpToast.value.source : null),
++    logCount: () => (experienceLogs && experienceLogs.value ? experienceLogs.value.length : -1),
++    logs: () => rbPlain(experienceLogs && experienceLogs.value ? experienceLogs.value : []),
++    persisted: () => rbPlain(rbStorage(storageKey.value)),
++    themeName: () => (currentTheme && currentTheme.value ? currentTheme.value.name : null),
++    darkMode: () => (darkMode && darkMode.value !== undefined ? darkMode.value : null)
++});
++
+ const storageKey = computed(() => {
+     const base = props.experienceKey || props.title || 'default';
+     return `uview-demo-experience-${base}`;
+diff --git a/src/pages/example/components.vue b/src/pages/example/components.vue
+--- a/src/pages/example/components.vue
++++ b/src/pages/example/components.vue
+@@ -13,19 +13,20 @@
+                 @close="guideImmediate[1] = true"
+                 :position="{ top: '800rpx', left: '100rpx' }"
+             >
+-                <view class="theme-switcher">
+-                    <view class="theme-label">{{ t('components.theme') || '主题' }}</view>
++                <view class="theme-switcher" data-testid="rb-theme-switcher">
++                    <view class="theme-label" data-testid="rb-theme-label">{{ t('components.theme') || '主题' }}</view>
+                     <view class="theme-buttons">
+                         <view
+                             v-for="theme in themes"
+                             :key="theme.name"
+                             class="theme-btn"
++                            data-testid="rb-theme-btn"
+                             :class="{ active: currentTheme.name === theme.name }"
+                             @click="switchTheme(theme.name)"
+                             :title="theme.description"
+                         >
+                             <view class="theme-color" :style="{ backgroundColor: theme.color.primary }"></view>
+-                            <view class="theme-name">{{ t(`theme.${theme.name}`) }}</view>
++                            <view class="theme-name" data-testid="rb-theme-name">{{ t(`theme.${theme.name}`) }}</view>
+                         </view>
+                     </view>
+                 </view>
+@@ -43,10 +44,11 @@
+             >
+                 <view
+                     class="experience-entry"
++                    data-testid="rb-experience-entry"
+                     @click="$u.route({ url: '/pages/example/experienceMap', type: 'switchTab' })"
+                 >
+                     <view class="experience-entry__left">
+-                        <view class="experience-entry__title">{{ t('common.experienceMap') }}</view>
++                        <view class="experience-entry__title" data-testid="rb-experience-entry-title">{{ t('common.experienceMap') }}</view>
+                         <view class="experience-entry__desc">{{ t('common.experienceMapDesc') }}</view>
+                     </view>
+                     <view class="experience-entry__right">
+@@ -61,7 +63,7 @@
+             </demo-guide-use>
+ 
+             <!-- 实用场景入口 -->
+-            <view class="scenes-entry" @click="$u.route({ url: '/pages/scenes/index' })">
++            <view class="scenes-entry" data-testid="rb-scenes-entry" @click="$u.route({ url: '/pages/scenes/index' })">
+                 <view class="scenes-entry__left">
+                     <view class="scenes-entry__title">{{ t('common.scene') }}</view>
+                     <view class="scenes-entry__desc">{{ t('common.sceneDesc') }}</view>
+@@ -92,30 +94,31 @@
+                     </view>
+                 </u-sticky>
+ 
+-                <view v-if="searchText" class="search-tips">
+-                    {{ t('components.find') }} <text class="count">{{ filteredList.length }}</text>
++                <view v-if="searchText" class="search-tips" data-testid="rb-search-tips">
++                    {{ t('components.find') }} <text class="count" data-testid="rb-search-count">{{ filteredList.length }}</text>
+                     {{ t('components.matchingComponent') }}
+-                    <text class="clear-btn" @click="clearSearch">{{ t('components.clear') }}</text>
++                    <text class="clear-btn" data-testid="rb-search-clear" @click="clearSearch">{{ t('components.clear') }}</text>
+                 </view>
+             </view>
+ 
+             <!-- 无搜索结果 -->
+-            <view v-if="searchText && filteredList.length === 0" class="empty-state">
++            <view v-if="searchText && filteredList.length === 0" class="empty-state" data-testid="rb-search-empty">
+                 <u-empty mode="search" :text="t('components.notFound')" :show-empty="true"></u-empty>
+             </view>
+ 
+             <!-- 组件列表：流式卡片展示 -->
+             <view v-else class="list-wrap">
+                 <view v-for="(group, gIndex) in filteredList" :key="gIndex" class="group-section">
+-                    <view class="group-title">
++                    <view class="group-title" data-testid="rb-group-title">
+                         <u-image :height="50" :width="50" :src="getIcon(group.icon)"></u-image>
+-                        <text class="group-name">{{ getTitle('groupName', group) }}</text>
+-                        <view class="group-count">{{ group.list.length }}</view>
++                        <text class="group-name" data-testid="rb-group-name">{{ getTitle('groupName', group) }}</text>
++                        <view class="group-count" data-testid="rb-group-count">{{ group.list.length }}</view>
+                     </view>
+ 
+                     <view class="cards">
+                         <view
+                             class="card"
++                            data-testid="rb-home-card"
+                             v-for="(item, idx) in group.list"
+                             :key="idx"
+                             @click="handleCardClick(item.path)"
+@@ -129,8 +132,8 @@
+                                 mode="widthFix"
+                             ></u-image>
+                             <view class="card-body">
+-                                <view class="card-title">{{ getTitle('title', item) }}</view>
+-                                <view class="card-desc">{{ getTitle('desc', item) }}</view>
++                                <view class="card-title" data-testid="rb-card-title">{{ getTitle('title', item) }}</view>
++                                <view class="card-desc" data-testid="rb-card-desc">{{ getTitle('desc', item) }}</view>
+                             </view>
+                             <view class="card-arrow">›</view>
+                         </view>
+@@ -159,6 +162,8 @@
+ import { useTheme } from '@/uni_modules/uview-pro';
+ import { $u } from 'uview-pro';
+ import { GUIDE_THEME_SWITCHER_KEY, GUIDE_EXPERIENCE_KEY } from '@/common/constant';
++// RB INSTRUMENTATION (repair-bench): read-only bridge publisher for this page's own state.
++import { rbPublish, rbPlain } from '@/common/rb-bridge';
+ import { completeMission } from '../../common/useExperience';
+ 
+ // 主题管理（使用组合式 useTheme）
+@@ -174,6 +179,25 @@
+ const searchText = ref('');
+ const searchBgColor = computed(() => $u.getColor('bgColor'));
+ const demoPageRef = ref();
++
++// RB INSTRUMENTATION (repair-bench): publish the home page state ONCE, read-only, through the existing
++// setup path. Every getter is fail-close; nothing here writes searchText, list or the theme machine.
++rbPublish('home', {
++    searchText: () => searchText.value,
++    listGroups: () => list.value.length,
++    listItems: () => list.value.reduce((n: number, g: any) => n + ((g && g.list ? g.list.length : 0) || 0), 0),
++    filteredGroups: () => filteredList.value.length,
++    filteredItems: () => filteredList.value.reduce((n: number, g: any) => n + ((g && g.list ? g.list.length : 0) || 0), 0),
++    filteredPaths: () => rbPlain(filteredList.value.map((g: any) => (g && g.list ? g.list : []).map((i: any) => i && i.path)).reduce((a: any[], b: any[]) => a.concat(b), [])),
++    filteredTitles: () => rbPlain(filteredList.value.map((g: any) => (g && g.list ? g.list : []).map((i: any) => getTitle('title', i))).reduce((a: any[], b: any[]) => a.concat(b), [])),
++    groupNames: () => rbPlain(filteredList.value.map((g: any) => getTitle('groupName', g))),
++    groupCounts: () => rbPlain(filteredList.value.map((g: any) => (g && g.list ? g.list.length : 0))),
++    themeNames: () => rbPlain(themes.value.map((t: any) => t && t.name)),
++    themeName: () => (currentTheme.value ? currentTheme.value.name : null),
++    scrollTop: () => scrollTop.value,
++    desc: () => desc.value,
++    iconOf: () => rbPlain((filteredList.value[0] && filteredList.value[0].list && filteredList.value[0].list[0] ? getIcon(filteredList.value[0].list[0].icon || filteredList.value[0].list[0].path) : null))
++});
+ 
+ const guideImmediate = ref([true, false]);
+ 
+diff --git a/src/pages/example/experienceMap.vue b/src/pages/example/experienceMap.vue
+--- a/src/pages/example/experienceMap.vue
++++ b/src/pages/example/experienceMap.vue
+@@ -4,14 +4,14 @@
+             <view class="hero-card u-m-b-20">
+                 <view class="hero-badge">
+                     <view class="hero-badge__inner">
+-                        <view class="hero-badge__text">{{ levelInfo.title }}</view>
++                        <view class="hero-badge__text" data-testid="rb-level-badge">{{ levelInfo.title }}</view>
+                         <view class="hero-badge__glow"></view>
+                     </view>
+                 </view>
+                 <view class="hero-title">我的组件体验等级</view>
+-                <view class="hero-subtitle">{{ levelInfo.title }}</view>
++                <view class="hero-subtitle" data-testid="rb-level-title">{{ levelInfo.title }}</view>
+                 <view class="hero-xp">
+-                    <text class="hero-xp__value">{{ xp }} XP</text>
++                    <text class="hero-xp__value" data-testid="rb-xp-value">{{ xp }} XP</text>
+                     <text class="hero-xp__hint">
+                         <text v-if="nextLevel">
+                             距离 {{ nextLevel.title }} 还差 {{ Math.max(nextLevel.threshold - xp, 0) }} XP
+@@ -79,7 +79,7 @@
+ 
+             <u-card title="成长路线" :border="false" margin="0">
+                 <template #body>
+-                    <view class="map-steps">
++                    <view class="map-steps" data-testid="rb-map-steps">
+                         <view v-for="step in displayMapSteps" :key="step.id" class="map-step">
+                             <view class="map-step__header">
+                                 <view class="map-step__title-wrap">
+@@ -203,6 +203,8 @@
+ <script setup lang="ts">
+ import { computed, ref } from 'vue';
+ import { useExperienceCenter } from '@/common/useExperienceCenter';
++// RB INSTRUMENTATION (repair-bench): read-only bridge publisher for the experience map page.
++import { rbPublish, rbStorage, rbPlain } from '@/common/rb-bridge';
+ import {
+     missionPool,
+     completeMission,
+@@ -285,6 +287,30 @@
+     return fallbackLogs;
+ });
+ const hasRealLogs = computed(() => getRecentLogs().length > 0);
++
++// RB INSTRUMENTATION (repair-bench): publish this page's derived display state ONCE, read-only. The
++// getters expose the DISPLAYED values (displayMapSteps / displayLogs), so a checkpoint can tell the real
++// data path from the page's own fallbackMapSteps / fallbackLogs placeholders - those fallbacks render
++// plausible-looking fake rows whenever the real arrays are empty, which is exactly the kind of thing an
++// eyeballed expectation would silently encode.
++rbPublish('map', {
++    steps: () => rbPlain(displayMapSteps.value.map((s: any) => ({ id: s.id, title: s.title, status: s.status, percent: s.percent }))),
++    stepsUsingFallback: () => !(Array.isArray((mapSteps as any)?.value ?? mapSteps) && ((mapSteps as any)?.value ?? mapSteps).length),
++    logs: () => rbPlain(displayLogs.value.map((l: any) => l && l.message)),
++    logsUsingFallback: () => !hasRealLogs.value,
++    hasRealLogs: () => hasRealLogs.value,
++    currentMissionId: () => currentMissionId.value,
++    missionState: () => rbPlain(rbStorage(missionStateKey)),
++    xp: () => xp.value,
++    levelTitle: () => (levelInfo.value ? levelInfo.value.title : null),
++    levelProgress: () => levelProgress.value,
++    nextLevelTitle: () => (nextLevel.value ? nextLevel.value.title : null),
++    remainingToNext: () => (nextLevel.value ? Math.max(nextLevel.value.threshold - xp.value, 0) : null),
++    mostActiveKey: () => (componentSummary.value && componentSummary.value.mostActive ? componentSummary.value.mostActive.key : null),
++    componentsCount: () => (componentSummary.value ? componentSummary.value.components : null),
++    tasksCompleted: () => (componentSummary.value ? componentSummary.value.tasksCompleted : null),
++    radar: () => rbPlain((componentStats.value ? Object.keys(componentStats.value) : []).map((k) => ({ key: k, xp: componentStats.value[k].xp, visits: componentStats.value[k].visits, interactions: componentStats.value[k].interactions, tasksCompleted: componentStats.value[k].tasksCompleted })))
++});
+ 
+ const missionStateKey = 'experience-map-mission';
+ const currentMissionId = ref<string | null>(null);

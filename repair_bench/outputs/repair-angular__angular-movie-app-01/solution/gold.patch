@@ -1,0 +1,154 @@
+diff --git a/src/app/components/global/hero/hero.component.html b/src/app/components/global/hero/hero.component.html
+index 1d32a8c6006e0cc91e75568870a674cd8706937e..887deb35e22afd72e464f5197ea2fa3abf3d5c4f 100644
+--- a/src/app/components/global/hero/hero.component.html
++++ b/src/app/components/global/hero/hero.component.html
+@@ -13,7 +13,7 @@
+             <div class="meta">
+                 <div class="rating">
+                     <div class="stars">
+-                        <div data-rb-hero-stars [style.width.%]="data?.vote_average * 100"></div>
++                        <div data-rb-hero-stars [style.width.%]="(data?.vote_average / 10) * 100"></div>
+                     </div>
+                     <div data-rb-hero-reviews *ngIf="data?.vote_count > 0">
+                         {{ data?.vote_count | numberWithCommas }} Reviews
+diff --git a/src/app/components/global/navbar/navbar.component.html b/src/app/components/global/navbar/navbar.component.html
+index a4a3eb415ace840f71516d7ce2abf8a63e0dc82e..265150a72b525f42dc792e63016a43e6557ee508 100755
+--- a/src/app/components/global/navbar/navbar.component.html
++++ b/src/app/components/global/navbar/navbar.component.html
+@@ -51,7 +51,7 @@
+       <label class="visuallyhidden" for="search">Search</label>
+       <div class="field">
+         <input id="search" #input [(ngModel)]="query" name="search" type="text" data-rb-search-input
+-          placeholder="Search for a movie, tv show or person..." (keyup.enter)="goToRoute()" (blur)="unFocus($event)">
++          placeholder="Search for a movie, tv show or person..." (keyup)="goToRoute()" (blur)="unFocus($event)">
+         <button *ngIf="query" type="button" aria-label="Close" data-rb-search-close (click)="goBack()">
+           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15">
+             <g fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="1.5">
+diff --git a/src/app/components/global/navbar/navbar.component.ts b/src/app/components/global/navbar/navbar.component.ts
+index 4a5bf2b6fe3b6037886d3d3033960d6c8f813228..604c80bfadb3bc354ec4703e04f984a3b208aa46 100755
+--- a/src/app/components/global/navbar/navbar.component.ts
++++ b/src/app/components/global/navbar/navbar.component.ts
+@@ -65,9 +65,7 @@ export class NavbarComponent {
+   // }
+ 
+   unFocus(event: FocusEvent): void {
+-    if (!this.query.trim()) {
+-      this.searchVisible = false;
+-    }
++    this.closeSearch(); // Close the search and clear the query
+   }
+ 
+   onSubmit(event: Event): void {
+diff --git a/src/app/components/global/pipe/elipsis.pipe.ts b/src/app/components/global/pipe/elipsis.pipe.ts
+index 4dee922e7f9fb7ea99f0e95b36af9fbf8f05c15c..2fb62cc15cad11a07f54777cfe988f55612c8a78 100644
+--- a/src/app/components/global/pipe/elipsis.pipe.ts
++++ b/src/app/components/global/pipe/elipsis.pipe.ts
+@@ -7,7 +7,7 @@ export class TruncatePipe implements PipeTransform {
+   transform(text: string, length: number = 218, clamp: string = '...'): string {
+     if (!text) return '';
+     if (text.length <= length) return text;
+-    let tcText = text.slice(0, length);
++    let tcText = text.slice(0, length - clamp.length);
+     let last = tcText.length - 1;
+     while (last > 0 && tcText[last] !== ' ' && tcText[last] !== clamp[0]) last -= 1;
+     last = last || length - clamp.length;
+diff --git a/src/app/components/global/pipe/language-name.pipe.ts b/src/app/components/global/pipe/language-name.pipe.ts
+index ba1053ec38cd20ad4a906cef194e538e36d4ca5d..5b1fba1f22b0c42c7586619ae64e2c0f37f9dcb9 100644
+--- a/src/app/components/global/pipe/language-name.pipe.ts
++++ b/src/app/components/global/pipe/language-name.pipe.ts
+@@ -20,7 +20,7 @@ export class LanguageNamePipe implements PipeTransform {
+ 
+   transform(value: string | string[]): string {
+     if (Array.isArray(value)) {
+-      return value.map(lang => this.languageMap[lang] || lang).join(' and ');
++      return value.map(lang => this.languageMap[lang] || lang).join(', ');
+     }
+     return this.languageMap[value] || value;
+   }
+diff --git a/src/app/components/global/pipe/number-with-commas.pipe.ts b/src/app/components/global/pipe/number-with-commas.pipe.ts
+index 965a0bc3833e040047b082b01b1ef79883e2e827..b29243f2227e2021e3b66c5b534c8139f2738285 100644
+--- a/src/app/components/global/pipe/number-with-commas.pipe.ts
++++ b/src/app/components/global/pipe/number-with-commas.pipe.ts
+@@ -5,6 +5,6 @@ import { Pipe, PipeTransform } from '@angular/core';
+ })
+ export class NumberWithCommasPipe implements PipeTransform {
+   transform(number: number): string {
+-    return number.toString().replace(/\B(?=(\d{3})+)/g, ',');
++    return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+   }
+ }
+diff --git a/src/app/components/global/pipe/sort-by-year.pipe.ts b/src/app/components/global/pipe/sort-by-year.pipe.ts
+index e8969dc9451d9bcd78d5b42de9efc4d72c86dd0f..4bc999328b55f5f61a7da14b0207debf645c4ff3 100644
+--- a/src/app/components/global/pipe/sort-by-year.pipe.ts
++++ b/src/app/components/global/pipe/sort-by-year.pipe.ts
+@@ -13,7 +13,7 @@ export class SortByYearPipe implements PipeTransform {
+     return items.sort((a, b) => {
+       const yearA = a[yearKey] || 0;
+       const yearB = b[yearKey] || 0;
+-      return yearA - yearB; // Sort in descending order
++      return yearB - yearA; // Sort in descending order
+     });
+   }
+ }
+diff --git a/src/app/components/global/pipe/time.pipe.ts b/src/app/components/global/pipe/time.pipe.ts
+index c2b1eea6d235be39eeb30d5c8d4d011245e4ad31..800a6c499456aaa2f869185ee6450f62a2e67f23 100644
+--- a/src/app/components/global/pipe/time.pipe.ts
++++ b/src/app/components/global/pipe/time.pipe.ts
+@@ -13,6 +13,7 @@ export class TimePipe implements PipeTransform {
+ 
+   // hours
+   const hours = Math.floor(secondsLeft / 3600);
++  secondsLeft = secondsLeft % 3600;
+ 
+   // mins
+   const mins = Math.floor(secondsLeft / 60);
+diff --git a/src/app/components/global/slider/slider.component.ts b/src/app/components/global/slider/slider.component.ts
+index 351343b570d5ed940a2e59b5b815e3c4b3d778ee..e78084e3f40e902c220a393bd5d5a33f6777f202 100755
+--- a/src/app/components/global/slider/slider.component.ts
++++ b/src/app/components/global/slider/slider.component.ts
+@@ -32,7 +32,7 @@ export class SliderComponent implements OnInit, OnDestroy {
+   }
+ 
+   sliderTimer() {
+-    this.intervalId = setTimeout(() => {
++    this.intervalId = setInterval(() => {
+       this.current = (this.current + 1) % this.data.length;
+     }, 5000);
+   }
+diff --git a/src/app/components/global/videos/videos.component.html b/src/app/components/global/videos/videos.component.html
+index cc96ddae5e09c90f1b76bb3eb89887847daaa021..af0813190dcea0a3051f856bf6a76cc99d00fc0c 100644
+--- a/src/app/components/global/videos/videos.component.html
++++ b/src/app/components/global/videos/videos.component.html
+@@ -1,5 +1,5 @@
+ <div class="items">
+-    <div class="item" *ngFor="let videoData of videosData | slice: 0:13" data-rb-video-card>
++    <div class="item" *ngFor="let videoData of videosData | slice: 1:13" data-rb-video-card>
+         <div (click)="openVideoModal(videoData.key)" class="link" style="cursor: pointer;" data-rb-video-link>
+             <div class="image lazyloaded">
+                 <img class="lazyload" data-rb-video-thumb [src]="'/rb/vi/' + videoData?.key + '.svg'">
+diff --git a/src/app/components/movies-info/movies-info.component.ts b/src/app/components/movies-info/movies-info.component.ts
+index 2b14468cf8eb78dc2e130a1511f14a1cb639f16a..4c9cc813be8c302cd596e3e2f967ac9c9da3b20f 100644
+--- a/src/app/components/movies-info/movies-info.component.ts
++++ b/src/app/components/movies-info/movies-info.component.ts
+@@ -53,7 +53,7 @@ export class MoviesInfoComponent implements OnInit {
+         (videoRes: any) => {
+           const video = videoRes.results.find((vid: any) => vid.site === 'YouTube' && ['Trailer', 'Teaser', 'Clip'].includes(vid.type));
+           if (video) {
+-            this.movie_data.videoKey = video.key; // Set the video key in movie_data
++            this.movie_data.videoId = video.key; // Set the video key in movie_data
+           } else {
+             console.warn('No trailer or relevant video found for this movie.');
+           }
+diff --git a/src/app/components/person/person.component.html b/src/app/components/person/person.component.html
+index 250733b4238b84323ca391be1731aaa917f93435..bbf27970e814eca682fa298f3bee8d5780fb8607 100644
+--- a/src/app/components/person/person.component.html
++++ b/src/app/components/person/person.component.html
+@@ -16,7 +16,7 @@
+ </div>
+ 
+ 
+-<div *ngIf="activeTab === 'poster'" id="knownfor" data-rb-panel-knownfor>
++<div *ngIf="activeTab === 'knownfor'" id="knownfor" data-rb-panel-knownfor>
+     <div class="spacing">
+         <app-listing [items]="knownfor | sortByYear:'year'"></app-listing>
+     </div>

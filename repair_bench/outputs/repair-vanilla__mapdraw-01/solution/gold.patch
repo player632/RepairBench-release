@@ -1,0 +1,133 @@
+diff --git a/js/color-utils.js b/js/color-utils.js
+index a3aee0d..1f8de85 100644
+--- a/js/color-utils.js
++++ b/js/color-utils.js
+@@ -206,7 +206,7 @@ function normalizeHexColor(raw) {
+   // Note: 8-digit hex is assumed to be #AARRGGBB (alpha first), not CSS #RRGGBBAA.
+   // This matches KML/GPX ecosystem conventions which predate the CSS standard.
+   if (color.length === 8) {
+-    color = color.substring(0, 6);
++    color = color.substring(2);
+   }
+ 
+   // Validate final format
+@@ -233,7 +233,7 @@ function parseColor(input) {
+   }
+ 
+   // Look up CSS color name
+-  const hex = CSS_COLOR_NAMES[input];
++  const hex = CSS_COLOR_NAMES[str];
+   return hex || null;
+ }
+ 
+diff --git a/js/data-editor.js b/js/data-editor.js
+index ca18d9b..137676b 100644
+--- a/js/data-editor.js
++++ b/js/data-editor.js
+@@ -61,6 +61,7 @@ let dataEditorRefreshTimer = null;
+  */
+ function scheduleDataEditorRefresh() {
+   if (!document.getElementById("data-editor-panel")?.classList.contains("active")) return;
++  clearTimeout(dataEditorRefreshTimer);
+   dataEditorRefreshTimer = setTimeout(refreshDataEditor, 300);
+ }
+ 
+diff --git a/js/distance-labels.js b/js/distance-labels.js
+index 307f1af..22f694f 100644
+--- a/js/distance-labels.js
++++ b/js/distance-labels.js
+@@ -138,7 +138,7 @@ function metersPerPixel() {
+ function computeDistanceLabelStepMeters(metersPerPx) {
+   const unitMeters = useImperialUnits ? METERS_PER_MILE : METERS_PER_KM;
+   const minStepMeters = metersPerPx * DISTANCE_LABEL_MIN_PIXEL_GAP;
+-  const stepInUnits = Math.max(1, 10 ** Math.floor(Math.log10(minStepMeters / unitMeters)));
++  const stepInUnits = Math.max(1, 10 ** Math.ceil(Math.log10(minStepMeters / unitMeters)));
+   return stepInUnits * unitMeters;
+ }
+ 
+diff --git a/js/elevation-profile.js b/js/elevation-profile.js
+index 8dbd418..8ba49cc 100644
+--- a/js/elevation-profile.js
++++ b/js/elevation-profile.js
+@@ -96,7 +96,7 @@ function calculateSwissHikingTime(points) {
+         const elevationDelta = (nextPoint.elevation || 0) - (currentPoint.elevation || 0);
+ 
+         // Slope in 10ths (Schweizmobil formula) instead of % (official formula)
+-        const slope = elevationDelta / distanceDelta;
++        const slope = (elevationDelta * 10.0) / distanceDelta;
+ 
+         // Swiss hiking formula is used between -40% and +40% (Schweizmobil)
+         let minutesPerKilometer = 0;
+diff --git a/js/file-handlers.js b/js/file-handlers.js
+index 7185f96..9454b8e 100644
+--- a/js/file-handlers.js
++++ b/js/file-handlers.js
+@@ -171,7 +171,7 @@ function hasFiniteCoords(coords) {
+   if (!Array.isArray(coords)) return false;
+   return Array.isArray(coords[0])
+     ? coords.every(hasFiniteCoords)
+-    : coords.length >= 3 && Number.isFinite(coords[0]) && Number.isFinite(coords[1]);
++    : coords.length >= 2 && Number.isFinite(coords[0]) && Number.isFinite(coords[1]);
+ }
+ 
+ /**
+@@ -237,6 +237,7 @@ function explodeMultiGeometries(feature) {
+         type: "Feature",
+         geometry: { type: singleType, coordinates: coords },
+         properties: {
++          ...feature.properties,
+           name: feature.properties?.name
+             ? `${feature.properties.name} (${typeLabel}${suffix})`
+             : undefined,
+@@ -288,8 +289,8 @@ function explodeMultiGeometries(feature) {
+  */
+ function parseColorFromGeoJsonStyle(properties, isPoint) {
+   const raw = isPoint
+-    ? properties?.stroke || properties?.["marker-color"]
+-    : properties?.["marker-color"] || properties?.stroke;
++    ? properties?.["marker-color"] || properties?.stroke
++    : properties?.stroke || properties?.["marker-color"];
+   return parseColor(raw);
+ }
+ 
+diff --git a/js/utils.js b/js/utils.js
+index 2f1fe71..1757e62 100644
+--- a/js/utils.js
++++ b/js/utils.js
+@@ -5,7 +5,8 @@ function escHtml(s) {
+     .replace(/&/g, "&amp;")
+     .replace(/</g, "&lt;")
+     .replace(/>/g, "&gt;")
+-    .replace(/"/g, "&quot;");
++    .replace(/"/g, "&quot;")
++    .replace(/'/g, "&#39;");
+ }
+ 
+ /**
+@@ -98,7 +99,7 @@ function parseCoordinateString(inputString) {
+     const minutes = parseFloat(pick(captures, Hemi, "m") || 0);
+     const seconds = parseFloat(pick(captures, Hemi, "s") || 0);
+     const sign =
+-      captures[Hemi].toLowerCase() === "s" ? -1 : 1;
++      captures[Hemi].toLowerCase() === "s" || captures[Hemi].toLowerCase() === "w" ? -1 : 1;
+     return sign * (degrees + minutes / 60 + seconds / 3600);
+   };
+ 
+@@ -303,7 +304,7 @@ function calculatePathDistance(path) {
+   }
+ 
+   // For polygons, add the closing segment from last point back to first
+-  if (path instanceof L.Polyline && latlngs.length > 0) {
++  if (path instanceof L.Polygon && latlngs.length > 0) {
+     const lastPoint = latlngs[latlngs.length - 1];
+     const firstPoint = latlngs[0];
+     if (lastPoint && typeof lastPoint.distanceTo === "function" && firstPoint) {
+@@ -615,7 +616,7 @@ function formatDistance(meters, includeSecondary = false) {
+   let primaryDisplay, secondaryDisplay;
+ 
+   if (useImperialUnits) {
+-    if (miles < 1) {
++    if (miles < 0.1) {
+       primaryDisplay = `${Math.round(meters * METERS_TO_FEET)} ft`;
+     } else {
+       primaryDisplay = `${miles.toFixed(2)} mi`;

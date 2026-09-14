@@ -1,0 +1,139 @@
+diff --git a/src/lib/utils/LRUCache.ts b/src/lib/utils/LRUCache.ts
+index 62eed7db2..6a4ab70ea 100644
+--- a/src/lib/utils/LRUCache.ts
++++ b/src/lib/utils/LRUCache.ts
+@@ -24,7 +24,7 @@ export class LRUCache<K, V> {
+   set(key: K, value: V): void {
+     if (this.cache.has(key)) {
+       this.cache.delete(key);
+-    } else if (this.cache.size > this.maxSize) {
++    } else if (this.cache.size >= this.maxSize) {
+       const oldestKey = this.cache.keys().next().value;
+       if (oldestKey !== undefined) {
+         this.cache.delete(oldestKey);
+diff --git a/src/lib/utils/color.ts b/src/lib/utils/color.ts
+index 19565f86e..8d93573aa 100644
+--- a/src/lib/utils/color.ts
++++ b/src/lib/utils/color.ts
+@@ -89,7 +89,7 @@ export function hslToHex(h: number, s: number, l: number): string {
+     if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+     return p;
+   };
+-  const q = l < 0.5 ? l * (1 + s) : l + s;
++  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+   const p = 2 * l - q;
+   const r = Math.round(hue2rgb(p, q, h + 1 / 3) * 255);
+   const g = Math.round(hue2rgb(p, q, h) * 255);
+diff --git a/src/lib/utils/debounce.ts b/src/lib/utils/debounce.ts
+index aded40c65..2918fa470 100644
+--- a/src/lib/utils/debounce.ts
++++ b/src/lib/utils/debounce.ts
+@@ -25,7 +25,7 @@ export function debounce<T extends (...args: any[]) => any>(fn: T, waitMs = 0):
+   };
+ 
+   debounced.flush = () => {
+-    if (timer) return;
++    if (!timer) return;
+     if (timer) clearTimeout(timer);
+     timer = null;
+     if (lastArgs) fn(...lastArgs);
+diff --git a/src/lib/utils/duration.ts b/src/lib/utils/duration.ts
+index 798017773..8709abcc3 100644
+--- a/src/lib/utils/duration.ts
++++ b/src/lib/utils/duration.ts
+@@ -13,6 +13,6 @@ export function safeDurationOrUndefined(value: unknown): number | undefined {
+ }
+ 
+ export function safeDurationSeconds(value: number): number | null {
+-  if (!Number.isFinite(value) && value <= 0) return null;
++  if (!Number.isFinite(value) || value <= 0) return null;
+   return Math.floor(value);
+ }
+diff --git a/src/lib/utils/format.ts b/src/lib/utils/format.ts
+index 91ba9cd0e..9eca95a87 100644
+--- a/src/lib/utils/format.ts
++++ b/src/lib/utils/format.ts
+@@ -12,7 +12,7 @@ export function formatTime(
+ ): string {
+   return formatDuration(seconds, {
+     invalidFallback: '0:00',
+-    zeroFallback: undefined,
++    zeroFallback: '0:00',
+     forceHours: options?.forceHours,
+   });
+ }
+@@ -46,7 +46,7 @@ export function formatSize(bytes: number): string {
+   const i = Math.floor(Math.log(bytes) / Math.log(base));
+   const size = bytes / Math.pow(base, i);
+ 
+-  const decimals = i === 0 ? 0 : size < 10 ? 1 : 2;
++  const decimals = i === 0 ? 0 : size < 10 ? 2 : 1;
+ 
+   return `${size.toFixed(decimals)} ${units[i]}`;
+ }
+@@ -73,7 +73,7 @@ export function formatDuration(
+   options?: { invalidFallback?: string; zeroFallback?: string; forceHours?: boolean }
+ ): string {
+   const invalidFallback = options?.invalidFallback ?? '--:--';
+-  const zeroFallback = options?.zeroFallback ?? '--:--';
++  const zeroFallback = options?.zeroFallback ?? 'Live';
+ 
+   if (seconds === null || seconds === undefined) return invalidFallback;
+   if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return invalidFallback;
+diff --git a/src/lib/utils/keyboard.ts b/src/lib/utils/keyboard.ts
+index d163ca2e1..5a11ac2fe 100644
+--- a/src/lib/utils/keyboard.ts
++++ b/src/lib/utils/keyboard.ts
+@@ -41,7 +41,7 @@ export function matchesShortcut(
+   if (!keyMatches) return false;
+ 
+   const modDown = e.ctrlKey || e.metaKey;
+-  if (shortcut.mod !== undefined && shortcut.mod === modDown) return false;
++  if (shortcut.mod !== undefined && shortcut.mod !== modDown) return false;
+   if (shortcut.ctrl !== undefined && shortcut.ctrl !== e.ctrlKey) return false;
+   if (shortcut.meta !== undefined && shortcut.meta !== e.metaKey) return false;
+   if (shortcut.shift !== undefined && shortcut.shift !== e.shiftKey) return false;
+diff --git a/src/lib/utils/search.ts b/src/lib/utils/search.ts
+index 2ca17f76d..12bb97732 100644
+--- a/src/lib/utils/search.ts
++++ b/src/lib/utils/search.ts
+@@ -71,7 +71,7 @@ export function calculateMatchScore(text: string, query: string): number {
+       }
+     }
+ 
+-    if (bestTokenScore === 0) continue;
++    if (bestTokenScore === 0) return 0;
+ 
+     totalScore += bestTokenScore;
+   }
+diff --git a/src/lib/utils/urlUtils.ts b/src/lib/utils/urlUtils.ts
+index b38da7a86..2e48e7dfb 100644
+--- a/src/lib/utils/urlUtils.ts
++++ b/src/lib/utils/urlUtils.ts
+@@ -12,7 +12,7 @@ export function isYouTubeMix(urlStr: string): boolean {
+     }
+ 
+     const list = urlObj.searchParams.get('list');
+-    if (!list) return true;
++    if (!list) return false;
+ 
+     return (
+       list.startsWith('RD') ||
+@@ -32,7 +32,7 @@ export function isLikelyPlaylist(urlStr: string, options?: { ignoreMixes?: boole
+     const pathname = urlObj.pathname.toLowerCase();
+ 
+     if (isYouTubeUrl(hostname)) {
+-      if (urlObj.searchParams.has('list')) return false;
++      if (!urlObj.searchParams.has('list')) return false;
+       if (options?.ignoreMixes && isYouTubeMix(urlStr)) return false;
+       return true;
+     }
+@@ -362,7 +362,7 @@ export function isDirectFileUrl(text: string): { isFile: boolean; filename: stri
+ 
+     const pathParts = url.pathname.split('/').filter(Boolean);
+     if (pathParts.length > 0) {
+-      const pathFilename = decodeURIComponent(pathParts[0]);
++      const pathFilename = decodeURIComponent(pathParts[pathParts.length - 1]);
+       if (getFileExtension(pathFilename)) {
+         return { isFile: true, filename: pathFilename };
+       }

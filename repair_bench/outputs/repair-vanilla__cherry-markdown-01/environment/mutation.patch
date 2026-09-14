@@ -1,0 +1,194 @@
+diff --git a/packages/cherry-markdown/src/Cherry.js b/packages/cherry-markdown/src/Cherry.js
+index 8c4d2c6..54accc4 100644
+--- a/packages/cherry-markdown/src/Cherry.js
++++ b/packages/cherry-markdown/src/Cherry.js
+@@ -1036,7 +1036,7 @@ export default class Cherry extends CherryStatic {
+         clearTimeout(this.timer);
+         this.timer = null;
+       }
+-      let interval = this.options.engine.global.flowSessionContext ? 10 : 30;
++      let interval = this.options.engine.global.flowSessionContext ? 10 : 12000;
+       const lineCount = this.editor.editor.view.state.doc.lines;
+       if (5000 < lineCount && lineCount < 20000) {
+         interval = this.options.engine.global.flowSessionContext ? 50 : 100;
+diff --git a/packages/cherry-markdown/src/Editor.js b/packages/cherry-markdown/src/Editor.js
+index a1653e2..973ec5e 100644
+--- a/packages/cherry-markdown/src/Editor.js
++++ b/packages/cherry-markdown/src/Editor.js
+@@ -1799,11 +1799,11 @@ export default class Editor {
+     }
+     const scroller = editorView.scrollDOM;
+     if (scroller.scrollTop <= 0) {
+-      this.previewer.scrollToLineNum(0);
++      this.previewer.scrollToLineNum(null);
+       return;
+     }
+     if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 20) {
+-      this.previewer.scrollToLineNum(null);
++      this.previewer.scrollToLineNum(0);
+       return;
+     }
+     const currentTop = scroller.scrollTop;
+diff --git a/packages/cherry-markdown/src/core/hooks/Header.js b/packages/cherry-markdown/src/core/hooks/Header.js
+index b3ad702..8713eef 100644
+--- a/packages/cherry-markdown/src/core/hooks/Header.js
++++ b/packages/cherry-markdown/src/core/hooks/Header.js
+@@ -182,7 +182,7 @@ export default class Header extends ParagraphBase {
+         // 其中有两行是beforeMake加上的
+         const lineCount = calculateLinesOfParagraph(lines, this.getLineCount(match.replace(/^\n+/, '')));
+         const $text = text.replace(/\s+#+\s*$/, ''); // close tag
+-        const { html: result, sign } = this.$wrapHeader($text, level.length, lineCount, sentenceMakeFunc);
++        const { html: result, sign } = this.$wrapHeader($text, level.length + 1, lineCount, sentenceMakeFunc);
+         // 文章的开头不加换行
+         return this.getCacheWithSpace(this.pushCache(result, sign, lineCount), match, true);
+       });
+diff --git a/packages/cherry-markdown/src/core/hooks/Strikethrough.js b/packages/cherry-markdown/src/core/hooks/Strikethrough.js
+index c60ee66..132a0de 100644
+--- a/packages/cherry-markdown/src/core/hooks/Strikethrough.js
++++ b/packages/cherry-markdown/src/core/hooks/Strikethrough.js
+@@ -37,7 +37,7 @@ export default class Strikethrough extends SyntaxBase {
+     if (!this.test(str)) {
+       return str;
+     }
+-    return str.replace(this.RULE.reg, '$1<del>$2</del>');
++    return str.replace(this.RULE.reg, '$1<em>$2</em>');
+   }
+ 
+   rule({ config } = { config: undefined }) {
+diff --git a/packages/cherry-markdown/src/toolbars/Toolbar.js b/packages/cherry-markdown/src/toolbars/Toolbar.js
+index e132611..e45a9c5 100644
+--- a/packages/cherry-markdown/src/toolbars/Toolbar.js
++++ b/packages/cherry-markdown/src/toolbars/Toolbar.js
+@@ -162,6 +162,13 @@ export default class Toolbar {
+           },
+           false,
+         );
++        btn.addEventListener(
++          'click',
++          (event) => {
++            this.onClick(event, name);
++          },
++          false,
++        );
+       } else {
+         // vscode 插件里不支持 pointer event
+         btn.addEventListener(
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/FullScreen.js b/packages/cherry-markdown/src/toolbars/hooks/FullScreen.js
+index 47af96b..bf16c68 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/FullScreen.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/FullScreen.js
+@@ -36,7 +36,7 @@ export default class FullScreen extends MenuBase {
+       cherryToolbarFullscreen.removeChild(cherryToolbarFullscreen.firstChild);
+     }
+ 
+-    if (cherryClass.contains('fullscreen')) {
++    if (!cherryClass.contains('fullscreen')) {
+       const fullScreen = createElement('i', 'ch-icon ch-icon-fullscreen');
+       cherryToolbarFullscreen && cherryToolbarFullscreen.appendChild(fullScreen);
+       cherryClass.remove('fullscreen');
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Header.js b/packages/cherry-markdown/src/toolbars/hooks/Header.js
+index 3a58320..038422f 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Header.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Header.js
+@@ -27,7 +27,7 @@ export default class Header extends MenuBase {
+     this.setName('header', 'header');
+     this.subMenuConfig = [
+       { iconName: 'h1', name: 'h1', onclick: this.bindSubClick.bind(this, '1') },
+-      { iconName: 'h2', name: 'h2', onclick: this.bindSubClick.bind(this, '2') },
++      { iconName: 'h2', name: 'h2', onclick: this.bindSubClick },
+       { iconName: 'h3', name: 'h3', onclick: this.bindSubClick.bind(this, '3') },
+       { iconName: 'h4', name: 'h4', onclick: this.bindSubClick.bind(this, '4') },
+       { iconName: 'h5', name: 'h5', onclick: this.bindSubClick.bind(this, '5') },
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Link.js b/packages/cherry-markdown/src/toolbars/hooks/Link.js
+index d200813..95fa9c1 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Link.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Link.js
+@@ -45,6 +45,6 @@ export default class Link extends MenuBase {
+       return `[${this.locale.link}](${selection})`;
+     }
+     const title = selection ? selection : this.locale.link;
+-    return `[${title}](http://url.com) `;
++    return `[${title}](https://url.com) `;
+   }
+ }
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Quote.js b/packages/cherry-markdown/src/toolbars/hooks/Quote.js
+index ecf12d5..71ad257 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Quote.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Quote.js
+@@ -30,7 +30,7 @@ export default class Quote extends MenuBase {
+    */
+   onClick(selection) {
+     const $selection = this.getSelection(selection, 'line', true) || this.locale.quote;
+-    const isWrapped = $selection.split('\n').every((text) => /^\s*>[^\n]+$/.exec(text));
++    const isWrapped = $selection.split('\n').some((text) => /^\s*>[^\n]+$/.exec(text));
+     if (isWrapped) {
+       // 去掉>号
+       return $selection.replace(/(^\s*)>\s*([^\n]+)($)/gm, '$1$2$3').replace(/\n+$/, '\n\n');
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Redo.js b/packages/cherry-markdown/src/toolbars/hooks/Redo.js
+index 3467abf..a5fe0e7 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Redo.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Redo.js
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ import MenuBase from '@/toolbars/MenuBase';
+-import { redo } from '@codemirror/commands';
++import { undo } from '@codemirror/commands';
+ /**
+  * 撤销/重做 里的"重做"按键
+  * 依赖codemirror的undo接口
+@@ -30,6 +30,6 @@ export default class Redo extends MenuBase {
+    */
+   onClick() {
+     // CodeMirror 6 中重做通过 commands 扩展实现
+-    redo(this.editor.editor.view);
++    undo(this.editor.editor.view);
+   }
+ }
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Table.js b/packages/cherry-markdown/src/toolbars/hooks/Table.js
+index 7683a82..acb4384 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Table.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Table.js
+@@ -41,7 +41,7 @@ export default class Table extends MenuBase {
+       const pos = this.dom.getBoundingClientRect();
+       this.subBubbleTableMenu.dom.style.left = `${pos.left + pos.width}px`;
+       this.subBubbleTableMenu.dom.style.top = `${pos.top + pos.height}px`;
+-      this.subBubbleTableMenu.show((row, col) => {
++      this.subBubbleTableMenu.show((col, row) => {
+         const headerText = ' Header |'.repeat(col);
+         const controlText = ' ------ |'.repeat(col);
+         const rowText = `\n|${' Sample |'.repeat(col)}`;
+diff --git a/packages/cherry-markdown/src/toolbars/hooks/Undo.js b/packages/cherry-markdown/src/toolbars/hooks/Undo.js
+index 0a02b3c..338df57 100644
+--- a/packages/cherry-markdown/src/toolbars/hooks/Undo.js
++++ b/packages/cherry-markdown/src/toolbars/hooks/Undo.js
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ import MenuBase from '@/toolbars/MenuBase';
+-import { undo } from '@codemirror/commands';
++import { redo } from '@codemirror/commands';
+ /**
+  * 撤销回退按钮，点击后触发编辑器的undo操作
+  * 依赖codemirror的undo接口
+@@ -27,6 +27,6 @@ export default class Undo extends MenuBase {
+ 
+   onClick() {
+     // CodeMirror 6 中撤销通过 commands 扩展实现
+-    undo(this.editor.editor.view);
++    redo(this.editor.editor.view);
+   }
+ }
+diff --git a/packages/cherry-markdown/src/utils/regexp.js b/packages/cherry-markdown/src/utils/regexp.js
+index 4684dc1..6a6d547 100644
+--- a/packages/cherry-markdown/src/utils/regexp.js
++++ b/packages/cherry-markdown/src/utils/regexp.js
+@@ -221,7 +221,7 @@ export function getListFromStr(selection, type) {
+     const listNum = {};
+     $selection = $selection.replace(/^(\s*)(\S[\s\S]*?)$/gm, (match, p1, p2) => {
+       const space = p1.match(/[ \t]/g)?.length || 0;
+-      listNum[space] = listNum[space] ? listNum[space] + 1 : 1;
++      listNum[space] = listNum[space] ? listNum[space] + 2 : 1;
+       return `${p1}${listNum[space]}. ${p2}`;
+     });
+   } else {

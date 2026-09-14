@@ -1,0 +1,79 @@
+import { ExpEnum } from '@/experience/ExpEnum'
+import { EquipSlotsEnum } from '../../characters/equipSlotsEnum'
+import { BASE_SWORD_DAMAGE, BASE_SWORD_SPEED } from '../../const'
+import { getCraftingTime, getItemValue } from '../../crafting/CraftingFunctions'
+import { makeMemoizedRecipe } from '../../crafting/makeMemoizedRecipe'
+import {
+    RecipeParameterItemFilter,
+    RecipeParameterValue,
+    RecipeParamType,
+    RecipeResult,
+    RecipeTypes,
+} from '../../crafting/RecipeInterfaces'
+import { GameState } from '../../game/GameState'
+import { Icons } from '../../icons/Icons'
+import { DamageTypes, Item, ItemSubType, ItemTypes } from '../../items/Item'
+import { ItemsMaterials } from '../../items/materials/ItemsMaterials'
+import { Msg } from '../../msg/Msg'
+import { selectGameItem } from '../../storage/StorageSelectors'
+
+const twoHSwordParams: RecipeParameterItemFilter[] = [
+    {
+        id: 'bar',
+        nameId: 'Bar',
+        type: RecipeParamType.ItemType,
+        itemFilter: { itemType: ItemTypes.Bar },
+    },
+]
+
+export const twoHSwordRecipe = makeMemoizedRecipe({
+    id: 'TwoHSwordRecipe',
+    nameId: 'TwoHSword' as keyof Msg,
+    iconId: Icons.Sword,
+    type: RecipeTypes.Smithing,
+    itemSubType: ItemSubType.Weapon,
+    getParameters: () => twoHSwordParams,
+    getResult(state: GameState, params: RecipeParameterValue[]): RecipeResult | undefined {
+        const bar = params.find((i) => i.id === 'bar')
+        if (bar === undefined) return
+        const barItem = selectGameItem(bar.itemId)(state)
+        if (!barItem) return
+        if (!barItem.craftingData) return
+
+        const components = [barItem, barItem, barItem, barItem]
+
+        const primaryMat = barItem.materials?.primary
+        const materials: ItemsMaterials = {}
+        if (primaryMat) materials.primary = primaryMat
+
+        const crafted2HSword: Item = {
+            id: '',
+            nameId: 'TwoHSword',
+            materials,
+            icon: Icons.Broadsword,
+            type: ItemTypes.TwoHands,
+            equipSlot: EquipSlotsEnum.TwoHand,
+            value: getItemValue(components, true),
+            weaponData: {
+                expType: ExpEnum.OneHanded,
+                attackSpeed: Math.floor((1.4 * BASE_SWORD_SPEED) / (barItem.craftingData.speedBonus ?? 1)),
+                damage: {
+                    [DamageTypes.Slashing]: Math.floor(
+                        1.4 * BASE_SWORD_DAMAGE * (barItem.craftingData.damage?.Slashing ?? 1)
+                    ),
+                },
+            },
+        }
+
+        return {
+            time: getCraftingTime(components),
+            requirements: [
+                {
+                    qta: 4,
+                    itemId: bar.itemId,
+                },
+            ],
+            results: [{ id: 'crafted2HSword', qta: 1, craftedItem: crafted2HSword }],
+        }
+    },
+})

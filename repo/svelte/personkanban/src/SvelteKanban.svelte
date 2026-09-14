@@ -1,0 +1,1519 @@
+<script>
+  import { onMount, tick } from "svelte";
+  import CommandBar from "./components/CommandBar.svelte";
+  import MetaBoardList from "./components/MetaBoardList.svelte";
+  import QuickBar from "./components/QuickBar.svelte";
+  import List from "./components/List.svelte";
+  import Preferences from "./components/Preferences.svelte";
+  import EditField from "./components/EditField.svelte";
+  import EditMeta from "./components/EditMeta.svelte";
+  import { Kanban } from "./stores/Kanban.js";
+  import { lastCommand } from "./stores/lastCommand.js";
+  import { boardCursor } from "./stores/boardCursor.js";
+  import { commandBar } from "./stores/commandBar.js";
+  import { itemCursor } from "./stores/itemCursor";
+  import { listCursor } from "./stores/listCursor";
+  import { metaboard } from "./stores/metaboard.js";
+  import { ctrlKey } from "./stores/ctrlKey.js";
+  import { shiftKey } from "./stores/shiftKey.js";
+  import { metaKey } from "./stores/metaKey.js";
+  import { altKey } from "./stores/altKey.js";
+  import { key } from "./stores/key.js";
+  import { skipKey } from "./stores/skipKey.js";
+  import { preferences } from "./stores/preferences.js";
+  import { registers } from "./stores/registers.js";
+  import { editItem } from "./stores/editItem.js";
+  import { kbstate } from "./stores/kbstate.js";
+  import { defaultkb } from "./stores/defaultkb.js";
+  import { itemEditkb } from "./stores/itemEditkb.js";
+  import { quickbarkb } from "./stores/quickbarkb.js";
+  import { metaboardkb } from "./stores/metaboardkb.js";
+  import { commandbarkb } from "./stores/commandbarkb.js";
+  import { listkb } from "./stores/listkb.js";
+  import { preferencekb } from "./stores/preferencekb.js";
+  import { copyBuffer } from "./stores/copyBuffer.js";
+  import * as App from "../wailsjs/go/main/App.js";
+
+  let editNameFlag = $state(false);
+  let editListName = $state(false);
+  let acc = "";
+  let keystate = 0;
+  let command = null;
+  let direction = "";
+  let quickBarOpen = $state(false);
+  let tabDiv = $state(null);
+  let editMetaDescription = $state(null);
+
+  onMount(async () => {
+    //
+    //
+    // Load the metaboards and goto the last loaded board and the program location and dimensions..
+    //
+    await $metaboard.loadMetaBoards();
+    await window.runtime.WindowSetPosition(
+      $metaboard.savedstate.x,
+      $metaboard.savedstate.y,
+    );
+    await window.runtime.WindowSetSize(
+      $metaboard.savedstate.width,
+      $metaboard.savedstate.height,
+    );
+    $metaboard.setCursor($metaboard.savedstate.mboard);
+
+    //
+    // Load the default board information from the harddrive.
+    //
+    if (typeof $metaboard.savedstate.bc === "undefined") {
+      $boardCursor = 0;
+      $listCursor = -1;
+      $itemCursor = -1;
+    } else {
+      $boardCursor = $metaboard.savedstate.bc;
+      $listCursor = $metaboard.savedstate.lc;
+      $itemCursor = $metaboard.savedstate.ic;
+    }
+    $editItem = false;
+    await $Kanban.LoadCurrentKanbanBoards();
+    $Kanban = $Kanban;
+    $copyBuffer = {
+      type: "board",
+      pref: $Kanban.defaultStyles,
+    };
+
+    //
+    // Load the system preferences.
+    //
+    $preferences.LoadPrefs();
+
+    //
+    // Setup the keyboard handler.
+    //
+    $kbstate = 0;
+    $defaultkb = listKeyHandler;
+
+    //
+    // Add Commands for the CommandBar.
+    //
+    $commandBar.commands = [];
+    $commandBar.addCommand(
+      "Open Preferences",
+      openPreferences,
+      "Opens the preferences for the currently selected item.",
+      "text",
+    );
+    $commandBar.addCommand(
+      "Add a New Board",
+      addNewBoard,
+      "Adds a new board to the list of boards.",
+      "text",
+    );
+    $commandBar.addCommand(
+      "Delete Current Board",
+      deleteCurrentBoard,
+      "<h3>Delecte Current board</h3><p>This command will delete the current board.</p>",
+      "html",
+    );
+    $commandBar.addCommand(
+      "Delete Current List",
+      deleteCurrentList,
+      "### Delete Current List \n\nThis command will delete the current list.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Delete Current Item",
+      deleteCurrentItem,
+      "### Delete Current Item\n\nThis command will delete the current item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Add New List",
+      addNewList,
+      "### Add New List\n\nThis will add a new list.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Add New Item",
+      addNewItem,
+      "### Add New Item\n\nThis will add a new item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Open Current Item",
+      openItem,
+      "### Open Current Item\n\nThis will open the current item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move Board Cursor Left",
+      moveBoardCursorLeft,
+      "### Move Board Cursor Left\n\nThis will move the board cursor left.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move Board Cursor Right",
+      moveBoardCursorRight,
+      "### Move Board Cursor Right\n\nThis will move the board cursor right.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move List Cursor Left",
+      moveListCursorLeft,
+      "### Move List Cursor Left\n\nThis will move the list cursor left.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move List Cursor Right",
+      moveListCursorRight,
+      "### Move List Cursor Right\n\nThis will move the list cursor right.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move Item Cursor Up",
+      moveItemCursorUp,
+      "### Move Item Cursor Up\n\nThis will move the item cursor up.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Move Item Cursor Down",
+      moveItemCursorDown,
+      "### Move Item Cursor Down\n\nThis will move the item cursor down.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Quit",
+      quit,
+      "### quit\n\nThis will exit out of the program.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Edit List Title",
+      editListTitle,
+      "### Edit List Title\n\nEdit the title for the current list.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Edit Board Name",
+      editBoardName,
+      "### Edit Board Name\n\nEdit the name of the current board.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Go To Top",
+      gotoTop,
+      "### Go To Top\n\nGo to the top element of boards, list, or items. The top most item in a horizantal list is to the left most position. On a vertical list, it is the top most item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Go To Bottom",
+      gotoBottom,
+      "### Go To Bottom\n\nGo to the last element of boards, list, or items. The bottom most item in a horizontal list is to the right most position. On a vertical list, it is the bottom most item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Copy Board Preferences",
+      copyBoardPref,
+      "### Copy Board Preferences\n\nThe board preferences is copied to the buffer.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Copy List Preferences",
+      copyListPref,
+      "### Copy List Preferences\n\nThe list preferences is copied to the buffer.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Copy Item Preferences",
+      copyItemPref,
+      "### Copy Item Preferences\n\nThe item preferences is copied to the buffer.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Paste Board Preferences",
+      pasteBoardPref,
+      "### Paste Board Preferences\n\nThe board preferences that was copied is then pasted into the current board.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Paste List Preferences",
+      pasteListPref,
+      "### Paste List Preferences\n\nThe list preferences that was copied is then pasted into the current list.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Paste Item Preferences",
+      pasteItemPref,
+      "### Paste Item Preferences\n\nThe item preferences that was copied is then pasted into the current item.",
+      "md",
+    );
+    $commandBar.addCommand(
+      "Show System Preferences",
+      showSystemPreferences,
+      "### Show System Preferences\n\nShow the system preferences dialog.",
+      "md",
+    );
+
+    //
+    // Load the quickbar registers.
+    //
+    $registers.loadRegisters();
+
+    return () => {
+      //
+      // This is ran when closing the program.
+      //
+    };
+  });
+
+  $effect(() => {
+    //
+    // This is for making sure the board's tab is viewable when there are more than
+    // will fit in the program.
+    //
+    if (tabDiv !== null) {
+      //
+      // There is a board selected. Make sure it's in view.
+      //
+      const elRight = tabDiv.offsetLeft + tabDiv.offsetWidth;
+      const elLeft = tabDiv.offsetLeft;
+
+      const elParentRight =
+        tabDiv.parentNode.offsetLeft + tabDiv.parentNode.offsetWidth;
+      const elParentLeft = tabDiv.parentNode.offsetLeft;
+      // check if right side of the element is not in view
+      if (elRight > elParentRight + tabDiv.parentNode.scrollLeft) {
+        tabDiv.parentNode.scrollLeft = elRight - elParentRight;
+        if (tabDiv.nextElementSibling !== null) {
+          //
+          // This is the last board. Make sure the new board button is shown.
+          // TODO: I should be able to do this pragrammably. But this currently works fine.
+          //
+          tabDiv.parentNode.scrollLeft += 75;
+        }
+      } else if (elLeft < elParentLeft + tabDiv.parentNode.scrollLeft) {
+        //
+        // Left element is not in view.
+        //
+        tabDiv.parentNode.scrollLeft = elLeft - elParentLeft;
+      }
+    }
+  });
+
+  function showMetaboards() {
+    $metaboard.setShowing();
+    $metaboard = $metaboard;
+  }
+
+  function editoff() {
+    editNameFlag = false;
+    $editItem = false;
+    editListName = false;
+    $kbstate = 0;
+  }
+
+  function openPreferences() {
+    $preferences.showing = true;
+    $preferences = $preferences;
+
+    //
+    // Set the preferences keyboard state.
+    //
+    $kbstate = 6;
+  }
+
+  function editListTitle() {
+    editListName = true;
+  }
+
+  async function editBoardName() {
+    //
+    // Allow the user to edit the name
+    // of the current board.
+    //
+    await editName($boardCursor);
+  }
+
+  async function addNewBoard() {
+    //
+    // Create a new board.
+    //
+    await $Kanban.addBoard();
+    $Kanban = $Kanban;
+    $boardCursor = $Kanban.boards.length - 1;
+  }
+
+  async function addNewList() {
+    //
+    // Add a new list to the current
+    // board.
+    //
+    await $Kanban.addList();
+    $Kanban = $Kanban;
+    $listCursor = $Kanban.boards[$boardCursor].lists.length - 1;
+  }
+
+  async function addNewItem() {
+    //
+    // Add a new item to the current list.
+    //
+    await $Kanban.addItem();
+    $Kanban = $Kanban;
+    $itemCursor =
+      $Kanban.boards[$boardCursor].lists[$listCursor].items.length - 1;
+  }
+
+  async function deleteCurrentBoard() {
+    //
+    // Wait for the user interface to settle and then perform
+    // the deletion of the current board.
+    //
+    await tick();
+    await $Kanban.deleteBoard();
+    $boardCursor = $boardCursor - 1;
+    if ($boardCursor < 0) $boardCursor = 0;
+    $listCursor = -1;
+    $itemCursor = -1;
+    $Kanban = $Kanban;
+  }
+
+  async function deleteCurrentList() {
+    //
+    // Wait for settling of the user interface.
+    //
+    await tick();
+    await $Kanban.deleteList();
+    $listCursor = $listCursor - 1;
+    if ($listCursor < 0) $listCursor = 0;
+    $itemCursor = -1;
+  }
+
+  async function deleteCurrentItem() {
+    //
+    // Wait for settling of the user interface.
+    //
+    await tick();
+    await $Kanban.deleteItem();
+    $itemCursor = $itemCursor - 1;
+    if ($itemCursor < 0) $itemCursor = 0;
+    $Kanban = $Kanban;
+  }
+
+  async function editName(num) {
+    $boardCursor = num;
+    editNameFlag = true;
+    $kbstate = 10;
+    $kbstate = await tick();
+  }
+
+  function setBoard(ind) {
+    $boardCursor = ind;
+  }
+
+  function listKeyHandler(e) {
+    $ctrlKey = e.ctrlKey;
+    $shiftKey = e.shiftKey;
+    $metaKey = e.metaKey;
+    $altKey = e.altKey;
+    $key = e.key;
+
+    //
+    // If skpkey is true, do not process the key.
+    //
+    if (!$skipKey) {
+      processKey(e);
+    }
+    $skipKey = false;
+  }
+
+  function clearState() {
+    //
+    // Clear out the variables used in processing the keyboard commands.
+    //
+    $listCursor = $listCursor;
+    $Kanban = $Kanban;
+    keystate = 0;
+    command = null;
+    direction = "";
+    acc = "";
+  }
+
+  async function processKey(e) {
+    //
+    // This is just normal key processing. Run the command for that key.
+    //
+    e.preventDefault();
+    switch (keystate) {
+      case 0:
+        //
+        // keystate 0 is the main entry state. Get the command and accumulator values.
+        //
+        switch ($key) {
+          case " ":
+            quickBarOpen = true;
+            command = null;
+            break;
+
+          case "a":
+            let thisboard = $Kanban.boards[$boardCursor];
+            if ($listCursor === -1) {
+              if (
+                typeof thisboard.lists !== "undefined" ||
+                thisboard.lists.length !== 0
+              ) {
+                command = addNewBoard;
+                $lastCommand = "Add New Board";
+              } else {
+                command = addNewList;
+                $lastCommand = "Add New List";
+              }
+            } else if ($itemCursor <= -1) {
+              command = addNewList;
+              $lastCommand = "Add New List";
+            } else {
+              command = addNewItem;
+              $lastCommand = "Add New Item";
+            }
+            break;
+
+          case "e":
+            if ($itemCursor < 0 && $listCursor >= 0) {
+              command = editListTitle;
+              $lastCommand = "Edit List Title";
+            } else if ($itemCursor < 0 && $listCursor < 0) {
+              command = editBoardName;
+              $lastCommand = "Edit Board Name";
+            }
+            break;
+
+          case "x":
+            if ($listCursor === -1) {
+              command = deleteCurrentBoard;
+              $lastCommand = "Delete Current Board";
+            } else if ($itemCursor <= -1) {
+              command = deleteCurrentList;
+              $lastCommand = "Delete Current List";
+            } else {
+              command = deleteCurrentItem;
+              $lastCommand = "Delete Current Item";
+            }
+            break;
+
+          case "h":
+          case "ArrowLeft":
+            if ($listCursor === -1) {
+              command = moveBoardCursorLeft;
+              $lastCommand = "Move Board Cursor Left";
+            } else {
+              command = moveListCursorLeft;
+              $lastCommand = "Move List Cursor Left";
+            }
+            break;
+
+          case "k":
+          case "ArrowUp":
+            command = moveItemCursorUp;
+            $lastCommand = "Move Item Cursor Up";
+            break;
+
+          case "j":
+          case "ArrowDown":
+            command = moveItemCursorDown;
+            $lastCommand = "Move Item Cursor Down";
+            break;
+
+          case "l":
+          case "ArrowRight":
+            if ($listCursor === -1) {
+              command = moveBoardCursorRight;
+              $lastCommand = "Move Board Cursor Right";
+            } else {
+              command = moveListCursorRight;
+              $lastCommand = "Move List Cursor Right";
+            }
+            break;
+
+          case "b":
+            command = gotoBoard;
+            break;
+
+          case "m":
+            if ($listCursor === -1) {
+              command = moveBoard;
+              $lastCommand = "Move Current Board";
+            } else if ($itemCursor <= -1) {
+              command = moveList;
+              $lastCommand = "Move Current List";
+            } else {
+              command = moveItem;
+              $lastCommand = "Move Current Item";
+            }
+            //
+            // Goto the one state to capture the direction.
+            //
+            keystate = 0;
+            break;
+
+          case "y":
+            if ($listCursor === -1) {
+              command = copyBoardPref;
+              $lastCommand = "Copy Current Board Preferences";
+            } else if ($itemCursor <= -1) {
+              command = copyListPref;
+              $lastCommand = "Copy Current List Preferences";
+            } else {
+              command = copyItemPref;
+              $lastCommand = "Copy Current Item Preferences";
+            }
+            //
+            // Goto the zero state to run the command.
+            //
+            keystate = 0;
+            break;
+
+          case "p":
+            if ($listCursor === -1) {
+              command = pasteBoardPref;
+              $lastCommand = "Paste Current Board Preferences";
+            } else if ($itemCursor <= -1) {
+              command = pasteListPref;
+              $lastCommand = "Paste Current List Preferences";
+            } else {
+              command = pasteItemPref;
+              $lastCommand = "Paste Current Item Preferences";
+            }
+            //
+            // Goto the zero state to run the command.
+            //
+            keystate = 0;
+            break;
+
+          case "c":
+            //
+            // Copy the contents of boards, lists, items.
+            //
+            if ($listCursor === -1) {
+              command = copyBoard;
+              $lastCommand = "Copy Current Board";
+            } else if ($itemCursor <= -1) {
+              command = copyList;
+              $lastCommand = "Copy Current List";
+            } else {
+              command = copyItem;
+              $lastCommand = "Copy Current Item";
+            }
+            //
+            // Goto the zero state to run the command.
+            //
+            keystate = 0;
+            break;
+
+          case "v":
+            //
+            // Paste the contents of boards, lists, items.
+            //
+            if ($listCursor === -1) {
+              command = pasteBoard;
+              $lastCommand = "Paste Current Board";
+            } else if ($itemCursor <= -1) {
+              command = pasteList;
+              $lastCommand = "Paste Current List";
+            } else {
+              command = pasteItem;
+              $lastCommand = "Paste Current Item";
+            }
+            //
+            // Goto the zero state to run the command.
+            //
+            keystate = 0;
+            break;
+
+          case "t":
+            //
+            // Go to the metaboards dialog.
+            //
+            command = showMetaboards;
+            acc = "";
+            $lastCommand = "Show Metaboards";
+            break;
+
+          case "o":
+            //
+            // Open Preferences.
+            //
+            command = openPreferences;
+            $lastCommand = "Open Preferences";
+            break;
+
+          case "g":
+            //
+            // Goto the Bottom of the list.
+            //
+            command = gotoTop;
+            $lastCommand = "Go To Top";
+            break;
+
+          case "G":
+            //
+            // Goto the top of the list.
+            //
+            command = gotoBottom;
+            $lastCommand = "Go To Bottom";
+            break;
+
+          case ".":
+            command = $commandBar.getCommand($lastCommand).command;
+            break;
+
+          case "Enter":
+            if ($listCursor !== -1 && $itemCursor >= 0) {
+              command = openItem;
+            }
+            break;
+
+          case "Escape":
+            if ($itemCursor >= 0) {
+              $itemCursor = -1;
+            } else if ($itemCursor < 0) $listCursor = -1;
+            clearState();
+            $commandBar.clearShowing();
+            editMetaDescription = false;
+            break;
+
+          case ":":
+            if ($commandBar.showing) {
+              $commandBar.clearShowing();
+              $commandBar = $commandBar;
+            } else {
+              $commandBar.setShowing();
+              $commandBar = $commandBar;
+            }
+            break;
+
+          case "0":
+          case "1":
+          case "2":
+          case "3":
+          case "4":
+          case "5":
+          case "6":
+          case "7":
+          case "8":
+          case "9":
+            acc = $key;
+            break;
+
+          default:
+            acc = "";
+            keystate = 0;
+            command = null;
+            break;
+        }
+        break;
+      case 1:
+        //
+        // This case is for getting the direction for a command.
+        //
+        switch ($key) {
+          case "h":
+          case "ArrowLeft":
+            keystate = 0;
+            direction = "l";
+            break;
+
+          case "k":
+          case "ArrowUp":
+            keystate = 0;
+            direction = "u";
+            break;
+
+          case "j":
+          case "ArrowDown":
+            direction = "d";
+            keystate = 0;
+            break;
+
+          case "l":
+          case "ArrowRight":
+            direction = "r";
+            keystate = 0;
+            break;
+
+          default:
+            //
+            // A valid direction was not given. Abort the command.
+            //
+            clearState();
+            break;
+        }
+        break;
+    }
+    if (keystate === 0) {
+      //
+      // If a command is set, do the command as many times as the acc says.
+      //
+      if (command !== null) {
+        //
+        // Get the acc amount. If blank, at least run the command once.
+        //
+        let times = getAcc();
+
+        //
+        // Execute the command the correct number of times.
+        //
+        for (var i = 0; i < times; i++) {
+          await command();
+        }
+
+        //
+        // After executing the command, we need to set the states back to the beginning.
+        //
+        clearState();
+      }
+    }
+  }
+
+  //
+  // Commands for working with the boards, lists, and items.
+  //
+  function getAcc() {
+    let times = 0;
+    if (acc === "") {
+      times = 1;
+    } else {
+      times = parseInt(acc);
+    }
+    return times;
+  }
+
+  function openItem() {
+    if ($itemCursor >= 0) {
+      $editItem = true;
+    }
+  }
+
+  function gotoTop() {
+    if ($itemCursor >= 0) {
+      $itemCursor = 0;
+    } else if ($listCursor >= 0) {
+      $listCursor = 0;
+    } else {
+      $boardCursor = 0;
+    }
+  }
+
+  async function gotoBottom() {
+    if ($itemCursor >= 0) {
+      let list = $Kanban.boards[$boardCursor].lists[$listCursor];
+      $itemCursor = list.items.length - 1;
+    } else if ($listCursor >= 0) {
+      let list = $Kanban.boards[$boardCursor].lists;
+      $listCursor = list.length - 1;
+    } else {
+      $boardCursor = $Kanban.boards.length - 1;
+    }
+  }
+
+  async function copyBoardPref() {
+    $copyBuffer.type = "board";
+    $copyBuffer.pref = $Kanban.boards[$boardCursor].styles;
+  }
+
+  async function copyListPref() {
+    $copyBuffer.type = "list";
+    $copyBuffer.pref = $Kanban.boards[$boardCursor].lists[$listCursor].styles;
+  }
+
+  async function copyItemPref() {
+    $copyBuffer.type = "item";
+    $copyBuffer.pref =
+      $Kanban.boards[$boardCursor].lists[$listCursor].items[$itemCursor].styles;
+  }
+
+  async function pasteBoardPref() {
+    if ($copyBuffer.type === "board") {
+      $Kanban.boards[$boardCursor].styles = $copyBuffer.pref;
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  async function pasteListPref() {
+    if ($copyBuffer.type === "list") {
+      $Kanban.boards[$boardCursor].lists[$listCursor].styles = $copyBuffer.pref;
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  async function pasteItemPref() {
+    if ($copyBuffer.type === "item") {
+      $Kanban.boards[$boardCursor].lists[$listCursor].items[
+        $itemCursor
+      ].styles = $copyBuffer.pref;
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  async function copyBoard() {
+    $copyBuffer.type = "pboard";
+    $copyBuffer.pref = JSON.stringify($Kanban.boards[$boardCursor]);
+  }
+
+  async function copyList() {
+    $copyBuffer.type = "plist";
+    $copyBuffer.pref = JSON.stringify(
+      $Kanban.boards[$boardCursor].lists[$listCursor],
+    );
+  }
+
+  async function copyItem() {
+    $copyBuffer.type = "pitem";
+    $copyBuffer.pref = JSON.stringify(
+      $Kanban.boards[$boardCursor].lists[$listCursor].items[$itemCursor],
+    );
+  }
+
+  async function pasteBoard() {
+    if ($copyBuffer.type === "pboard") {
+      $Kanban.boards = $Kanban.boards.concat(JSON.parse($copyBuffer.pref));
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  async function pasteList() {
+    if ($copyBuffer.type === "plist") {
+      $Kanban.boards[$boardCursor].lists = $Kanban.boards[
+        $boardCursor
+      ].lists.concat(JSON.parse($copyBuffer.pref));
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  async function pasteItem() {
+    if ($copyBuffer.type === "pitem") {
+      $Kanban.boards[$boardCursor].lists[$listCursor].items = JSON.parse(
+        $copyBuffer.pref,
+      );
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  function moveBoardCursorLeft() {
+    let newcursor = $boardCursor - 1;
+    if (newcursor < 0) newcursor = 0;
+    if (newcursor != $boardCursor) {
+      $boardCursor = newcursor;
+    }
+  }
+
+  function moveBoardCursorRight() {
+    let newcursor = $boardCursor + 1;
+    if (newcursor >= $Kanban.boards.length)
+      newcursor = $Kanban.boards.length - 1;
+    if (newcursor != $boardCursor) {
+      $boardCursor = newcursor;
+    }
+  }
+
+  function gotoBoardCommand(brd) {
+    if (brd < 0) brd = 0;
+    if (brd >= $Kanban.boards.length) brd = $Kanban.boards.length - 1;
+    $boardCursor = brd;
+  }
+
+  function gotoBoard() {
+    gotoBoardCommand(getAcc());
+  }
+
+  function moveBoard() {
+    moveBoardCommand(direction);
+  }
+
+  async function moveBoardCommand(dir) {
+    let newboardindex = $boardCursor;
+    switch (dir) {
+      case "l":
+        newboardindex++;
+        break;
+
+      case "r":
+        newboardindex--;
+        break;
+    }
+    if (newboardindex < 0) newboardindex = 0;
+    if (newboardindex >= $Kanban.boards.length)
+      newboardindex = $Kanban.boards.length - 1;
+    if (newboardindex !== $boardCursor) {
+      //
+      // It's a valid move. Move it.
+      //
+      let orig = myClone($Kanban.boards[$boardCursor]);
+      $Kanban.boards[$boardCursor] = myClone($Kanban.boards[newboardindex]);
+      $Kanban.boards[newboardindex] = myClone(orig);
+      $boardCursor = newboardindex;
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  function moveItem() {
+    moveItemCommand(direction);
+  }
+
+  async function moveItemCommand(dir) {
+    if ($listCursor >= 0 && $itemCursor >= 0) {
+      //
+      // It is a move for an item. See if it is an up or down direction.
+      //
+      let newitemindex = $itemCursor;
+      switch (dir) {
+        case "u":
+          newitemindex--;
+          break;
+
+        case "d":
+          newitemindex++;
+          break;
+      }
+
+      //
+      // Check to make sure it's in the boundaries.
+      //
+      if (newitemindex < 0) newitemindex = 0;
+      let newIndex =
+        $Kanban.boards[$boardCursor].lists[$listCursor].items.length - 1;
+      if (newIndex < newitemindex) newitemindex = newIndex;
+      if (newitemindex !== $itemCursor) {
+        //
+        // We have a valid move.
+        //
+        let orig = myClone(
+          $Kanban.boards[$boardCursor].lists[$listCursor].items[$itemCursor],
+        );
+        $Kanban.boards[$boardCursor].lists[$listCursor].items[$itemCursor] =
+          myClone(
+            $Kanban.boards[$boardCursor].lists[$listCursor].items[newitemindex],
+          );
+        $Kanban.boards[$boardCursor].lists[$listCursor].items[newitemindex] =
+          myClone(orig);
+        $itemCursor = newitemindex;
+      } else {
+        //
+        // It was a move to a different list.
+        //
+        let newlistindex = $listCursor;
+        switch (dir) {
+          case "l":
+            newlistindex--;
+            break;
+
+          case "r":
+            newlistindex++;
+            break;
+        }
+
+        //
+        // Make sure its in the boundaries.
+        //
+        if (newlistindex < 0) newlistindex = 0;
+        if ($Kanban.boards[$boardCursor].lists.length - 1 < newlistindex)
+          newlistindex = $Kanban.boards[$boardCursor].lists.length - 1;
+        if (newlistindex !== $listCursor) {
+          //
+          // Move to the new list index.
+          //
+          let item = myClone(
+            $Kanban.boards[$boardCursor].lists[$listCursor].items[$itemCursor],
+          );
+          $Kanban.boards[$boardCursor].lists[$listCursor].items.splice(
+            $itemCursor,
+            1,
+          );
+          $Kanban.boards[$boardCursor].lists[newlistindex].items = [
+            item,
+            ...$Kanban.boards[$boardCursor].lists[newlistindex].items,
+          ];
+          $listCursor = newlistindex;
+          $itemCursor = 0;
+        }
+      }
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  function moveList() {
+    moveListCommand(direction);
+  }
+
+  function showSystemPreferences() {
+    $preferences.showing = true;
+    $preferences.system = true;
+  }
+
+  function myClone(a) {
+    return JSON.parse(JSON.stringify(a));
+  }
+
+  async function moveListCommand(dir) {
+    if ($listCursor >= 0) {
+      let newlistindex = $listCursor;
+      switch (dir) {
+        case "l":
+          newlistindex--;
+          break;
+
+        case "r":
+          newlistindex++;
+          break;
+      }
+      if (newlistindex < 0) newlistindex = 0;
+      if ($Kanban.boards[$boardCursor].lists.length - 1 < newlistindex)
+        newlistindex = $Kanban.boards[$boardCursor].lists.length - 1;
+      if (newlistindex !== $listCursor) {
+        //
+        // We have a valid move.
+        //
+        let orig = myClone($Kanban.boards[$boardCursor].lists[$listCursor]);
+        $Kanban.boards[$boardCursor].lists[$listCursor] = myClone(
+          $Kanban.boards[$boardCursor].lists[newlistindex],
+        );
+        $Kanban.boards[$boardCursor].lists[newlistindex] = myClone(orig);
+        $listCursor = newlistindex;
+      }
+      await $Kanban.SaveKanbanBoards();
+    }
+  }
+
+  function moveListCursorLeft() {
+    if ($listCursor >= 0) {
+      //
+      // Move to the list to the left if any.
+      //
+      $listCursor = $listCursor - 1;
+      if ($listCursor < 0) $listCursor = 0;
+      if (
+        $itemCursor >=
+        $Kanban.boards[$boardCursor].lists[$listCursor].items.length
+      )
+        $itemCursor =
+          $Kanban.boards[$boardCursor].lists[$listCursor].items.length - 1;
+    }
+  }
+
+  function moveListCursorRight() {
+    //
+    // Move to the list to the right if any.
+    //
+    $listCursor = $listCursor + 1;
+    if ($listCursor >= $Kanban.boards[$boardCursor].lists.length)
+      $listCursor = $Kanban.boards[$boardCursor].lists.length - 1;
+    if (
+      $itemCursor >=
+      $Kanban.boards[$boardCursor].lists[$listCursor].items.length
+    )
+      $itemCursor =
+        $Kanban.boards[$boardCursor].lists[$listCursor].items.length - 1;
+  }
+
+  function moveItemCursorUp() {
+    //
+    // Move to the list item up one if any.
+    //
+    if ($listCursor === -1) $listCursor = 0;
+    $itemCursor = $itemCursor - 1;
+    if ($itemCursor < 0) $itemCursor = 0;
+  }
+
+  function moveItemCursorDown() {
+    //
+    // Move to the list item down one if any.
+    //
+    if ($listCursor === -1) {
+      $listCursor = 0;
+    } else {
+      let list = $Kanban.boards[$boardCursor].lists[$listCursor];
+      if (typeof list.items === "undefined" || list.items.length === 0) {
+        $itemCursor = 0;
+      } else {
+        $itemCursor = $itemCursor + 1;
+        if ($itemCursor >= list.items.length)
+          $itemCursor = list.items.length - 1;
+      }
+    }
+  }
+
+  async function quit() {
+    await App.Quit();
+  }
+
+  async function saveboard() {
+    $Kanban = $Kanban;
+    await $Kanban.SaveKanbanBoards();
+  }
+</script>
+
+<svelte:window
+  onkeydown={(e) => {
+    switch ($kbstate) {
+      case 0:
+        //
+        // The default keyboard handler.
+        //
+        if ($defaultkb !== null) $defaultkb(e);
+        break;
+      case 1:
+        //
+        // ItemEdit keyboard handler.
+        //
+        if ($itemEditkb !== null) $itemEditkb(e);
+        break;
+      case 2:
+        //
+        // QuickBar keyboard handler.
+        //
+        if ($quickbarkb !== null) $quickbarkb(e);
+        break;
+      case 3:
+        //
+        // Metaboard keyboard handler.
+        //
+        if ($metaboardkb !== null) $metaboardkb(e);
+        break;
+      case 4:
+        //
+        // Commandbar handler.
+        //
+        if ($commandbarkb !== null) $commandbarkb(e);
+        break;
+      case 5:
+        //
+        // List handler.
+        //
+        if ($listkb !== null) $listkb(e);
+        break;
+      case 6:
+        //
+        // Preferences handler.
+        //
+        if ($preferencekb !== null) $preferencekb(e);
+        break;
+      case 10:
+        //
+        // Don't handle keys.
+        //
+        break;
+      default:
+        console.log("ERROR: No keyboard handler set for the state: ", $kbstate);
+        break;
+    }
+  }}
+/>
+
+{#if $Kanban.boards.length > 0}
+  <div
+    id="MainBoard"
+    data-testid="main-board"
+    style="font-size: {$Kanban.boards[$boardCursor].styles
+      .fontsize}px; font-family: {$Kanban.boards[$boardCursor].styles.font};"
+  >
+    <div id="tabs">
+      <div id="tabcontainer">
+        {#if $Kanban.boards.length > 0}
+          {#each $Kanban.boards as board, index}
+            {#if $boardCursor === index}
+              <div
+                class="tab"
+                data-testid="board-tab-selected"
+                style="background-color: {$Kanban.boards[$boardCursor].styles
+                  .selectTabColor}; color: {$Kanban.boards[$boardCursor].styles
+                  .selectTabTextColor}"
+                data-key={index}
+                ondblclick={() => {
+                  editName(index);
+                }}
+                bind:this={tabDiv}
+              >
+                <div
+                  style="background-color: {$Kanban.boards[$boardCursor].styles
+                    .selectTabColor}; color: {$Kanban.boards[$boardCursor]
+                    .styles.selectTabTextColor}"
+                  class="tabName"
+                >
+                  <EditField
+                    bind:name={board.name}
+                    bind:edit={editNameFlag}
+                    type={"p"}
+                    style="background-color: {$Kanban.boards[$boardCursor]
+                      .styles.selectTabColor}; color: {$Kanban.boards[
+                      $boardCursor
+                    ].styles.selectTabTextColor}"
+                    oninput={async () => {
+                      editoff();
+                      await $Kanban.SaveKanbanBoards();
+                    }}
+                    onblur={async () => {
+                      editoff();
+                      await $Kanban.SaveKanbanBoards();
+                    }}
+                    onfocusout={() => {
+                      editoff();
+                    }}
+                  />
+                </div>
+              </div>
+            {:else}
+              <div
+                class="tab"
+                data-testid="board-tab"
+                style="background-color: {$Kanban.boards[$boardCursor].styles
+                  .unselectTabColor}; color: {$Kanban.boards[$boardCursor]
+                  .styles.unselectTabTextColor}"
+                data-key={index}
+                onclick={() => {
+                  setBoard(index);
+                }}
+              >
+                <span
+                  class="tabName"
+                  style="background-color: {$Kanban.boards[$boardCursor].styles
+                    .unselectTabColor}; color: {$Kanban.boards[$boardCursor]
+                    .styles.unselectTabTextColor}"
+                >
+                  {board.name}
+                </span>
+              </div>
+            {/if}
+          {/each}
+        {/if}
+        <div
+          class="tab"
+          data-testid="add-board-tab"
+          style="background-color: {$Kanban.boards[$boardCursor].styles
+            .unselectTabColor}; color: {$Kanban.boards[$boardCursor].styles
+            .unselectTabTextColor}"
+          data-key={-1}
+          onclick={() => {
+            addNewBoard();
+          }}
+        >
+          <span
+            class="tabName"
+            style="background-color: {$Kanban.boards[$boardCursor].styles
+              .unselectTabColor};
+                   color: {$Kanban.boards[$boardCursor].styles
+              .unselectTabTextColor}; line-height: 20px;"
+          >
+            +
+          </span>
+        </div>
+      </div>
+      <div
+        class="boardName"
+        data-testid="board-name"
+        style="background-color: {$metaboard.styles.background};
+               color: {$metaboard.styles.textcolor}; 
+               border: {$metaboard.styles.bordercolor} solid {$metaboard.styles
+          .borderwidth};"
+        onclick={() => {
+          editMetaDescription = true;
+        }}
+      >
+        {#if $metaboard.loaded}
+          {$metaboard.metaboards[$metaboard.getCursor()].name}
+        {/if}
+      </div>
+    </div>
+    {#if $Kanban.boards.length > 0}
+      <div
+        id="ListsContainer"
+        data-testid="lists-container"
+        style="background-color: {$Kanban.boards[$boardCursor].styles
+          .listcontainercolor};"
+      >
+        {#if $Kanban.boards[$boardCursor].lists.length > 0}
+          {#each $Kanban.boards[$boardCursor].lists as _, index}
+            <List
+              boardcur={$boardCursor}
+              listcur={index}
+              editListItem={$listCursor === index ? $editItem : false}
+              editListName={$listCursor === index ? editListName : false}
+              {editoff}
+              {saveboard}
+            />
+          {/each}
+        {/if}
+        <div
+          id="addList"
+          data-testid="add-list"
+          onclick={() => {
+            addNewList();
+          }}
+        >
+          <p>+ New List</p>
+        </div>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if $preferences.showing}
+  <Preferences />
+{/if}
+
+{#if $commandBar.showing}
+  <CommandBar />
+{/if}
+
+{#if $metaboard.showing}
+  <MetaBoardList />
+{/if}
+
+{#if quickBarOpen}
+  <QuickBar bind:show={quickBarOpen} />
+{/if}
+
+{#if editMetaDescription}
+  <EditMeta
+    close={() => {
+      editMetaDescription = false;
+    }}
+  />
+{/if}
+
+<style>
+  :global(h1) {
+    font-size: 18px !important;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  :global(body) {
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0);
+    border-radius: 10px;
+    border: solid 0px transparent;
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  #MainBoard {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    display: flex;
+    flex: 1fr;
+    flex-direction: column;
+    margin: 0px;
+    height: 100vh;
+    width: 100%;
+    margin: 0px;
+    padding: 0px;
+    min-height: 100vh;
+    min-width: 100%;
+    background-color: transparent;
+    overscroll-behavior: contain;
+  }
+
+  #tabs {
+    display: flex;
+    flex-direction: row;
+    margin: 0px 10px 0px 0px;
+    background-color: transparent;
+  }
+
+  #tabs::-webkit-scrollbar {
+    height: 6px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+  }
+
+  #tabs::-webkit-scrollbar-thumb {
+    height: 6px;
+    background-color: rgba(10, 10, 10, 0.5);
+    border-radius: 6px;
+  }
+
+  .tab {
+    border-top: 3px gray;
+    border-right: 3px gray;
+    border-left: 3px gray;
+    border-bottom: 0px;
+    border-radius: 20px 5px 0px 0px;
+    height: 1em;
+    padding: 10px;
+    cursor: pointer;
+    user-select: none;
+    --wails-draggable: drag;
+  }
+
+  .tabName {
+    background-color: white;
+    color: black;
+    margin: 0px 5px 5px 5px;
+    padding: 0px;
+    white-space: nowrap;
+  }
+
+  #tabcontainer {
+    display: flex;
+    flex-direction: row;
+    margin: 0px;
+    padding: 0px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .boardName {
+    border: 10px solid black;
+    line-height: 20px;
+    border-radius: 20px;
+    height: 1em;
+    padding: 6px;
+    cursor: default;
+    user-select: none;
+    margin-left: auto;
+    margin-right: 0px;
+    min-width: fit-content;
+    --wails-draggable: drag;
+  }
+
+  #addList {
+    padding: 30px;
+    width: 100px;
+    max-width: 100px;
+    min-width: 100px;
+    background-color: rgba(255, 255, 255, 0.3);
+    margin: auto 20px auto 20px;
+    cursor: pointer;
+    text-decoration: none;
+    user-select: none;
+    border-radius: 10px;
+    border: 5px solid transparent;
+    text-align: center;
+  }
+
+  #ListsContainer {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    margin: 0px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 0px solid transparent;
+    border-radius: 0px 10px 10px 10px;
+    padding: 10px 0px 15px 10px;
+  }
+
+  #ListsContainer::-webkit-scrollbar {
+    height: 6px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+  }
+
+  #ListsContainer::-webkit-scrollbar-thumb {
+    height: 6px;
+    background-color: rgba(10, 10, 10, 0.5);
+    border-radius: 6px;
+  }
+</style>

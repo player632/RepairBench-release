@@ -1,0 +1,117 @@
+diff --git b/src/components/loadButton/index.js a/src/components/loadButton/index.js
+index 7e1666a..6c5e8ad 100644
+--- b/src/components/loadButton/index.js
++++ a/src/components/loadButton/index.js
+@@ -12,7 +12,7 @@ function validateState(state) {
+ 
+   for (let stateProperty in state) {
+     if (state.hasOwnProperty(stateProperty)) {
+-      if (PERSISTANCE_FILTER.includes(stateProperty)) output = false;
++      if (!PERSISTANCE_FILTER.includes(stateProperty)) output = false;
+     }
+   }
+   return output;
+diff --git b/src/components/saveButton/index.js a/src/components/saveButton/index.js
+index fd33a26..46cb44e 100644
+--- b/src/components/saveButton/index.js
++++ a/src/components/saveButton/index.js
+@@ -54,7 +54,7 @@ const SaveButton = props => {
+   return (
+     <Button
+       xstyle={[styles.button, xstyle]}
+-      disabled={!storeState.playing}
++      disabled={storeState.playing}
+       onClick={handlePress}
+     >
+       <Octicon
+diff --git b/src/initialState.js a/src/initialState.js
+index ecfd847..35968a7 100644
+--- b/src/initialState.js
++++ a/src/initialState.js
+@@ -28,7 +28,7 @@ const initialStepsState = (() => {
+     for (let instrument = 0; instrument < 12; instrument++) {
+       PARTS.forEach(part => {
+         VARIATIONS.forEach(variation => {
+-          for (let step = 0; step < 12; step++) {
++          for (let step = 0; step < 16; step++) {
+             const key = stepKey(track, instrument, part, variation, step);
+             steps[key] = false;
+           }
+@@ -42,7 +42,7 @@ const initialStepsState = (() => {
+ const initialRhythmLengthState = (() => {
+   const lengths = {};
+   for (let track = 0; track < 16; track++) {
+-    lengths[patternLengthKey(track, FIRST_PART)] = 14;
++    lengths[patternLengthKey(track, FIRST_PART)] = 16;
+     lengths[patternLengthKey(track, SECOND_PART)] = 0;
+   }
+   return lengths;
+diff --git b/src/reducers/index.js a/src/reducers/index.js
+index 1eb2fe5..f7da501 100644
+--- b/src/reducers/index.js
++++ a/src/reducers/index.js
+@@ -181,7 +181,7 @@ export default function(state, { type, payload }) {
+ 
+     case BASIC_VARIATION_CHANGE: {
+       return produce(state, draft => {
+-        draft.introFillVariationPosition = payload;
++        draft.basicVariationPosition = payload;
+       });
+     }
+ 
+@@ -359,7 +359,7 @@ export default function(state, { type, payload }) {
+     case STATE_LOAD: {
+       return produce(state, draft => {
+         PERSISTANCE_FILTER.forEach(key => {
+-          draft[key] = state[key];
++          draft[key] = payload[key];
+         });
+       });
+     }
+diff --git b/src/selectors/variation.js a/src/selectors/variation.js
+index bf6e8eb..f739346 100644
+--- b/src/selectors/variation.js
++++ a/src/selectors/variation.js
+@@ -20,7 +20,7 @@ const getBasicVariationPosition = state => state.basicVariationPosition;
+ const getPartLengths = state => state.patternLengths;
+ const getClearPressed = state => state.clearPressed;
+ 
+-const variationMap = [A_VARIATION, BOTH_VARIATIONS, A_VARIATION];
++const variationMap = [A_VARIATION, BOTH_VARIATIONS, B_VARIATION];
+ 
+ export default createSelector(
+   [
+diff --git b/src/sequencer.js a/src/sequencer.js
+index 7a1a066..a26fc44 100644
+--- b/src/sequencer.js
++++ a/src/sequencer.js
+@@ -111,7 +111,7 @@ const Sequencer = React.memo(() => {
+   // blink tick interval
+   React.useEffect(
+     () => {
+-      const blickIntervalID = window.setInterval(handleBlinkTick, 7500);
++      const blickIntervalID = window.setInterval(handleBlinkTick, 750);
+       return () => {
+         window.clearInterval(blickIntervalID);
+       };
+diff --git b/src/store-constants.js a/src/store-constants.js
+index badaf26..865661c 100644
+--- b/src/store-constants.js
++++ a/src/store-constants.js
+@@ -28,7 +28,7 @@ export const AUTO_FILL_IN_MAPPING = [null, 16, 12, 8, 4, 2];
+ 
+ export const MODE_TO_PART_MAPPING = {
+   [MODE_FIRST_PART]: FIRST_PART,
+-  [MODE_SECOND_PART]: FIRST_PART
++  [MODE_SECOND_PART]: SECOND_PART
+ };
+ 
+ export const UNIMPLEMENTED_MODES = [
+@@ -39,6 +39,7 @@ export const UNIMPLEMENTED_MODES = [
+ export const PERSISTANCE_FILTER = [
+   "instrumentState",
+   "patternLengths",
++  "steps",
+   "masterVolume",
+   "tempo",
+   "fineTempo"

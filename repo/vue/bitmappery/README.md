@@ -1,0 +1,295 @@
+# BitMappery
+
+## So you are rebuilding Photoshop in the browser ?
+
+No, I'm building a tool that does the bare minimum of what I require and what I don't
+find in other open source tools (or rather: _not entirely to my preference_). That doesn't mean of course
+that contributions related to Photoshop-esque features aren't welcomed ;-)
+
+### All hand-written ?
+
+Yep, but as the author has worked in the photo software industry, BitMappery had a head start as certain challenges had
+been tackled before. Also, BitMappery is reusing igorski's [zCanvas](https://github.com/igorski/zCanvas) under the hood for rendering
+and bitmap blitting. The application is written on top of [Vue](https://github.com/vuejs/vue) using [Vuex](https://github.com/vuejs/vuex) for state management.
+
+## The [Issue Tracker](https://github.com/igorski/bitmappery/issues) is your point of contact
+
+Bug reports, feature requests, questions and discussions are welcome on the GitHub Issue Tracker, please do not send e-mails through the development website. However, please search before posting to avoid duplicates, and limit to one issue per post.
+
+Please vote on feature requests by using the Thumbs Up/Down reaction on the first post.
+
+## Model
+
+BitMappery works with entities known as a `Document`. A Document contains several `Layer`s, each of
+which define their content, transformation, `Filters`, etc. Each of the nested entity properties
+has its own factory (see `src/model/factories`). The Document is managed by the Vuex `document-module.ts`.
+
+The types for each of these are defined in the `src/model/types` folder.
+
+## Document rendering and interactions
+
+The Document is rendered one layer at a time onto a Canvas element, using [zCanvas](https://github.com/igorski/zCanvas). Both the rendering and interaction handling is performed by dedicated "Sprite" classes, which function as _renderers_ for the Documents _actors_.
+In other words: _renderers represent the Document visually and handle interactions modifying the Document state_.
+
+All layer rendering and layer interactions are handled by `src/rendering/actors/layer-renderer.ts`.
+Note that the purpose of the renderer is solely to delegate interactions events to the Layer entity. The
+renderer should represent the properties of the Layer, the Layer should never reverse-engineer from the onscreen
+content (especially as different window size and scaling factor will greatly complicate these matters when
+performed two-way).
+
+All interactions that work across layers (viewport panning, layer selection by clicking on non-transparent
+pixels and drawing of selections) are handled by a single top level Sprite that covers the entire zCanvas area.
+This Sprite is `src/rendering/actors/interaction-pane.ts`.
+
+Interactions that start/end from _outside the canvas_ (for instance the opening/closing of a selection or the
+drawing of a brush stroke outside of the canvas area) are handled by `document-canvas.vue` where the global DOM coordinates are translated to coordinates relative to the canvas document before being forwarded to the zCanvas
+event handler. See "Rendering concepts" below for more details on screen-to-document coordinates.
+
+Rendering of text, filters and masks is an asynchronous operation handled by `src/services/render-service.ts`. The purpose of this service is to perform and cache repeated operations and eventually maintain the source bitmap represented by the LayerRenderer.
+The LayerRenderer invokes the rendering service whenever Layer properties change and manages its own cache, see "Rendering pipeline" below.
+
+All types related to the editor are either defined in `src/definitions/editor.ts` or the more specifically
+named files.
+
+### Rendering concepts
+
+BitMappery follows the concepts of the display list as listed in the zCanvas wiki, where BitMappery's
+document layers are visualized as separate Sprites which can be manipulated as separate interactive on-screen
+elements. BitMappery additionally adds additional logic related to the viewing of large scale content in smaller fragments.
+
+The zCanvas' DOM element (an _HTMLCanvasElement_ instance) is basically as large as the available area inside the
+DOM window allows. The BitMappery document displayed inside may however be larger or smaller than the canvas itself
+(depending on the _zoom level_ which is - not yet - standardized in the zCanvas package and custom written for BitMappery using the `ZoomableCanvas` and `ZoomableSprite` classes).
+
+What determines the visible area of the zoomed document is the _viewport_. As such, interactions with the zCanvas
+element must be _translated_ from global DOM coordinates to a point relative to the BitMappery document, taking
+into account the current scaling factor and viewport offset. This is handled automatically by all event handlers
+delegated through zCanvas and the renderers, but needs care when performing rendering operations (such as drawing)
+and translating these to (non-zoomed and non-panned) source bitmaps.
+
+### Rendering pipeline
+
+The `document-canvas.vue` maintains the creation of all layer renderers, removing those that are invisible or occluded by
+higher layers. All rendering happens through the usual zCanvas pipeline, where positioning and transforming (_scaling, mirroring and
+rotating_) of bitmap content is handled on the fly, along with the application of any compositing effects (_blending or opacity_).
+
+The `render-service.ts` only comes into play when more complex operations need to happen on the source content, f.i. because of a masking or effects application / filter operation. As these are costly computations, these are not performed on each render cycle but only when such a change happens after which the result is  cached for instant access. The cached version is keyed against the Layers (content/filter) properties during the render. Once these properties change, the cache is invalidated and a new rendering operation will be performed.
+
+Keep in mind that BitMappery is non-destructive, so operations such as tone and color adjustments are always applied onto a scratch
+image using the original source bitmap. If the source bitmap changes (e.g. content is cut from an Image layer or new content is painted
+on a Graphic layer), the source is replaced and the filters will need to be re-applied to this new source.
+
+<details>
+<summary><b>Click to expand architecture diagrams</b></summary>
+
+#### Pipeline overview
+
+```mermaid
+flowchart TD
+    ActiveDocument[ActiveDocument in Vuex store]
+    DocumentCanvas[document-canvas.vue]
+    zCanvas[zCanvas instance]
+    RenderService[render-service.ts]
+    BitmapCache[bitmap-cache.ts]
+    ThumbnailCache[thumbnail-cache.ts]
+    onLayerPropertiesChange[layer-properties-change.ts]
+
+    subgraph LayerRenderers [LayerRenderers for each visible Layer]
+        LayerRenderer["layer-renderer.ts instance(s)"]
+    end
+
+    subgraph FilterWorkers [Workers per Layer/job]
+        FilterWorker["filter-worker.ts instance(s)"]
+    end
+
+    ActiveDocument --> DocumentCanvas
+    ActiveDocument --> onLayerPropertiesChange
+    DocumentCanvas --> zCanvas
+    DocumentCanvas --> LayerRenderer
+    LayerRenderer <--> zCanvas
+    LayerRenderer --> RenderService
+    LayerRenderer --> ThumbnailCache
+    RenderService --> BitmapCache
+    RenderService <--> FilterWorker
+    onLayerPropertiesChange --> LayerRenderer
+```
+
+#### Render flow
+
+```mermaid
+sequenceDiagram
+    ActiveDocument / Vuex->>onLayerPropertiesChange: Handle change in Layer properties
+
+    alt Changed properties require effects/filter application
+        onLayerPropertiesChange->>LayerRenderer: Update Layer properties and request a content re-render
+        LayerRenderer->>RenderService: Launch render job
+        RenderService->>BitmapCache: Check cache
+
+        alt There is a cached version reflecting the Layer properties
+            BitmapCache->>RenderService: return cached version
+            RenderService->>LayerRenderer: Return rendered content
+        else There is no cached version reflecting the Layer properties
+            RenderService->>FilterWorker: Request Worker for render job
+            FilterWorker->>Filters: Request filtering of input
+            Filters->>FilterWorker: Returns filtered output
+            FilterWorker->>RenderService: Complete job, return rendered output
+            RenderService->>FilterWorker: Tear down/pool Worker
+            RenderService->>BitmapCache: Store rendered output in cache
+            RenderService->>LayerRenderer: Return rendered output
+            LayerRenderer->>ThumbnailCache: Update thumbnail
+        end
+    else Changed properties do not require effects/filter application
+        onLayerPropertiesChange->>LayerRenderer: Update Layer properties
+        end
+
+    LayerRenderer->>zCanvas: Request invalidation and redraw of on-screen content
+```
+
+The Workers are created per render request and can be parallelised (for instance when opening a saved Document). Workers can also be
+reserved (per Layer) and pooled, for instance when the effects panel is open to reduce messaging overhead and memory allocation when
+repeatedly adjusting Layer filter settings. Note that the LayerRenderer is responsible for updating the ThumbnailCache as its
+draw routine applies the positioning, transformation and compositing of the respective Layers content.
+</details>
+
+## State history
+
+Mutations can be registered in state history (Vuex `history-module.ts`) in order to provide undo and redo
+of operations. In order to prevent storing a lot of changes of the same property (for instance when dragging a slider), the storage of a new state is deferred through a queue. This is why history states are enqueued by _propertyName_:
+
+When enqueuing a new state while there is an existing one enqueued for the same property name, the first state
+is updated so its redo will match that of the newest state, the undo remaining unchanged. The second state will not
+be added to the queue.
+
+It is good to understand that the undo/redo for an action should be considered separate
+from the Vue component that is triggering the transaction, the reason being that the component can be
+unmounted at the moment the history state is changed (and the component is no longer active).
+
+That's why undo/redo handlers should either work on variables in a local scope, or on the Vuex store
+when mutating store properties. When relying on store state and getters, be sure to cache their
+values in the local scope to avoid conflicts (for instance in below example we cache _activeLayerIndex_
+as it is used by the undo/redo methods to update a specific Layer. _activeLayerIndex_ can change during
+the application lifetime before the undo/redo handler fires which would otherwise lead to the _wrong Layer_
+being updated.
+
+```typescript
+import { enqueueState } from "@/model/factories/history-state-factory";
+
+update( propertyName: string, newValue: T ): void {
+    // cache the existing values of the property value we are about to mutate...
+    const existingValue = this.getterForExistingValue;
+    // ...and the layer index that is used to identify the layer containing the property
+    const index = this.activeLayerIndex;
+    const store: Store<BitMapperyState> = this.$store;
+    // define the method that will mutate the existing value to given newValue
+    const commit = (): void => store.commit( "updateLayer", { index, opts: { newValue } });
+    // and perform the mutation directly
+    commit();
+    // now define and enqueue undo/redo handlers to reverse and redo the commit mutation
+    enqueueState( propertyName, {
+        undo(): void {
+            store.commit( "updateLayerTransform", { index, opts: { existingValue } });
+        },
+        redo(): void {
+            commit();
+        },
+    });
+}
+```
+
+### State changing actions
+
+Whenever an action (that requires an undo state) can be triggered in multiple locations (for instance
+inside a component and as a keyboard shortcut in `src/services/keyboard-service`), you can
+create a custom handler inside `src/model/actions` to avoid code duplication.
+
+Creating a custom handler also creates a single source of truth and an isolated piece of code
+that can be covered more easily in tests.
+
+## Third party storage integration
+
+Requires you to register a client id or access token in the developer portal of the third party
+storage provider. Currently, there is support for [Dropbox](https://www.dropbox.com/developers/apps), [Google Drive](https://console.cloud.google.com/) and S3 storage.
+
+You can enable each of these integrations by providing the required key values for your configuration
+by creating a local `.env.local`-file which will contain your custom configuration. You can create this
+file by duplicating the contents of the `.env`-file provided in the repository.
+
+## Project setup
+
+The project setup is two-fold. You can get all the dependencies through NPM as usual:
+
+```
+npm install
+```
+
+after which you can run:
+
+* ```npm run dev``` to start a local development server with hot module reload
+* ```npm run build``` to compile a production package
+* ```npm run test```  to run the unit tests
+* ```npm run lint``` to run the linter on the source files
+
+The above will suffice when working solely on the JavaScript side of things.
+
+## Docker based self hosted version
+
+#### Step 1 : Clone the BitMappery project into a local folder :
+
+```bash
+git clone https://github.com/igorski/bitmappery.git
+```
+
+#### Step 2 : Build the image using the provided Dockerfile :
+
+```bash
+docker build -t bitmappery .
+```
+
+#### Step 3 : Once the image is built, run the container and bind the ports :
+
+```bash
+docker run -d -p 5173:5173 --name bitmappery-container bitmappery
+```
+
+Once the container is started, you can access BitMappery at `http://localhost:5173`
+
+## WebAssembly
+
+BitMappery initially also used WebAssembly to _potentially_ increase performance of image manipulation.
+WebAssembly filtering is a user controllable feature in the preferences pane, as long as `VITE_ENABLE_WASM_FILTERS` is set to true when creating the production build.
+
+The source code is C based and compiled to WASM using [Emscripten](https://github.com/emscripten-core/emscripten). Because this setup is a little more cumbersome, the repository contains precompiled binaries in the `src/wasm/bin`-folder meaning
+you can omit this setup if you don't intend to make changes to these sources.
+
+If you do wish to make contributions on this end, to compile the source (`src/wasm`) C-code to WASM, you
+will first need to prepare your environment (note the last _source_ call does not permanently update your paths):
+
+```bash
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh
+```
+
+now you can compile all source files to WASM using:
+
+```
+npm run wasm
+```
+
+### Benchmarks
+
+On a particular (deliberately low powered) configuration, running all filters at their heaviest setting on a particular source took:
+
+* 7000+ ms in JavaScript
+* 558 ms in WebAssembly
+* 484 ms in JavaScript inside a Web Worker
+* 603 ms in WebAssembly inside a Web Worker
+
+Note that the WebAssembly Web Worker execution takes a performance hit when compared to its inline operation. This
+is due to messaging overhead when providing image buffers to the WASM memory inside the Worker context. This could benefit from further tweaking
+to see whether it gets closer to the JavaScript Web Worker performance. (**NOTE:** _With reserved Workers and pooled images this setup has since improved_).
+
+As in the current setup the JS solution alone is performant enough _and you would need to write the
+filter code twice_ (once in TypeScript in `src/rendering/filters` and once in C++ in `src/wasm`), the default for WASM is disabled until further request.

@@ -1,0 +1,81 @@
+diff --git a/src/app/components/dashboard/dashboard.component.ts b/src/app/components/dashboard/dashboard.component.ts
+index 2b07b2b..2aa21cc 100644
+--- a/src/app/components/dashboard/dashboard.component.ts
++++ b/src/app/components/dashboard/dashboard.component.ts
+@@ -84,8 +84,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
+ 
+   private async fetchAddress(lat: number, lng: number): Promise<void> {
+     try {
+-      // Use OpenStreetMap Nominatim for reverse geocoding
+-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
++      // Reverse geocoding is served from a bundled fixture: this environment has
++      // no network access. The payload keeps the upstream provider's shape
++      // (address.road / address.house_number / address.city / display_name).
++      const response = await fetch(`/assets/mock/reverse-geocode.json?format=json&lat=${lat}&lon=${lng}`);
+       const data = await response.json();
+ 
+       if (data && data.address) {
+diff --git a/src/app/components/map/map.component.ts b/src/app/components/map/map.component.ts
+index da1308f..c2b7931 100644
+--- a/src/app/components/map/map.component.ts
++++ b/src/app/components/map/map.component.ts
+@@ -114,25 +114,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
+       container: container,
+       style: {
+         version: 8,
+-        sources: {
+-          'carto-light': {
+-            type: 'raster',
+-            tiles: [
+-              'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+-              'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+-              'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+-              'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'
+-            ],
+-            tileSize: 256
+-          }
+-        },
++        // The raster basemap came from a public tile CDN. This environment has no
++        // network access, so the style keeps a single local background layer; the
++        // map widget itself (centre, zoom, marker, position events) is unchanged.
++        sources: {},
+         layers: [
+           {
+-            id: 'carto-light-layer',
+-            type: 'raster',
+-            source: 'carto-light',
+-            minzoom: 0,
+-            maxzoom: 22
++            id: 'offline-background',
++            type: 'background',
++            paint: {
++              'background-color': '#000000'
++            }
+           }
+         ]
+       },
+diff --git a/src/assets/mock/reverse-geocode.json b/src/assets/mock/reverse-geocode.json
+new file mode 100644
+index 0000000..e54d8a7
+--- /dev/null
++++ b/src/assets/mock/reverse-geocode.json
+@@ -0,0 +1,19 @@
++{
++  "place_id": 4780001,
++  "licence": "Offline fixture bundled for the repair environment (no network access).",
++  "osm_type": "way",
++  "osm_id": 26360092,
++  "lat": "48.137154",
++  "lon": "11.576124",
++  "display_name": "Marienplatz, Altstadt-Lehel, Munich, Bavaria, 80331, Germany",
++  "address": {
++    "road": "Marienplatz",
++    "house_number": "8",
++    "neighbourhood": "Altstadt-Lehel",
++    "city": "Munich",
++    "postcode": "80331",
++    "country": "Germany",
++    "country_code": "de"
++  },
++  "boundingbox": ["48.1361", "48.1381", "11.5751", "11.5771"]
++}

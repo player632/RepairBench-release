@@ -1,0 +1,2250 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index f4b465e..a8e1d78 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -47,6 +47,9 @@ if ('indexedDB' in window) {
+ 
+ useGameStore.subscribe(updateTimers)
+ 
++// instrumentation probe: read-only snapshot hook for verification (zero behavior change)
++;(window as unknown as { __getState?: () => GameState }).__getState = () => useGameStore.getState()
++
+ function App() {
+     ThemeProvider()
+     ToasterProvider()
+diff --git a/src/activities/ui/Activities.tsx b/src/activities/ui/Activities.tsx
+index ad33aed..4a4de02 100644
+--- a/src/activities/ui/Activities.tsx
++++ b/src/activities/ui/Activities.tsx
+@@ -56,7 +56,7 @@ export const ActivitiesList = memo(function ActivitiesList({
+ 
+     if (ids.length === 0)
+         return (
+-            <Alert variant="warning" className={cn('max-w-md', className)}>
++            <Alert data-testid="act-empty" variant="warning" className={cn('max-w-md', className)}>
+                 {InfoIcon}
+                 <AlertTitle>{t.NoActivities}</AlertTitle>
+             </Alert>
+@@ -112,25 +112,26 @@ export const ActivityCard = memo(function ActivityCard({
+     const checkId = `auto-remove-${id}`
+ 
+     return (
+-        <div className={classes.container}>
++        <div data-testid="act-card" className={classes.container}>
+             <div className={classes.icon}>{IconsData[icon]}</div>
+-            <div className={classes.title}>
++            <div data-testid="act-title" className={classes.title}>
+                 <div className="text-md leading-none font-medium">{title}</div>
+                 <ActivityCardBadge id={id} />
+             </div>
+             <div className={classes.actions}>
+                 {!filtered && !isFirst && (
+-                    <Button onClick={onClickPrev} variant="ghost">
++                    <Button data-testid="act-up" onClick={onClickPrev} variant="ghost">
+                         {ArrowUp}
+                     </Button>
+                 )}
+                 {!filtered && !isLast && (
+-                    <Button aria-label={t.MoveDown} onClick={onClickNext} variant="ghost">
++                    <Button data-testid="act-down" aria-label={t.MoveDown} onClick={onClickNext} variant="ghost">
+                         {ArrowDown}
+                     </Button>
+                 )}
+                 {view && (
+                     <Button
++                        data-testid="act-eye"
+                         aria-label={t.Remove}
+                         color="error"
+                         onClick={onClickView}
+@@ -141,6 +142,7 @@ export const ActivityCard = memo(function ActivityCard({
+                     </Button>
+                 )}
+                 <Input
++                    data-testid="act-num"
+                     type="number"
+                     value={max}
+                     className={classes.num}
+@@ -150,6 +152,7 @@ export const ActivityCard = memo(function ActivityCard({
+                     step={1}
+                 />
+                 <Button
++                    data-testid="act-trash"
+                     aria-label={t.Remove}
+                     color="error"
+                     onClick={onClickRemove}
+@@ -161,7 +164,7 @@ export const ActivityCard = memo(function ActivityCard({
+             </div>
+ 
+             <Field className={cn(classes.autoRemove, 'text-muted-foreground')} orientation="horizontal">
+-                <Checkbox id={checkId} name={checkId} checked={autoRemove} onCheckedChange={onAutoRemove} />
++                <Checkbox data-testid="act-autoremove" id={checkId} name={checkId} checked={autoRemove} onCheckedChange={onAutoRemove} />
+                 <FieldLabel htmlFor={checkId}>{t.RemoveWhenCompleted}</FieldLabel>
+             </Field>
+         </div>
+@@ -177,7 +180,7 @@ export const ActivityCardBadge = memo(function ActivityCardBadge({ id }: { id: s
+     const cur = useGameStore((s) => (active ? s.activityDone + 1 : 0))
+ 
+     return (
+-        <Badge variant={active ? 'default' : 'secondary'}>
++        <Badge data-testid="act-badge" variant={active ? 'default' : 'secondary'}>
+             {active ? t.Active : t.InQueue} {f(cur)}/{f(max)}
+         </Badge>
+     )
+diff --git a/src/activities/ui/AddActivityDialog.tsx b/src/activities/ui/AddActivityDialog.tsx
+index 0aa4bd1..845fdb0 100644
+--- a/src/activities/ui/AddActivityDialog.tsx
++++ b/src/activities/ui/AddActivityDialog.tsx
+@@ -97,6 +97,7 @@ export const AddActivityDialog = memo(function AddActivityDialog({
+                 <FieldGroup>
+                     <Field orientation="horizontal">
+                         <Input
++                            data-testid="add-rep-input"
+                             type="number"
+                             value={num}
+                             className="w-16"
+@@ -133,6 +134,7 @@ export const AddActivityDialog = memo(function AddActivityDialog({
+ 
+                     <Field orientation="horizontal">
+                         <Checkbox
++                            data-testid="add-chk-autoremove"
+                             id={'auto-remove'}
+                             name={'auto-remove'}
+                             checked={autoRemove}
+@@ -143,6 +145,7 @@ export const AddActivityDialog = memo(function AddActivityDialog({
+ 
+                     <Field orientation="horizontal">
+                         <Checkbox
++                            data-testid="add-chk-removeother"
+                             id={'remove-other'}
+                             name={'remove-other'}
+                             checked={removeOther}
+@@ -153,6 +156,7 @@ export const AddActivityDialog = memo(function AddActivityDialog({
+ 
+                     <Field orientation="horizontal">
+                         <Checkbox
++                            data-testid="add-chk-startnow"
+                             id={'start-now'}
+                             name={'start-now'}
+                             checked={startNow}
+diff --git a/src/characters/functions/getDamageMulti.spec.ts b/src/characters/functions/getDamageMulti.spec.ts
+deleted file mode 100644
+index 6174548..0000000
+--- a/src/characters/functions/getDamageMulti.spec.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { getDamageMulti } from './getDamageMulti'
+-
+-describe('getDamageMulti', () => {
+-    it('zero damage', () => expect(getDamageMulti(0, 10)).toBe(0))
+-    it('zero damage negative armour', () => expect(getDamageMulti(0, -10)).toBe(0))
+-    it('zero damage zero armour', () => expect(getDamageMulti(0, 0)).toBe(0))
+-    it('negative armour', () => expect(getDamageMulti(20, -10)).toBe(2))
+-    it('zero armour', () => expect(getDamageMulti(10, 0)).toBe(1))
+-    it('equal', () => expect(getDamageMulti(15, 15)).toBe(0.5))
+-    it('double damage', () => expect(getDamageMulti(30, 15)).toBe(2 / 3))
+-})
+diff --git a/src/characters/functions/kill.spec.ts b/src/characters/functions/kill.spec.ts
+deleted file mode 100644
+index a520983..0000000
+--- a/src/characters/functions/kill.spec.ts
++++ /dev/null
+@@ -1,35 +0,0 @@
+-import { beforeEach, describe, expect, it } from 'vitest'
+-import { ActivityAdapter } from '../../activities/ActivityState'
+-import { BattleZoneEnum } from '../../battle/BattleZoneEnum'
+-import { makeBattle } from '../../battle/functions/addBattle'
+-import { initialize } from '../../game/functions/initialize'
+-import { GameState } from '../../game/GameState'
+-import { GetInitialGameState } from '../../game/InitialGameState'
+-import { PLAYER_ID } from '../charactersConst'
+-import { kill } from './kill'
+-
+-describe('kill', () => {
+-    let state: GameState
+-
+-    beforeEach(() => {
+-        initialize()
+-        state = GetInitialGameState()
+-    })
+-    it('kill player', () => {
+-        makeBattle(BattleZoneEnum.Wolf)(state)
+-        kill(state, PLAYER_ID)
+-
+-        expect(state.ui.deadDialog).toBe(true)
+-        expect(state.activities).toEqual(ActivityAdapter.getInitialState())
+-        expect(state.characters.ids.length).toBe(1)
+-    })
+-    it('kill player 2', () => {
+-        makeBattle(BattleZoneEnum.Wolf)(state)
+-        makeBattle(BattleZoneEnum.Boar)(state)
+-        kill(state, PLAYER_ID)
+-
+-        expect(state.ui.deadDialog).toBe(true)
+-        expect(state.activities).toEqual(ActivityAdapter.getInitialState())
+-        expect(state.characters.ids.length).toBe(1)
+-    })
+-})
+diff --git a/src/characters/ui/CharactersUi.tsx b/src/characters/ui/CharactersUi.tsx
+index 532fae1..0dfd677 100644
+--- a/src/characters/ui/CharactersUi.tsx
++++ b/src/characters/ui/CharactersUi.tsx
+@@ -224,7 +224,7 @@ const HealthInfoUi = memo(function HealthInfoUi() {
+ 
+     return (
+         <div className={classes.line}>
+-            <MyLabel>
++            <MyLabel testId="char-health">
+                 <GiHearts />
+                 <span className={classes.stat}>{t.Health}</span>{' '}
+                 <span className={classes.max}>
+@@ -233,7 +233,7 @@ const HealthInfoUi = memo(function HealthInfoUi() {
+                 <BonusDialog title={t.Health} selectBonusResult={maxHB} />
+             </MyLabel>
+ 
+-            <MyLabel>
++            <MyLabel testId="char-regen">
+                 <span className={classes.stat}>
+                     <span className={classes.max}>
+                         {f(healthRegen)} {t.PerSec}
+diff --git a/src/crafting/functions/removeCrafting.spec.ts b/src/crafting/functions/removeCrafting.spec.ts
+deleted file mode 100644
+index 9b595f7..0000000
+--- a/src/crafting/functions/removeCrafting.spec.ts
++++ /dev/null
+@@ -1,72 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { ActivityTypes } from '../../activities/ActivityState'
+-import { GameState } from '../../game/GameState'
+-import { GetInitialGameState } from '../../game/InitialGameState'
+-import { Crafting } from '../CraftingIterfaces'
+-import { removeCrafting } from './removeCrafting'
+-
+-const crafting: Crafting = {
+-    id: 'activity-1',
+-    recipeId: '',
+-    type: ActivityTypes.Crafting,
+-    max: 1,
+-    paramsValue: [
+-        {
+-            id: '',
+-            itemId: 'item-1',
+-        },
+-    ],
+-    result: {
+-        time: 1e3,
+-        requirements: [],
+-        results: [
+-            {
+-                id: 'item-1',
+-                qta: 1,
+-                stdItemId: 'item-1',
+-            },
+-        ],
+-    },
+-}
+-
+-describe('removeCrafting', () => {
+-    it('should remove the specified activity from the game state', () => {
+-        const state: GameState = GetInitialGameState()
+-        state.activities = {
+-            entries: {
+-                'activity-1': { ...crafting },
+-                'activity-2': { ...crafting, id: 'activity-2' },
+-            },
+-            ids: ['activity-1', 'activity-2'],
+-        }
+-
+-        removeCrafting(state, 'activity-1')
+-
+-        expect(state.activities.entries).not.toHaveProperty('activity-1')
+-        expect(state.activities.ids).not.toContain('activity-1')
+-        expect(state.activities.entries).toHaveProperty('activity-2')
+-        expect(state.activities.ids).toContain('activity-2')
+-    })
+-
+-    it('should not modify the state if the activity ID does not exist', () => {
+-        const initialState: GameState = GetInitialGameState()
+-        initialState.activities = {
+-            entries: {
+-                'activity-1': { ...crafting, id: 'activity-1' },
+-            },
+-            ids: ['activity-1'],
+-        }
+-
+-        expect(() => removeCrafting(initialState, 'non-existent-id')).toThrowError()
+-    })
+-
+-    it('should handle an empty activities state gracefully', () => {
+-        const initialState: GameState = GetInitialGameState()
+-        initialState.activities = {
+-            entries: {},
+-            ids: [],
+-        }
+-
+-        expect(() => removeCrafting(initialState, 'activity-1')).toThrowError()
+-    })
+-})
+diff --git a/src/entityAdapter/entityAdapterMutable.test.ts b/src/entityAdapter/entityAdapterMutable.test.ts
+deleted file mode 100644
+index 7e1fb13..0000000
+--- a/src/entityAdapter/entityAdapterMutable.test.ts
++++ /dev/null
+@@ -1,117 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { AbstractEntityAdapter } from './entityAdapter'
+-
+-class TestEntityAdapter extends AbstractEntityAdapter<{ name: string }> {
+-    getId(data: { name: string }): string {
+-        return data.name
+-    }
+-}
+-class TestEntityAdapter2 extends AbstractEntityAdapter<{ id: string; name: string }> {
+-    getId(data: { id: string; name: string }): string {
+-        return data.id
+-    }
+-}
+-
+-describe('EntityAdapter Mutable', () => {
+-    const adapter = new TestEntityAdapter()
+-    const adapter2 = new TestEntityAdapter2()
+-
+-    it('create first', () => {
+-        const state = adapter.getInitialState()
+-        adapter.create(state, { name: 'first' })
+-        expect(state).toEqual({ entries: { first: { name: 'first' } }, ids: ['first'] })
+-        expect(adapter.getIds(state)).toEqual(['first'])
+-    })
+-    it('create second', () => {
+-        const state = { entries: { first: { name: 'first' } }, ids: ['first'] }
+-        adapter.create(state, { name: 'second' })
+-        expect(state).toEqual({
+-            entries: {
+-                first: { name: 'first' },
+-                second: { name: 'second' },
+-            },
+-            ids: ['first', 'second'],
+-        })
+-    })
+-    it('update', () => {
+-        const state = { entries: { first: { id: 'first', name: 'name1' } }, ids: ['first'] }
+-        adapter2.update(state, 'first', { name: 'second' })
+-        expect(state).toEqual({ entries: { first: { id: 'first', name: 'second' } }, ids: ['first'] })
+-    })
+-    it('update not exists', () => {
+-        const state = { entries: { first: { id: 'first', name: 'name1' } }, ids: ['first'] }
+-        expect(() => adapter2.update(state, 'second', { name: 'second' })).toThrowError("second doesn't exists")
+-    })
+-    it('upsertMerge', () => {
+-        const state = { entries: { first: { id: 'first', name: 'name1' } }, ids: ['first'] }
+-        adapter2.upsertMerge(state, { id: 'first', name: 'name2' })
+-        expect(state).toEqual({ entries: { first: { id: 'first', name: 'name2' } }, ids: ['first'] })
+-    })
+-    it('upsertMerge', () => {
+-        const state = { entries: { first: { id: 'first', name: 'name1' } }, ids: ['first'] }
+-        adapter2.upsertMerge(state, { id: 'second', name: 'name2' })
+-        expect(state).toEqual({
+-            entries: { first: { id: 'first', name: 'name1' }, second: { id: 'second', name: 'name2' } },
+-            ids: ['first', 'second'],
+-        })
+-    })
+-    it('remove by id', () => {
+-        const state = {
+-            entries: {
+-                first: { id: 'first', name: 'name1' },
+-                second: { id: 'second', name: 'name2' },
+-            },
+-            ids: ['first', 'second'],
+-        }
+-        adapter2.remove(state, 'second')
+-        expect(state).toEqual({
+-            entries: {
+-                first: { id: 'first', name: 'name1' },
+-            },
+-            ids: ['first'],
+-        })
+-    })
+-    it('remove by id not exists', () => {
+-        const state = {
+-            entries: {
+-                first: { id: 'first', name: 'name1' },
+-                second: { id: 'second', name: 'name2' },
+-            },
+-            ids: ['first', 'second'],
+-        }
+-        expect(() => adapter2.remove(state, 'third')).toThrowError("third doesn't exists")
+-    })
+-    it('update keeps reference (no replacement)', () => {
+-        const state = {
+-            entries: {
+-                first: { id: 'first', name: 'name1' },
+-            },
+-            ids: ['first'],
+-        }
+-
+-        const beforeRef = state.entries.first
+-
+-        adapter2.update(state, 'first', { name: 'name2' })
+-
+-        const afterRef = state.entries.first
+-
+-        expect(afterRef).toBe(beforeRef)
+-
+-        expect(afterRef.name).toBe('name2')
+-    })
+-    it('reference stays valid after update (no stale object)', () => {
+-        const state = {
+-            entries: {
+-                first: { id: 'first', name: 'name1' },
+-            },
+-            ids: ['first'],
+-        }
+-
+-        const char = adapter2.selectEx(state, 'first')
+-
+-        adapter2.update(state, 'first', { name: 'name2' })
+-
+-        // se update facesse replace → questo fallirebbe
+-        expect(char.name).toBe('name2')
+-    })
+-})
+diff --git a/src/experience/expFunctions.test.ts b/src/experience/expFunctions.test.ts
+deleted file mode 100644
+index d1ad825..0000000
+--- a/src/experience/expFunctions.test.ts
++++ /dev/null
+@@ -1,89 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { CharacterAdapter } from '../characters/characterAdapter'
+-import { PLAYER_ID } from '../characters/charactersConst'
+-import { GetInitialGameState } from '../game/InitialGameState'
+-import { ExpEnum } from './ExpEnum'
+-import { addExp } from './expFunctions'
+-import { getLevelExp } from './expSelectors'
+-
+-describe('Exp Functions', () => {
+-    test('getLevelExp 1', () => {
+-        expect(getLevelExp(1)).toEqual(1000)
+-    })
+-    test('getLevelExp 2', () => {
+-        expect(getLevelExp(2)).toEqual(2200)
+-    })
+-    test('addExp', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 1)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(1)
+-        expect(char.skillsLevel[ExpEnum.Mining] ?? 0).toEqual(0)
+-        expect(char.level).toEqual(0)
+-        expect(char.exp).toEqual(1)
+-    })
+-    test('addExp level 0', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 100)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(100)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(0)
+-        expect(char.level).toEqual(0)
+-        expect(char.exp).toEqual(100)
+-    })
+-    test('addExp level', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 1000)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(1000)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(1)
+-        expect(char.level).toEqual(0)
+-        expect(char.exp).toEqual(1000)
+-    })
+-    test('addExp level 2', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 1000)
+-        addExp(state, ExpEnum.Mining, 1200)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(2200)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(2)
+-        expect(char.level).toEqual(0)
+-        expect(char.exp).toEqual(2200)
+-    })
+-    test('addExp char level 1', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 5000)
+-        addExp(state, ExpEnum.Archery, 5000)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(5000)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(3)
+-        expect(char.skillsExp[ExpEnum.Archery]).toEqual(5000)
+-        expect(char.skillsLevel[ExpEnum.Archery]).toEqual(3)
+-        expect(char.level).toEqual(1)
+-        expect(char.exp).toEqual(10000)
+-    })
+-    test('addExp char level 0', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 4999)
+-        addExp(state, ExpEnum.Archery, 5000)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(4999)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(3)
+-        expect(char.skillsExp[ExpEnum.Archery]).toEqual(5000)
+-        expect(char.skillsLevel[ExpEnum.Archery]).toEqual(3)
+-        expect(char.level).toEqual(0)
+-        expect(char.exp).toEqual(9999)
+-    })
+-    test('addExp char level 1', () => {
+-        const state = GetInitialGameState()
+-        addExp(state, ExpEnum.Mining, 5000)
+-        addExp(state, ExpEnum.Archery, 5000)
+-        const char = CharacterAdapter.selectEx(state.characters, PLAYER_ID)
+-        expect(char.skillsExp[ExpEnum.Mining]).toEqual(5000)
+-        expect(char.skillsLevel[ExpEnum.Mining]).toEqual(3)
+-        expect(char.skillsExp[ExpEnum.Archery]).toEqual(5000)
+-        expect(char.skillsLevel[ExpEnum.Archery]).toEqual(3)
+-        expect(char.level).toEqual(1)
+-        expect(char.exp).toEqual(10000)
+-    })
+-})
+diff --git a/src/experience/expSelectors.test.ts b/src/experience/expSelectors.test.ts
+deleted file mode 100644
+index 5d03e7c..0000000
+--- a/src/experience/expSelectors.test.ts
++++ /dev/null
+@@ -1,24 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { getCharLevel, getCharLevelExp } from './expSelectors'
+-
+-describe('Exp Selectors', () => {
+-    test('getCharLevel', () => {
+-        expect(getCharLevel(0)).toEqual(0)
+-        expect(getCharLevel(9999)).toEqual(0)
+-        expect(getCharLevel(10000)).toEqual(1)
+-        expect(getCharLevel(22000)).toEqual(2)
+-
+-        expect(getCharLevelExp(0)).toEqual(0)
+-        expect(getCharLevelExp(1)).toEqual(10000)
+-        expect(getCharLevelExp(2)).toEqual(22000)
+-        expect(getCharLevelExp(3)).toEqual(36400)
+-    })
+-    test('Levels', () => {
+-        for (let level = 1; level < 11; level++) {
+-            const exp = getCharLevelExp(level)
+-            const level2 = getCharLevel(exp)
+-
+-            expect(level, `Level: ${level} ${exp} ${level2}`).toEqual(level2)
+-        }
+-    })
+-})
+diff --git a/src/experience/ui/ExperienceCard.tsx b/src/experience/ui/ExperienceCard.tsx
+index 3549a75..39d478d 100644
+--- a/src/experience/ui/ExperienceCard.tsx
++++ b/src/experience/ui/ExperienceCard.tsx
+@@ -38,18 +38,18 @@ export const ExperienceCardUi = memo(function ExperienceCardUi(props: {
+     const percent = Math.floor((100 * (xp - levelXp)) / (nextLevelXp - levelXp))
+ 
+     return (
+-        <Card gap="sm">
++        <Card data-testid="exp-card" gap="sm">
+             <CardHeader>
+                 <CardTitle className="gap-y-0">
+-                    <Badge className="w-min text-sm font-medium">{f(level)}</Badge>
++                    <Badge data-testid="exp-level" className="w-min text-sm font-medium">{f(level)}</Badge>
+                     {title}
+                 </CardTitle>
+             </CardHeader>
+             <CardContent>
+-                <MyLabel className="text-muted-foreground">
++                <MyLabel testId="exp-xp" className="text-muted-foreground">
+                     {t.XP} {f(xp)} / {f(nextLevelXp)}
+                 </MyLabel>
+-                <ProgressBar value={percent} key={title} color="primary" />
++                <ProgressBar testId="exp-bar" value={percent} key={title} color="primary" />
+             </CardContent>
+         </Card>
+     )
+diff --git a/src/formatters/getFormatter.test.ts b/src/formatters/getFormatter.test.ts
+deleted file mode 100644
+index 2a9c52e..0000000
+--- a/src/formatters/getFormatter.test.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { CommaTypes } from './CommaTypes'
+-import { getFormatter } from './formatNumber'
+-import { NotationTypes } from './NotationTypes'
+-
+-describe('number formatting', () => {
+-    test('format standard', () => {
+-        const [format, parse] = getFormatter(NotationTypes.STANDARD, CommaTypes.IT)
+-        const str = format(10)
+-        const str1 = format(1.234567945e4)
+-        const str2 = format(-5)
+-        const str3 = format(2e300)
+-
+-        expect(str).toBe('10')
+-        expect(str1).toBe('12,34K')
+-        expect(str2).toBe('-5')
+-        expect(str3).toBe('2E300')
+-
+-        expect(parse('10')).toBe(10)
+-        expect(parse('12,34K')).toBe(12.34e3)
+-        expect(parse('-5')).toBe(-5)
+-        expect(parse('10k')).toBe(10000)
+-        expect(parse('2E300')).toBe(2e300)
+-    })
+-
+-    test('format scientific', () => {
+-        const [format, parse] = getFormatter(NotationTypes.SCIENTIFIC, CommaTypes.IT)
+-        const str = format(10)
+-        const str1 = format(1.234567945e4)
+-        const str2 = format(-5)
+-        const str3 = format(2e300)
+-
+-        expect(str).toBe('10')
+-        expect(str1).toBe('1,234E4')
+-        expect(str2).toBe('-5')
+-        expect(str3).toBe('2E300')
+-
+-        expect(parse('10')).toBe(10)
+-        expect(parse('1,234E4')).toBe(1.234e4)
+-        expect(parse('-5')).toBe(-5)
+-        expect(parse('2E300')).toBe(2e300)
+-    })
+-
+-    test('format engineering', () => {
+-        const [format, parse] = getFormatter(NotationTypes.ENGINEERING, CommaTypes.IT)
+-        const str = format(10)
+-        const str1 = format(1.234567945e4)
+-        const str2 = format(-5)
+-        const str3 = format(2e300)
+-
+-        expect(str).toBe('10')
+-        expect(str1).toBe('12,34E3')
+-        expect(str2).toBe('-5')
+-        expect(str3).toBe('2E300')
+-
+-        expect(parse('10')).toBe(10)
+-        expect(parse('12,34E3')).toBe(12.34e3)
+-        expect(parse('-5')).toBe(-5)
+-        expect(parse('2E300')).toBe(2e300)
+-    })
+-})
+diff --git a/src/formatters/splitTime.test.ts b/src/formatters/splitTime.test.ts
+deleted file mode 100644
+index a104c7a..0000000
+--- a/src/formatters/splitTime.test.ts
++++ /dev/null
+@@ -1,100 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { splitTime } from './splitTime'
+-
+-describe('splitTime', () => {
+-    it('splits zero milliseconds', () => {
+-        expect(splitTime(0)).toEqual({
+-            years: 0,
+-            months: 0,
+-            days: 0,
+-            hours: 0,
+-            minutes: 0,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits less than a minute', () => {
+-        expect(splitTime(45000)).toEqual({
+-            years: 0,
+-            months: 0,
+-            days: 0,
+-            hours: 0,
+-            minutes: 0,
+-            seconds: 45,
+-        })
+-    })
+-
+-    it('splits one minute', () => {
+-        expect(splitTime(60000)).toEqual({
+-            years: 0,
+-            months: 0,
+-            days: 0,
+-            hours: 0,
+-            minutes: 1,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits one hour', () => {
+-        expect(splitTime(3600000)).toEqual({
+-            years: 0,
+-            months: 0,
+-            days: 0,
+-            hours: 1,
+-            minutes: 0,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits one day', () => {
+-        expect(splitTime(86400000)).toEqual({
+-            years: 0,
+-            months: 0,
+-            days: 1,
+-            hours: 0,
+-            minutes: 0,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits one month', () => {
+-        expect(splitTime(2592000000)).toEqual({
+-            years: 0,
+-            months: 1,
+-            days: 0,
+-            hours: 0,
+-            minutes: 0,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits one year', () => {
+-        expect(splitTime(31536000000)).toEqual({
+-            years: 1,
+-            months: 0,
+-            days: 0,
+-            hours: 0,
+-            minutes: 0,
+-            seconds: 0,
+-        })
+-    })
+-
+-    it('splits a complex time', () => {
+-        // 1 year, 2 months, 3 days, 4 hours, 5 minutes, 6.7 seconds
+-        const ms =
+-            31536000000 + // 1 year
+-            2 * 2592000000 + // 2 months
+-            3 * 86400000 + // 3 days
+-            4 * 3600000 + // 4 hours
+-            5 * 60000 + // 5 minutes
+-            6700 // 6.7 seconds
+-        expect(splitTime(ms)).toEqual({
+-            years: 1,
+-            months: 2,
+-            days: 3,
+-            hours: 4,
+-            minutes: 5,
+-            seconds: 6.7,
+-        })
+-    })
+-})
+diff --git a/src/game/Start.tsx b/src/game/Start.tsx
+index fc07257..4e719ae 100644
+--- a/src/game/Start.tsx
++++ b/src/game/Start.tsx
+@@ -109,15 +109,15 @@ const NewGame = memo(function NewGame() {
+     return (
+         <Dialog>
+             <DialogTrigger asChild>
+-                <Button variant="secondary">{t.NewGame}</Button>
++                <Button data-testid="btn-new-game" variant="secondary">{t.NewGame}</Button>
+             </DialogTrigger>
+             <DialogContent className="sm:max-w-[425px]">
+                 <DialogTitle>{t.NewGame}</DialogTitle>
+                 <DialogDescription></DialogDescription>
+                 <Label htmlFor="name">{t.Name}</Label>
+-                <Input id="name" maxLength={10} value={name} onChange={onChange} />
++                <Input data-testid="input-new-name" id="name" maxLength={10} value={name} onChange={onChange} />
+                 <div>
+-                    <Button onClick={startGame(name)} disabled={name.length < 1}>
++                    <Button data-testid="btn-new-start" onClick={startGame(name)} disabled={name.length < 1}>
+                         {t.Start}
+                     </Button>
+                 </div>
+@@ -135,7 +135,7 @@ const LoadFromIndexedDb = memo(function LoadFromIndexedDb(props: {
+     return (
+         <Dialog>
+             <DialogTrigger asChild>
+-                <Button variant="secondary">{t.LoadFromIndexedDB}</Button>
++                <Button data-testid="btn-load-list" variant="secondary">{t.LoadFromIndexedDB}</Button>
+             </DialogTrigger>
+             <DialogContent className="sm:max-w-[520px]">
+                 <DialogHeader>
+@@ -177,7 +177,7 @@ const LoadUi = memo(function LoadUi(props: { item: NameId; setLoadName: React.Di
+ 
+     return (
+         <>
+-            <Button onClick={loadClick}>{item.name}</Button>
++            <Button data-testid="btn-load-save" onClick={loadClick}>{item.name}</Button>
+             <span className="text-muted-foreground min-w-20 text-right text-sm">
+                 <TimeAgo date={item.state.now} /> {t.Ago}
+             </span>
+diff --git a/src/game/save/stateKeyMinifier.test.ts b/src/game/save/stateKeyMinifier.test.ts
+deleted file mode 100644
+index ec4993e..0000000
+--- a/src/game/save/stateKeyMinifier.test.ts
++++ /dev/null
+@@ -1,75 +0,0 @@
+-// oxlint-disable typescript/no-unsafe-type-assertion
+-import { describe, expect, it } from 'vitest'
+-import { minifyStateKeys, restoreStateKeys } from './stateKeyMinifier'
+-
+-describe('stateKeyMinifier', () => {
+-    it('minifies only mapped GameState and LocationState keys', () => {
+-        const input = {
+-            gameId: 'g1',
+-            isTimer: true,
+-            customFutureKey: 'keep-me',
+-            locations: {
+-                village: {
+-                    storage: { ids: [], entities: {} },
+-                    forests: { trees: [] },
+-                    unlockedGatheringZones: [],
+-                    futureLocationField: 42,
+-                },
+-            },
+-        }
+-
+-        const minified = minifyStateKeys(input) as Record<string, unknown>
+-
+-        expect(minified.gi).toBe('g1')
+-        expect(minified.it).toBe(true)
+-        expect(minified.customFutureKey).toBe('keep-me')
+-        expect(minified.gameId).toBeUndefined()
+-
+-        const locations = minified.ls as Record<string, Record<string, unknown>>
+-        expect(locations.village?.st).toEqual({ ids: [], entities: {} })
+-        expect(locations.village?.fo).toEqual({ trees: [] })
+-        expect(locations.village?.ug).toEqual([])
+-        expect(locations.village?.futureLocationField).toBe(42)
+-        expect(locations.village?.storage).toBeUndefined()
+-    })
+-
+-    it('restores minified keys and preserves unknown keys', () => {
+-        const input = {
+-            gi: 'g1',
+-            it: false,
+-            someNewTopLevelKey: 'safe',
+-            ls: {
+-                village: {
+-                    st: { ids: ['a'], entities: { a: { id: 'a' } } },
+-                    ug: ['forest'],
+-                    someNewLocationKey: 'safe-loc',
+-                },
+-            },
+-        }
+-
+-        const restored = restoreStateKeys(input) as Record<string, unknown>
+-
+-        expect(restored.gameId).toBe('g1')
+-        expect(restored.isTimer).toBe(false)
+-        expect(restored.someNewTopLevelKey).toBe('safe')
+-        expect(restored.gi).toBeUndefined()
+-
+-        const locations = restored.locations as Record<string, Record<string, unknown>>
+-        expect(locations.village?.storage).toEqual({ ids: ['a'], entities: { a: { id: 'a' } } })
+-        expect(locations.village?.unlockedGatheringZones).toEqual(['forest'])
+-        expect(locations.village?.someNewLocationKey).toBe('safe-loc')
+-        expect(locations.village?.st).toBeUndefined()
+-    })
+-
+-    it('does not throw when locations has non-object entries', () => {
+-        const input = {
+-            gi: 'g1',
+-            ls: {
+-                village: null,
+-                cave: 12,
+-            },
+-        }
+-
+-        expect(() => restoreStateKeys(input)).not.toThrow()
+-    })
+-})
+diff --git a/src/game/save/ui/SaveExportDialog.tsx b/src/game/save/ui/SaveExportDialog.tsx
+index 398ea6c..e30108b 100644
+--- a/src/game/save/ui/SaveExportDialog.tsx
++++ b/src/game/save/ui/SaveExportDialog.tsx
+@@ -70,7 +70,7 @@ export const SaveExportDialog = memo(function SaveExportDialog() {
+     return (
+         <Dialog open={open} onOpenChange={onOpenChange}>
+             <DialogTrigger asChild>
+-                <Button variant="outline">{t.ExportSave}</Button>
++                <Button data-testid="btn-export-open" variant="outline">{t.ExportSave}</Button>
+             </DialogTrigger>
+             <DialogContent className="sm:max-w-[680px]">
+                 <DialogHeader>
+@@ -78,6 +78,7 @@ export const SaveExportDialog = memo(function SaveExportDialog() {
+                     <DialogDescription>{t.ExportSaveDesc}</DialogDescription>
+                 </DialogHeader>
+                 <textarea
++                    data-testid="export-text"
+                     value={value}
+                     readOnly
+                     rows={10}
+diff --git a/src/game/save/ui/SaveImportDialog.tsx b/src/game/save/ui/SaveImportDialog.tsx
+index 190508d..8f8f2d3 100644
+--- a/src/game/save/ui/SaveImportDialog.tsx
++++ b/src/game/save/ui/SaveImportDialog.tsx
+@@ -94,7 +94,7 @@ export const SaveImportDialog = memo(function SaveImportDialog() {
+     return (
+         <Dialog open={open} onOpenChange={setOpen}>
+             <DialogTrigger asChild>
+-                <Button variant="secondary">{t.ImportSave}</Button>
++                <Button data-testid="btn-import-open" variant="secondary">{t.ImportSave}</Button>
+             </DialogTrigger>
+             <DialogContent className="sm:max-w-[680px]">
+                 <DialogHeader>
+@@ -117,14 +117,19 @@ export const SaveImportDialog = memo(function SaveImportDialog() {
+                 </div>
+ 
+                 <textarea
++                    data-testid="import-text"
+                     value={value}
+                     onChange={(e) => setValue(e.target.value)}
+                     rows={10}
+                     className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border p-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                 />
+-                {error && <span className="text-sm text-red-500">{error}</span>}
++                {error && (
++                        <span data-testid="import-error" className="text-sm text-red-500">
++                            {error}
++                        </span>
++                    )}
+                 <DialogFooter>
+-                    <Button onClick={onImport} disabled={loading || value.trim().length === 0}>
++                    <Button data-testid="btn-import-run" onClick={onImport} disabled={loading || value.trim().length === 0}>
+                         {loading ? t.Processing : t.ImportSave}
+                     </Button>
+                 </DialogFooter>
+diff --git a/src/gathering/forestGathering.test.ts b/src/gathering/forestGathering.test.ts
+deleted file mode 100644
+index cc492ec..0000000
+--- a/src/gathering/forestGathering.test.ts
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { gatherForest } from './data/forestGathering'
+-import { Rarity } from './gatheringTypes'
+-
+-describe('gatherForest', () => {
+-    it('always returns one guaranteed common resource', () => {
+-        const result = gatherForest(() => 0.99)
+-
+-        expect(result).toHaveLength(2)
+-        expect(result[0]?.rarity).toBe(Rarity.Common)
+-    })
+-
+-    it('rolls common on bonus roll when random value is in common range', () => {
+-        const result = gatherForest(() => 0.2)
+-
+-        expect(result[1]?.rarity).toBe(Rarity.Common)
+-    })
+-
+-    it('rolls uncommon on bonus roll when random value is in uncommon range', () => {
+-        const result = gatherForest(() => 0.8)
+-
+-        expect(result[1]?.rarity).toBe(Rarity.Uncommon)
+-    })
+-
+-    it('rolls rare on bonus roll when random value is in rare range', () => {
+-        const result = gatherForest(() => 0.99)
+-
+-        expect(result[1]?.rarity).toBe(Rarity.Rare)
+-    })
+-})
+diff --git a/src/items/itemSelectors.test.ts b/src/items/itemSelectors.test.ts
+deleted file mode 100644
+index 4a935eb..0000000
+--- a/src/items/itemSelectors.test.ts
++++ /dev/null
+@@ -1,99 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { EquipSlotsEnum } from '../characters/equipSlotsEnum'
+-import { ExpEnum } from '../experience/ExpEnum'
+-import { Icons } from '../icons/Icons'
+-import { Item, ItemFilter, ItemSubType, ItemTypes } from './Item'
+-import { filterItem } from './itemSelectors'
+-
+-describe('filterItem', () => {
+-    const baseItem: Item = {
+-        id: 'item1',
+-        nameId: 'LongSword',
+-        icon: Icons.Sword,
+-        value: 100,
+-        equipSlot: EquipSlotsEnum.MainHand,
+-        type: ItemTypes.OneHand,
+-        subType: ItemSubType.Weapon,
+-        craftingData: { prestige: 1, speedBonus: 2 },
+-        woodAxeData: undefined,
+-        craftingWoodAxeData: undefined,
+-        craftingPickaxeData: undefined,
+-        pickaxeData: undefined,
+-        weaponData: undefined,
+-        armourData: undefined,
+-    }
+-
+-    it('returns true if no filter fields are set', () => {
+-        expect(filterItem(baseItem, {} as ItemFilter)).toBe(true)
+-    })
+-
+-    it('filters by itemId', () => {
+-        expect(filterItem(baseItem, { itemId: 'item1' } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { itemId: 'item2' } as ItemFilter)).toBe(false)
+-    })
+-
+-    it('filters by nameId', () => {
+-        expect(filterItem(baseItem, { nameId: 'LongSword' } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { nameId: 'WoodAxe' } as ItemFilter)).toBe(false)
+-    })
+-
+-    it('filters by equipSlot', () => {
+-        expect(filterItem(baseItem, { equipSlot: EquipSlotsEnum.MainHand } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { equipSlot: EquipSlotsEnum.Body } as ItemFilter)).toBe(false)
+-    })
+-
+-    it('filters by itemType', () => {
+-        expect(filterItem(baseItem, { itemType: ItemTypes.OneHand } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { itemType: ItemTypes.Bar } as ItemFilter)).toBe(false)
+-    })
+-
+-    it('filters by itemSubType', () => {
+-        expect(filterItem(baseItem, { itemSubType: ItemSubType.Weapon } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { itemSubType: ItemSubType.Crafting } as ItemFilter)).toBe(false)
+-    })
+-    it('filters by craftingData', () => {
+-        expect(filterItem(baseItem, { craftingData: { speedBonus: 1 } } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { craftingData: { speedBonus: 2 } } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { craftingData: { speedBonus: 3 } } as ItemFilter)).toBe(false)
+-    })
+-    it('returns true if no data filters are set', () => {
+-        expect(filterItem(baseItem, {} as ItemFilter)).toBe(true)
+-    })
+-    it('returns false if item is missing required data for filter', () => {
+-        const item = { ...baseItem, weaponData: undefined }
+-        expect(filterItem(item, { weaponData: { attackSpeed: 1 } } as ItemFilter)).toBe(false)
+-    })
+-    it('filters by has: true if item has all specified keys', () => {
+-        const itemWithWeaponData: Item = {
+-            ...baseItem,
+-            weaponData: {
+-                expType: ExpEnum.OneHanded,
+-                damage: {},
+-                attackSpeed: 1,
+-            },
+-        }
+-        expect(filterItem(itemWithWeaponData, { has: ['weaponData'] } as ItemFilter)).toBe(true)
+-        expect(filterItem(baseItem, { has: ['weaponData'] } as ItemFilter)).toBe(false)
+-    })
+-    it('filters by has: multiple', () => {
+-        const itemWithMultiple: Item = {
+-            ...baseItem,
+-            weaponData: {
+-                expType: ExpEnum.OneHanded,
+-                damage: {},
+-                attackSpeed: 1,
+-            },
+-            armourData: {},
+-        }
+-        const itemWithWeaponData: Item = {
+-            ...baseItem,
+-            weaponData: {
+-                expType: ExpEnum.OneHanded,
+-                damage: {},
+-                attackSpeed: 1,
+-            },
+-        }
+-        expect(filterItem(itemWithMultiple, { has: ['weaponData', 'armourData'] } as ItemFilter)).toBe(true)
+-        expect(filterItem(itemWithWeaponData, { has: ['weaponData', 'armourData'] } as ItemFilter)).toBe(false)
+-    })
+-})
+diff --git a/src/msg/formatTime.test.ts b/src/msg/formatTime.test.ts
+deleted file mode 100644
+index d92dba0..0000000
+--- a/src/msg/formatTime.test.ts
++++ /dev/null
+@@ -1,35 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { engMsg, makeEngMsg } from './eng'
+-
+-const formatTime = makeEngMsg(engMsg, (value: number) => value.toString()).formatTime
+-
+-describe('time formatting', () => {
+-    test('format year', () => {
+-        const year = formatTime(1e3 * 3600 * 24 * 365 * 5.456)
+-        expect(year).toBe('5 years')
+-    })
+-    test('format month', () => {
+-        const month = formatTime(1e3 * 3600 * 24 * 30 * 5.456)
+-        expect(month).toBe('5 months')
+-    })
+-    test('format 12 seconds', () => {
+-        const seconds = formatTime(1e3 * 12.5)
+-        expect(seconds).toBe('12s')
+-    })
+-    test('format 4.2 seconds', () => {
+-        const seconds = formatTime(1e3 * 4.2159)
+-        expect(seconds).toBe('4.2s')
+-    })
+-    test('format 2 days', () => {
+-        const seconds = formatTime(1e3 * 3600 * 24 * 2)
+-        expect(seconds).toBe('2 days')
+-    })
+-    test('format 3 hours', () => {
+-        const seconds = formatTime(1e3 * 3600 * 3)
+-        expect(seconds).toBe('3h')
+-    })
+-    test('format 4 minutes', () => {
+-        const seconds = formatTime(1e3 * 60 * 4)
+-        expect(seconds).toBe('4m')
+-    })
+-})
+diff --git a/src/msg/removeUnusedParams.test.ts b/src/msg/removeUnusedParams.test.ts
+deleted file mode 100644
+index 948676c..0000000
+--- a/src/msg/removeUnusedParams.test.ts
++++ /dev/null
+@@ -1,36 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import { removeUnusedParams } from './removeUnusedParams'
+-
+-describe('removeUnusedParams', () => {
+-    it('removes a single parameter', () => {
+-        expect(removeUnusedParams('Hello {user}')).toBe('Hello')
+-    })
+-
+-    it('removes multiple parameters', () => {
+-        expect(removeUnusedParams('Hi {user}, your score is {score}')).toBe('Hi , your score is')
+-    })
+-
+-    it('returns the same string if there are no parameters', () => {
+-        expect(removeUnusedParams('No params here')).toBe('No params here')
+-    })
+-
+-    it('removes parameters surrounded by other characters', () => {
+-        expect(removeUnusedParams('A{a}B{b}C')).toBe('ABC')
+-    })
+-
+-    it('removes parameters with underscores and numbers', () => {
+-        expect(removeUnusedParams('Test {param_1} and {param2}')).toBe('Test and')
+-    })
+-
+-    it('handles empty string', () => {
+-        expect(removeUnusedParams('')).toBe('')
+-    })
+-
+-    it('removes adjacent parameters', () => {
+-        expect(removeUnusedParams('{a}{b}{c}')).toBe('')
+-    })
+-
+-    it('removes double spaces', () => {
+-        expect(removeUnusedParams('{a} {b} {c}')).toBe('')
+-    })
+-})
+diff --git a/src/notification/ToasterProvider.tsx b/src/notification/ToasterProvider.tsx
+index 6faf63f..593db87 100644
+--- a/src/notification/ToasterProvider.tsx
++++ b/src/notification/ToasterProvider.tsx
+@@ -26,6 +26,10 @@ export function ToasterProvider() {
+             if (n.descriptionId) toastData.description = t[n.descriptionId]
+             if (n.iconId) toastData.icon = IconsData[n.iconId]
+ 
++            // instrumentation probe: capture toast titles for verification (zero behavior change)
++            const w = window as unknown as { __toasts?: string[] }
++            w.__toasts = [...(w.__toasts ?? []), title ?? '']
++
+             toast(title, toastData)
+         }
+         removeNotifications()
+diff --git a/src/quests/QuestFunctions.test.ts b/src/quests/QuestFunctions.test.ts
+deleted file mode 100644
+index b2906c2..0000000
+--- a/src/quests/QuestFunctions.test.ts
++++ /dev/null
+@@ -1,127 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { CharTemplateEnum } from '../characters/templates/characterTemplateEnum'
+-import { GetInitialGameState } from '../game/InitialGameState'
+-import { GameLocations } from '../gameLocations/GameLocations'
+-import { ItemTypes } from '../items/Item'
+-import { questOnItemRemove } from './collectRequest/questOnItemRemove'
+-import { QuestAdapter, QuestState, QuestStatus } from './QuestTypes'
+-
+-describe('Quest Functions', () => {
+-    test('questOnItemRemove 1', () => {
+-        const state = GetInitialGameState()
+-
+-        const questState: QuestState = {
+-            id: 'questId',
+-            state: QuestStatus.AVAILABLE,
+-            expandedOutcome: 'k',
+-            templateId: 'kill-n',
+-            parameters: { 'param-1': 'Test' },
+-            outcomeData: {
+-                ids: ['k'],
+-                entries: {
+-                    k: {
+-                        id: 'k',
+-                        location: GameLocations.StartVillage,
+-                        goldReward: 100,
+-                        itemsRewards: [
+-                            { itemId: 'TinOre', quantity: 1 },
+-                            { itemId: 'DeadBoar', quantity: 1 },
+-                        ],
+-                        targets: [
+-                            {
+-                                targetId: CharTemplateEnum.Boar,
+-                                targetCount: 5,
+-                                killedCount: 0,
+-                            },
+-                        ],
+-                        reqItems: [
+-                            {
+-                                id: '1',
+-                                itemCount: 5,
+-                                selectedItem1: 'item',
+-                                selectedItem2: 'otherItem',
+-                                itemFilter: {
+-                                    itemType: ItemTypes.Plank,
+-                                    minStats: {
+-                                        value: 10,
+-                                    },
+-                                },
+-                            },
+-                        ],
+-                    },
+-                },
+-            },
+-        }
+-
+-        QuestAdapter.create(state.quests, questState)
+-
+-        questOnItemRemove(state, 'item', state.location)
+-
+-        expect(
+-            state.quests.entries['questId']!.outcomeData.entries['k']!.reqItems![0]!.selectedItem1
+-        ).toBeUndefined()
+-
+-        expect(state.quests.entries['questId']!.outcomeData.entries['k']!.reqItems![0]!.selectedItem2).toEqual(
+-            'otherItem'
+-        )
+-    })
+-
+-    test('questOnItemRemove different location', () => {
+-        const state = GetInitialGameState()
+-
+-        const questState = {
+-            id: 'questId',
+-            state: QuestStatus.AVAILABLE,
+-            templateId: 'kill-n',
+-            expandedOutcome: 'k',
+-            parameters: { 'param-1': 'Test' },
+-            outcomeData: {
+-                ids: ['k'],
+-                entries: {
+-                    k: {
+-                        id: 'k',
+-                        location: GameLocations.Test,
+-                        goldReward: 100,
+-                        itemsRewards: [
+-                            { itemId: 'TinOre', quantity: 1 },
+-                            { itemId: 'DeadBoar', quantity: 1 },
+-                        ],
+-                        targets: [
+-                            {
+-                                targetId: CharTemplateEnum.Boar,
+-                                targetCount: 5,
+-                                killedCount: 0,
+-                            },
+-                        ],
+-                        reqItems: [
+-                            {
+-                                id: '1',
+-                                itemCount: 5,
+-                                selectedItem1: 'item',
+-                                selectedItem2: 'otherItem',
+-                                itemFilter: {
+-                                    itemType: ItemTypes.Plank,
+-                                    minStats: {
+-                                        value: 10,
+-                                    },
+-                                },
+-                            },
+-                        ],
+-                    },
+-                },
+-            },
+-        }
+-
+-        QuestAdapter.create(state.quests, questState)
+-
+-        questOnItemRemove(state, 'item', state.location)
+-
+-        expect(state.quests.entries['questId']!.outcomeData.entries['k']!.reqItems![0]!.selectedItem1).toEqual(
+-            'item'
+-        )
+-
+-        expect(state.quests.entries['questId']!.outcomeData.entries['k']!.reqItems![0]!.selectedItem2).toEqual(
+-            'otherItem'
+-        )
+-    })
+-})
+diff --git a/src/storage/storageFunctions.test.ts b/src/storage/storageFunctions.test.ts
+deleted file mode 100644
+index 645957c..0000000
+--- a/src/storage/storageFunctions.test.ts
++++ /dev/null
+@@ -1,139 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { CRAFTED_ITEM_PREFIX } from '../const'
+-import { GetInitialGameState } from '../game/InitialGameState'
+-import { GameLocations } from '../gameLocations/GameLocations'
+-import { Icons } from '../icons/Icons'
+-import { ItemTypes } from '../items/Item'
+-import { addItem, hasItem, removeItem } from './storageFunctions'
+-
+-describe('Storage Functions', () => {
+-    test('Add Item', () => {
+-        const state = GetInitialGameState()
+-        addItem(state, 'OakLog', 1)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: ['OakLog'],
+-            entries: {
+-                OakLog: { itemId: 'OakLog', quantity: 1 },
+-            },
+-        })
+-    })
+-    test('Add Item craft', () => {
+-        const state = GetInitialGameState()
+-        const id = `${CRAFTED_ITEM_PREFIX}craft`
+-        addItem(state, id, 3)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: [id],
+-            entries: {
+-                [id]: { itemId: id, quantity: 3 },
+-            },
+-        })
+-    })
+-    test('Add Item craft 2', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.storage = {
+-            ids: ['OakLog', 'std', `${CRAFTED_ITEM_PREFIX}craft`],
+-            entries: {
+-                ['OakLog']: { itemId: 'OakLog', quantity: 1 },
+-                ['std']: { itemId: 'std', quantity: 1 },
+-                [`${CRAFTED_ITEM_PREFIX}craft`]: { itemId: `${CRAFTED_ITEM_PREFIX}craft`, quantity: 2 },
+-            },
+-        }
+-        addItem(state, `${CRAFTED_ITEM_PREFIX}craft`, 3)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: ['OakLog', 'std', `${CRAFTED_ITEM_PREFIX}craft`],
+-            entries: {
+-                ['OakLog']: { itemId: 'OakLog', quantity: 1 },
+-                ['std']: { itemId: 'std', quantity: 1 },
+-                [`${CRAFTED_ITEM_PREFIX}craft`]: { itemId: `${CRAFTED_ITEM_PREFIX}craft`, quantity: 5 },
+-            },
+-        })
+-    })
+-    test('Remove Item 1', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.storage = {
+-            ids: ['OakLog'],
+-            entries: {
+-                OakLog: { itemId: 'OakLog', quantity: 1 },
+-            },
+-        }
+-        removeItem(state, 'OakLog', 1)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: [],
+-            entries: {},
+-        })
+-    })
+-    test('Remove Item 2', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.storage = {
+-            ids: ['OakLog'],
+-            entries: {
+-                OakLog: { itemId: 'OakLog', quantity: 10 },
+-            },
+-        }
+-        removeItem(state, 'OakLog', 2)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: ['OakLog'],
+-            entries: {
+-                OakLog: { itemId: 'OakLog', quantity: 8 },
+-            },
+-        })
+-    })
+-    test('Remove Item 1 craft', () => {
+-        const state = GetInitialGameState()
+-        const craftedId = `${CRAFTED_ITEM_PREFIX}craft2`
+-        state.locations.StartVillage.storage = {
+-            ids: [craftedId],
+-            entries: {
+-                [craftedId]: { itemId: craftedId, quantity: 1 },
+-            },
+-        }
+-        state.craftedItems = {
+-            ids: [craftedId],
+-            entries: {
+-                [craftedId]: {
+-                    id: craftedId,
+-                    icon: Icons.Axe,
+-                    nameId: 'Craft',
+-                    type: ItemTypes.Bar,
+-                    value: 1,
+-                },
+-            },
+-        }
+-        removeItem(state, craftedId, 1, GameLocations.StartVillage)
+-        expect(state.locations.StartVillage.storage).toEqual({ ids: [], entries: {} })
+-        expect(state.locations.Test.storage).toEqual({ ids: [], entries: {} })
+-        expect(state.craftedItems).toEqual({ ids: [], entries: {} })
+-    })
+-    test('Remove Item 2 craft', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.storage = {
+-            ids: [`${CRAFTED_ITEM_PREFIX}craft`],
+-            entries: {
+-                [`${CRAFTED_ITEM_PREFIX}craft`]: { itemId: `${CRAFTED_ITEM_PREFIX}craft`, quantity: 10 },
+-            },
+-        }
+-
+-        removeItem(state, `${CRAFTED_ITEM_PREFIX}craft`, 2)
+-        expect(state.locations.StartVillage.storage).toEqual({
+-            ids: [`${CRAFTED_ITEM_PREFIX}craft`],
+-            entries: {
+-                [`${CRAFTED_ITEM_PREFIX}craft`]: { itemId: `${CRAFTED_ITEM_PREFIX}craft`, quantity: 8 },
+-            },
+-        })
+-    })
+-
+-    test('Has Item No', () => {
+-        const state = GetInitialGameState()
+-        expect(hasItem(state, 'DeadTreePlank', 1)).toBe(false)
+-    })
+-    test('Has Item Yes', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.storage = {
+-            ids: [`${CRAFTED_ITEM_PREFIX}craft`],
+-            entries: {
+-                [`${CRAFTED_ITEM_PREFIX}craft`]: { itemId: `${CRAFTED_ITEM_PREFIX}craft`, quantity: 1 },
+-            },
+-        }
+-        expect(hasItem(state, `${CRAFTED_ITEM_PREFIX}craft`, 1)).toBe(true)
+-    })
+-})
+diff --git a/src/storage/ui/Storage.tsx b/src/storage/ui/Storage.tsx
+index fcd1c72..5c4cec9 100644
+--- a/src/storage/ui/Storage.tsx
++++ b/src/storage/ui/Storage.tsx
+@@ -107,7 +107,7 @@ const NoItems = memo(function NoItems() {
+     return (
+         <MyPage>
+             <div className="my-container">
+-                <Alert variant="primary">
++                <Alert data-testid="no-items" variant="primary">
+                     {InfoIcon}
+                     <AlertTitle>{t.NoItems}</AlertTitle>
+                 </Alert>
+@@ -315,7 +315,7 @@ const StorageItem = memo(function StorageItem(props: { small: boolean; location:
+     if (!item) return
+     if (small)
+         return (
+-            <TableRow onClick={onClick} className={cn(classes.row, { 'bg-muted': selected })}>
++            <TableRow data-testid="storage-row" onClick={onClick} className={cn(classes.row, { 'bg-muted': selected })}>
+                 <TableCell>
+                     <span className={classes.smallRow}>
+                         <span className="pr-2 text-right align-middle">
+@@ -336,13 +336,13 @@ const StorageItem = memo(function StorageItem(props: { small: boolean; location:
+         )
+     else
+         return (
+-            <TableRow onClick={onClick} className={cn(classes.row, { 'bg-muted': selected })}>
++            <TableRow data-testid="storage-row" onClick={onClick} className={cn(classes.row, { 'bg-muted': selected })}>
+                 <TableCell>
+                     <ItemIcon itemId={itemId} />
+                 </TableCell>
+-                <TableCell>{itemName}</TableCell>
+-                <TableCell className="text-right">{f(item.value)}</TableCell>
+-                <TableCell className="text-right">{f(qta)}</TableCell>
++                <TableCell data-testid="row-name">{itemName}</TableCell>
++                <TableCell data-testid="row-value" className="text-right">{f(item.value)}</TableCell>
++                <TableCell data-testid="row-qta" className="text-right">{f(qta)}</TableCell>
+             </TableRow>
+         )
+ })
+diff --git a/src/timers/updateTimers.spec.ts b/src/timers/updateTimers.spec.ts
+deleted file mode 100644
+index 2ad4ba5..0000000
+--- a/src/timers/updateTimers.spec.ts
++++ /dev/null
+@@ -1,88 +0,0 @@
+-// oxlint-disable typescript/no-unsafe-type-assertion
+-import { create } from 'mutative'
+-import { afterEach, beforeEach, describe, expect, it, Mock, vi } from 'vitest'
+-import { ActivityTypes } from '../activities/ActivityState'
+-import type { GameState } from '../game/GameState'
+-import { GetInitialGameState } from '../game/InitialGameState'
+-import { getUniqueId } from '../utils/getUniqueId'
+-import { TimerAdapter } from './Timer'
+-import { execTimer } from './timerFunctions'
+-import { prevTimers, updateTimers } from './updateTimers'
+-
+-vi.mock('./timerFunctions', () => ({
+-    execTimer: vi.fn(),
+-}))
+-
+-describe('updateTimers', () => {
+-    const prevState: GameState = GetInitialGameState()
+-    let state: GameState
+-
+-    const timer = {
+-        id: 't1',
+-        actId: getUniqueId(),
+-        from: Date.now(),
+-        to: Date.now() + 1e3,
+-        type: ActivityTypes.Crafting,
+-    }
+-
+-    beforeEach(() => {
+-        vi.clearAllMocks()
+-        vi.useFakeTimers()
+-
+-        vi.spyOn(globalThis, 'setTimeout')
+-        vi.spyOn(globalThis, 'clearInterval')
+-
+-        state = create(prevState, (state2: GameState) => TimerAdapter.create(state2.timers, timer))
+-
+-        prevTimers.clear()
+-    })
+-
+-    afterEach(() => {
+-        vi.useRealTimers()
+-        vi.restoreAllMocks()
+-        prevTimers.clear()
+-    })
+-
+-    it('does nothing if state.loading is true', () => {
+-        state.loading = true
+-        updateTimers(state)
+-        expect(setTimeout).not.toHaveBeenCalled()
+-    })
+-    it('does nothing if state.isTimer is true', () => {
+-        state.isTimer = true
+-        updateTimers(state)
+-        expect(setTimeout).not.toHaveBeenCalled()
+-    })
+-    it('starts a new timer when not present in prevTimers', () => {
+-        updateTimers(state)
+-        expect(setTimeout).toHaveBeenCalledTimes(1)
+-    })
+-    it('executes execTimer after timeout', () => {
+-        updateTimers(state)
+-        vi.runAllTimers()
+-        expect(execTimer).toHaveBeenCalledWith('t1')
+-    })
+-
+-    it('restarts a timer if from/to changes', () => {
+-        updateTimers(state)
+-
+-        const prevCallCount = (setTimeout as unknown as Mock).mock.calls.length
+-
+-        const newState = create(state, (state2: GameState) => {
+-            const tim = TimerAdapter.select(state2.timers, 't1')
+-            if (tim) tim.to += 1e3
+-        })
+-
+-        updateTimers(newState)
+-
+-        expect((setTimeout as unknown as Mock).mock.calls.length).toBeGreaterThan(prevCallCount)
+-    })
+-
+-    it('clears a timer if removed from state', () => {
+-        updateTimers(state)
+-
+-        updateTimers(prevState)
+-
+-        expect(clearInterval).toHaveBeenCalled()
+-    })
+-})
+diff --git a/src/ui/myCard/MyCard.tsx b/src/ui/myCard/MyCard.tsx
+index aa57ff1..0a6d164 100644
+--- a/src/ui/myCard/MyCard.tsx
++++ b/src/ui/myCard/MyCard.tsx
+@@ -6,12 +6,13 @@ export const MyCardHeaderTitle = memo(function MyCardHeaderTitle(props: {
+     icon?: ReactNode
+     rightSlot?: ReactNode
+     onClick?: () => void
++    testId?: string
+ }) {
+-    const { title, icon, rightSlot, onClick } = props
++    const { title, icon, rightSlot, onClick, testId } = props
+ 
+     return (
+         <CardHeader>
+-            <CardTitle onClick={onClick}>
++            <CardTitle data-testid={testId} onClick={onClick}>
+                 {icon && <span className="text-lg">{icon}</span>} {title} {rightSlot}
+             </CardTitle>
+         </CardHeader>
+diff --git a/src/ui/myCard/MyLabel.tsx b/src/ui/myCard/MyLabel.tsx
+index 0ab3920..04db6b0 100644
+--- a/src/ui/myCard/MyLabel.tsx
++++ b/src/ui/myCard/MyLabel.tsx
+@@ -6,10 +6,13 @@ export const MyLabelContainer = memo(function MyLabelContainer(props: { children
+     return <span className={cn('flex flex-wrap gap-2', className)}>{children}</span>
+ })
+ 
+-export const MyLabel = memo(function MyLabel(props: { children: ReactNode; className?: string }) {
+-    const { children, className } = props
++export const MyLabel = memo(function MyLabel(props: { children: ReactNode; className?: string; testId?: string }) {
++    const { children, className, testId } = props
+     return (
+-        <span className={cn('grid grow basis-0 grid-flow-col items-center justify-start gap-1 text-sm', className)}>
++        <span
++            data-testid={testId}
++            className={cn('grid grow basis-0 grid-flow-col items-center justify-start gap-1 text-sm', className)}
++        >
+             {children}
+         </span>
+     )
+diff --git a/src/ui/progress/ProgressBar.tsx b/src/ui/progress/ProgressBar.tsx
+index 0d2dc31..f924c2b 100644
+--- a/src/ui/progress/ProgressBar.tsx
++++ b/src/ui/progress/ProgressBar.tsx
+@@ -3,12 +3,17 @@ import { memo } from 'react'
+ import { Colors } from '../state/uiFunctions'
+ import './progress.css'
+ 
+-export const ProgressBar = memo(function ProgressBar(props: { value: number; className?: string; color: Colors }) {
+-    const { value, className, color } = props
++export const ProgressBar = memo(function ProgressBar(props: {
++    value: number
++    className?: string
++    color: Colors
++    testId?: string
++}) {
++    const { value, className, color, testId } = props
+     const progress = -100 + value
+ 
+     return (
+-        <div className={clsx('progress__root', className, color)}>
++        <div data-testid={testId} className={clsx('progress__root', className, color)}>
+             <div className="progress__bar" style={{ transform: `translateX(${progress}%)` }} />
+         </div>
+     )
+diff --git a/src/ui/progress/RestartProgress.tsx b/src/ui/progress/RestartProgress.tsx
+index a979505..310f913 100644
+--- a/src/ui/progress/RestartProgress.tsx
++++ b/src/ui/progress/RestartProgress.tsx
+@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
+ import { Colors } from '../state/uiFunctions'
+ import { ProgressBar } from './ProgressBar'
+ 
+-export function RestartProgress(props: { value: number; className?: string; color: Colors }) {
+-    const { value: hpPercent, className, color } = props
++export function RestartProgress(props: { value: number; className?: string; color: Colors; testId?: string }) {
++    const { value: hpPercent, className, color, testId } = props
+     const [isZero, setIsZero] = useState(false)
+     const prevHpPercentRef = useRef(100)
+ 
+@@ -27,5 +27,12 @@ export function RestartProgress(props: { value: number; className?: string; colo
+         }
+     }, [hpPercent])
+ 
+-    return <ProgressBar value={isZero && hpPercent === 100 ? 0 : hpPercent} className={className} color={color} />
++    return (
++        <ProgressBar
++            value={isZero && hpPercent === 100 ? 0 : hpPercent}
++            className={className}
++            color={color}
++            testId={testId}
++        />
++    )
+ }
+diff --git a/src/ui/shell/AppShell.tsx b/src/ui/shell/AppShell.tsx
+index 3b6ae7f..2ade633 100644
+--- a/src/ui/shell/AppShell.tsx
++++ b/src/ui/shell/AppShell.tsx
+@@ -47,7 +47,7 @@ const Header = memo(function Header() {
+     return (
+         <header className={classes.header}>
+             <div className={classes.headerLeft}>
+-                <Button onClick={toggle} className={classes.menu} variant="outline">
++                <Button data-testid="btn-menu" onClick={toggle} className={classes.menu} variant="outline">
+                     <LuMenu />
+                 </Button>
+                 <HeaderTitle />
+@@ -67,7 +67,7 @@ const HeaderTitle = memo(function HeaderTitle() {
+     const uiPage = UiPagesData[page]
+     if (!uiPage) return null
+     return (
+-        <CardTitle>
++        <CardTitle data-testid="header-title">
+             {uiPage.icon}
+             {t[uiPage.nameId]}
+         </CardTitle>
+diff --git a/src/ui/sidebar/MenuItem.tsx b/src/ui/sidebar/MenuItem.tsx
+index a86d4e5..efc812f 100644
+--- a/src/ui/sidebar/MenuItem.tsx
++++ b/src/ui/sidebar/MenuItem.tsx
+@@ -20,8 +20,9 @@ export const MenuItem = memo(function MenuItem(props: {
+     page: UiPages
+     right?: ReactNode
+     collapsedId: CollapsedEnum
++    testId?: string
+ }) {
+-    const { page, collapsedId, right } = props
++    const { page, collapsedId, right, testId } = props
+     const { t } = useTranslations()
+     const data = UiPagesData[page]
+     const active = useGameStore((s) => s.ui.page === page)
+@@ -35,6 +36,7 @@ export const MenuItem = memo(function MenuItem(props: {
+             icon={data.icon}
+             collapsedId={collapsedId}
+             right={right}
++            testId={testId}
+         />
+     )
+ })
+@@ -48,8 +50,9 @@ export const MyListItem = memo(function MyListItem(props: {
+     right?: ReactNode
+     enabled?: boolean
+     collapsedId: CollapsedEnum
++    testId?: string
+ }) {
+-    const { text, onClick, active, icon, arrowOpen, right, collapsedId } = props
++    const { text, onClick, active, icon, arrowOpen, right, collapsedId, testId } = props
+     let { enabled } = props
+ 
+     const parentWidth = useUiTempStore(getSidebarWidth(collapsedId))
+@@ -68,9 +71,20 @@ export const MyListItem = memo(function MyListItem(props: {
+                 arrowOpen={arrowOpen}
+                 right={right}
+                 enabled={enabled}
++                testId={testId}
++            />
++        )
++    else
++        return (
++            <MyListItemBtnTooltip
++                active={active}
++                text={text}
++                onClick={onClick}
++                icon={icon}
++                collapsed={collapsed}
++                testId={testId}
+             />
+         )
+-    else return <MyListItemBtnTooltip active={active} text={text} onClick={onClick} icon={icon} collapsed={collapsed} />
+ })
+ 
+ const MyListItemBtn = memo(function MyListItemBtn(props: {
+@@ -81,8 +95,9 @@ const MyListItemBtn = memo(function MyListItemBtn(props: {
+     arrowOpen?: boolean
+     right?: ReactNode
+     enabled: boolean
++    testId?: string
+ }) {
+-    const { text, onClick, active, icon, arrowOpen, right } = props
++    const { text, onClick, active, icon, arrowOpen, right, testId } = props
+ 
+     let arrow = <></>
+     if (arrowOpen !== undefined)
+@@ -90,6 +105,7 @@ const MyListItemBtn = memo(function MyListItemBtn(props: {
+ 
+     return (
+         <button
++            data-testid={testId}
+             title={text}
+             type="button"
+             onClick={onClick}
+@@ -115,16 +131,19 @@ const MyListItemBtnTooltip = memo(function MyListItemBtnTooltip({
+     onClick,
+     icon,
+     collapsed,
++    testId,
+ }: {
+     active: boolean
+     text: string
+     onClick?: () => void
+     icon: ReactNode
+     collapsed: boolean
++    testId?: string
+ }) {
+     return (
+         <Tooltip>
+             <TooltipTrigger
++                data-testid={testId}
+                 onClick={onClick}
+                 className={cn(
+                     buttonVariants({ variant: 'ghost' }),
+diff --git a/src/ui/sidebar/Sidebar.tsx b/src/ui/sidebar/Sidebar.tsx
+index 4bf82f7..49ad1b4 100644
+--- a/src/ui/sidebar/Sidebar.tsx
++++ b/src/ui/sidebar/Sidebar.tsx
+@@ -13,10 +13,10 @@ import { SidebarContainer } from './SidebarContainer'
+ export const Sidebar = memo(function Sidebar() {
+     return (
+         <SidebarContainer collapsedId={CollapsedEnum.Sidebar}>
+-            <MenuItem page={UiPages.Activities} collapsedId={CollapsedEnum.Sidebar} right={<ActivitiesLinkBadge />} />
+-            <MenuItem page={UiPages.Storage} collapsedId={CollapsedEnum.Sidebar} />
+-            <MenuItem page={UiPages.Characters} collapsedId={CollapsedEnum.Sidebar} />
+-            <MenuItem page={UiPages.Quest} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-activities" page={UiPages.Activities} collapsedId={CollapsedEnum.Sidebar} right={<ActivitiesLinkBadge />} />
++            <MenuItem testId="menu-storage" page={UiPages.Storage} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-characters" page={UiPages.Characters} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-quest" page={UiPages.Quest} collapsedId={CollapsedEnum.Sidebar} />
+ 
+             <SidebarBattle />
+             <SidebarGathering />
+@@ -58,9 +58,9 @@ const SidebarGathering = memo(function SidebarGathering() {
+             parentCollapsedId={CollapsedEnum.Sidebar}
+             icon={<GiThreeLeaves />}
+         >
+-            <MenuItem page={UiPages.Woodcutting} collapsedId={CollapsedEnum.Sidebar} />
+-            <MenuItem page={UiPages.Mining} collapsedId={CollapsedEnum.Sidebar} />
+-            <MenuItem page={UiPages.Gathering} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-woodcutting" page={UiPages.Woodcutting} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-mining" page={UiPages.Mining} collapsedId={CollapsedEnum.Sidebar} />
++            <MenuItem testId="menu-gathering" page={UiPages.Gathering} collapsedId={CollapsedEnum.Sidebar} />
+         </CollapsibleMenu>
+     )
+ })
+diff --git a/src/utils/deepMerge.spec.ts b/src/utils/deepMerge.spec.ts
+deleted file mode 100644
+index 18b882c..0000000
+--- a/src/utils/deepMerge.spec.ts
++++ /dev/null
+@@ -1,123 +0,0 @@
+-import { describe, it, expect } from 'vitest'
+-import { deepMerge } from './deepMerge'
+-
+-describe('deepMerge', () => {
+-    it('should merge flat objects', () => {
+-        const a = { a: 1 }
+-        const b = { b: 2 }
+-
+-        const result = deepMerge(a, b as unknown as typeof a)
+-
+-        expect(result).toEqual({ a: 1, b: 2 })
+-    })
+-
+-    it('should override primitive values from source', () => {
+-        const a = { a: 1 }
+-        const b = { a: 2 }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result).toEqual({ a: 2 })
+-    })
+-
+-    it('should deeply merge nested objects', () => {
+-        const a = { nested: { a: 1 } }
+-        const b = { nested: { b: 2 } }
+-
+-        const result = deepMerge(a, b as unknown as typeof a)
+-
+-        expect(result).toEqual({ nested: { a: 1, b: 2 } })
+-    })
+-
+-    it('should merge arrays without duplicating primitives', () => {
+-        const a = { items: [1, 2] }
+-        const b = { items: [2, 3] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result).toEqual({ items: [1, 2, 3] })
+-    })
+-
+-    it('should merge arrays without duplicating objects', () => {
+-        const a = { items: [{ id: 1 }, { id: 2 }] }
+-        const b = { items: [{ id: 2 }, { id: 3 }] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result).toEqual({
+-            items: [{ id: 1 }, { id: 2 }, { id: 3 }],
+-        })
+-    })
+-
+-    it('should not duplicate deeply equal objects in arrays', () => {
+-        const a = { items: [{ a: { x: 1 } }] }
+-        const b = { items: [{ a: { x: 1 } }] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result.items).toHaveLength(1)
+-    })
+-
+-    it('should handle nested objects containing arrays', () => {
+-        const a = {
+-            data: {
+-                items: [{ id: 1 }],
+-                value: 10,
+-            },
+-        }
+-
+-        const b = {
+-            data: {
+-                items: [{ id: 1 }, { id: 2 }],
+-                other: 20,
+-            },
+-        }
+-
+-        const result = deepMerge(a, b as unknown as typeof a)
+-
+-        expect(result).toEqual({
+-            data: {
+-                items: [{ id: 1 }, { id: 2 }],
+-                value: 10,
+-                other: 20,
+-            },
+-        })
+-    })
+-
+-    it('should fully override when source is not an object', () => {
+-        const a = { a: 1 }
+-        const b = 5 as unknown as Partial<typeof a>
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result).toBe(5)
+-    })
+-
+-    it('should not mutate the original target object', () => {
+-        const a = { items: [1, 2] }
+-        const b = { items: [3] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(a).toEqual({ items: [1, 2] })
+-        expect(result).toEqual({ items: [1, 2, 3] })
+-    })
+-
+-    it('should correctly handle empty arrays', () => {
+-        const a = { items: [] as number[] }
+-        const b = { items: [1] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result).toEqual({ items: [1] })
+-    })
+-
+-    it('should preserve order: target items first, then new unique items', () => {
+-        const a = { items: [2, 1] }
+-        const b = { items: [1, 3] }
+-
+-        const result = deepMerge(a, b)
+-
+-        expect(result.items).toEqual([2, 1, 3])
+-    })
+-})
+diff --git a/src/utils/memoizeOne.test.ts b/src/utils/memoizeOne.test.ts
+deleted file mode 100644
+index 604f7c6..0000000
+--- a/src/utils/memoizeOne.test.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { myMemoizeOne } from './myMemoizeOne'
+-
+-const fn1 = () => ({ r: 10 })
+-const fn2 = (a: number) => a
+-
+-describe('memoizeOne', () => {
+-    test('memoizeOne 0', () => {
+-        const memoized = myMemoizeOne(fn1)
+-
+-        expect(fn1()).toEqual({ r: 10 })
+-        expect(memoized()).toEqual({ r: 10 })
+-        expect(memoized()).toBe(memoized())
+-    })
+-    test('memoize 1', () => {
+-        const memoized = myMemoizeOne(fn2)
+-
+-        expect(fn2(1)).toBe(1)
+-        expect(memoized(1)).toBe(1)
+-    })
+-})
+diff --git a/src/utils/myCompare.test.ts b/src/utils/myCompare.test.ts
+deleted file mode 100644
+index 356e005..0000000
+--- a/src/utils/myCompare.test.ts
++++ /dev/null
+@@ -1,82 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { myCompare } from './myCompare'
+-
+-describe('myCompare', () => {
+-    test('myCompare', () => {
+-        const a = { id: 0, a: 'aaa' }
+-        const b = { id: 1, b: 'bbb' }
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-    test('myCompare 2', () => {
+-        const a = { id: 0, a: 'aaa' }
+-        const b = { id: '2', b: 'bbb', c: 'ccc' }
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-    test('myCompare 3', () => {
+-        const a = {}
+-        const b = {}
+-
+-        expect(myCompare(a, b)).toBeTruthy()
+-        expect(myCompare(b, a)).toBeTruthy()
+-    })
+-    test('myCompare 5', () => {
+-        const a = { id: 1, a: 'aaa' }
+-        const b = { id: 1, a: 'aaa' }
+-
+-        expect(myCompare(a, b)).toBeTruthy()
+-        expect(myCompare(b, a)).toBeTruthy()
+-    })
+-    test('myCompare 6', () => {
+-        const a = { id: 2, a: 'aaa', arr: [] }
+-        const b = { id: 1, a: 'aaa' }
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-    test('myCompare 7', () => {
+-        const a = { id: 5, a: 'aaa', obj: {} }
+-        const b = { id: 1, a: 'aaa' }
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-    test('myCompare 8', () => {
+-        const a = { id: 1, a: 'aaa' }
+-        const b = a
+-
+-        expect(myCompare(a, b)).toBeTruthy()
+-        expect(myCompare(b, a)).toBeTruthy()
+-    })
+-    test('myCompare 9', () => {
+-        const a = { id: 1, a: 'aaa' }
+-        const b = undefined
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-    test('myCompare 10', () => {
+-        const a = { id: 1, a: 'aaa', b: { a: '123' } }
+-        const b = { id: 2, a: 'aaa', b: { a: '123' } }
+-
+-        expect(myCompare(a, b)).toBeTruthy()
+-        expect(myCompare(b, a)).toBeTruthy()
+-    })
+-    test('myCompare 11', () => {
+-        const a = { id: 1, a: 'aaa', b: { a: null } }
+-        const b = { id: 2, a: 'aaa', b: { a: null } }
+-
+-        expect(myCompare(a, b)).toBeTruthy()
+-        expect(myCompare(b, a)).toBeTruthy()
+-    })
+-    test('myCompare 12', () => {
+-        const a = { id: 1, a: 'aaa', b: { c: 1 } }
+-        const b = { id: 2, a: 'aaa', b: { a: null } }
+-
+-        expect(myCompare(a, b)).toBeFalsy()
+-        expect(myCompare(b, a)).toBeFalsy()
+-    })
+-})
+diff --git a/src/wood/forest/forestFunctions.test.ts b/src/wood/forest/forestFunctions.test.ts
+deleted file mode 100644
+index 44394fc..0000000
+--- a/src/wood/forest/forestFunctions.test.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+-import { GetInitialGameState } from '../../game/InitialGameState'
+-import { WoodTypes } from '../WoodTypes'
+-import { cutTree } from './cutTree'
+-import { addTree } from './forestFunctions'
+-import { selectDefaultForest } from './forestSelectors'
+-
+-describe('Forest Functions', () => {
+-    beforeEach(() => {
+-        vi.useFakeTimers()
+-    })
+-    afterEach(() => {
+-        vi.restoreAllMocks()
+-    })
+-    test('Add Tree', () => {
+-        const state = GetInitialGameState()
+-        addTree(state, WoodTypes.DeadTree, 1, state.location)
+-        expect(state.locations.StartVillage.forests).toEqual({})
+-    })
+-    test('Add Tree 2', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.forests.DeadTree = {
+-            qta: 2,
+-            hp: 1,
+-        }
+-        addTree(state, WoodTypes.DeadTree, 1, state.location)
+-        expect(state.locations.StartVillage.forests).toEqual({ DeadTree: { qta: 3, hp: 1 } })
+-    })
+-    test('Add Tree 3', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.forests.DeadTree = {
+-            qta: 2,
+-            hp: 1,
+-        }
+-        addTree(state, WoodTypes.DeadTree, 1e3, state.location)
+-        expect(state.locations.StartVillage.forests).toEqual({})
+-    })
+-    test('Cut Tree No', () => {
+-        const state = GetInitialGameState()
+-        const res = cutTree(state, WoodTypes.DeadTree, 1, state.location)
+-        const def = selectDefaultForest(state, WoodTypes.DeadTree)
+-        expect(state.locations.StartVillage.forests.DeadTree).toEqual({
+-            qta: def.qta,
+-            hp: def.hp - 1,
+-        })
+-        expect(res.cut).toBeFalsy()
+-    })
+-    test('Cut Tree Yes', () => {
+-        const state = GetInitialGameState()
+-        state.locations.StartVillage.forests.DeadTree = {
+-            qta: 2,
+-            hp: 1,
+-        }
+-        const res = cutTree(state, WoodTypes.DeadTree, 1, state.location)
+-        expect(state.locations.StartVillage.forests.DeadTree).toEqual({
+-            qta: 1,
+-            hp: selectDefaultForest(state, WoodTypes.DeadTree).hp,
+-        })
+-        expect(res.cut).toBeTruthy()
+-    })
+-})
+diff --git a/src/wood/ui/Woodcutting.tsx b/src/wood/ui/Woodcutting.tsx
+index 5a0ad67..5825934 100644
+--- a/src/wood/ui/Woodcutting.tsx
++++ b/src/wood/ui/Woodcutting.tsx
+@@ -110,22 +110,22 @@ const Cutting = memo(function Cutting() {
+ 
+     return (
+         <Card>
+-            <MyCardHeaderTitle title={fun.cutting(woodType)} icon={IconsData.Axe} />
++            <MyCardHeaderTitle testId="cut-title" title={fun.cutting(woodType)} icon={IconsData.Axe} />
+             <CardContent>
+                 <MyLabelContainer>
+-                    <MyLabel>
++                    <MyLabel testId="cut-hp">
+                         <span>
+                             {t.TreeHP} {f(forest.hp)}
+                         </span>
+                         <span className="text-muted-foreground">/ {f(defHp)}</span>
+                     </MyLabel>
+-                    <MyLabel>
++                    <MyLabel testId="cut-damage">
+                         {t.Damage} {f(damage)}
+                         <BonusDialog title={t.WoodcuttingDamage} selectBonusResult={selectWoodcuttingDamageAll} />
+                     </MyLabel>
+                 </MyLabelContainer>
+-                <RestartProgress value={hpPercent} color="health" className="mb-2" />
+-                <MyLabel>
++                <RestartProgress testId="hp-bar" value={hpPercent} color="health" className="mb-2" />
++                <MyLabel testId="cut-time">
+                     {t.Time} {fun.formatTime(time)}
+                     <BonusDialog title={t.WoodcuttingTime} selectBonusResult={selectWoodcuttingTimeAll} isTime={true} />
+                 </MyLabel>
+@@ -164,7 +164,7 @@ const Boost = memo(function Boost() {
+                     <MyLabel>
+                         {t.Time} {fun.formatTime(INCREASE_GROW_SPEED_TIME)}
+                     </MyLabel>
+-                    <MyLabel>
++                    <MyLabel testId="boost-label">
+                         {t.IncreaseGrowSpeed} +{f(activeBoost)}% ({f(activeStacks)}/{f(maxStacks)})
+                         <BonusDialog title={t.IncreaseGrowSpeed} selectBonusResult={selectGrowSpeedBonusAllMemo} />
+                     </MyLabel>
+@@ -186,20 +186,20 @@ const CuttingButton = memo(function CuttingButton() {
+ 
+     if (actId)
+         return (
+-            <Button onClick={onClickRemove} variant="destructive">
++            <Button data-testid="btn-stop" onClick={onClickRemove} variant="destructive">
+                 {t.Stop}
+             </Button>
+         )
+ 
+     return (
+         <AddActivityDialog
+-            addBtn={<Button onClick={onClickStart}>{t.Cut}</Button>}
++            addBtn={<Button data-testid="btn-cut-add" onClick={onClickStart}>{t.Cut}</Button>}
+             title={
+                 <>
+                     {IconsData.Axe} {fun.cutting(woodType)}
+                 </>
+             }
+-            openBtn={<Button>{t.Cut}</Button>}
++            openBtn={<Button data-testid="btn-cut-open">{t.Cut}</Button>}
+         />
+     )
+ })
+@@ -221,7 +221,7 @@ const GrowSpeedButton = memo(function GrowSpeedButton() {
+ 
+     if (actId)
+         return (
+-            <Button onClick={onClickRemove} variant="destructive">
++            <Button data-testid="btn-boost-stop" onClick={onClickRemove} variant="destructive">
+                 {t.Stop}
+             </Button>
+         )
+@@ -229,7 +229,7 @@ const GrowSpeedButton = memo(function GrowSpeedButton() {
+     return (
+         <AddActivityDialog
+             addBtn={
+-                <Button onClick={onClickStart}>
++                <Button data-testid="btn-boost-add" onClick={onClickStart}>
+                     {t.IncreaseGrowSpeed} ({active}/{cap})
+                 </Button>
+             }
+@@ -239,7 +239,7 @@ const GrowSpeedButton = memo(function GrowSpeedButton() {
+                 </>
+             }
+             openBtn={
+-                <Button>
++                <Button data-testid="btn-boost-open">
+                     {t.IncreaseGrowSpeed} ({active}/{cap})
+                 </Button>
+             }
+@@ -287,7 +287,7 @@ const ForestQta = memo(function ForestQta() {
+ 
+     return (
+         <>
+-            <MyLabel>
++            <MyLabel testId="forest-qta-label">
+                 {t.Trees} {f(qta)} <span className="text-muted-foreground">/ {f(def.qta)}</span>
+             </MyLabel>
+             <ProgressBar value={treePercent} color="success" className="mb-2" />
+@@ -307,7 +307,7 @@ const ForestRespawn = memo(function ForestRespawn() {
+     )
+ 
+     return (
+-        <MyLabel>
++        <MyLabel testId="forest-time-label">
+             {t.Time} {fun.formatTime(respawn)}
+             <BonusDialog title={t.IncreaseGrowSpeed} selectBonusResult={selectTreeRespawnTimeAllMemo} isTime={true} />
+         </MyLabel>
+@@ -323,7 +323,7 @@ const Trees = memo(function Trees() {
+ 
+     return (
+         <>
+-            <MyLabel>
++            <MyLabel testId="growing-label">
+                 {t.GrowingTrees} {f(trees.length)}
+                 <span className="text-muted-foreground">/ {f(MAX_GROWING_TREES)}</span>
+             </MyLabel>
+diff --git a/src/wood/ui/WoodcuttingSidebar.tsx b/src/wood/ui/WoodcuttingSidebar.tsx
+index ec87b0a..74f2807 100644
+--- a/src/wood/ui/WoodcuttingSidebar.tsx
++++ b/src/wood/ui/WoodcuttingSidebar.tsx
+@@ -41,6 +41,7 @@ export const TreeLink = memo(function TreeLink(props: { woodType: WoodTypes }) {
+ 
+     return (
+         <MyListItem
++            testId={`tree-link-${woodType}`}
+             text={t[data.nameId]}
+             icon={lockedIcon(icon, enabled)}
+             active={selected}

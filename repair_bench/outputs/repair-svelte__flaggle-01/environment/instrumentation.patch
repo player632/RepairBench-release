@@ -1,0 +1,198 @@
+diff --git a/src/lib/components/modal/confirm.svelte b/src/lib/components/modal/confirm.svelte
+index ed2248f..ab85b02 100644
+--- a/src/lib/components/modal/confirm.svelte
++++ b/src/lib/components/modal/confirm.svelte
+@@ -25,8 +25,8 @@
+ <Modal {title} bind:this={modal} onclose={onreject}>
+   <p class="my-2 text-base-content/80">{body}</p>
+   <form method="dialog" class="my-1 flex gap-2">
+-    <button class="btn flex-1">Cancel</button>
+-    <button class="btn flex-1" onclick={onaccept}>
++    <button class="btn flex-1" data-testid="confirm-cancel">Cancel</button>
++    <button class="btn flex-1" onclick={onaccept} data-testid="confirm-accept">
+       {action}
+     </button>
+   </form>
+diff --git a/src/lib/components/ui/navigation.svelte b/src/lib/components/ui/navigation.svelte
+index 9986eb2..5cae87c 100644
+--- a/src/lib/components/ui/navigation.svelte
++++ b/src/lib/components/ui/navigation.svelte
+@@ -13,17 +13,19 @@
+ </script>
+ 
+ <nav
++  data-testid="nav"
+   in:fly={{ y: 48, duration: 500, delay: 300 }}
+   out:fly={{ y: 48, duration: 500 }}
+   class="bg-base-200 fixed bottom-0 left-0 z-50 flex h-12 w-full gap-1 p-2 shadow-lg"
+ >
+-  <a href="/" class="btn btn-sm btn-ghost btn-square text-lg transition-colors" aria-label="Home">
++  <a href="/" class="btn btn-sm btn-ghost btn-square text-lg transition-colors" aria-label="Home" data-testid="nav-home">
+     <LucideArrowLeft />
+   </a>
+   <div class="flex flex-1 items-center justify-center">
+     {#each modes as mode}
+       {@const active = page.url.pathname === "/" + mode.path}
+       <a
++        data-testid="nav-mode"
+         href="/{mode.path}"
+         class={{
+           "btn btn-sm btn-ghost font-title -mx-1 text-2xl transition-colors hover:z-10": true,
+@@ -37,7 +39,7 @@
+   <a
+     href="/settings"
+     class="btn btn-sm btn-ghost btn-square text-lg transition-colors"
+-    aria-label="Settings"
++    aria-label="Settings" data-testid="nav-settings"
+   >
+     <LucideSettings />
+   </a>
+diff --git a/src/lib/components/widgets/classic-feed.svelte b/src/lib/components/widgets/classic-feed.svelte
+index 5c2e6cb..446279e 100644
+--- a/src/lib/components/widgets/classic-feed.svelte
++++ b/src/lib/components/widgets/classic-feed.svelte
+@@ -15,7 +15,7 @@
+   let { items }: { items: Guess[] } = $props();
+ </script>
+ 
+-<div class="relative z-0 flex flex-col gap-4">
++<div class="relative z-0 flex flex-col gap-4" data-testid="classic-feed">
+   {#each items as guess, i}
+     <div
+       class={{
+diff --git a/src/lib/components/widgets/flag-input.svelte b/src/lib/components/widgets/flag-input.svelte
+index 490b190..cbb6f58 100644
+--- a/src/lib/components/widgets/flag-input.svelte
++++ b/src/lib/components/widgets/flag-input.svelte
+@@ -101,7 +101,7 @@
+   <div
+     in:fly={{ duration: 100, y: -10 }}
+     out:fly={{ duration: 100, y: -10 }}
+-    class="bg-base-200 rounded-field absolute top-[calc(100%+1rem)] left-0 z-10 flex w-full flex-col overflow-hidden shadow-xl"
++    class="bg-base-200 rounded-field absolute top-[calc(100%+1rem)] left-0 z-10 flex w-full flex-col overflow-hidden shadow-xl" data-testid="suggestions"
+   >
+     {#each results as flag, i}
+       <button
+@@ -135,6 +135,7 @@
+     bind:value={query}
+     bind:this={input}
+     type="text"
++    data-testid="flag-input"
+     class="font-title min-w-0 flex-1 bg-transparent text-2xl"
+     placeholder="Guess a flag!"
+     onkeydown={(e) => {
+@@ -155,7 +156,7 @@
+   <button
+     class="btn btn-square btn-ghost btn-sm text-lg"
+     onclick={submitQuery}
+-    aria-label="submit guess"
++    aria-label="submit guess" data-testid="submit-guess"
+   >
+     <LucideArrowRight />
+   </button>
+diff --git a/src/lib/components/widgets/lightning-feed.svelte b/src/lib/components/widgets/lightning-feed.svelte
+index cf40096..200685a 100644
+--- a/src/lib/components/widgets/lightning-feed.svelte
++++ b/src/lib/components/widgets/lightning-feed.svelte
+@@ -10,7 +10,7 @@
+   export let items: Guess[] = [];
+ </script>
+ 
+-<div class="flex flex-col gap-2 overflow-auto">
++<div class="flex flex-col gap-2 overflow-auto" data-testid="lightning-feed">
+   {#each Array(6) as _, i}
+     {@const guess = items[i]}
+     {#if guess}
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index a16fcb5..1753911 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -47,3 +47,7 @@ export class Database extends Dexie {
+ }
+ 
+ export const db = new Database();
++
++if (typeof window !== "undefined") {
++  (window as any).__FLAGGLE_DB__ = db;
++}
+diff --git a/src/lib/settings.svelte.ts b/src/lib/settings.svelte.ts
+index 655c5de..099f684 100644
+--- a/src/lib/settings.svelte.ts
++++ b/src/lib/settings.svelte.ts
+@@ -16,3 +16,7 @@ export const settings: { current: Settings } = $state({
+ export function resetSettings() {
+   settings.current = Object.assign({}, defaultValues);
+ }
++
++if (typeof window !== "undefined") {
++  (window as any).__FLAGGLE_SETTINGS__ = settings;
++}
+diff --git a/src/routes/classic/+page.svelte b/src/routes/classic/+page.svelte
+index e79b25d..bf295ff 100644
+--- a/src/routes/classic/+page.svelte
++++ b/src/routes/classic/+page.svelte
+@@ -133,7 +133,7 @@
+           <p in:fly={{ duration: 500, x: -50 }} class="font-title">
+             {gameState.target?.name}
+           </p>
+-          <button class="btn font-title text-2xl" onclick={playAgain}> Play Again </button>
++          <button class="btn font-title text-2xl" onclick={playAgain} data-testid="play-again"> Play Again </button>
+         {/if}
+       </div>
+     </div>
+@@ -141,7 +141,7 @@
+   <ClassicFeed items={gameState.guesses} />
+   {#if gameState.guesses.length > 0 && !gameState.isGameOver}
+     <button
+-      class="btn font-title self-center text-2xl opacity-50 transition-opacity hover:opacity-100"
++      class="btn font-title self-center text-2xl opacity-50 transition-opacity hover:opacity-100" data-testid="give-up"
+       onclick={() => {
+         confirm.prompt();
+       }}
+diff --git a/src/routes/lightning/+page.svelte b/src/routes/lightning/+page.svelte
+index d18128d..da92a13 100644
+--- a/src/routes/lightning/+page.svelte
++++ b/src/routes/lightning/+page.svelte
+@@ -147,7 +147,7 @@
+   <LightningFeed items={gameState.guesses}></LightningFeed>
+   {#if !gameState.isGameOver}
+     <button
+-      class="btn font-title self-center text-2xl opacity-50 transition-opacity hover:opacity-100"
++      class="btn font-title self-center text-2xl opacity-50 transition-opacity hover:opacity-100" data-testid="give-up"
+       onclick={() => {
+         confirm.prompt();
+       }}
+@@ -155,7 +155,7 @@
+       Give Up
+     </button>
+   {:else}
+-    <button class="btn font-title self-center text-2xl" onclick={playAgain}> Play Again </button>
++    <button class="btn font-title self-center text-2xl" onclick={playAgain} data-testid="play-again"> Play Again </button>
+   {/if}
+ </GameContainer>
+ 
+diff --git a/src/routes/settings/+page.svelte b/src/routes/settings/+page.svelte
+index eb3d061..e2f6957 100644
+--- a/src/routes/settings/+page.svelte
++++ b/src/routes/settings/+page.svelte
+@@ -55,7 +55,7 @@
+         Save a copy of your statistics (settings and game state will not be preserved)
+       {/snippet}
+       <div class="flex items-center gap-1">
+-        <button class="btn-sm btn h-auto" onclick={exportSaveModal?.show}>Export</button>
++        <button class="btn-sm btn h-auto" onclick={exportSaveModal?.show} data-testid="settings-export">Export</button>
+         <button class="btn-sm btn h-auto" onclick={importSaveModal?.show}>Import</button>
+       </div>
+     </SettingsFieldContainer>
+diff --git a/src/routes/settings/export-save-modal.svelte b/src/routes/settings/export-save-modal.svelte
+index d157ed2..b24c835 100644
+--- a/src/routes/settings/export-save-modal.svelte
++++ b/src/routes/settings/export-save-modal.svelte
+@@ -16,6 +16,7 @@
+ <Modal title="Export Save" bind:this={modal}>
+   <textarea
+     bind:this={textarea}
++    data-testid="export-textarea"
+     readonly
+     class="textarea w-full resize-none"
+     rows="5"

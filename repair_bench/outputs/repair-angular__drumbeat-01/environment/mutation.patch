@@ -1,0 +1,157 @@
+diff --git a/src/app/infrastructure/adapters/audio-engine/audio-engine.adapter.ts b/src/app/infrastructure/adapters/audio-engine/audio-engine.adapter.ts
+index e1368e8..e0f45d1 100644
+--- a/src/app/infrastructure/adapters/audio-engine/audio-engine.adapter.ts
++++ b/src/app/infrastructure/adapters/audio-engine/audio-engine.adapter.ts
+@@ -118,7 +118,7 @@ export class AudioEngineAdapter implements IAudioEngine {
+   }
+ 
+   playPause(): void {
+-    if (this.isPlaying)
++    if (!this.isPlaying)
+       this.pause()
+     else
+       this.play();
+@@ -183,7 +183,7 @@ export class AudioEngineAdapter implements IAudioEngine {
+   }
+ 
+   private toggleStep(newTrack: Track, oldTrack: Track) {
+-    if(newTrack.isMuted)
++    if(!newTrack.isMuted)
+       return;
+ 
+     newTrack.steps.steps.forEach((enabled, stepIdx) => {
+diff --git a/src/app/infrastructure/adapters/audio-export/audio-export.adapter.ts b/src/app/infrastructure/adapters/audio-export/audio-export.adapter.ts
+index 83d861d..a005eab 100644
+--- a/src/app/infrastructure/adapters/audio-export/audio-export.adapter.ts
++++ b/src/app/infrastructure/adapters/audio-export/audio-export.adapter.ts
+@@ -15,7 +15,7 @@ export class AudioExportAdapter implements IAudioExport {
+     options: AudioExportOptions
+   ): Promise<Blob> {
+     const barDurationSeconds = this.tempoService.barDuration;
+-    const totalDurationSeconds = barDurationSeconds * options.loopCount;
++    const totalDurationSeconds = barDurationSeconds;
+     const sampleRate = 44100;
+ 
+     const rawBuffers = await this.loadAllBuffers(tracks);
+diff --git a/src/app/infrastructure/adapters/midi-export/midi-exporter.service.ts b/src/app/infrastructure/adapters/midi-export/midi-exporter.service.ts
+index 0d45ce0..704b34e 100644
+--- a/src/app/infrastructure/adapters/midi-export/midi-exporter.service.ts
++++ b/src/app/infrastructure/adapters/midi-export/midi-exporter.service.ts
+@@ -25,7 +25,7 @@ export class MidiExportService implements IMidi {
+     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+     midiTrack.setTempo(beat.bpm.valueOf());
+     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+-    midiTrack.setTimeSignature(4, 4);
++    midiTrack.setTimeSignature(beat.beatsPerBar, beat.beatsPerBar);
+ 
+     const TICKS_PER_STEP = 32;
+     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+diff --git a/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.ts b/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.ts
+index 48d9d43..b078d26 100644
+--- a/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.ts
++++ b/src/app/ui/components/modals/export-midi-modal/export-midi-modal.component.ts
+@@ -51,9 +51,7 @@ export class ExportMidiModalComponent extends BaseModalComponent<MidiExportOptio
+ 
+   override onValidate(): void {
+     if (this.form.valid) {
+-      this.validate.emit({
+-        filename: this.form.controls.filename.value!,
+-      });
++      this.close.emit();
+     }
+   }
+ }
+diff --git a/src/app/ui/components/sequencer/sequencer.component.html b/src/app/ui/components/sequencer/sequencer.component.html
+index 151b692..9fb3f24 100644
+--- a/src/app/ui/components/sequencer/sequencer.component.html
++++ b/src/app/ui/components/sequencer/sequencer.component.html
+@@ -13,7 +13,7 @@
+       </button>
+       <app-bpm-input [bpm]="this.tempoService.bpm" (bpmChange)="changeBeatBpm($event)"></app-bpm-input>
+       <div class="flex">
+-        <button class="button square-button undo" data-testid="undo-btn" (click)="sequencerService.dispatch({ type: 'UNDO'})"
++        <button class="button square-button undo" data-testid="undo-btn" (click)="sequencerService.dispatch({ type: 'REDO'})"
+           [disabled]="sequencerService.vm$.getValue().historyLength <= minHistoryLength">
+           <img alt="undo" aria-label="Undo" [ngSrc]="'assets/images/icons/undo.svg' | iconDarkMode" height="28"
+             width="28">
+diff --git a/src/app/ui/components/sequencer/sequencer.component.ts b/src/app/ui/components/sequencer/sequencer.component.ts
+index fc766ce..9213207 100644
+--- a/src/app/ui/components/sequencer/sequencer.component.ts
++++ b/src/app/ui/components/sequencer/sequencer.component.ts
+@@ -214,7 +214,7 @@ export class SequencerComponent implements OnInit, OnDestroy {
+     } else {
+       void this.sequencerService.dispatch({
+         type: 'SET_STEPS',
+-        payload: { trackName, fromStepIndex: from, toStepIndex: to, velocity: !this.dragState!.value },
++        payload: { trackName, fromStepIndex: from, toStepIndex: to, velocity: this.dragState!.value },
+       });
+     }
+   }
+@@ -237,14 +237,14 @@ export class SequencerComponent implements OnInit, OnDestroy {
+ 
+   changeBeatBpm($event: number): void {
+     this.soundService.pause();
+-    void this.sequencerService.dispatch({ type: 'SET_TEMPO', payload: { tempo: $event } });
++    void this.sequencerService.dispatch({ type: 'SET_TEMPO', payload: { tempo: this.tempoService.bpm } });
+   }
+ 
+   addTrack(): void {
+     this.isBrowseAudioSamplesModalOpen = true;
+   }
+ 
+-  toggleMuteTrack = (trackName: string) => void this.sequencerService.dispatch({ type: 'TOGGLE_MUTE_TRACK', payload: { trackName } });
++  toggleMuteTrack = (trackName: string) => void this.sequencerService.dispatch({ type: 'TOGGLE_MUTE_TRACK', payload: { name: trackName } });
+ 
+   async onAudioExport(options: AudioExportOptions): Promise<void> {
+     this.isAudioExportModalOpen = false;
+diff --git a/src/app/ui/directives/long-press.directive.ts b/src/app/ui/directives/long-press.directive.ts
+index 55bbdec..cde64a6 100644
+--- a/src/app/ui/directives/long-press.directive.ts
++++ b/src/app/ui/directives/long-press.directive.ts
+@@ -37,7 +37,7 @@ export class LongPressDirective implements OnDestroy {
+       map(() => false)
+     );
+     const mouseup = fromEvent<MouseEvent>(window, 'mouseup').pipe(
+-      filter((event) => event.button == 0), // Only allow left button (Primary button)
++      filter((event) => event.button != 0), // Only allow left button (Primary button)
+       map(() => false) // reset threshold counter
+     );
+ 
+diff --git a/src/app/ui/services/light-dark-mode/mode-toggle.service.ts b/src/app/ui/services/light-dark-mode/mode-toggle.service.ts
+index 29bed56..5f7edfb 100644
+--- a/src/app/ui/services/light-dark-mode/mode-toggle.service.ts
++++ b/src/app/ui/services/light-dark-mode/mode-toggle.service.ts
+@@ -54,7 +54,7 @@ export class ModeToggleService {
+    */
+   private init() {
+     const deviceMode = window.matchMedia("(prefers-color-scheme: dark)");
+-    this.updateCurrentMode(deviceMode.matches ? Mode.DARK : Mode.LIGHT)
++    this.updateCurrentMode(deviceMode.matches ? Mode.LIGHT : Mode.DARK)
+     this.document.body.classList.add(this.currentMode)
+   }
+ }
+diff --git a/src/app/ui/services/sequencer/sequencer.service.ts b/src/app/ui/services/sequencer/sequencer.service.ts
+index 1f004f6..af8cf4c 100644
+--- a/src/app/ui/services/sequencer/sequencer.service.ts
++++ b/src/app/ui/services/sequencer/sequencer.service.ts
+@@ -37,10 +37,7 @@ export class SequencerService {
+         beats: this.genres.get(state.genre)?.map(x => x.label) ?? [],
+         beat: state.beat,
+         tracks: state.tracks.map(x => {
+-          const midiNote = x.midiNote !== null
+-            ? Option.some(x.midiNote)
+-            : Option.none();
+-          return new Track(x.name, x.filename, [...x.steps], x.isMuted, midiNote);
++          return new Track(x.name, x.filename, [...x.steps], x.isMuted, Option.none());
+         }),
+         tempo: BPM(state.tempo),
+         beatsPerBar: state.beatsPerBar,
+@@ -64,7 +61,7 @@ export class SequencerService {
+         this.genres.set(beatMeta.genre, beats);
+       }
+ 
+-      this.genresLabel = [...this.genres.keys()];
++      this.genresLabel = [...this.genres.keys()].reverse();
+     } catch (error) {
+       console.error("Failed to load beat manifest :(", error);
+       throw error;

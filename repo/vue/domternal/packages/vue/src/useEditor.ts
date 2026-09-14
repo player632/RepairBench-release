@@ -1,0 +1,227 @@
+import { markRaw, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import type { Ref, ShallowRef } from 'vue';
+import {
+  Editor,
+  Document,
+  Paragraph,
+  Text,
+  BaseKeymap,
+  History,
+} from '@domternal/core';
+import type { Content, AnyExtension, FocusPosition, EditorPreset, TransactionEventProps, FocusEventProps } from '@domternal/core';
+
+export const DEFAULT_EXTENSIONS: AnyExtension[] = [Document, Paragraph, Text, BaseKeymap, History];
+
+export interface UseEditorOptions {
+  /** Custom extensions to add to the editor. */
+  extensions?: AnyExtension[];
+  /**
+   * Whether the built-in History extension is included. Disable it when an
+   * extension brings its own undo/redo, such as collaborative editing.
+   * @default true
+   */
+  history?: boolean;
+  /** Initial editor content (HTML string or JSON). */
+  content?: Content;
+  /** Whether the editor is editable. @default true */
+  editable?: boolean;
+  /**
+   * Editing experience preset. `'notion'` paints `dm-notion-mode` on the
+   * `.dm-editor` wrapper and switches preset-aware extensions to their
+   * Notion behavior, replacing the hand-written class. Create-time only.
+   */
+  preset?: EditorPreset;
+  /** Where to autofocus on mount. @default false */
+  autofocus?: FocusPosition;
+  /** Output format for content comparison. @default 'html' */
+  outputFormat?: 'html' | 'json';
+  /**
+   * Set to true to create the editor synchronously during setup instead of
+   * waiting for onMounted. Only useful when SSR is not a concern.
+   * @default false
+   */
+  immediatelyRender?: boolean;
+  /** Called when the editor instance is created. */
+  onCreate?: (editor: Editor) => void;
+  /** Called when the document content changes. */
+  onUpdate?: (props: { editor: Editor }) => void;
+  /** Called when the selection changes without content change. */
+  onSelectionChange?: (props: { editor: Editor }) => void;
+  /** Called when the editor gains focus. */
+  onFocus?: (props: { editor: Editor; event: FocusEvent }) => void;
+  /** Called when the editor loses focus. */
+  onBlur?: (props: { editor: Editor; event: FocusEvent }) => void;
+  /** Called before the editor is destroyed. */
+  onDestroy?: () => void;
+}
+
+/**
+ * Core composable for creating and managing a Domternal editor instance.
+ *
+ * @example
+ * ```ts
+ * const { editor, editorRef } = useEditor({ extensions, content });
+ * ```
+ *
+ * @example SSR-safe (default in Vue - onMounted never runs on server)
+ * ```ts
+ * const { editor, editorRef } = useEditor({ extensions, content });
+ * // editor.value is null until onMounted
+ * ```
+ */
+export function useEditor(options: UseEditorOptions = {}): {
+  editor: ShallowRef<Editor | null>;
+  editorRef: Ref<HTMLDivElement | undefined>;
+} {
+  const editor = shallowRef<Editor | null>(null);
+  const editorRef = ref<HTMLDivElement>();
+  let pendingContent: Content | null = null;
+
+  function wireEvents(ed: Editor): void {
+    ed.on('transaction', ({ transaction }: TransactionEventProps) => {
+      // Mirror core's `update` event: skip programmatic writes (setContent(content, false))
+      // that set skipUpdate, so onUpdate never echoes a silent content sync.
+      if (transaction.docChanged && !transaction.getMeta('skipUpdate')) {
+        options.onUpdate?.({ editor: ed });
+      }
+      if (!transaction.docChanged && transaction.selectionSet) {
+        options.onSelectionChange?.({ editor: ed });
+      }
+    });
+
+    ed.on('focus', ({ event }: FocusEventProps) => {
+      options.onFocus?.({ editor: ed, event });
+    });
+
+    ed.on('blur', ({ event }: FocusEventProps) => {
+      options.onBlur?.({ editor: ed, event });
+    });
+  }
+
+  function createEditorInstance(element: HTMLElement, initialContent: Content, focus: FocusPosition): Editor {
+    const extensions = options.extensions ?? [];
+    const editable = options.editable ?? true;
+    const defaults = (options.history ?? false)
+      ? DEFAULT_EXTENSIONS
+      : DEFAULT_EXTENSIONS.filter((extension) => extension.name !== 'history');
+
+    const ed = new Editor({
+      element,
+      extensions: [...defaults, ...extensions],
+      content: initialContent,
+      editable,
+      autofocus: focus,
+      ...(options.preset ? { preset: options.preset } : {}),
+    });
+
+    markRaw(ed);
+    wireEvents(ed);
+    editor.value = ed;
+    options.onCreate?.(ed);
+    return ed;
+  }
+
+  function destroyCurrentEditor(insertClone = true): void {
+    const current = editor.value;
+    if (current && !current.isDestroyed) {
+      pendingContent = current.getJSON();
+      options.onDestroy?.();
+
+      // Clone editor DOM before destroy to prevent content flash during unmount
+      // transitions. The recreate path (insertClone=false) immediately mounts a
+      // new editor in the same place, so it must skip the clone to avoid leaving
+      // an orphan copy in the live container.
+      if (insertClone) {
+        const dom = current.view.dom;
+        const parent = dom.parentNode;
+        if (parent) {
+          const clone = dom.cloneNode(true) as HTMLElement;
+          clone.style.pointerEvents = 'none';
+          parent.insertBefore(clone, dom);
+        }
+      }
+
+      current.destroy();
+    }
+    editor.value = null;
+  }
+
+  if (options.immediatelyRender) {
+    const element = document.createElement('div');
+    createEditorInstance(element, options.content ?? '', options.autofocus ?? false);
+  }
+
+  onMounted(() => {
+    const ed = editor.value;
+    if (ed) {
+      // immediatelyRender path: the editor was created detached during setup.
+      // Adopt its DOM into the mount node so it is not left blank.
+      const mount = editorRef.value;
+      if (mount && ed.view.dom.parentElement !== mount) {
+        mount.appendChild(ed.view.dom);
+        // The detached-construction window is over; let a preset: 'notion'
+        // editor paint dm-notion-mode on the host it can now reach.
+        ed.adoptPresetClass();
+      }
+      return;
+    }
+
+    const element = editorRef.value ?? document.createElement('div');
+    const initialContent = pendingContent ?? options.content ?? '';
+    pendingContent = null;
+    createEditorInstance(element, initialContent, options.autofocus ?? false);
+  });
+
+  onScopeDispose(() => {
+    destroyCurrentEditor();
+  });
+
+  // Sync editable - watch options object property, not destructured primitive
+  watch(
+    () => options.editable ?? true,
+    (newEditable) => {
+      const ed = editor.value;
+      if (ed && !ed.isDestroyed) {
+        ed.setEditable(newEditable);
+      }
+    },
+  );
+
+  // Recreate editor when extensions array reference changes
+  watch(
+    () => options.extensions,
+    (newExtensions, oldExtensions) => {
+      if (!editor.value || editor.value.isDestroyed) return;
+      if (newExtensions === oldExtensions) return;
+
+      const element = editor.value.view.dom.parentElement ?? document.createElement('div');
+      destroyCurrentEditor(false);
+      const initialContent = pendingContent ?? '';
+      pendingContent = null;
+      createEditorInstance(element, initialContent, false);
+    },
+  );
+
+  // Sync content from outside
+  watch(
+    () => options.content,
+    (newContent) => {
+      const ed = editor.value;
+      if (!ed || ed.isDestroyed || newContent === undefined) return;
+
+      const outputFormat = options.outputFormat ?? 'html';
+      if (outputFormat === 'html') {
+        if (newContent !== ed.getHTML()) {
+          ed.setContent(newContent, false);
+        }
+      } else {
+        if (JSON.stringify(newContent) !== JSON.stringify(ed.getJSON())) {
+          ed.setContent(newContent, false);
+        }
+      }
+    },
+    { flush: 'post' },
+  );
+
+  return { editor, editorRef };
+}

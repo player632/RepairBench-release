@@ -1,0 +1,180 @@
+diff --git a/src/app/components/Dashboard.js b/src/app/components/Dashboard.js
+index 21c4b5f..fc0ec5c 100644
+--- a/src/app/components/Dashboard.js
++++ b/src/app/components/Dashboard.js
+@@ -84,7 +84,7 @@ export default function Dashboard(props) {
+           console.error(error);
+         });
+     }
+-  }, []);
++  }, [transactions]);
+ 
+   const valid_until = useSelector((state) => state.user?.profile?.valid_until);
+   // Alert states
+diff --git a/src/app/components/Search.js b/src/app/components/Search.js
+index 0edcecf..98a1881 100644
+--- a/src/app/components/Search.js
++++ b/src/app/components/Search.js
+@@ -16,7 +16,7 @@ import InputBase from "@mui/material/InputBase";
+ import LayoutFullWidth from "./layout/LayoutFullWidth";
+ 
+ let timer = null; // Store timeout to avoid search between each caracters
+-const DELAY_TYPE_TO_SEARCH = 5000;
++const DELAY_TYPE_TO_SEARCH = 500;
+ 
+ import SearchIcon from "@mui/icons-material/Search";
+ 
+diff --git a/src/app/components/Transactions.js b/src/app/components/Transactions.js
+index f1058c2..6047c04 100644
+--- a/src/app/components/Transactions.js
++++ b/src/app/components/Transactions.js
+@@ -129,6 +129,7 @@ export default function Transactions(props) {
+     }
+     // new date on UTC
+     const newDate = new Date(params.year, params.month - 1, 1);
++    setDateBegin(newDate);
+     refreshData(null, newDate);
+   }, [params.year, params.month]);
+ 
+diff --git a/src/app/components/categories/Category.js b/src/app/components/categories/Category.js
+index 073f235..cc18d68 100644
+--- a/src/app/components/categories/Category.js
++++ b/src/app/components/categories/Category.js
+@@ -5,7 +5,6 @@ import { useNavigate, useParams } from "react-router-dom";
+ import { useTheme } from "@mui/material/styles";
+ 
+ import Box from "@mui/material/Box";
+-import CircularProgress from "@mui/material/CircularProgress";
+ 
+ import ExpandMore from "@mui/icons-material/ExpandMore";
+ import Button from "@mui/material/Button";
+@@ -39,14 +38,6 @@ export function Category(props) {
+   const [statistics, setStatistics] = useState(null);
+   const isConfidential = useSelector((state) => state.app.isConfidential);
+ 
+-  if (!category) {
+-    return (
+-      <Box sx={{ display: "flex", justifyContent: "center", padding: 6 }}>
+-        <CircularProgress />
+-      </Box>
+-    );
+-  }
+-
+   function performSearch(category) {
+     dispatch(StatisticsActions.perCategory(category.id))
+       .then((statistics) => {
+diff --git a/src/app/components/transactions/TransactionForm.js b/src/app/components/transactions/TransactionForm.js
+index 51bd3ec..ffa38a3 100644
+--- a/src/app/components/transactions/TransactionForm.js
++++ b/src/app/components/transactions/TransactionForm.js
+@@ -194,7 +194,7 @@ export default function TransactionForm(props) {
+     // Update is recursive values
+     setIsRecurrent(Boolean(transaction.frequency && transaction.duration));
+     setAdjustments(transaction.adjustments);
+-    setIsPending(!transaction.originalPending);
++    setIsPending(transaction.originalPending);
+     if (transaction.frequency && transaction.duration) {
+       setDuration(transaction.duration);
+       setFrequency(transaction.frequency);
+@@ -382,6 +382,12 @@ export default function TransactionForm(props) {
+         notes: notes ?? null,
+       };
+ 
++      if (isRecurrent) {
++        transaction.frequency = frequency;
++        transaction.duration = duration;
++        transaction.adjustments = adjustments;
++      }
++
+       const promises = [];
+       promises.push(
+         dispatch(
+@@ -504,6 +510,7 @@ export default function TransactionForm(props) {
+                     onChange={(event) =>
+                       setAmount(event.target.value.replace(",", "."))
+                     }
++                    value={amount}
+                     error={Boolean(error.local_amount)}
+                     helperText={error.local_amount}
+                     margin="normal"
+diff --git a/src/app/reducers/changes.reducer.js b/src/app/reducers/changes.reducer.js
+index 39a0a3e..b9221c9 100644
+--- a/src/app/reducers/changes.reducer.js
++++ b/src/app/reducers/changes.reducer.js
+@@ -12,7 +12,7 @@ function changes(state = initialState, action) {
+     case CHANGES_READ_REQUEST:
+       return Object.assign({}, state, {
+         list: action.list.sort((a, b) => (a.date < b.date ? 1 : -1)),
+-        chain: action.list,
++        chain: action.chain,
+       });
+     case ACCOUNTS_SWITCH_REQUEST: {
+       return null;
+diff --git a/src/app/reducers/transactions.reducer.js b/src/app/reducers/transactions.reducer.js
+index 5013c1f..e96de8a 100644
+--- a/src/app/reducers/transactions.reducer.js
++++ b/src/app/reducers/transactions.reducer.js
+@@ -16,11 +16,7 @@ function transactions(state = initialState, action) {
+     case TRANSACTIONS_READ_REQUEST:
+       return Array.from(action.transactions || []);
+     case TRANSACTIONS_DELETE_REQUEST: {
+-      const index = state.findIndex((t) => t.id === action.id);
+-      if (index !== -1) {
+-        state.splice(index, 1);
+-      }
+-      return state;
++      return state.filter((t) => t.id !== action.id);
+     }
+     case TRANSACTIONS_CREATE_REQUEST: {
+       let transactions = Array.from(state);
+diff --git a/src/app/utils/change.js b/src/app/utils/change.js
+index 0cb5614..77741d8 100644
+--- a/src/app/utils/change.js
++++ b/src/app/utils/change.js
+@@ -164,7 +164,7 @@ function getChangeChain(accountId) {
+           }
+ 
+           chain = chain.sort((a, b) => {
+-            return a.date > b.date ? 1 : -1;
++            return a.date < b.date ? 1 : -1;
+           });
+ 
+           resolve(chain);
+diff --git a/src/app/utils/transaction.js b/src/app/utils/transaction.js
+index c2471dc..5bbd1de 100644
+--- a/src/app/utils/transaction.js
++++ b/src/app/utils/transaction.js
+@@ -72,7 +72,7 @@ function generateRecurrences(transaction) {
+     return [transaction];
+   }
+   const result = [];
+-  for (let i = 0; i < transaction.duration - 1; i++) {
++  for (let i = 0; i < transaction.duration; i++) {
+     if (transaction.adjustments && transaction.adjustments[i]) {
+       result.push(
+         Object.assign({}, transaction, {
+diff --git a/src/app/workers/Statistics.worker.js b/src/app/workers/Statistics.worker.js
+index 274e248..7a252a9 100644
+--- a/src/app/workers/Statistics.worker.js
++++ b/src/app/workers/Statistics.worker.js
+@@ -411,7 +411,7 @@ function generateStatistics(transactions = [], action = {}) {
+     perCategoriesArray?.forEach((category) => {
+       if (category.sum < 0) {
+         category.percentage = (category.sum / minCategory) * 100;
+-        category.percentageTotal = (category.sum / incomes) * 100;
++        category.percentageTotal = (category.sum / expenses) * 100;
+       } else if (category.sum > 0) {
+         category.percentage = (category.sum / maxCategory) * 100;
+         category.percentageTotal = (category.sum / incomes) * 100;
+diff --git a/src/app/workers/Transactions.worker.js b/src/app/workers/Transactions.worker.js
+index d5c9710..bec470c 100644
+--- a/src/app/workers/Transactions.worker.js
++++ b/src/app/workers/Transactions.worker.js
+@@ -158,6 +158,7 @@ onmessage = function (event) {
+             originalAmount: response_transaction.local_amount,
+             originalCurrency: response_transaction.local_currency,
+             originalPending: response_transaction.isPending,
++            category: response_transaction.category,
+             // Calculated value
+             isConversionAccurate: true, // Define is exchange rate is exact or estimated
+             isConversionFromFuturChange: false, // If we used future change to make calculation

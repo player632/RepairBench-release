@@ -1,0 +1,153 @@
+diff --git a/src/app/app.ts b/src/app/app.ts
+index db55bf9..4911abf 100644
+--- a/src/app/app.ts
++++ b/src/app/app.ts
+@@ -40,6 +40,6 @@ export class App {
+       : lightBackgroundImage;
+     const isImageAnUrl = selectedImage.startsWith('https') || selectedImage.startsWith('http');
+ 
+-    bgLayer.style.backgroundImage = `url(${isImageAnUrl ? '' : '/img/'}${selectedImage})`;
++    bgLayer.style.backgroundImage = `url(${isImageAnUrl ? '/img/' : ''}${selectedImage})`;
+   }
+ }
+diff --git a/src/app/core/models/dashboard.models.ts b/src/app/core/models/dashboard.models.ts
+index b721f1f..2418da8 100644
+--- a/src/app/core/models/dashboard.models.ts
++++ b/src/app/core/models/dashboard.models.ts
+@@ -102,7 +102,7 @@ export const DashboardSettingsSchema = z.object({
+   searchEngines: z
+     .array(z.enum(['google', 'duckduckgo', 'startpage', 'youtube'] as const))
+     .default([]),
+-  lightBackgroundImage: z.string().default('background-light.jpg'),
++  lightBackgroundImage: z.string().default('background.jpg'),
+   darkBackgroundImage: z.string().default('background.jpg'),
+ });
+ 
+diff --git a/src/app/core/services/app.service.ts b/src/app/core/services/app.service.ts
+index 90ad3bb..d8587af 100644
+--- a/src/app/core/services/app.service.ts
++++ b/src/app/core/services/app.service.ts
+@@ -44,9 +44,8 @@ export class AppService {
+             category: BOOKMARKS_CATEGORY.id,
+             favorite: false,
+           }))
+-        : []
+-      ).sort((a, b) => a.name.localeCompare(b.name)),
+-    ];
++        : []),
++    ].sort((a, b) => a.name.localeCompare(b.name));
+   });
+ 
+   /**
+diff --git a/src/app/core/services/category.service.ts b/src/app/core/services/category.service.ts
+index 9808159..6f0b72d 100644
+--- a/src/app/core/services/category.service.ts
++++ b/src/app/core/services/category.service.ts
+@@ -24,7 +24,7 @@ export class CategoryService {
+       categories.push(FAVORITES_CATEGORY);
+     }
+ 
+-    if (config.settings.showAllCategory) {
++    if (!config.settings.showAllCategory) {
+       categories.push(APP_CATEGORY);
+     }
+ 
+diff --git a/src/app/core/services/search.service.ts b/src/app/core/services/search.service.ts
+index 8a86263..0706503 100644
+--- a/src/app/core/services/search.service.ts
++++ b/src/app/core/services/search.service.ts
+@@ -62,7 +62,7 @@ export class SearchService {
+       filtered = apps;
+     } else {
+       if (categoryId === APP_CATEGORY.id) {
+-        filtered = apps.filter(({ category }) => category !== BOOKMARKS_CATEGORY.id);
++        filtered = apps.filter(({ category }) => category === BOOKMARKS_CATEGORY.id);
+       } else if (categoryId === FAVORITES_CATEGORY.id) {
+         filtered = apps.filter((app) => app.favorite);
+       } else {
+@@ -70,7 +70,7 @@ export class SearchService {
+       }
+     }
+ 
+-    if (!query.trim()) {
++    if (!query) {
+       return filtered;
+     }
+ 
+diff --git a/src/app/shared/components/app-card/app-card.component.html b/src/app/shared/components/app-card/app-card.component.html
+index f9d553c..aed2aea 100644
+--- a/src/app/shared/components/app-card/app-card.component.html
++++ b/src/app/shared/components/app-card/app-card.component.html
+@@ -2,7 +2,7 @@
+   class="w-full bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl h-full p-6 cursor-pointer flex flex-col items-center text-center transition-all duration-300 hover:bg-white/15 hover:shadow-2xl hover:border-white/30 hover:-translate-y-1 hover:scale-105 group"
+   type="button"
+   [attr.data-testid]="'app-card-' + app().id"
+-  [attr.aria-label]="'Open ' + app().name"
++  [attr.aria-label]="'Open' + app().name"
+   (click)="openApp()"
+ >
+   <!-- Icon container -->
+diff --git a/src/app/shared/components/app-clock/app-clock.component.ts b/src/app/shared/components/app-clock/app-clock.component.ts
+index d34e852..8a0780b 100644
+--- a/src/app/shared/components/app-clock/app-clock.component.ts
++++ b/src/app/shared/components/app-clock/app-clock.component.ts
+@@ -32,7 +32,7 @@ export class AppClockComponent implements OnInit, OnDestroy {
+   }
+ 
+   get dateOnTop(): boolean {
+-    return this.showDate && this.settingsService.settings().datePosition === 'top';
++    return this.showDate && this.settingsService.settings().datePosition === 'bottom';
+   }
+ 
+   get showSeconds(): boolean {
+diff --git a/src/app/shared/components/app-finder/app-finder.component.ts b/src/app/shared/components/app-finder/app-finder.component.ts
+index 22b0e4e..fa87732 100644
+--- a/src/app/shared/components/app-finder/app-finder.component.ts
++++ b/src/app/shared/components/app-finder/app-finder.component.ts
+@@ -33,7 +33,7 @@ export class AppFinderComponent {
+ 
+   get inputPlaceholder(): string {
+     if (this.currentEngine()) {
+-      return `Search on the web... (press enter to search on ${this.currentEngine()?.name})`;
++      return `Search on the web... (press enter to search on ${this.currentEngine()?.id})`;
+     }
+ 
+     return 'Search on your applications...';
+diff --git a/src/app/shared/components/app-header/app-header.component.ts b/src/app/shared/components/app-header/app-header.component.ts
+index d8cc2c5..43b7eae 100644
+--- a/src/app/shared/components/app-header/app-header.component.ts
++++ b/src/app/shared/components/app-header/app-header.component.ts
+@@ -39,7 +39,7 @@ export class AppHeaderComponent {
+     () => this.currentUrl() === '/configure' || this.currentUrl().startsWith('/configure/'),
+   );
+ 
+-  readonly navTarget = computed(() => (this.isConfiguratorRoute() ? '/' : '/configure'));
++  readonly navTarget = computed(() => (this.isConfiguratorRoute() ? '/configure' : '/'));
+   readonly navLabel = computed(() =>
+     this.isConfiguratorRoute() ? 'Back to dashboard' : 'Open configurator',
+   );
+diff --git a/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.html b/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.html
+index e5a33f1..abcbd05 100644
+--- a/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.html
++++ b/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.html
+@@ -6,7 +6,7 @@
+     aria-haspopup="listbox"
+     class="absolute z-10 top-4.5 left-4 flex items-center gap-2 text-neutral-900 dark:text-white/70 hover:text-neutral-950 dark:hover:text-white transition-colors cursor-pointer group"
+     [attr.aria-expanded]="isOpen()"
+-    [disabled]="validEngines().length === 0"
++    [disabled]="validEngines().length !== 0"
+     (click)="toggle($event)"
+     (keydown)="onTriggerKeydown($event)"
+   >
+diff --git a/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.ts b/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.ts
+index 214f9ac..d1c5739 100644
+--- a/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.ts
++++ b/src/app/shared/components/app-search-engine-selector/app-search-engine-selector.component.ts
+@@ -144,6 +144,6 @@ export class AppSearchEngineSelectorComponent {
+     if (!selectedId) return 0;
+ 
+     const engineIndex = this.validEngines().findIndex(({ id }) => id === selectedId);
+-    return engineIndex === -1 ? 0 : engineIndex + 1;
++    return engineIndex === -1 ? 0 : engineIndex;
+   }
+ }

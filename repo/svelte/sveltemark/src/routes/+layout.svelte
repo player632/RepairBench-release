@@ -1,0 +1,166 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { dev } from '$app/environment';
+	import './layout.css';
+
+	let { children } = $props();
+
+	// Register service worker for offline support
+	onMount(() => {
+		if ('serviceWorker' in navigator && !dev) {
+			// Only register in production
+			navigator.serviceWorker
+				.register('/service-worker.js')
+				.then((registration) => {
+					console.log('SW registered:', registration.scope);
+
+					// Check for updates periodically
+					setInterval(
+						() => {
+							registration.update();
+						},
+						60 * 60 * 1000
+					); // Check every hour
+				})
+				.catch((error) => {
+					console.error('SW registration failed:', error);
+				});
+		}
+	});
+
+	// SEO Configuration
+	const siteConfig = {
+		title: 'Offline in Browser Markdown Editor and Viewer | SvelteMark',
+		description:
+			'Flawlessly render markdown from ChatGPT and Other AI models. Supports Mermaid diagrams, math equations, and syntax highlighting. 100% private, offline & free.',
+		url: 'https://sm.fana.my.id',
+		siteName: 'SvelteMark',
+		locale: 'en_US',
+		type: 'website',
+		twitterHandle: '@masfana_',
+		themeColor: '#161b22',
+		keywords: [
+			'markdown editor',
+			'AI markdown viewer',
+			'ChatGPT markdown',
+			'Claude markdown preview',
+			'Gemini markdown editor',
+			'privacy-first markdown',
+			'local markdown editor',
+			'offline markdown editor',
+			'Mermaid diagram editor',
+			'math equation markdown',
+			'LaTeX markdown editor',
+			'code syntax highlighting',
+			'GitHub flavored markdown',
+			'DeepSeek markdown',
+			'Perplexity markdown'
+		]
+	};
+
+	// Use absolute URL for OG image (social platforms need full URL)
+	const ogImageUrl = '/logo.webp';
+</script>
+
+<svelte:head>
+	<!-- Primary Meta Tags -->
+	<title>{siteConfig.title}</title>
+	<meta name="title" content={siteConfig.title} />
+	<meta name="description" content={siteConfig.description} />
+	<meta name="keywords" content={siteConfig.keywords.join(', ')} />
+	<meta name="author" content="MasFana" />
+	<meta name="robots" content="index, follow" />
+	<meta name="language" content="English" />
+	<meta name="revisit-after" content="7 days" />
+
+	<!-- Security & Privacy -->
+	<meta name="referrer" content="strict-origin-when-cross-origin" />
+	<meta name="x-content-type-options" content="nosniff" />
+	<meta name="x-frame-options" content="SAMEORIGIN" />
+	<meta name="permissions-policy" content="interest-cohort=()" />
+
+	<!-- Favicon -->
+	<link rel="icon" href="/favicon.ico" type="image/x-icon" />
+	<link rel="apple-touch-icon" href="/logo.webp" />
+	<link rel="manifest" href="/manifest.json" />
+
+	<!-- Theme Color -->
+	<meta name="theme-color" content={siteConfig.themeColor} />
+	<meta name="msapplication-TileColor" content={siteConfig.themeColor} />
+	<meta name="msapplication-navbutton-color" content={siteConfig.themeColor} />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="mobile-web-app-capable" content="yes" />
+
+	<!-- Open Graph / Facebook -->
+	<meta property="og:type" content={siteConfig.type} />
+	<meta property="og:title" content={siteConfig.title} />
+	<meta property="og:description" content={siteConfig.description} />
+	<meta property="og:image" content={ogImageUrl} />
+	<meta property="og:image:secure_url" content={ogImageUrl} />
+	<meta property="og:image:type" content="image/webp" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta property="og:image:alt" content="SvelteMark - Privacy-First Markdown Editor" />
+	<meta property="og:site_name" content={siteConfig.siteName} />
+	<meta property="og:locale" content={siteConfig.locale} />
+	<meta property="og:locale:alternate" content="en_GB" />
+	<meta property="og:locale:alternate" content="en_AU" />
+
+	<!-- Twitter -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content={siteConfig.title} />
+	<meta name="twitter:description" content={siteConfig.description} />
+	<meta name="twitter:image" content={ogImageUrl} />
+	<meta name="twitter:image:alt" content="SvelteMark - Privacy-First Markdown Editor" />
+	<meta name="twitter:site" content={siteConfig.twitterHandle} />
+	<meta name="twitter:creator" content={siteConfig.twitterHandle} />
+
+	<!-- Canonical URL -->
+
+	<!-- Base Structured Data / JSON-LD (can be overridden by specific pages) -->
+	{@html `<script type="application/ld+json">${JSON.stringify({
+		'@context': 'https://schema.org',
+		'@type': 'WebApplication',
+		name: siteConfig.siteName,
+		description: siteConfig.description,
+		url: siteConfig.url,
+		applicationCategory: 'ProductivityApplication',
+		operatingSystem: 'Any',
+		browserRequirements: 'Requires JavaScript. Requires HTML5.',
+		offers: {
+			'@type': 'Offer',
+			price: '0',
+			priceCurrency: 'USD'
+		},
+		author: {
+			'@type': 'Person',
+			name: 'MasFana',
+			url: 'https://github.com/MasFana',
+			sameAs: ['https://twitter.com/masfana_', 'https://github.com/MasFana']
+		},
+		publisher: {
+			'@type': 'Organization',
+			name: 'SvelteMark',
+			url: 'https://sm.fana.my.id',
+			logo: {
+				'@type': 'ImageObject',
+				url: 'https://sm.fana.my.id/logo.webp'
+			},
+			sameAs: ['https://github.com/MasFana/sveltemark']
+		}
+	})}</script>`}
+
+	<!-- Additional SEO Tags -->
+	<meta name="application-name" content={siteConfig.siteName} />
+	<meta name="apple-mobile-web-app-title" content={siteConfig.siteName} />
+	<meta name="format-detection" content="telephone=no" />
+
+	<!-- Resource Hints for Performance -->
+	<link rel="preload" href="/logo.webp" as="image" type="image/webp" />
+
+</svelte:head>
+
+<main>
+	{@render children()}
+</main>

@@ -1,0 +1,135 @@
+diff --git a/js/cardpainter.js b/js/cardpainter.js
+index 1fb94f7..ac3a6be 100644
+--- a/js/cardpainter.js
++++ b/js/cardpainter.js
+@@ -306,7 +306,7 @@ function CardPainter(cardTools,template) {
+                 cardPrinter.setBackgroundColor("symbolWaterSmallBackground","#000",svg.node);
+                 break;
+             }
+-            case 22:{
++            case 2:{
+                 cardPrinter.setBackgroundColor("symbolLargeEarthColorBall",cardTools.getSymbolColor("earth"),svg.node);
+                 cardPrinter.setBackgroundColor("symbolLargeEarth2ColorBall",cardTools.getSymbolColor("earth"),svg.node);
+                 cardPrinter.setBackgroundColor("symbolEarthSmallColorBall",cardTools.getSymbolColor("earth"),svg.node);
+@@ -572,7 +572,7 @@ function CardPainter(cardTools,template) {
+             }
+ 
+         card.forEach((side,id)=>{
+-            let sideType=0;
++            let sideType=id%2;
+ 
+             if (side.id) code.push(side.id);
+             switch (side.type) {
+diff --git a/js/cardprinter.js b/js/cardprinter.js
+index c0d006f..a65b33c 100644
+--- a/js/cardprinter.js
++++ b/js/cardprinter.js
+@@ -451,7 +451,7 @@ function CardPrinter(svg,modelid,x,y) {
+     }
+ 
+     this.startLowerSide=()=>{
+-        side=cloneNodeBy(0,containerNode,0,x,y,90);
++        side=cloneNodeBy(0,containerNode,0,x,y,180);
+         return side;
+     }
+ 
+diff --git a/js/cardtools.js b/js/cardtools.js
+index 203add4..c0a7ed4 100644
+--- a/js/cardtools.js
++++ b/js/cardtools.js
+@@ -397,7 +397,7 @@ function CardTools(ENV) {
+                 if (cards) {
+                     if (cards[deck.meta.id])
+                         cards[deck.meta.id].forEach(id=>{
+-                            merged.deck.unshift(deck.deck[id]);
++                            merged.deck.push(deck.deck[id]);
+                         })
+                 } else {
+                     merged.deck=merged.deck.concat(deck.deck);
+@@ -423,11 +423,11 @@ function CardTools(ENV) {
+                 break;
+             }
+             case "fire":{
+-                return "#0072B2";
++                return "#D55E00";
+                 break;
+             }
+             case "water":{
+-                return "#D55E00";
++                return "#0072B2";
+                 break;
+             }
+             default:{
+diff --git a/js/deckpainter.js b/js/deckpainter.js
+index 505cc7e..375cce6 100644
+--- a/js/deckpainter.js
++++ b/js/deckpainter.js
+@@ -210,7 +210,7 @@ function DeckPainter(cardTools,template) {
+             paper = settings.paper || PAPERSBYID.A4,
+             printableWidth = paper.width-paper.marginLeft-paper.marginRight,
+             printableHeight = paper.height-paper.marginTop-paper.marginBottom,
+-            cardColumns = Math.ceil(printableWidth/CARDWIDTH),
++            cardColumns = Math.floor(printableWidth/CARDWIDTH),
+             cardRows = Math.floor(printableHeight/CARDHEIGHT),
+             cardsPerPage = cardColumns * cardRows,
+             borderTop = paper.marginTop+((printableHeight-(CARDHEIGHT*cardRows))/2),
+diff --git a/js/printshop.js b/js/printshop.js
+index 5e58f21..40f0c75 100644
+--- a/js/printshop.js
++++ b/js/printshop.js
+@@ -66,7 +66,7 @@ function PrintShop(ENV) {
+     }
+ 
+     function managePlural(value,itemSingular,itemPlural) {
+-        return value+" "+(value != 1 ? itemSingular : itemPlural);
++        return value+" "+(value == 1 ? itemSingular : itemPlural);
+     }
+     
+     function timeSince(date) {
+@@ -93,7 +93,7 @@ function PrintShop(ENV) {
+     }
+ 
+     function formatDate(date) {
+-        return date.substr(0,4)+"/"+date.substr(6,2)+"/"+date.substr(4,2);
++        return date.substr(0,4)+"/"+date.substr(4,2)+"/"+date.substr(6,2);
+     }
+ 
+     function updateSelectedStats() {
+@@ -109,7 +109,7 @@ function PrintShop(ENV) {
+             selectedCards[item.meta.id].forEach(id=>{
+                 switch (item.deck[id][0].type) {
+                     case "unit":{
+-                        selectedStats.eventCards++;
++                        selectedStats.unitCards++;
+                         break;
+                     }
+                     case "event":{
+@@ -300,7 +300,7 @@ function PrintShop(ENV) {
+                                 cardId+=(side.id || "NO ID") +" / ";
+                             })
+ 
+-                            newNode("div","title","<span class='name'>"+cardName.substr(0,cardName.length-2)+"</span><span class='code'>"+cardId.substr(0,cardId.length-3)+"</span>",row);
++                            newNode("div","title","<span class='name'>"+cardName.substr(0,cardName.length-3)+"</span><span class='code'>"+cardId.substr(0,cardId.length-3)+"</span>",row);
+ 
+                             row.onclick=()=>{
+                                 let pos=selectedSet.indexOf(id);
+@@ -612,8 +612,8 @@ function PrintShop(ENV) {
+         database.index.sort((a,b)=>{
+             if (a.recentType < b.recentType) return -1;
+             else if (a.recentType > b.recentType) return 1;
+-            else if (a.meta.type > b.meta.type) return 1;
+-            else if (a.meta.type < b.meta.type) return -1;
++            else if (a.meta.type > b.meta.type) return -1;
++            else if (a.meta.type < b.meta.type) return 1;
+             else if (a.meta.name < b.meta.name) return -1;
+             else if (a.meta.name > b.meta.name) return 1;
+             else return 0;
+@@ -780,7 +780,7 @@ function PrintShop(ENV) {
+ 
+             [
+                 { id:"modules", label:"Modules" },
+-                { id:"card", label:"Cards" },
++                { id:"cards", label:"Cards" },
+                 { id:"download", label:"Download" }
+             ].forEach(section=>{
+                 item=newNode("div","item",section.label,tabBar);

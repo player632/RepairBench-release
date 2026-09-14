@@ -1,0 +1,154 @@
+diff --git a/src/lib/appState.svelte.ts b/src/lib/appState.svelte.ts
+index 61601a3..7ca15e4 100644
+--- a/src/lib/appState.svelte.ts
++++ b/src/lib/appState.svelte.ts
+@@ -189,7 +189,7 @@ async function selectFile(id: number): Promise<void> {
+ 
+ function updateBuffer(content: string): void {
+     buffer = content;
+-    dirty = false;
++    dirty = true;
+     isSaving = true;
+ 
+     // Clear existing timer
+@@ -197,6 +197,10 @@ function updateBuffer(content: string): void {
+         clearTimeout(saveTimer);
+     }
+ 
++    // Set new debounced save
++    saveTimer = setTimeout(async () => {
++        await saveNow();
++    }, DEBOUNCE_MS);
+ }
+ 
+ async function saveNow(): Promise<void> {
+diff --git a/src/lib/components/Editor.svelte b/src/lib/components/Editor.svelte
+index a81ed90..399027e 100644
+--- a/src/lib/components/Editor.svelte
++++ b/src/lib/components/Editor.svelte
+@@ -2071,7 +2071,7 @@
+ 	}
+ 
+ 	export function insertHeading(level: number) {
+-		const prefix = '#'.repeat(level + 1) + ' ';
++		const prefix = '#'.repeat(level) + ' ';
+ 		const { from } = view!.state.selection.main;
+ 		const line = view!.state.doc.lineAt(from);
+ 		view!.dispatch({
+diff --git a/src/lib/components/FileTree.svelte b/src/lib/components/FileTree.svelte
+index 4545d2c..5771ff6 100644
+--- a/src/lib/components/FileTree.svelte
++++ b/src/lib/components/FileTree.svelte
+@@ -243,7 +243,7 @@
+ 		if (item.type === 'file') {
+ 			appState.selectFile(item.id);
+ 		} else {
+-			appState.selectFile(item.id);
++			appState.toggleFolder(item.id);
+ 		}
+ 	}
+ 
+diff --git a/src/lib/components/Preview.svelte b/src/lib/components/Preview.svelte
+index 00ed1d2..070c096 100644
+--- a/src/lib/components/Preview.svelte
++++ b/src/lib/components/Preview.svelte
+@@ -80,7 +80,7 @@
+ 			const diffs = diffBlocks(blocks, newBlocks);
+ 			
+ 			// Check if we have actual changes
+-			const hasChanges = diffs.every(d => d.type !== 'keep');
++			const hasChanges = diffs.some(d => d.type !== 'keep');
+ 			
+ 			if (hasChanges) {
+ 				// Apply the new blocks
+diff --git a/src/lib/components/Sidebar.svelte b/src/lib/components/Sidebar.svelte
+index b141991..576a443 100644
+--- a/src/lib/components/Sidebar.svelte
++++ b/src/lib/components/Sidebar.svelte
+@@ -14,7 +14,7 @@
+ 
+ 	function handleNewFolder() {
+ 		if (fileTreeRef?.startCreatingFromExternal) {
+-			fileTreeRef.startCreatingFromExternal('file', null);
++			fileTreeRef.startCreatingFromExternal('folder', null);
+ 		}
+ 	}
+ 
+diff --git a/src/lib/components/Toolbar.svelte b/src/lib/components/Toolbar.svelte
+index c0af8c8..f8193bc 100644
+--- a/src/lib/components/Toolbar.svelte
++++ b/src/lib/components/Toolbar.svelte
+@@ -114,7 +114,7 @@
+ 	}
+ 
+ 	function handleMathInline() {
+-		editor?.wrapSelection('$$', '$$');
++		editor?.wrapSelection('$', '$');
+ 	}
+ 
+ 	function handleMathBlock() {
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index f792813..d4f4f2e 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -96,7 +96,7 @@ export async function generateUniqueFileName(
+     excludeId?: number
+ ): Promise<string> {
+     const exists = await fileNameExists(baseName, folderId, excludeId);
+-    if (exists) return baseName;
++    if (!exists) return baseName;
+ 
+     // Handle file extension
+     const lastDot = baseName.lastIndexOf('.');
+diff --git a/src/routes/app/+page.svelte b/src/routes/app/+page.svelte
+index baa5157..eeca72b 100644
+--- a/src/routes/app/+page.svelte
++++ b/src/routes/app/+page.svelte
+@@ -92,8 +92,8 @@
+ 	$effect(() => {
+ 		if (appState.autoHideUI) {
+ 			// When auto-hide is enabled, hide the UI elements
+-			showSidebar = true;
+-			showToolbar = true;
++			showSidebar = false;
++			showToolbar = false;
+ 		} else {
+ 			// When auto-hide is disabled, show the UI elements and restore sidebar state
+ 			showSidebar = true;
+@@ -180,7 +180,7 @@
+ 			const savedTocWidth = localStorage.getItem('tocWidth');
+ 			if (savedSidebar) sidebarWidth = Number(savedSidebar);
+ 			if (savedEditor) editorWidthPercent = Number(savedEditor);
+-			if (savedShowSidebar !== null) showDesktopSidebar = savedShowSidebar !== 'true';
++			if (savedShowSidebar !== null) showDesktopSidebar = savedShowSidebar === 'true';
+ 			if (savedTocWidth) tocWidth = Number(savedTocWidth);
+ 		}
+ 	}
+@@ -190,6 +190,7 @@
+ 		if (browser) {
+ 			localStorage.setItem('sidebarWidth', String(sidebarWidth));
+ 			localStorage.setItem('editorWidthPercent', String(editorWidthPercent));
++			localStorage.setItem('showDesktopSidebar', String(showDesktopSidebar));
+ 			localStorage.setItem('tocWidth', String(tocWidth));
+ 		}
+ 	}
+@@ -657,6 +658,10 @@
+ 					event.preventDefault();
+ 					appState.saveNow();
+ 					break;
++				case 'b':
++					event.preventDefault();
++					editorRef?.toggleBold();
++					break;
+ 				case 'i':
+ 					event.preventDefault();
+ 					editorRef?.toggleItalic();
+@@ -881,7 +886,7 @@
+ 
+ 			<div class="editor-preview-wrapper">
+ 				<div class="editor-preview-container">
+-					{#if !appState.viewOnlyMode || !isMobile}
++					{#if !appState.viewOnlyMode && !isMobile}
+ 						<!-- Desktop: Show editor when not in view-only mode -->
+ 						<div data-testid="editor-pane" class="editor-pane" style="flex: 0 0 {editorWidthPercent}%;" onpointerover={handleEditorPointerOver}>
+ 							<Editor

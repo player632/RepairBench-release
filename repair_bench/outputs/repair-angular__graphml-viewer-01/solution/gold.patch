@@ -1,0 +1,147 @@
+diff --git a/src/app/app.module.ts b/src/app/app.module.ts
+index 9d73116..a234bbb 100644
+--- a/src/app/app.module.ts
++++ b/src/app/app.module.ts
+@@ -66,6 +66,7 @@ import { SimplebarAngularModule } from 'simplebar-angular';
+     
+   ],
+   providers: [],
+-  bootstrap: [AppComponent]
++  bootstrap: [AppComponent],
++  entryComponents: [TabledComponent]
+ })
+ export class AppModule { }
+diff --git a/src/app/data-service.service.ts b/src/app/data-service.service.ts
+index 64d8c3b..a5180ff 100644
+--- a/src/app/data-service.service.ts
++++ b/src/app/data-service.service.ts
+@@ -24,6 +24,6 @@ export class DataServiceService {
+     this.uploading.next(value);
+   }
+   set_files_uploaded(values){
+-    this.files_list.next(values.slice(0, 1));
++    this.files_list.next(values);
+   }
+ }
+diff --git a/src/app/drag-n-drop.directive.ts b/src/app/drag-n-drop.directive.ts
+index 22a3086..4a8ae35 100644
+--- a/src/app/drag-n-drop.directive.ts
++++ b/src/app/drag-n-drop.directive.ts
+@@ -54,6 +54,9 @@ export class DragNDropDirective {
+     // console.log(Object.keys(sessionStorage));
+     evt.preventDefault();
+     evt.stopPropagation();
++    this.shakeit = false;
++    this.background = '#f5fcff';
++    this.opacity = '1';
+     var file_list = [];
+     // console.log();
+     this.keys_len = Object.keys(evt.dataTransfer.files).length;
+diff --git a/src/app/drag-n-drop/drag-n-drop.component.html b/src/app/drag-n-drop/drag-n-drop.component.html
+index 5fa1c79..295ba5d 100644
+--- a/src/app/drag-n-drop/drag-n-drop.component.html
++++ b/src/app/drag-n-drop/drag-n-drop.component.html
+@@ -12,7 +12,7 @@
+       grad
+       animate__animated
+       hvr-underline-from-center
+-    " appDragNDrop data-testid="rb-drop-box">
++    " appDragNDrop data-testid="rb-drop-box" (click)="fileInput.click()">
+     <!-- <span    style="right:0; bottom: 0; margin: 2em; position: absolute;"   ></span> -->
+     <!-- upload files icon (-->
+     <svg xmlns="http://www.w3.org/2000/svg" width="73" height="74" style="padding: 1em" viewBox="0 0 63 64">
+diff --git a/src/app/drag-n-drop/drag-n-drop.component.ts b/src/app/drag-n-drop/drag-n-drop.component.ts
+index 4ca83d8..10a286e 100644
+--- a/src/app/drag-n-drop/drag-n-drop.component.ts
++++ b/src/app/drag-n-drop/drag-n-drop.component.ts
+@@ -73,6 +73,10 @@ export class DragNDropComponent implements OnInit {
+       graphml_key_map[element.getAttribute("id")] =element.getAttribute("attr.name");
+       element.setAttribute("id",String(val));    
+     });
++    Array.from(xmlDoc.getElementsByTagName("data")).forEach(element => {
++      // var val  = element.getAttribute("key");
++      element.setAttribute("key",graphml_key_map[element.getAttribute("key")]);
++      });
+   
+     return new XMLSerializer().serializeToString(xmlDoc.documentElement);
+     }
+diff --git a/src/app/visualiser/visualiser.component.html b/src/app/visualiser/visualiser.component.html
+index 0077ad5..d1b879d 100644
+--- a/src/app/visualiser/visualiser.component.html
++++ b/src/app/visualiser/visualiser.component.html
+@@ -303,7 +303,7 @@
+             </div>
+ 
+             <div class="col-sm-6">
+-              <span *ngIf="last_layout_name != 'fcose'" data-testid="rb-pack-span"
++              <span *ngIf="last_layout_name == 'fcose'" data-testid="rb-pack-span"
+                 (click)="packComponents()">Pack</span>
+             </div>
+             <div class="col-sm-6">
+diff --git a/src/app/visualiser/visualiser.component.ts b/src/app/visualiser/visualiser.component.ts
+index e7abec0..fd5300f 100644
+--- a/src/app/visualiser/visualiser.component.ts
++++ b/src/app/visualiser/visualiser.component.ts
+@@ -462,6 +462,12 @@ export class VisualiserComponent implements OnInit {
+   }
+   toggel_show_ege_label(bl) {
+     this.show_edge_label = bl;
++    if (!bl) {
++      this.cy.edges().style({
++        "font-size": 0,
++        'text-background-opacity': 0
++      });
++    }
+   }
+ 
+ 
+@@ -737,7 +743,9 @@ export class VisualiserComponent implements OnInit {
+     // element.style.zIndex = "2";
+     element.innerHTML = legendTable;
+     $("#legend").show();
+-    $("#legend").hide();
++    setTimeout(function () {
++      $("#legend").hide();
++    }, 10000);
+   }
+   changeNColor(evt) {
+     this.color_value1 = evt;
+@@ -948,10 +956,10 @@ export class VisualiserComponent implements OnInit {
+         width: undefined, // width of layout area (overrides container width)
+         spacingFactor: undefined, // Applies a multiplicative factor (>0) to expand or compress the overall area that the nodes take up
+         concentric: function (node) { // returns numeric value for each node, placing higher nodes in levels towards the centre
+-          return node.indegree();
++          return node.degree();
+         },
+         levelWidth: function (nodes) { // the variation of concentric values in each level
+-          return nodes.maxIndegree() / 4;
++          return nodes.maxDegree() / 4;
+         },
+         animate: function () {
+           if (context.cy.edges().length < 400) {
+@@ -1589,6 +1597,7 @@ export class VisualiserComponent implements OnInit {
+           });
+         }
+       } else {
++        focus_clicked = false;
+         var ep_f = document.getElementById('expandfocus');
+         ep_f.classList.add("hide");
+         var c_f = document.getElementById('contractfocus');
+@@ -2179,7 +2188,7 @@ export class VisualiserComponent implements OnInit {
+     var deg_dict = {}
+     var selected_keys = []
+     for (let key in this.node_attr_options) {
+-      if (this.node_attr_options[key].length >= 1) {
++      if (this.node_attr_options[key].length <= (this.cy.nodes()).length / 2 && this.node_attr_options[key].length > 0) {
+         selected_keys.push(key);
+       }
+     }
+@@ -2343,7 +2352,7 @@ export class VisualiserComponent implements OnInit {
+   //  helper function (openDialog)
+   get_elemet_and_connection_data(flag) {
+     if (flag == 1) {
+-      var nodes = this.cy.nodes();
++      var nodes = this.cy.nodes(':visible');
+       var th = [];
+       var tr = [];
+       if ((nodes).length >= 1) {

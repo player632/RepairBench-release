@@ -1,0 +1,122 @@
+diff --git a/scripts/achievement.js b/scripts/achievement.js
+index 749ac98..664c506 100644
+--- a/scripts/achievement.js
++++ b/scripts/achievement.js
+@@ -44,7 +44,7 @@
+     if (Main.getEntity('gameProgress').Achievement.getAchievement()
+         .has(achieveID)
+     ) {
+-        return Main.getEntity('gameProgress').Achievement.getAchievement(
++        return !Main.getEntity('gameProgress').Achievement.getAchievement(
+             achieveID
+         );
+     }
+diff --git a/scripts/component.js b/scripts/component.js
+index 657d127..e317f1a 100644
+--- a/scripts/component.js
++++ b/scripts/component.js
+@@ -33,6 +33,6 @@
+             this._printSeed = this._seed.toString();
+         } else {
+             // Remove the beginning `#` if the seed is set manually.
+-            this._seed = seed.toString().replace(/^#{0,1}(.+)$/, '$0');
++            this._seed = seed.toString().replace(/^#{0,1}(.+)$/, '$1');
+             this._seed = Number.parseInt(this._seed, 10);
+             this._printSeed = seed;
+@@ -39,7 +39,7 @@
+         }
+         // Insert hyphen to the seed string.
+         this._printSeed
+-            = this._printSeed.replace(/^(#{0,1}\d{5})(\d{5})$/, '$2-$1');
++            = this._printSeed.replace(/^(#{0,1}\d{5})(\d{5})$/, '$1-$2');
+     };
+ };
+ 
+@@ -174,7 +174,7 @@
+     this._duration = new Map();
+ 
+     // Most actions take 1 turn.
+-    this._duration.set('base', 0);
++    this._duration.set('base', 1);
+ 
+     this.getDuration = function (action) {
+         return this._duration.get(action || 'base');
+diff --git a/scripts/monsterAI.js b/scripts/monsterAI.js
+index 4292021..5079a21 100644
+--- a/scripts/monsterAI.js
++++ b/scripts/monsterAI.js
+@@ -308,7 +308,7 @@
+ Main.system.pcIsInStraightLine = function (actor) {
+     let isInStraightLine
+         = actor.Position.getX() === Main.getEntity('pc').Position.getX()
+-        && actor.Position.getY() === Main.getEntity('pc').Position.getY();
++        || actor.Position.getY() === Main.getEntity('pc').Position.getY();
+ 
+     return isInStraightLine;
+ };
+diff --git a/scripts/saveLoad.js b/scripts/saveLoad.js
+index c0d3716..aa40198 100644
+--- a/scripts/saveLoad.js
++++ b/scripts/saveLoad.js
+@@ -71,7 +71,7 @@
+ Main.system.saveDungeonLevel = function () {
+     Main.storage.setItem(
+         'dungeonLevel',
+-        Main.getEntity('gameProgress').BossFight.getDungeonLevel()
++        Main.getEntity('gameProgress').BossFight.getNextDungeonLevel()
+     );
+ };
+ 
+@@ -78,7 +78,7 @@
+ Main.system.loadDungeonLevel = function () {
+     return Main.storage.getItem('dungeonLevel')
+         ? Number.parseInt(Main.storage.getItem('dungeonLevel'), 10)
+-        : 2;
++        : 1;
+ };
+ 
+ Main.system.saveSeed = function () {
+diff --git a/scripts/system.js b/scripts/system.js
+index fbbc492..0ae853a 100644
+--- a/scripts/system.js
++++ b/scripts/system.js
+@@ -313,7 +313,7 @@
+         targetY = target.Position.getY();
+     }
+ 
+-    return sight.indexOf(targetX + ',' + targetY) > 0;
++    return sight.indexOf(targetX + ',' + targetY) > -1;
+ };
+ 
+ Main.system.pcAct = function () {
+@@ -339,5 +339,5 @@
+ 
+ Main.system.pcTakeDamage = function (damage) {
+     let pcIsDead
+-        = damage >= Main.getEntity('pc').Inventory.getLength();
++        = damage > Main.getEntity('pc').Inventory.getLength();
+ 
+@@ -344,4 +344,4 @@
+-    Main.getEntity('pc').Inventory.removeItem(damage - 1);
++    Main.getEntity('pc').Inventory.removeItem(damage);
+     Main.getEntity('pc').Inventory.setIsDead(pcIsDead);
+ 
+     return pcIsDead;
+@@ -477,7 +477,7 @@
+     let npcHere = null;
+ 
+     // Get new coordinates.
+-    if (direction === 'wait') {
++    if (direction !== 'wait') {
+         newCoordinates = Main.system.getNewCoordinates([x, y], direction);
+         x = newCoordinates[0];
+         y = newCoordinates[1];
+@@ -1245,7 +1245,7 @@
+     let newSeed = null;
+ 
+     Main.getEntity('seed').Seed.setSeed(
+-        Main.getDevSeed() || Main.system.loadSeed()
++        Main.system.loadSeed() || Main.getDevSeed()
+     );
+ 
+     ROT.RNG.setSeed(Main.getEntity('seed').Seed.getSeed());

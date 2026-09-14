@@ -1,0 +1,757 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { toast } from "sonner";
+// Tabler, per the design system. Every Browse row swaps to its filled
+// twin when active. The design draws Library as a bookshelf, which in
+// Tabler ships outline-only, so Library wears the bookmarks glyph — it
+// has the filled twin the active state needs, and it doesn't collide
+// with the compass above it or the playlist rows below.
+import {
+  IconHome,
+  IconHomeFilled,
+  IconBrandSafari,
+  IconSearch,
+  IconSearchFilled,
+  IconBookmarks,
+  IconBookmarksFilled,
+  IconSettings,
+  IconPlaylist,
+  IconPinFilled,
+  IconCreditCardFilled,
+  IconLogin,
+  IconLogout,
+  IconExternalLink,
+  IconCheck,
+} from "@tabler/icons-react";
+import {
+  IconBrandSafariFilled,
+  IconEyeOffFilled,
+  IconPinnedOffFilled,
+  IconUserCogFilled,
+  IconUserPlusFilled,
+  IconUsersGroupFilled,
+} from "@/components/shared/filled-icons";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useHidden,
+  usePinned,
+  usePinnedPlaylistsStore,
+} from "@/lib/store/pinned-playlists";
+import { IS_BETA_PLATFORM } from "@/lib/platform";
+import { openChannelPicker } from "@/lib/store/channel-picker";
+import { openSettings } from "@/lib/store/settings-dialog";
+import { UpdateBanner } from "@/components/layout/update-banner";
+import { LikedCover } from "@/components/shared/liked-cover";
+import { fetchLibraryPlaylists } from "@/lib/innertube/library";
+import type { ShelfItem } from "@/lib/innertube/types";
+import { pickThumbnail } from "@/components/shared/thumbnail";
+import { resetInnertube } from "@/lib/innertube/client";
+import { accountSlot } from "@/lib/auth-presence";
+import { usePremiumStore } from "@/lib/store/premium";
+import { accountInfoQuery, authLoggedInQuery } from "@/lib/store/auth-queries";
+import {
+  removeAccount,
+  switchAccount,
+  useAccounts,
+  type AccountSummary,
+} from "@/lib/store/accounts";
+import { cn } from "@/lib/utils";
+
+const NAV_ITEMS = [
+  { to: "/", label: "Home", icon: IconHome, iconOn: IconHomeFilled },
+  {
+    to: "/explore",
+    label: "Explore",
+    icon: IconBrandSafari,
+    iconOn: IconBrandSafariFilled,
+  },
+  {
+    to: "/search",
+    label: "Search",
+    icon: IconSearch,
+    iconOn: IconSearchFilled,
+  },
+  {
+    to: "/library",
+    label: "Library",
+    icon: IconBookmarks,
+    iconOn: IconBookmarksFilled,
+  },
+] as const;
+
+// Liked Songs is the YTM magic playlist — browseId `VLLM` (wraps
+// playlistId "LM"). Always present, always first in the playlists
+// section, not user-removable.
+const LIKED_ID = "VLLM";
+
+// Artwork rows carry a 20px tile where the icon rows carry a 16px
+// glyph, so the menu button's fixed height would squeeze it. `h-auto`
+// hands the height back to the padding: 7px above and below puts the
+// row at 34px, a step over the 28px icon rows without opening the list
+// back up. Icon rows keep the fixed height.
+const ART_BTN_CLS = "h-auto py-[7px]";
+
+export function AppSidebar() {
+  const { location } = useRouterState();
+
+  // The footer's divider only earns its keep when the playlist list is
+  // actually scrolling: then rows disappear under the footer and the
+  // hairline explains where the list ends. With a short list there's
+  // nothing to separate and the rule is just noise.
+  const [playlistsScroll, setPlaylistsScroll] = useState(false);
+
+  const isOn = (to: string) => location.pathname === to;
+  const isPlaylistOn = (id: string) => location.pathname === `/playlist/${id}`;
+
+  return (
+    <Sidebar
+      variant="floating"
+      collapsible="icon"
+      // Panel chrome, per the design system: a 12px glass card with a
+      // `--w110` hairline and a shallow, wide-spread shadow. The blur is
+      // what makes `--glass1` read as frosted over the album-art wash
+      // behind it rather than as flat translucency.
+      className="px-2 pb-2 pt-0 duration-300 ease-out [&>[data-slot=sidebar-inner]]:rounded-[12px] [&>[data-slot=sidebar-inner]]:border [&>[data-slot=sidebar-inner]]:border-w110 [&>[data-slot=sidebar-inner]]:bg-glass1 [&>[data-slot=sidebar-inner]]:shadow-[0_6px_18px_-14px_var(--k550)] [&>[data-slot=sidebar-inner]]:backdrop-blur-[24px]"
+    >
+      <SidebarHeader className="flex-row items-center gap-[9px] overflow-hidden px-4 pt-4 pb-2 group-data-[collapsible=icon]:ps-3.5 group-data-[collapsible=icon]:pe-2">
+        {/* Single round logo. Expanded it sits at px-4, in line with the
+         *  menu glyphs. On the rail the start inset puts its centre on the
+         *  rail's own axis (14 + 14 = 28), so it glides there instead of
+         *  hopping to a centered row. */}
+        <img
+          src="/ytubic-icon.svg"
+          alt="YTubic"
+          className="size-7 shrink-0 rounded-full"
+        />
+        <span
+          data-sidebar-label
+          className="shrink-0 text-[17px] font-semibold leading-none tracking-[-0.015em] text-t1"
+        >
+          YTubic
+        </span>
+        {IS_BETA_PLATFORM && (
+          <span
+            data-sidebar-label
+            title="The build for this OS is in beta — report anything broken via ⋯ → Report an issue."
+            className="shrink-0 rounded-[4px] border border-border/60 bg-muted/40 px-1 pb-px pt-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-muted-foreground"
+          >
+            Beta
+          </span>
+        )}
+      </SidebarHeader>
+
+      {/* The content column itself doesn't scroll: Browse stays pinned
+          (shrink-0) and only the Playlists list scrolls, so the top nav
+          never slides out of view when the library is long. */}
+      <SidebarContent className="gap-0 overflow-hidden">
+        <SidebarGroup className="shrink-0 py-1 group-data-[collapsible=icon]:mt-1">
+          <SidebarGroupLabel>Browse</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV_ITEMS.map(({ to, label, icon, iconOn }) => {
+                const on = isOn(to);
+                const Icon = on ? iconOn : icon;
+                return (
+                  <SidebarMenuItem key={to}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={on}
+                      tooltip={label}
+                    >
+                      <Link to={to}>
+                        <Icon />
+                        <span>{label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarPlaylists
+          isPlaylistOn={isPlaylistOn}
+          onScrollableChange={setPlaylistsScroll}
+        />
+      </SidebarContent>
+
+      {/* A `--w055` hairline fences the footer off from the playlist
+          list, but only while that list scrolls — see `playlistsScroll`.
+          The border stays declared either way so the row keeps its
+          height and nothing shifts when the list crosses the threshold. */}
+      <SidebarFooter
+        className={cn(
+          "gap-2 border-t pt-3",
+          playlistsScroll ? "border-w055" : "border-transparent",
+          "group-data-[collapsible=icon]:px-2.5 group-data-[collapsible=icon]:pb-3",
+        )}
+      >
+        <UpdateBanner />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Settings"
+              onClick={() => openSettings()}
+            >
+              <IconSettings />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <UserProfile />
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+
+type PlaylistRow = {
+  id: string;
+  title: string;
+  thumbnailUrl?: string;
+  pinned: boolean;
+};
+
+// Sidebar thumbnails render at 20px. Ask for the smallest source that
+// still covers a retina row instead of the largest one the API shipped:
+// a 1000px cover for a 20px square is pure waste, and the extra weight
+// is what pushes the Google CDNs into rate-limiting the row.
+function pickThumb(item: ShelfItem): string | undefined {
+  return pickThumbnail(item.thumbnails, 48) ?? undefined;
+}
+
+/**
+ * Sidebar playlist art. Falls back to the generic playlist glyph when
+ * the CDN refuses the image, so a throttled cover leaves an icon rather
+ * than an empty square. `no-referrer` is required: with the webview's
+ * `Referer: http://localhost:1420/` attached, lh3/yt3 intermittently
+ * answer with an HTML error page that Chromium then CORB-blocks, and
+ * the row silently loses its cover. Same reasoning as `Thumbnail`.
+ */
+function PlaylistArt({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) return <IconPlaylist />;
+  return (
+    <img
+      src={src}
+      alt=""
+      className="size-5 shrink-0 rounded-[5px] object-cover outline outline-1 -outline-offset-1 outline-w140"
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/**
+ * The "Playlists" section. Shows Liked Songs, then every playlist in the
+ * user's library. Pinning doesn't gate visibility any more — it only
+ * floats a playlist to the top of the list (right under Liked Songs).
+ *
+ * Shares the `["library", "playlists"]` query cache with the Library
+ * page, so opening the sidebar costs no extra fetch once either has
+ * loaded. Pinned rows come from local storage and paint instantly, even
+ * before the library browse resolves.
+ */
+function SidebarPlaylists({
+  isPlaylistOn,
+  onScrollableChange,
+}: {
+  isPlaylistOn: (id: string) => boolean;
+  onScrollableChange: (scrollable: boolean) => void;
+}) {
+  const loggedIn = useQuery(authLoggedInQuery);
+  const library = useQuery({
+    queryKey: ["library", "playlists"],
+    queryFn: fetchLibraryPlaylists,
+    enabled: loggedIn.data === true,
+    staleTime: 5 * 60_000,
+  });
+
+  const pinned = usePinned();
+  const hidden = useHidden();
+  const pin = usePinnedPlaylistsStore((s) => s.pin);
+  const unpin = usePinnedPlaylistsStore((s) => s.unpin);
+  const hide = usePinnedPlaylistsStore((s) => s.hide);
+
+  const rows = useMemo<PlaylistRow[]>(() => {
+    const hiddenIds = new Set(hidden);
+    // Liked Songs (`VLLM`) ships in the playlists shelf too; drop it —
+    // it's always rendered as the hard-coded first row below. Hidden
+    // playlists are dropped entirely (un-hidden from the Library).
+    const libItems = (library.data ?? [])
+      .flatMap((s) => s.items)
+      .filter((it) => it.id !== LIKED_ID && !hiddenIds.has(it.id));
+    const libById = new Map(libItems.map((it) => [it.id, it]));
+    const pinnedIds = new Set(pinned.map((p) => p.id));
+
+    // Pinned first, in stored order. Prefer fresh library data for
+    // title/thumbnail, but keep a pin visible even when it isn't in the
+    // current library fetch (e.g. pinned from search results). A hidden
+    // id can't be pinned (the store keeps them exclusive), but filter
+    // defensively so a stale pin can never leak a hidden playlist back in.
+    const pinnedRows: PlaylistRow[] = pinned
+      .filter((p) => p.id !== LIKED_ID && !hiddenIds.has(p.id))
+      .map((p) => {
+        const lib = libById.get(p.id);
+        return {
+          id: p.id,
+          title: lib?.title ?? p.title,
+          thumbnailUrl: lib ? pickThumb(lib) : p.thumbnailUrl,
+          pinned: true,
+        };
+      });
+
+    // Everything else, in library order.
+    const restRows: PlaylistRow[] = libItems
+      .filter((it) => !pinnedIds.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.title,
+        thumbnailUrl: pickThumb(it),
+        pinned: false,
+      }));
+
+    return [...pinnedRows, ...restRows];
+  }, [library.data, pinned, hidden]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Ramp a soft top/bottom fade on the list from its scroll position so
+  // rows dissolve into transparency at each edge instead of being cut by
+  // a hard line. An edge with nothing beyond it — the top at rest, the
+  // bottom when fully scrolled, or a list too short to scroll — stays
+  // crisp. Vertical mirror of the carousels' `shelf-edge-fade`.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const FADE_RAMP = 16;
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    const update = () => {
+      const distTop = el.scrollTop;
+      const distBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+      el.style.setProperty(
+        "--fade-t",
+        clamp(1 - distTop / FADE_RAMP).toFixed(3),
+      );
+      el.style.setProperty(
+        "--fade-b",
+        clamp(1 - distBottom / FADE_RAMP).toFixed(3),
+      );
+      // Sub-pixel layout can leave scrollHeight a hair over clientHeight
+      // on a list that doesn't actually scroll, so require a real gap.
+      onScrollableChange(el.scrollHeight - el.clientHeight > 1);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    // Rows load async and grow the scroll height without resizing the
+    // container, so watch the inner list too.
+    const inner = el.firstElementChild;
+    if (inner) ro.observe(inner);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [onScrollableChange]);
+
+  // `pe-0` drops the group's right padding so the scroll box reaches the
+  // panel edge. `sidebar-list-scroll` (index.css) reserves a stable 8px
+  // scrollbar gutter there, so the rows keep a constant right inset
+  // (aligned with Browse) whether or not a scrollbar shows, and the
+  // scrollbar — when it shows — sits flush at the border. Collapsed
+  // restores the rail's own 14px inset so the tiles stay centered.
+  return (
+    <SidebarGroup className="mt-2 flex min-h-0 flex-1 flex-col py-1 pe-0 group-data-[collapsible=icon]:mt-4 group-data-[collapsible=icon]:pe-2.5">
+      <SidebarGroupLabel>Playlists</SidebarGroupLabel>
+      {/* The scroll lives here, not on SidebarContent, so the label above
+          stays put and only the playlist rows move. `app-scroll` is the
+          same thin scrollbar the main content and carousels use. */}
+      {/* `sidebar-list-scroll` (see index.css) nudges the scrollbar
+          toward the panel's right edge when expanded, and hides it while
+          keeping the icons centered when the rail is collapsed. */}
+      <SidebarGroupContent
+        ref={scrollRef}
+        className="sidebar-list-fade sidebar-list-scroll app-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+      >
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={isPlaylistOn(LIKED_ID)}
+              tooltip="Liked songs"
+              className={ART_BTN_CLS}
+            >
+              <Link to="/playlist/$id" params={{ id: LIKED_ID }}>
+                {/* Same tile geometry as a real playlist cover; the
+                    artwork itself is whatever the user picked on the
+                    playlist page. */}
+                <LikedCover
+                  data-slot="playlist-art"
+                  className="size-5 shrink-0 rounded-[5px]"
+                  heart={52}
+                />
+                <span>Liked songs</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          {rows.map((p) => (
+            <SidebarMenuItem key={p.id}>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isPlaylistOn(p.id)}
+                    tooltip={p.title}
+                    className={ART_BTN_CLS}
+                  >
+                    <Link to="/playlist/$id" params={{ id: p.id }}>
+                      <PlaylistArt src={p.thumbnailUrl} />
+                      <span className="min-w-0 flex-1 truncate">{p.title}</span>
+                      {/* Subtle marker so the pinned/unpinned boundary is
+                          legible — pinning's only visible effect is the
+                          reorder, this just explains it. */}
+                      {p.pinned ? (
+                        <IconPinFilled className="size-3! shrink-0 text-t7 group-data-[collapsible=icon]:hidden" />
+                      ) : null}
+                    </Link>
+                  </SidebarMenuButton>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  {p.pinned ? (
+                    <ContextMenuItem onSelect={() => unpin(p.id)}>
+                      <IconPinnedOffFilled />
+                      Unpin from top
+                    </ContextMenuItem>
+                  ) : (
+                    <ContextMenuItem
+                      onSelect={() =>
+                        pin({
+                          id: p.id,
+                          title: p.title,
+                          thumbnailUrl: p.thumbnailUrl,
+                        })
+                      }
+                    >
+                      <IconPinFilled />
+                      Pin to top
+                    </ContextMenuItem>
+                  )}
+                  <ContextMenuItem onSelect={() => hide(p.id)}>
+                    <IconEyeOffFilled />
+                    Hide from sidebar
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+// Where the YT Music web client sends users to manage their Music
+// Premium subscription. Kept here (not in a shared constants module)
+// because it's the only place that links out to it.
+const MANAGE_GOOGLE_URL = "https://myaccount.google.com/";
+const MANAGE_SUBSCRIPTION_URL = "https://music.youtube.com/paid_memberships";
+
+/**
+ * The logged-out footer CTA: a full-width primary (brand red) button.
+ * Collapses to a red icon button with a tooltip in icon mode. Runs the
+ * same `start_login` flow as "Add another account".
+ */
+function SidebarSignInButton() {
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <Button
+          title="Sign in"
+          onClick={() => {
+            invoke("start_login").catch((e) =>
+              toast.error(`Sign-in failed: ${String(e)}`),
+            );
+          }}
+          className="grid h-9 w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-0.5 overflow-hidden py-0 ps-0.5 pe-2.5 [&>svg]:justify-self-center"
+        >
+          <IconLogin stroke={2.3} />
+          <span data-sidebar-label className="truncate text-start">
+            Sign in
+          </span>
+        </Button>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+function UserProfile() {
+  const loggedIn = useQuery(authLoggedInQuery);
+  const account = useQuery(accountInfoQuery(loggedIn.data === true));
+  const accounts = useAccounts();
+  const premiumStatus = usePremiumStore((s) => s.status);
+
+  const allAccounts = accounts.data ?? [];
+  const activeAccount = allAccounts.find((a) => a.isActive) ?? allAccounts[0];
+
+  // See `accountSlot` for the rule and its tests. Short version: only
+  // something authoritative gets to render a sign-in button, and a
+  // network failure is not authoritative.
+  const slot = accountSlot({
+    loggedIn: loggedIn.data,
+    accountsPending: accounts.isPending,
+    storedCount: allAccounts.length,
+    hasLiveAccount: !!account.data,
+    accountLoading: account.isLoading,
+    accountErrored: account.isError,
+  });
+  if (slot === "wait") return null;
+  if (slot === "sign-in") return <SidebarSignInButton />;
+
+  const live = account.data;
+  const name =
+    live?.name ||
+    activeAccount?.channelName ||
+    activeAccount?.name ||
+    activeAccount?.email ||
+    "Account";
+  const email = live?.email ?? activeAccount?.email ?? "";
+  const photoUrl =
+    live?.photoUrl ??
+    activeAccount?.channelPhotoUrl ??
+    activeAccount?.photoUrl ??
+    undefined;
+  const initial = (name || email || "?").trim().charAt(0).toUpperCase();
+  const isPremium = premiumStatus === "premium";
+  const tierLabel = isPremium ? "Premium" : "Free";
+
+  const signOut = async () => {
+    if (!activeAccount) {
+      // Defensive: should never happen because the trigger only
+      // renders when loggedIn is true, but if accounts.data hasn't
+      // landed yet we fall back to nuking all auth state.
+      try {
+        await invoke("clear_cookies");
+        resetInnertube();
+        toast.success("Signed out");
+      } catch (e) {
+        toast.error(`Sign out failed: ${String(e)}`);
+      }
+      return;
+    }
+    try {
+      await removeAccount(activeAccount.id);
+      // The Rust `remove_account` either promotes the next account to
+      // active (multi-account case) or drops the user to signed-out
+      // (last-account case). Either way `accounts-changed` fires and
+      // the listener takes care of query invalidation + client reset.
+      toast.success("Signed out");
+    } catch (e) {
+      toast.error(`Sign out failed: ${String(e)}`);
+    }
+  };
+
+  // Opens an isolated Google sign-in window so the user can pick a
+  // *different* identity — the new account is appended to the list
+  // rather than replacing the current one. Rust's `start_login`
+  // emits `accounts-changed` on success which invalidates the list
+  // query for us.
+  const addAccount = async () => {
+    try {
+      await invoke("start_login");
+    } catch (e) {
+      toast.error(`Sign-in failed: ${String(e)}`);
+    }
+  };
+
+  const onSwitch = (target: AccountSummary) => async () => {
+    if (target.isActive) return;
+    try {
+      await switchAccount(target.id);
+      // `accounts-changed` listener handles all invalidation — no need
+      // to do it manually here.
+    } catch (e) {
+      toast.error(`Switch failed: ${String(e)}`);
+    }
+  };
+
+  const openExternal = (url: string) => () => {
+    openUrl(url).catch((e) => toast.error(String(e)));
+  };
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              tooltip={email ? `${name} (${email})` : name}
+            >
+              <Avatar className="size-4 shrink-0">
+                {photoUrl ? <AvatarImage src={photoUrl} alt={name} /> : null}
+                <AvatarFallback className="text-[9px] leading-none">
+                  {initial}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{name}</span>
+              {/* The tier badge is a claim about the live session; with
+                  only stored meta (dead session fallback) it would say
+                  "Free" about an account we can't actually see. */}
+              {live ? (
+                <Badge
+                  data-sidebar-label
+                  variant="outline"
+                  className={cn(
+                    "ms-auto h-4 px-1.5 text-[10px] font-semibold uppercase tracking-wide",
+                    "group-data-[collapsible=icon]:hidden",
+                    isPremium
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {tierLabel}
+                </Badge>
+              ) : null}
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="min-w-64">
+            {email ? (
+              <>
+                <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">
+                  {email}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {/* No persisted browser profile behind this account (added
+                before the session-keeper shipped, or its profile was
+                lost during a dedup). Nothing can renew its cookie
+                snapshot, so it will eventually stop authenticating and
+                there is no automatic way back. Say so before the user
+                discovers it as a mystery logout. */}
+            {activeAccount && activeAccount.canRefresh === false ? (
+              <>
+                <button
+                  type="button"
+                  onClick={addAccount}
+                  className="w-full px-2 py-1.5 text-start text-[11px] leading-snug text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+                >
+                  This account can&apos;t keep its session alive. Sign in again
+                  to re-link it.
+                </button>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {allAccounts.length ? (
+              <>
+                <DropdownMenuLabel className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Accounts
+                </DropdownMenuLabel>
+                {allAccounts.map((a) => (
+                  <DropdownMenuItem
+                    key={a.id}
+                    onSelect={onSwitch(a)}
+                    // Highlight the active row so the picker reads as
+                    // "you are signed in as this one". `data-active`
+                    // style mirrors what TanStack Router does on
+                    // sidebar links — same visual language across the
+                    // app. `focus:bg-accent` from the base item style
+                    // still wins on hover, which is what we want.
+                    data-active={a.isActive ? "true" : undefined}
+                    className={cn(
+                      "data-[active=true]:bg-w060 data-[active=true]:text-t1",
+                    )}
+                  >
+                    <Avatar className="size-4 shrink-0">
+                      {a.photoUrl ? (
+                        <AvatarImage src={a.photoUrl} alt={a.name} />
+                      ) : null}
+                      <AvatarFallback className="text-[9px] leading-none">
+                        {(a.name || a.email || "?")
+                          .trim()
+                          .charAt(0)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex min-w-0 flex-col leading-tight">
+                      <span className="truncate">
+                        {a.name || a.email || "Unknown account"}
+                      </span>
+                      {a.email && a.name ? (
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {a.email}
+                        </span>
+                      ) : null}
+                    </div>
+                    {a.isActive ? (
+                      <IconCheck className="ms-auto text-acc1" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            <DropdownMenuItem onSelect={() => openChannelPicker()}>
+              <IconUsersGroupFilled />
+              Switch channel
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={addAccount}>
+              <IconUserPlusFilled />
+              Add another account
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={openExternal(MANAGE_GOOGLE_URL)}>
+              <IconUserCogFilled />
+              Manage Google Account
+              <IconExternalLink className="ms-auto" />
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={openExternal(MANAGE_SUBSCRIPTION_URL)}>
+              <IconCreditCardFilled />
+              Manage subscription
+              <IconExternalLink className="ms-auto" />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={signOut}>
+              <IconLogout stroke={2.3} />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}

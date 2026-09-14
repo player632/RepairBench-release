@@ -1,0 +1,143 @@
+diff --git a/src/components/Collapsible.svelte b/src/components/Collapsible.svelte
+index fe74c6c..16dadf6 100644
+--- a/src/components/Collapsible.svelte
++++ b/src/components/Collapsible.svelte
+@@ -166,7 +166,7 @@
+ 		class:with-hidden-transitions={canToggle && type === 'details'}
+ 		{...{
+ 			'label': {
+-				'data-state': isOpen ? 'open' : 'closed',
++				'data-state': isOpen ? 'closed' : 'open',
+ 			},
+ 			'details': {
+ 				open: isOpen,
+diff --git a/src/components/CollapsibleToolbar.svelte b/src/components/CollapsibleToolbar.svelte
+index 1b2d003..ea28e14 100644
+--- a/src/components/CollapsibleToolbar.svelte
++++ b/src/components/CollapsibleToolbar.svelte
+@@ -26,7 +26,7 @@
+ 	</svelte:fragment>
+ 
+ 	<svelte:fragment slot="toolbar">
+-		{#if !$hasCollapsedNavigation}
++		{#if $hasCollapsedNavigation}
+ 			<div
+ 				role="toolbar"
+ 				data-rb-toolbar-default
+diff --git a/src/components/Nav.svelte b/src/components/Nav.svelte
+index de04dd2..068faa3 100644
+--- a/src/components/Nav.svelte
++++ b/src/components/Nav.svelte
+@@ -24,7 +24,7 @@
+ 	>
+ 		<svelte:fragment slot="title">
+ 			<ul>
+-				<li><a data-rb-nav-home aria-current="{$page.url.pathname === '/' ? 'page' : undefined}" href="/"><span class="logo">Blockhead</span></a></li>
++				<li><a data-rb-nav-home aria-current="{$page.url.pathname !== '/' ? 'page' : undefined}" href="/"><span class="logo">Blockhead</span></a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/portfolio') ? 'page' : undefined}" href="/portfolio">Portfolio</a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/explorer') ? 'page' : undefined}" href="/explorer">Explorer</a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/apps') ? 'page' : undefined}" href="/apps">Apps</a></li>
+diff --git a/src/components/Preferences.svelte b/src/components/Preferences.svelte
+index c230cb3..d921592 100644
+--- a/src/components/Preferences.svelte
++++ b/src/components/Preferences.svelte
+@@ -13,12 +13,12 @@
+ 	export let relevantNetwork: Ethereum.Network | undefined
+ 
+ 	// (View options)
+-	export let isShowingAll = false
++	export let isShowingAll = true
+ 
+ 
+ 	// Functions
+ 	const shouldShowPreference = (preference: Preference) => (
+-		relevantPreferences ? relevantPreferences.includes(preference.preferenceId) : true
++		relevantPreferences ? true : true
+ 	)
+ 
+ 	const resolveOptionName = (name: PreferenceOption['name']) => (
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 2674d19..66b27a3 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -91,7 +91,7 @@
+ 		Object.assign(globalThis.document.documentElement?.dataset ?? {}, {
+ 			'colorScheme': $preferences.theme,
+ 			'animations': $preferences.animations,
+-			'scrollSnap': $preferences.scrollSnap,
++			'scrollSnap': $preferences.animations,
+ 		})
+ 
+ 
+@@ -287,7 +287,7 @@
+ 	<aside
+ 		class="column"
+ 		data-rb-aside
+-		inert={!showAccounts}
++		inert={showAccounts}
+ 	>
+ 		<AccountConnections layout="column" />
+ 	</aside>
+diff --git a/src/routes/ContactForm.svelte b/src/routes/ContactForm.svelte
+index 027fda0..3fe97ee 100644
+--- a/src/routes/ContactForm.svelte
++++ b/src/routes/ContactForm.svelte
+@@ -186,7 +186,7 @@
+ 				fromPromise={promise && (() => promise)}
+ 				then={(result) => {
+ 					console.log("Form submitted", result)
+-					status = 'submitted'
++					status = 'idle'
+ 				}}
+ 				let:result={result}
+ 			>
+diff --git a/src/state/colorTheme.ts b/src/state/colorTheme.ts
+index 6a5bacf..5dad5ea 100644
+--- a/src/state/colorTheme.ts
++++ b/src/state/colorTheme.ts
+@@ -5,7 +5,7 @@ export const colorTheme = derived(
+ 	matchesMediaQuery('(prefers-color-scheme: dark)'),
+ 	($matches) => (
+ 		$matches
+-			? 'dark'
+-			: 'light'
++			? 'light'
++			: 'dark'
+ 	)
+ )
+diff --git a/src/state/preferences.ts b/src/state/preferences.ts
+index 8b64f58..03a4c12 100644
+--- a/src/state/preferences.ts
++++ b/src/state/preferences.ts
+@@ -892,7 +892,7 @@ const resolveDefaultPreferences = (preferences?: Partial<PreferencesState>): Pre
+ 				section.preferences
+ 					.map(preference => [
+ 						preference.preferenceId,
+-						extractOptionValues(preference.options).includes(preferences?.[preference.preferenceId])
++						preferences?.[preference.preferenceId] !== undefined
+ 							&& preferences?.[preference.preferenceId]
+ 							|| preference.defaultOption
+ 					])
+diff --git a/src/utils/findMatchedCaptureGroup.ts b/src/utils/findMatchedCaptureGroup.ts
+index 46c25c6..39a43e2 100644
+--- a/src/utils/findMatchedCaptureGroup.ts
++++ b/src/utils/findMatchedCaptureGroup.ts
+@@ -4,4 +4,4 @@ export const findMatchedCaptureGroup = <T extends string>(regex: RegExp, string:
+ )
+ 
+ export const findMatchedCaptureGroupName = <T extends string>(regex: RegExp, string: string) =>
+-	findMatchedCaptureGroup<T>(regex, string)[0]
++	findMatchedCaptureGroup<T>(regex, string)[1]
+diff --git a/src/utils/localStorageWritable.ts b/src/utils/localStorageWritable.ts
+index 3805bc7..d5a4aee 100644
+--- a/src/utils/localStorageWritable.ts
++++ b/src/utils/localStorageWritable.ts
+@@ -13,7 +13,7 @@ export const localStorageWritable = <Value, SerializedValue = Value>(
+ 	const store = writable(deserialize(json ? JSON.parse(json) : value))
+ 
+ 	globalThis.addEventListener?.('storage', e => {
+-		if(e.key === localStorageKey) {
++		if(e.key !== localStorageKey) {
+ 			const json = e.newValue
+ 			if(json)
+ 				store.set(deserialize(JSON.parse(json)))

@@ -1,0 +1,170 @@
+diff --git a/src/Desktop.svelte b/src/Desktop.svelte
+index 389ba15..58adc43 100644
+--- a/src/Desktop.svelte
++++ b/src/Desktop.svelte
+@@ -22,7 +22,7 @@
+         use:draggable={{ grid: [75, 98] }}
+         data-testid="desktop-icon-{app.replace(/ /g, '-')}"
+         class="dskApp"
+-        on:click={() => toggleOpenApp(app)}
++        on:dblclick={() => toggleOpenApp(app)}
+       >
+         <img src="img/icon/{app}.png" alt="" height="48" width="48" />
+         {app}
+@@ -109,7 +109,7 @@
+ <div
+   data-testid="brightness-overlay"
+   class="brightoverlay"
+-  style:background="rgb(0 0 0 / {100 - $speaker}%)"
++  style:background="rgb(0 0 0 / {100 - $brightness}%)"
+ />
+ 
+ <style>
+diff --git a/src/Taskbar.svelte b/src/Taskbar.svelte
+index 7ad2fe6..be60928 100644
+--- a/src/Taskbar.svelte
++++ b/src/Taskbar.svelte
+@@ -4,7 +4,7 @@
+   import { activeThing, date, openedApps } from "$store";
+ 
+   const toggleActiveThing = (e: string) =>
+-    ($activeThing = $activeThing === e ? e : "");
++    ($activeThing = $activeThing === e ? "" : e);
+ 
+   const toggleOpenApp = (app: string) => {
+     if ($openedApps.includes(app)) {
+@@ -12,7 +12,7 @@
+       $openedApps = $openedApps.filter((oa) => oa !== app);
+     } else {
+       $activeThing = app;
+-      $openedApps.push(app);
++      $openedApps = [...$openedApps, app];
+     }
+   };
+ 
+diff --git a/src/apps/Edge.svelte b/src/apps/Edge.svelte
+index 4fcdaee..ce4b4c2 100644
+--- a/src/apps/Edge.svelte
++++ b/src/apps/Edge.svelte
+@@ -11,7 +11,7 @@
+     var res = string.match(
+       /(http(s)?:\/\/.)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/g
+     );
+-    return res === null;
++    return res !== null;
+   };
+ 
+   const searcher = (e) => {
+diff --git a/src/apps/Settings.svelte b/src/apps/Settings.svelte
+index 3277ec3..ab09d73 100644
+--- a/src/apps/Settings.svelte
++++ b/src/apps/Settings.svelte
+@@ -71,7 +71,7 @@
+                     <div
+                       data-testid="settings-update-tile"
+                       class="column"
+-                      on:click={() => setTab("Windows update")}
++                      on:click={() => setTab("Windows Update")}
+                       on:keypress={() => setTab("Windows Update")}
+                     >
+                       <img
+diff --git a/src/apps/Store.svelte b/src/apps/Store.svelte
+index 99dc00d..3480364 100644
+--- a/src/apps/Store.svelte
++++ b/src/apps/Store.svelte
+@@ -24,7 +24,7 @@
+           class="navBtn hvrBgDark"
+           on:click={() => (tab = e)}
+           on:keypress={() => (tab = e)}
+-          class:active={tab !== e}
++          class:active={tab === e}
+         >
+           {e}
+         </div>
+diff --git a/src/components/ActionCenter.svelte b/src/components/ActionCenter.svelte
+index b356488..d856aed 100644
+--- a/src/components/ActionCenter.svelte
++++ b/src/components/ActionCenter.svelte
+@@ -64,7 +64,7 @@
+       </div>
+       <div class="slider" data-testid="slider-speaker-wrap">
+         <IconButton><Speaker /></IconButton>
+-        <Slider data-testid="slider-speaker" value={$speaker} />
++        <Slider data-testid="slider-speaker" bind:value={$speaker} />
+       </div>
+     </div>
+   </div>
+diff --git a/src/components/Calendar.svelte b/src/components/Calendar.svelte
+index 6c09797..f98b0ab 100644
+--- a/src/components/Calendar.svelte
++++ b/src/components/Calendar.svelte
+@@ -26,7 +26,7 @@
+         day: "numeric",
+       })}
+     </div>
+-    <Button data-testid="calendar-collapse-btn" style="padding: 4px;" on:click={() => (collapse = true)}>
++    <Button data-testid="calendar-collapse-btn" style="padding: 4px;" on:click={() => (collapse = !collapse)}>
+       <img
+         class="icon collapser"
+         src="img/icon/ui/ChevronUp.svg"
+diff --git a/src/components/Widgets.svelte b/src/components/Widgets.svelte
+index 165dd19..da1710c 100644
+--- a/src/components/Widgets.svelte
++++ b/src/components/Widgets.svelte
+@@ -19,7 +19,7 @@
+ 
+     let output = "";
+ 
+-    for (const [secs, str] of Object.entries(a)) {
++    for (const [secs, str] of Object.entries(a).reverse()) {
+       const d = etime / Number(secs);
+       if (d >= 1) {
+         let r = Math.round(d);
+@@ -32,7 +32,7 @@
+ 
+   const getNews = (async () => {
+     const res = await fetch(
+-      "api/news-missing.json"
++      "api/news.json"
+     );
+     return await res.json();
+   })();
+diff --git a/src/components/shared/Speaker.svelte b/src/components/shared/Speaker.svelte
+index 710418d..ecd210d 100644
+--- a/src/components/shared/Speaker.svelte
++++ b/src/components/shared/Speaker.svelte
+@@ -11,7 +11,7 @@
+     width="20"
+     alt=""
+   />
+-{:else if $speaker >= 0}
++{:else if $speaker > 0}
+   <img
+     data-testid="taskbar-speaker-icon"
+     class="icon"
+diff --git a/src/components/shared/Titlebar.svelte b/src/components/shared/Titlebar.svelte
+index d782344..0cea7c6 100644
+--- a/src/components/shared/Titlebar.svelte
++++ b/src/components/shared/Titlebar.svelte
+@@ -17,7 +17,7 @@
+   // Functions
+   let onClickClose = () => {
+     $activeThing = "";
+-    $openedApps = $openedApps.filter((oa) => oa !== $activeThing);
++    $openedApps = $openedApps.filter((oa) => oa !== appName);
+   };
+   let onClickMaximize = () => dispatch("maximize");
+   let onClickReduce = () => dispatch("reduce");
+diff --git a/src/store.ts b/src/store.ts
+index c950c58..9b60422 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -32,7 +32,7 @@ export const appList = readable([
+ export const openedApps = writable([]);
+ 
+ export let date = readable(new Date(), (set) => {
+-  const interval = setInterval(() => set(new Date()), 60000);
++  const interval = setInterval(() => set(new Date()), 1000);
+   return () => clearInterval(interval);
+ });
+ 

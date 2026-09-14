@@ -1,0 +1,172 @@
+diff --git a/src/component/calendar.js b/src/component/calendar.js
+index 62e3925..bf9d5d9 100644
+--- a/src/component/calendar.js
++++ b/src/component/calendar.js
+@@ -73,13 +73,13 @@
+   prev() {
+     const { value } = this;
+     addMonth(value, -1);
+-    this.buildHeaderLeft();
++    this.buildAll();
+   }
+ 
+   next() {
+     const { value } = this;
+     addMonth(value, 1);
+-    this.buildHeaderLeft();
++    this.buildAll();
+   }
+ 
+   buildAll() {
+diff --git a/src/component/contextmenu.js b/src/component/contextmenu.js
+index d60f7fa..7ac9cb0 100644
+--- a/src/component/contextmenu.js
++++ b/src/component/contextmenu.js
+@@ -63,7 +63,7 @@
+   // row-col: the whole rows or the whole cols
+   // range: select range
+   setMode(mode) {
+-    const hideEl = this.menuItems[11];
++    const hideEl = this.menuItems[12];
+     if (mode === 'row-col') {
+       hideEl.show();
+     } else {
+diff --git a/src/component/dropdown.js b/src/component/dropdown.js
+index 52a7c2f..7cc6e4b 100644
+--- a/src/component/dropdown.js
++++ b/src/component/dropdown.js
+@@ -21,7 +21,11 @@
+ 
+     this.headerEl = h('div', `${cssPrefix}-dropdown-header`);
+     this.headerEl.on('click', () => {
+-      this.show();
++      if (this.contentEl.css('display') !== 'block') {
++        this.show();
++      } else {
++        this.hide();
++      }
+     }).children(
+       this.title,
+       showArrow ? h('div', `${cssPrefix}-icon arrow-right`).child(
+diff --git a/src/component/event.js b/src/component/event.js
+index 2055d22..cdbc0fa 100644
+--- a/src/component/event.js
++++ b/src/component/event.js
+@@ -19,7 +19,7 @@
+   el.xclickoutside = (evt) => {
+     // ignore double click
+     // console.log('evt:', evt);
+-    if (evt.detail === 2 || !el.contains(evt.target)) return;
++    if (evt.detail === 2 || el.contains(evt.target)) return;
+     if (cb) cb(el);
+     else {
+       el.hide();
+diff --git a/src/component/sheet.js b/src/component/sheet.js
+index 4520ab6..7950ab9 100644
+--- a/src/component/sheet.js
++++ b/src/component/sheet.js
+@@ -83,6 +83,7 @@
+     this.trigger('cell-selected', cell, ri, ci);
+   }
+   contextMenu.setMode((ri === -1 || ci === -1) ? 'row-col' : 'range');
++  toolbar.reset();
+   table.render();
+ }
+ 
+@@ -407,7 +408,6 @@
+       selectorSet.call(this, false, ri, ci);
+     }
+ 
+-    const arange = selector.arange;
+     // mouse move up
+     mouseMoveUp(window, (e) => {
+       // console.log('mouseMoveUp::::');
+@@ -418,8 +418,8 @@
+         selectorSet.call(this, true, ri, ci, true, true);
+       }
+     }, () => {
+-      if (isAutofillEl && arange && data.settings.mode !== 'read') {
+-        if (data.autofill(arange, 'all', msg => xtoast('Tip', msg))) {
++      if (isAutofillEl && selector.arange && data.settings.mode !== 'read') {
++        if (data.autofill(selector.arange, 'all', msg => xtoast('Tip', msg))) {
+           table.render();
+         }
+       }
+@@ -615,6 +615,7 @@
+       overlayerMousemove.call(this, evt);
+     })
+     .on('mousedown', (evt) => {
++      editor.clear();
+       contextMenu.hide();
+       // the left mouse button: mousedown → mouseup → click
+       // the right mouse button: mousedown → contenxtmenu → mouseup
+@@ -627,11 +628,9 @@
+         }
+         evt.stopPropagation();
+       } else if (evt.detail === 2) {
+-        editor.clear();
+         editorSet.call(this);
+       } else {
+         overlayerMousedown.call(this, evt);
+-        editor.clear();
+       }
+     })
+     .on('mousewheel.stop', (evt) => {
+@@ -684,7 +683,7 @@
+   };
+   // editor
+   editor.change = (state, itext) => {
+-    dataSetCellText.call(this, state, itext);
++    dataSetCellText.call(this, itext, state);
+   };
+   // modal validation
+   modalValidation.change = (action, ...args) => {
+@@ -961,6 +960,7 @@
+ 
+   resetData(data) {
+     // before
++    this.editor.clear();
+     // after
+     this.data = data;
+     verticalScrollbarSet.call(this);
+diff --git a/src/component/sort_filter.js b/src/component/sort_filter.js
+index 92136df..27e8906 100644
+--- a/src/component/sort_filter.js
++++ b/src/component/sort_filter.js
+@@ -11,7 +11,7 @@
+ function buildSortItem(it) {
+   return buildMenu('state').child(t(`sort.${it}`))
+     .attr('data-testid', 'xs-sort-' + it)
+-    .on('click.stop', this.itemClick);
++    .on('click.stop', () => this.itemClick(it));
+ }
+ 
+ function buildFilterBody(items) {
+diff --git a/src/component/tooltip.js b/src/component/tooltip.js
+index e372bd3..7255e4b 100644
+--- a/src/component/tooltip.js
++++ b/src/component/tooltip.js
+@@ -23,5 +23,9 @@
+     }
+   });
+ 
+-  bind(target, 'click', () => {});
++  bind(target, 'click', () => {
++    if (document.body.contains(el.el)) {
++      document.body.removeChild(el.el);
++    }
++  });
+ }
+diff --git a/src/core/data_proxy.js b/src/core/data_proxy.js
+index 01ce7aa..1061a86 100644
+--- a/src/core/data_proxy.js
++++ b/src/core/data_proxy.js
+@@ -600,7 +600,7 @@
+           const cell = rows.getCellOrNew(ri, ci);
+           let cstyle = {};
+           if (cell.style !== undefined) {
+-            cstyle = styles[cell.style];
++            cstyle = helper.cloneDeep(styles[cell.style]);
+           }
+           if (property === 'format') {
+             cstyle.format = value;

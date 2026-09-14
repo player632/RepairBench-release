@@ -1,0 +1,158 @@
+diff --git a/demo/src/Footer.js b/demo/src/Footer.js
+index dc2fbe9..774d664 100644
+--- a/demo/src/Footer.js
++++ b/demo/src/Footer.js
+@@ -11,7 +11,7 @@ function Footer(props) {
+           </span>
+           by{' '}
+           <a className="text-secondary" href="https://www.kevinqi.com/">
+-            <strong>@kevinsqi</strong>
++            <strong>@kevinqi</strong>
+           </a>
+         </div>
+       </div>
+diff --git a/demo/src/InstrumentListProvider.js b/demo/src/InstrumentListProvider.js
+index 1259821..2ff6326 100644
+--- a/demo/src/InstrumentListProvider.js
++++ b/demo/src/InstrumentListProvider.js
+@@ -9,7 +9,7 @@ class InstrumentListProvider extends React.Component {
+   };
+ 
+   static defaultProps = {
+-    soundfont: 'MusyngKite',
++    soundfont: 'FluidR3_GM',
+   };
+ 
+   state = {
+diff --git a/demo/src/InteractiveDemo.js b/demo/src/InteractiveDemo.js
+index 52c3043..a8448fd 100644
+--- a/demo/src/InteractiveDemo.js
++++ b/demo/src/InteractiveDemo.js
+@@ -21,8 +21,8 @@ class InteractiveDemo extends React.Component {
+ 
+   render() {
+     const keyboardShortcuts = KeyboardShortcuts.create({
+-      firstNote: this.state.config.noteRange.first + this.state.config.keyboardShortcutOffset,
+-      lastNote: this.state.config.noteRange.last + this.state.config.keyboardShortcutOffset,
++      firstNote: this.state.config.noteRange.first,
++      lastNote: this.state.config.noteRange.last,
+       keyboardConfig: KeyboardShortcuts.HOME_ROW,
+     });
+ 
+diff --git a/demo/src/PianoConfig.js b/demo/src/PianoConfig.js
+index df9d7bc..74333c7 100644
+--- a/demo/src/PianoConfig.js
++++ b/demo/src/PianoConfig.js
+@@ -59,8 +59,8 @@ class PianoConfig extends React.Component {
+   onChangeFirstNote = (event) => {
+     this.props.setConfig({
+       noteRange: {
+-        first: parseInt(event.target.value, 10),
+-        last: this.props.config.noteRange.last,
++        first: this.props.config.noteRange.first,
++        last: parseInt(event.target.value, 10),
+       },
+     });
+   };
+diff --git a/demo/src/PlaybackDemo.js b/demo/src/PlaybackDemo.js
+index fbcdc5f..bca63f5 100644
+--- a/demo/src/PlaybackDemo.js
++++ b/demo/src/PlaybackDemo.js
+@@ -22,7 +22,7 @@ class PlaybackDemo extends React.Component {
+       if (this.state.isPlaying) {
+         this.playbackIntervalFn = setInterval(() => {
+           this.setState({
+-            activeNotesIndex: (this.state.activeNotesIndex + 1) % this.props.song.length,
++            activeNotesIndex: (this.state.activeNotesIndex + 2) % this.props.song.length,
+           });
+         }, 200);
+       } else {
+diff --git a/demo/src/songs.js b/demo/src/songs.js
+index dd10797..0da310f 100644
+--- a/demo/src/songs.js
++++ b/demo/src/songs.js
+@@ -1,5 +1,5 @@
+ export const lostWoods = [
+-  [65],
++  [64],
+   [69],
+   [71],
+   [],
+diff --git a/src/ControlledPiano.js b/src/ControlledPiano.js
+index 89a85cc..3f5ae89 100644
+--- a/src/ControlledPiano.js
++++ b/src/ControlledPiano.js
+@@ -84,7 +84,7 @@ class ControlledPiano extends React.Component {
+     if (!this.props.keyboardShortcuts) {
+       return null;
+     }
+-    const shortcut = this.props.keyboardShortcuts.find((sh) => sh.key === key);
++    const shortcut = this.props.keyboardShortcuts.find((sh) => sh.midiNumber === key);
+     return shortcut && shortcut.midiNumber;
+   };
+ 
+diff --git a/src/Key.js b/src/Key.js
+index e385d0b..ea5431c 100644
+--- a/src/Key.js
++++ b/src/Key.js
+@@ -94,7 +94,7 @@ class Key extends React.Component {
+         }}
+         onMouseDown={useTouchEvents ? null : this.onPlayNoteInput}
+         onMouseUp={useTouchEvents ? null : this.onStopNoteInput}
+-        onMouseEnter={gliss ? this.onPlayNoteInput : null}
++        onMouseEnter={this.onPlayNoteInput}
+         onMouseLeave={this.onStopNoteInput}
+         onTouchStart={useTouchEvents ? this.onPlayNoteInput : null}
+         onTouchCancel={useTouchEvents ? this.onStopNoteInput : null}
+diff --git a/src/Keyboard.js b/src/Keyboard.js
+index 0b8bfea..d937c46 100644
+--- a/src/Keyboard.js
++++ b/src/Keyboard.js
+@@ -32,7 +32,7 @@ class Keyboard extends React.Component {
+ 
+   // Range of midi numbers on keyboard
+   getMidiNumbers() {
+-    return range(this.props.noteRange.first, this.props.noteRange.last + 1);
++    return range(this.props.noteRange.first, this.props.noteRange.last);
+   }
+ 
+   getNaturalKeyCount() {
+diff --git a/src/KeyboardShortcuts.js b/src/KeyboardShortcuts.js
+index ae0db79..5a8f717 100644
+--- a/src/KeyboardShortcuts.js
++++ b/src/KeyboardShortcuts.js
+@@ -15,7 +15,7 @@ function createKeyboardShortcuts({ firstNote, lastNote, keyboardConfig }) {
+     const { isAccidental } = MidiNumbers.getAttributes(currentMidiNumber);
+     if (isAccidental) {
+       keyboardShortcuts.push({
+-        key: key.flat,
++        key: key.natural,
+         midiNumber: currentMidiNumber,
+       });
+     } else {
+diff --git a/src/MidiNumbers.js b/src/MidiNumbers.js
+index a92db52..be762e9 100644
+--- a/src/MidiNumbers.js
++++ b/src/MidiNumbers.js
+@@ -8,7 +8,7 @@ const PITCH_INDEXES = {
+   Db: 1,
+   D: 2,
+   'D#': 3,
+-  Eb: 3,
++  Eb: 4,
+   E: 4,
+   F: 5,
+   'F#': 6,
+diff --git a/src/Piano.js b/src/Piano.js
+index 989f9af..d25974e 100644
+--- a/src/Piano.js
++++ b/src/Piano.js
+@@ -69,7 +69,7 @@ class Piano extends React.Component {
+         this.props.onStopNoteInput(midiNumber, { prevActiveNotes: this.state.activeNotes });
+       }
+       return {
+-        activeNotes: prevState.activeNotes.filter((note) => midiNumber !== note),
++        activeNotes: prevState.activeNotes.filter((note) => midiNumber === note),
+       };
+     });
+   };

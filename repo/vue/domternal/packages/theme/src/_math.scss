@@ -1,0 +1,147 @@
+// Math nodes (inline + block) live inside `.dm-editor`. The edit popover mounts to
+// `document.body` (outside the token cascade), so its tokens carry literal fallbacks.
+// Glyph typography is owned by the KaTeX stylesheet the consumer imports; this file
+// styles only the wrapper, selected/empty/error states, and the edit popover.
+
+$bg: var(--dm-bg, #ffffff);
+$text: var(--dm-text, #1a1a1a);
+$border: var(--dm-border-color, rgba(0, 0, 0, 0.18));
+$accent: var(--dm-accent, #2563eb);
+$muted: var(--dm-muted, #6b7280);
+$shadow: var(--dm-popover-shadow, 0 12px 28px -8px rgba(0, 0, 0, 0.22), 0 4px 10px -2px rgba(0, 0, 0, 0.12));
+
+.dm-editor {
+  .dm-math {
+    cursor: pointer;
+    border-radius: 0.25rem;
+    // LaTeX source is inherently LTR; isolate so the text-fallback states
+    // (placeholder, no-renderer raw source, render error) stay readable in RTL.
+    direction: ltr;
+    unicode-bidi: isolate;
+
+    &.dm-math-inline {
+      display: inline-block;
+      padding: 0 0.1em;
+      // No overflow: keep it visible so tall fractions/integrals/roots aren't
+      // clipped (clipping one axis forces the other off visible too). KaTeX
+      // already wraps breakable inline math; non-breakable stays a KaTeX limit.
+    }
+
+    &.dm-math-block {
+      // Center when it fits; scroll horizontally when it overflows instead of
+      // being clipped. `safe center` keeps the formula's start reachable.
+      display: flex;
+      justify-content: safe center;
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    &.dm-math-empty {
+      color: var(--dm-placeholder-color, #9ca3af);
+      font-style: italic;
+    }
+
+    &.dm-math-error {
+      color: #dc2626;
+      font-family: var(--dm-code-font, monospace);
+    }
+
+    &.ProseMirror-selectednode {
+      outline: 2px solid $accent;
+      outline-offset: 2px;
+      background: color-mix(in srgb, var(--dm-accent, #2563eb) 8%, transparent);
+    }
+  }
+}
+
+.dm-math-popover {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 16rem;
+  // Cap the width so a wide formula scrolls inside the preview instead of
+  // stretching the whole popover (and its textarea) to the formula's width.
+  max-width: min(90vw, 32rem);
+  box-sizing: border-box;
+  padding: 0.5rem;
+  background: $bg;
+  color: $text;
+  border: 1px solid $border;
+  border-radius: 0.5rem;
+  box-shadow: $shadow;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans,
+    Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  visibility: hidden;
+  opacity: 0;
+  // Show: the [data-show] rule below flips visibility instantly (no transition on
+  // it) so the field is focusable at t=0. A transition on visibility would keep it
+  // computed-hidden when openPopover's synchronous focus() runs, leaving the caret
+  // in the document. Hide: delay the visibility flip 0.2s so the box stays through
+  // the opacity fade.
+  transition: opacity 0.2s ease, visibility 0s linear 0.2s;
+  z-index: var(--dm-z-popover, 60);
+
+  &[data-show] {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+}
+
+.dm-math-popover-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid $border;
+  border-radius: 0.375rem;
+  background: $bg;
+  color: $text;
+  font-family: var(--dm-code-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+  direction: ltr;
+  unicode-bidi: isolate;
+
+  &:focus {
+    border-color: $accent;
+  }
+}
+
+.dm-math-popover-preview {
+  min-height: 1.5rem;
+  // Cap so a tall/wide formula scrolls within the popover instead of growing it.
+  max-width: 100%;
+  max-height: 40vh;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--dm-surface, rgba(0, 0, 0, 0.03));
+  // Center when it fits, pin to the start when it overflows so the beginning
+  // stays reachable while scrolling.
+  display: flex;
+  justify-content: safe center;
+  align-items: center;
+  overflow: auto;
+  direction: ltr;
+  unicode-bidi: isolate;
+
+  &:empty::before {
+    content: "Preview";
+    color: $muted;
+    font-size: 0.75rem;
+    font-style: italic;
+  }
+
+  &.dm-math-error {
+    // Error text reads top-left and wraps; undo the flex centering.
+    justify-content: flex-start;
+    align-items: flex-start;
+    color: #dc2626;
+    font-family: var(--dm-code-font, monospace);
+    text-align: left;
+  }
+}

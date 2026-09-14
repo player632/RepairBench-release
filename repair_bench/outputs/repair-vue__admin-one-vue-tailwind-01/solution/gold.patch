@@ -1,0 +1,146 @@
+diff --git a/src/colors.js b/src/colors.js
+--- a/src/colors.js
++++ b/src/colors.js
+@@ -112,7 +112,7 @@
+     return color
+   }
+ 
+-  const isOutlinedProcessed = ['white', 'whiteDark', 'lightDark'].indexOf(color) < 0
++  const isOutlinedProcessed = isOutlined && ['white', 'whiteDark', 'lightDark'].indexOf(color) < 0
+ 
+   const base = [colors.borders[color], colors.ring[color]]
+ 
+diff --git a/src/components/CardBoxModal.vue b/src/components/CardBoxModal.vue
+--- a/src/components/CardBoxModal.vue
++++ b/src/components/CardBoxModal.vue
+@@ -62,7 +62,7 @@
+ })()
+ 
+ const confirmCancel = (mode) => {
+-  if (mode === 'cancel' || (mode === 'confirm' && props.isForm)) {
++  if (mode === 'cancel' || (mode === 'confirm' && !props.isForm)) {
+     value.value = false
+   }
+ 
+diff --git a/src/components/Charts/chart.config.js b/src/components/Charts/chart.config.js
+--- a/src/components/Charts/chart.config.js
++++ b/src/components/Charts/chart.config.js
+@@ -19,7 +19,7 @@
+ const datasetObject = (color, points) => {
+   return {
+     fill: false,
+-    borderColor: chartColors.default.primary,
++    borderColor: chartColors.default[color],
+     borderWidth: 2,
+     borderDash: [],
+     borderDashOffset: 0.0,
+diff --git a/src/components/FormControl.vue b/src/components/FormControl.vue
+--- a/src/components/FormControl.vue
++++ b/src/components/FormControl.vue
+@@ -105,7 +105,7 @@
+ 
+ if (props.ctrlKFocus) {
+   const fieldFocusHook = (e) => {
+-    if (e.ctrlKey || e.key === 'k') {
++    if (e.ctrlKey && e.key === 'k') {
+       e.preventDefault()
+       inputEl.value.focus()
+     } else if (e.key === 'Escape') {
+diff --git a/src/components/NavBarItem.vue b/src/components/NavBarItem.vue
+--- a/src/components/NavBarItem.vue
++++ b/src/components/NavBarItem.vue
+@@ -66,7 +66,7 @@
+ const root = ref(null)
+ 
+ const forceClose = (event) => {
+-  if (root.value && root.value.contains(event.target)) {
++  if (root.value && !root.value.contains(event.target)) {
+     isDropdownActive.value = false
+   }
+ }
+diff --git a/src/components/NumberDynamic.vue b/src/components/NumberDynamic.vue
+--- a/src/components/NumberDynamic.vue
++++ b/src/components/NumberDynamic.vue
+@@ -40,7 +40,7 @@
+ 
+ const growInit = () => {
+   newValue.value = 0
+-  grow(props.value / (props.duration / 25) / 8)
++  grow(props.value / (props.duration / 25))
+ }
+ 
+ watch(value, () => {
+diff --git a/src/components/TableSampleClients.vue b/src/components/TableSampleClients.vue
+--- a/src/components/TableSampleClients.vue
++++ b/src/components/TableSampleClients.vue
+@@ -28,7 +28,7 @@
+ const checkedRows = ref([])
+ 
+ const itemsPaginated = computed(() =>
+-  items.value.slice(perPage.value * currentPage.value, perPage.value * currentPage.value + 1),
++  items.value.slice(perPage.value * currentPage.value, perPage.value * (currentPage.value + 1)),
+ )
+ 
+ const numPages = computed(() => Math.ceil(items.value.length / perPage.value))
+diff --git a/src/layouts/LayoutAuthenticated.vue b/src/layouts/LayoutAuthenticated.vue
+--- a/src/layouts/LayoutAuthenticated.vue
++++ b/src/layouts/LayoutAuthenticated.vue
+@@ -85,7 +85,7 @@
+ 
+ const menuClick = (event, item) => {
+   if (item.isToggleLightDark) {
+-    darkModeStore.set(null, false)
++    darkModeStore.set(null, true)
+   }
+ 
+   if (item.isLogout) {
+diff --git a/src/stores/darkMode.js b/src/stores/darkMode.js
+--- a/src/stores/darkMode.js
++++ b/src/stores/darkMode.js
+@@ -45,7 +45,7 @@
+     }
+ 
+     if (persist && typeof localStorage !== 'undefined') {
+-      localStorage.setItem(darkModeKey, setIsEnabled ? '0' : '1')
++      localStorage.setItem(darkModeKey, setIsEnabled ? '1' : '0')
+     }
+   }
+ 
+diff --git a/src/stores/main.js b/src/stores/main.js
+--- a/src/stores/main.js
++++ b/src/stores/main.js
+@@ -29,7 +29,7 @@
+       userName.value = payload.name
+     }
+     if (payload.email) {
+-      userName.value = payload.email
++      userEmail.value = payload.email
+     }
+   }
+ 
+diff --git a/src/views/FormsView.vue b/src/views/FormsView.vue
+--- a/src/views/FormsView.vue
++++ b/src/views/FormsView.vue
+@@ -91,7 +91,9 @@
+ })()
+ 
+ const formStatusSubmit = () => {
+-  formStatusCurrent.value = formStatusCurrent.value + 1
++  formStatusCurrent.value = formStatusOptions[formStatusCurrent.value + 1]
++    ? formStatusCurrent.value + 1
++    : 0
+ }
+ </script>
+ 
+diff --git a/src/views/StyleView.vue b/src/views/StyleView.vue
+--- a/src/views/StyleView.vue
++++ b/src/views/StyleView.vue
+@@ -49,7 +49,7 @@
+ const handleStyleChange = (slug) => {
+   document.documentElement.classList.forEach((token) => {
+     if (token.indexOf('style') === 0) {
+-      document.documentElement.classList.remove(token)
++      document.documentElement.classList.replace(token, `style-${slug}`)
+     }
+   })
+ 

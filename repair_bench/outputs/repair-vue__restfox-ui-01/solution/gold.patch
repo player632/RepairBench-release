@@ -1,0 +1,140 @@
+diff --git a/src/components/NavBar.vue b/src/components/NavBar.vue
+index aabf521..34fce3d 100644
+--- a/src/components/NavBar.vue
++++ b/src/components/NavBar.vue
+@@ -237,6 +237,7 @@ export default {
+                     currentEnvironment: value
+                 })
+                 const selectedEnvironment = this.environments.find(environmentItem => environmentItem.name === value)
++                this.activeWorkspace.environment = selectedEnvironment.environment
+                 this.$store.commit('updateWorkspaceEnvironment',  {
+                     workspaceId: this.activeWorkspace._id,
+                     environment: selectedEnvironment.environment
+diff --git a/src/components/RequestPanel.vue b/src/components/RequestPanel.vue
+index d58b4c0..e0e2236 100644
+--- a/src/components/RequestPanel.vue
++++ b/src/components/RequestPanel.vue
+@@ -956,9 +956,9 @@ export default {
+                 }
+             }
+         },
+-        handleUrlChange: debounce(function(this: any) {
++        handleUrlChange() {
+             queryParamsSync.onUrlChange(this.activeTab)
+-        }, 12000),
++        },
+         handleQueryParametersChange() {
+             queryParamsSync.onParametersChange(this.activeTab)
+         },
+diff --git a/src/components/Sidebar.vue b/src/components/Sidebar.vue
+index ee03bef..84320f2 100644
+--- a/src/components/Sidebar.vue
++++ b/src/components/Sidebar.vue
+@@ -391,8 +391,8 @@ export default {
+             }
+ 
+             if(clickedSidebarItem === 'New Request') {
+-                this.addFolderModalParentId = this.activeSidebarItemForContextMenu ? this.activeSidebarItemForContextMenu._id : null
+-                this.addFolderModalShow = true
++                this.addRequestModalParentId = this.activeSidebarItemForContextMenu ? this.activeSidebarItemForContextMenu._id : null
++                this.addRequestModalShow = true
+             }
+ 
+             if(clickedSidebarItem === 'New GraphQL Request') {
+diff --git a/src/components/Tab.vue b/src/components/Tab.vue
+index 991ec8a..3561bfc 100644
+--- a/src/components/Tab.vue
++++ b/src/components/Tab.vue
+@@ -11,6 +11,7 @@
+             <KeepAlive>
+                 <RequestPanel
+                     :active-tab="collectionItem"
++                    :key="'request-panel-' + collectionItem?._id"
+                 />
+             </KeepAlive>
+         </section>
+diff --git a/src/helpers.ts b/src/helpers.ts
+index 36bfa0e..c1c6abb 100644
+--- a/src/helpers.ts
++++ b/src/helpers.ts
+@@ -109,7 +109,7 @@ export async function substituteEnvironmentVariables(
+ }
+ 
+ export function generateBasicAuthString(username: string, password: string) {
+-    return 'Basic ' + window.btoa(unescape(encodeURIComponent(password)) + ':' + unescape(encodeURIComponent(username)))
++    return 'Basic ' + window.btoa(unescape(encodeURIComponent(username)) + ':' + unescape(encodeURIComponent(password)))
+ }
+ 
+ export function getSavedRequestTimeout() {
+@@ -477,7 +477,7 @@ export async function createRequestData(
+ 
+         for (const param of request.parameters.filter(item => !item.disabled)) {
+             const paramName = await substituteEnvironmentVariables(environment, param.name, { cacheId })
+-            const paramValue = param.value
++            const paramValue = await substituteEnvironmentVariables(environment, param.value, { cacheId })
+ 
+             url.searchParams.append(
+                 paramName,
+@@ -520,6 +520,9 @@ export async function createRequestData(
+     // eslint-disable-next-line prefer-const
+     for(let [headerName, headerValues] of Object.entries(parentHeaders)) {
+         headerName = (await substituteEnvironmentVariables(environment, headerName.toLowerCase(), { cacheId })).toLowerCase()
++        if(headerName in headers) {
++            continue //ignore parent headers
++        }
+         const buffer = []
+         for(const value of headerValues) {
+             const headerValue = await substituteEnvironmentVariables(environment, value, { cacheId })
+@@ -668,6 +671,8 @@ export async function handleRequest(
+             responseToSend = { ...responseToSend, buffer: expose.context.response.getBody() }
+         }
+ 
++        responseToSend.testResults = state.testResults
++
+         return responseToSend
+     } catch(e: any) {
+         console.error(e)
+@@ -1600,11 +1605,11 @@ export function responseStatusColorMapping(response: Response) {
+     }
+ 
+     if(response.status >= 400 && response.status <= 499) {
+-        color = 'red'
++        color = 'yellow'
+     }
+ 
+     if(response.status >= 500 || response.statusText === 'Error') {
+-        color = 'yellow'
++        color = 'red'
+     }
+ 
+     return color
+diff --git a/src/store.ts b/src/store.ts
+index 4becb16..778e4d8 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -1190,7 +1190,7 @@ export const store = createStore<State>({
+                     await loadResponses(context.state, collectionId)
+                 }
+ 
+-                context.state.responses[collectionId].push(responseToSave)
++                context.state.responses[collectionId].unshift(responseToSave)
+                 if(context.state.responses[collectionId].length > constants.DEFAULT_LIMITS.RESPONSE_HISTORY) {
+                     const responsesToDelete = context.state.responses[collectionId].splice(constants.DEFAULT_LIMITS.RESPONSE_HISTORY)
+                     const responseIdsToDelete = responsesToDelete.map(responseItem => responseItem._id)
+@@ -1269,6 +1269,7 @@ export const store = createStore<State>({
+                 response
+             })
+ 
++            context.state.requestResponses[activeTab._id] = response
+             context.state.requestResponseStatus[activeTab._id] = 'loaded'
+         },
+         async createWorkspace(context, payload) {
+@@ -1770,7 +1771,7 @@ export const store = createStore<State>({
+             // Initialize runner state
+             const results: CollectionRunnerResult[] = []
+             const collectionTree = context.state.collectionTree
+-            for (let i = 1; i < iterations; i++) {
++            for (let i = 1; i <= iterations; i++) {
+                 selectedRequests.forEach(req => {
+                     results.push({
+                         requestId: req._id,

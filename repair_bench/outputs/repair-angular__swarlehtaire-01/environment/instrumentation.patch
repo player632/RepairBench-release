@@ -1,0 +1,259 @@
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index c44dac1..8e1c2e2 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -3,6 +3,7 @@
+ 		@for (game of gameTypes; track game) {
+ 			<button 
+ 				class="game-button" 
++				[attr.data-testid]="'game-btn-' + $index"
+ 				[class.active]="currentGame === game"
+ 				(click)="selectGame(game)">
+ 				{{ game }}
+diff --git a/src/app/components/clock-board/clock-board.component.html b/src/app/components/clock-board/clock-board.component.html
+index 2d441b3..54d864c 100644
+--- a/src/app/components/clock-board/clock-board.component.html
++++ b/src/app/components/clock-board/clock-board.component.html
+@@ -1,7 +1,7 @@
+ <div class="clock-board">
+ 	<div class="header">
+ 		<div class="header-left">
+-			<button class="btn btn-primary" (click)="newGame()">New Game</button>
++			<button class="btn btn-primary" data-testid="ck-new-game" (click)="newGame()">New Game</button>
+ 			<div class="info-controls">
+ 				<a [href]="rulesInfo.wikipediaUrl" target="_blank" rel="noopener noreferrer"
+ 				   class="wikipedia-link" title="How to play on Wikipedia">
+@@ -25,27 +25,28 @@
+ 
+ 		@if (gameState) {
+ 			<div class="status">
+-				<span class="kings-count">Kings: {{ gameState.kingsCount }}/4</span>
+-				<span class="move-counter">Moves: {{ gameState.moveCount }}</span>
++				<span class="kings-count" data-testid="ck-kings">Kings: {{ gameState.kingsCount }}/4</span>
++				<span class="move-counter" data-testid="ck-moves">Moves: {{ gameState.moveCount }}</span>
+ 				@if (gameState.lastCard) {
+-					<span class="last-card">Last: {{ pileLabel((gameState.lastCard.rank - 1) ) }}</span>
++					<span class="last-card" data-testid="ck-last">Last: {{ pileLabel((gameState.lastCard.rank - 1) ) }}</span>
+ 				}
+ 			</div>
+ 			<div class="controls">
+ 				<button class="btn btn-secondary"
+ 				        [disabled]="gameState.gamePhase !== 'playing'"
+-				        (click)="step()">Step</button>
++				        (click)="step()" data-testid="ck-step">Step</button>
+ 				<button class="btn btn-secondary"
+ 				        [disabled]="gameState.gamePhase !== 'playing'"
+-				        (click)="playAll()">Auto-play</button>
++				        (click)="playAll()" data-testid="ck-playall">Auto-play</button>
+ 			</div>
+ 		}
+ 	</div>
+ 
+-	<div class="clock-face" (click)="onClockFaceClick()">
++	<div class="clock-face" data-testid="ck-face" (click)="onClockFaceClick()">
+ 		@if (gameState) {
+ 			@for (pile of gameState.piles; track $index; let i = $index) {
+ 				<div class="clock-pile"
++				     [attr.data-testid]="'ck-pile-' + i"
+ 				     [class.active]="i === gameState.currentPileIndex && gameState.gamePhase === 'playing'"
+ 				     [class.center-pile]="i === 12"
+ 				     [style.left]="pilePositions[i].left"
+@@ -82,7 +83,7 @@
+ 
+ 	@if (gameState && gameState.gamePhase !== 'playing') {
+ 		<div class="modal-overlay">
+-			<div class="result-modal" [class.won]="gameState.gamePhase === 'won'">
++			<div class="result-modal" data-testid="ck-modal" [class.won]="gameState.gamePhase === 'won'">
+ 				@if (gameState.gamePhase === 'won') {
+ 					<h2>You Won!</h2>
+ 					<p>Incredibly lucky &mdash; only ~1 in 13 games can be won!</p>
+diff --git a/src/app/components/freecell-board/freecell-board.component.html b/src/app/components/freecell-board/freecell-board.component.html
+index 34cb350..ea2dfe9 100644
+--- a/src/app/components/freecell-board/freecell-board.component.html
++++ b/src/app/components/freecell-board/freecell-board.component.html
+@@ -23,11 +23,11 @@
+ 			}
+ 		</div>
+ 		<div class="controls">
+-			<button (click)="onNewGame()" class="btn btn-primary">New Game</button>
+-			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary">Undo</button>
+-			<button (click)="onAutoMove()" class="btn btn-secondary">Auto Move</button>
+-			<div class="move-counter">Moves: {{ gameState?.moveCount || 0 }}</div>
+-			<div class="info-text" title="Supermove formula: 2^M × (N+1), M=empty cascades, N=empty cells">Max move: {{ getMaxMoveSize() }}</div>
++			<button (click)="onNewGame()" class="btn btn-primary" data-testid="fc-new-game">New Game</button>
++			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary" data-testid="fc-undo">Undo</button>
++			<button (click)="onAutoMove()" class="btn btn-secondary" data-testid="fc-automove">Auto Move</button>
++			<div class="move-counter" data-testid="fc-moves">Moves: {{ gameState?.moveCount || 0 }}</div>
++			<div class="info-text" data-testid="fc-maxmove" title="Supermove formula: 2^M × (N+1), M=empty cascades, N=empty cells">Max move: {{ getMaxMoveSize() }}</div>
+ 		</div>
+ 	</div>
+ 
+@@ -37,7 +37,7 @@
+ 				<div class="cells">
+ 					@for (cell of gameState.cells; track $index) {
+ 						<div class="cell" (click)="onCellClick($index)">
+-							<app-stack [cards]="cell ? [cell] : []" stackType="tableau" spread="none"
++							<app-stack [cards]="cell ? [cell] : []" stackType="tableau" spread="none" [testId]="'fc-cell-' + $index"
+ 								(cardDragStart)="onCellDragStart($index)"
+ 								(cardDragEnd)="onDragEnd()"
+ 								(stackDrop)="onCellDrop($index)">
+@@ -47,7 +47,7 @@
+ 				</div>
+ 				<div class="foundations">
+ 					@for (foundation of gameState.foundations; track $index) {
+-						<app-stack [cards]="foundation" stackType="foundation" spread="none"
++						<app-stack [cards]="foundation" stackType="foundation" spread="none" [testId]="'fc-foundation-' + $index"
+ 							(stackDrop)="onFoundationDrop($index)">
+ 						</app-stack>
+ 					}
+@@ -56,7 +56,7 @@
+ 
+ 			<div class="cascades">
+ 				@for (cascade of gameState.cascades; track $index) {
+-					<app-stack [cards]="cascade" stackType="tableau" spread="down"
++					<app-stack [cards]="cascade" stackType="tableau" spread="down" [testId]="'fc-cascade-' + $index"
+ 						(cardClick)="onCascadeClick($index, $event.index)"
+ 						(cardDragStart)="onCascadeDragStart($index, $event)"
+ 						(cardDragEnd)="onDragEnd()"
+diff --git a/src/app/components/klondike-board/klondike-board.component.html b/src/app/components/klondike-board/klondike-board.component.html
+index 54817eb..d1d7fca 100644
+--- a/src/app/components/klondike-board/klondike-board.component.html
++++ b/src/app/components/klondike-board/klondike-board.component.html
+@@ -3,7 +3,7 @@
+ 		<div class="header-left">
+ 			<h1>Swarlehtaire</h1>
+ 			<div class="variant-controls">
+-				<select class="variant-selector" (change)="onVariantChange($event)" [value]="gameState?.variant">
++				<select class="variant-selector" data-testid="kl-variant" (change)="onVariantChange($event)" [value]="gameState?.variant">
+ 					@for (variant of variants; track variant) {
+ 						<option [value]="variant">{{ variant }}</option>
+ 					}
+@@ -30,10 +30,10 @@
+ 			}
+ 		</div>
+ 		<div class="game-controls">
+-			<button (click)="onNewGame()" class="btn btn-primary">New Game</button>
+-			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary">Undo</button>
+-			<button (click)="onAutoComplete()" class="btn btn-secondary">Auto Complete</button>
+-			<div class="move-counter">Moves: {{ gameState?.moveCount || 0 }}</div>
++			<button (click)="onNewGame()" class="btn btn-primary" data-testid="kl-new-game">New Game</button>
++			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary" data-testid="kl-undo">Undo</button>
++			<button (click)="onAutoComplete()" class="btn btn-secondary" data-testid="kl-auto">Auto Complete</button>
++			<div class="move-counter" data-testid="kl-moves">Moves: {{ gameState?.moveCount || 0 }}</div>
+ 		</div>
+ 	</div>
+ 
+@@ -46,12 +46,14 @@
+ 						<app-stack 
+ 							[cards]="gameState.stock" 
+ 							stackType="stock"
++							testId="kl-stock"
+ 							spread="none"
+ 							(stackClick)="onStockClick()">
+ 						</app-stack>
+ 						<app-stack
+ 							[cards]="visibleWasteCards"
+ 							stackType="waste"
++							testId="kl-waste"
+ 							[spread]="wasteSpread"
+ 							(cardClick)="onWasteClick($event)"
+ 							(cardDragStart)="onDragStart({type: 'waste', index: 0, cardIndex: $event})"
+@@ -64,6 +66,7 @@
+ 						<app-stack 
+ 							[cards]="foundation" 
+ 							stackType="foundation"
++							[testId]="'kl-foundation-' + $index"
+ 							spread="none"
+ 							(cardClick)="onFoundationClick($index, $event)"
+ 							(cardDragStart)="onDragStart({type: 'foundation', index: $index, cardIndex: $event})"
+@@ -80,6 +83,7 @@
+ 					<app-stack 
+ 						[cards]="pile" 
+ 						stackType="tableau"
++						[testId]="'kl-tableau-' + $index"
+ 						spread="down"
+ 						(cardClick)="onTableauClick($index, $event)"
+ 						(stackClick)="onTableauStackClick($index)"
+@@ -91,7 +95,7 @@
+ 			</div>
+ 
+ 			@if (gameState.isWon) {
+-				<div class="win-message">
++				<div class="win-message" data-testid="kl-win">
+ 					<div class="suit-rain">
+ 						@for (item of rainItems; track item.id) {
+ 							<span class="suit-drop" [style.left]="item.left" [style.animation-delay]="item.delay" [style.animation-duration]="item.duration">{{ item.suit }}</span>
+diff --git a/src/app/components/spider-board/spider-board.component.html b/src/app/components/spider-board/spider-board.component.html
+index 56f67f1..1becd78 100644
+--- a/src/app/components/spider-board/spider-board.component.html
++++ b/src/app/components/spider-board/spider-board.component.html
+@@ -3,7 +3,7 @@
+ 		<div class="header-left">
+ 			<h1>Swarlehtaire - Spider</h1>
+ 			<div class="variant-controls">
+-				<select class="variant-selector" (change)="onVariantChange($event)" [value]="gameState?.variant">
++				<select class="variant-selector" data-testid="sp-variant" (change)="onVariantChange($event)" [value]="gameState?.variant">
+ 					@for (variant of variants; track variant) {
+ 						<option [value]="variant">{{ variant }}</option>
+ 					}
+@@ -30,15 +30,15 @@
+ 			}
+ 		</div>
+ 		<div class="game-controls">
+-			<button (click)="onNewGame()" class="btn btn-primary">New Game</button>
+-			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary">Undo</button>
++			<button (click)="onNewGame()" class="btn btn-primary" data-testid="sp-new-game">New Game</button>
++			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary" data-testid="sp-undo">Undo</button>
+ 			<button (click)="onDealFromStock()" 
+ 					[disabled]="gameState?.stockCount === 0" 
+-					class="btn btn-secondary">
++					class="btn btn-secondary" data-testid="sp-deal">
+ 				Deal ({{ gameState?.stockCount || 0 }})
+ 			</button>
+-			<div class="move-counter">Moves: {{ gameState?.moveCount || 0 }}</div>
+-			<div class="completed-counter">Completed: {{ gameState?.completedCount || 0 }}/8</div>
++			<div class="move-counter" data-testid="sp-moves">Moves: {{ gameState?.moveCount || 0 }}</div>
++			<div class="completed-counter" data-testid="sp-completed">Completed: {{ gameState?.completedCount || 0 }}/8</div>
+ 		</div>
+ 	</div>
+ 
+@@ -50,6 +50,7 @@
+ 					<app-stack 
+ 						[cards]="pile" 
+ 						stackType="tableau"
++						[testId]="'sp-pile-' + $index"
+ 						spread="down"
+ 						(cardClick)="onTableauClick($index, $event)"
+ 						(cardDragStart)="onDragStart({pileIndex: $index, cardIndex: $event})"
+diff --git a/src/app/components/stack/stack.component.html b/src/app/components/stack/stack.component.html
+index d45e727..7524732 100644
+--- a/src/app/components/stack/stack.component.html
++++ b/src/app/components/stack/stack.component.html
+@@ -6,6 +6,7 @@
+ 	[class.spread-down]="spread === 'down'"
+ 	[class.spread-right]="spread === 'right'"
+ 	[class.drag-over]="isDragOver"
++	[attr.data-testid]="testId || null"
+ 	(click)="onStackClick()"
+ 	(dragover)="onDragOver($event)"
+ 	(dragleave)="onDragLeave()"
+@@ -17,6 +18,7 @@
+ 		@for (card of cards; track card.id; let i = $index) {
+ 			<div class="card-wrapper"
+ 				[style]="getCardStyle(i)"
++				[attr.data-testid]="testId ? testId + '-card-' + i : null"
+ 				(click)="onCardClick(card, i); passClickThrough || $event.stopPropagation()"
+ 				(pointerdown)="onPointerDown($event, i)"
+ 				(pointermove)="onPointerMove($event)"
+diff --git a/src/app/components/stack/stack.component.ts b/src/app/components/stack/stack.component.ts
+index 3ac7864..3cf8c08 100644
+--- a/src/app/components/stack/stack.component.ts
++++ b/src/app/components/stack/stack.component.ts
+@@ -15,6 +15,7 @@ export class StackComponent {
+ 	@Input() stackType: 'stock' | 'waste' | 'foundation' | 'tableau' = 'tableau';
+ 	@Input() spread: 'none' | 'down' | 'right' = 'down';
+ 	@Input() passClickThrough = false;
++	@Input() testId: string | null = null;
+ 	@Output() cardClick = new EventEmitter<{ card: Card; index: number }>();
+ 	@Output() stackClick = new EventEmitter<void>();
+ 	@Output() cardDragStart = new EventEmitter<number>();

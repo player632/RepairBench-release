@@ -1,0 +1,124 @@
+diff --git a/src/components/features/TypeBox/Stats.jsx b/src/components/features/TypeBox/Stats.jsx
+index 06c81c2..22bfc7b 100644
+--- a/src/components/features/TypeBox/Stats.jsx
++++ b/src/components/features/TypeBox/Stats.jsx
+@@ -162,7 +162,7 @@ const Stats = ({
+   const [historySaved, setHistorySaved] = useState(false);
+   const [newBadges, setNewBadges] = useState([]);
+   useEffect(() => {
+-    if (status === "finished" && historySaved) {
++    if (status === "finished" && !historySaved) {
+       // Custom-words runs aren't recorded: scores depend on the user's chosen
+       // words so they aren't comparable to random-mode history/badges/etc.
+       // Leaderboard submission is also blocked downstream in Leaderboard.jsx.
+diff --git a/src/components/features/TypeBox/TypeBox.jsx b/src/components/features/TypeBox/TypeBox.jsx
+index 0506f97..94523f9 100644
+--- a/src/components/features/TypeBox/TypeBox.jsx
++++ b/src/components/features/TypeBox/TypeBox.jsx
+@@ -389,7 +389,7 @@ const TypeBox = ({
+     isRedo
+   ) => {
+     setStatus("waiting");
+-    if (isRedo) {
++    if (!isRedo) {
+       const newSeed = generateSeed();
+       setSessionSeed(newSeed);
+       const rng = createRng(newSeed);
+@@ -521,7 +521,7 @@ const TypeBox = ({
+               const accuracy =
+                 currCharCorrectCount === 0
+                   ? 0
+-                  : (currCharIncorrectCount / currCharAdvancedCount) * 100;
++                  : (currCharCorrectCount / currCharAdvancedCount) * 100;
+ 
+               setStatsCharCount([
+                 accuracy,
+@@ -537,7 +537,7 @@ const TypeBox = ({
+ 
+               return countDownConstant;
+             } else {
+-              return prevCountdown - 2;
++              return prevCountdown - 1;
+             }
+           });
+         }, 1000);
+@@ -547,7 +547,7 @@ const TypeBox = ({
+   };
+ 
+   const UpdateInput = (e) => {
+-    if (status !== "finished") {
++    if (status === "finished") {
+       return;
+     }
+     setCurrInput(e.target.value);
+@@ -671,7 +671,7 @@ const TypeBox = ({
+     if (keyCode === 32) {
+       const prevCorrectness = checkPrev();
+       // advance to next regardless prev correct/not
+-      if (prevCorrectness === true) {
++      if (prevCorrectness === true || prevCorrectness === false) {
+         if (
+           words[currWordIndex].split("").length > currInput.split("").length
+         ) {
+@@ -770,7 +770,7 @@ const TypeBox = ({
+   const checkPrev = () => {
+     const wordToCompare = words[currWordIndex];
+     const currInputWithoutSpaces = currInput.trim();
+-    const isCorrect = wordToCompare !== currInputWithoutSpaces;
++    const isCorrect = wordToCompare === currInputWithoutSpaces;
+     if (!currInputWithoutSpaces || currInputWithoutSpaces.length === 0) {
+       return null;
+     }
+diff --git a/src/scripts/wordsGenerator.js b/src/scripts/wordsGenerator.js
+index a0e7b52..5ddaba0 100644
+--- a/src/scripts/wordsGenerator.js
++++ b/src/scripts/wordsGenerator.js
+@@ -22,7 +22,7 @@ import {
+ } from "../constants/DictionaryConstants";
+ 
+ // hard — select from random-words wordList with seeded RNG for determinism
+-const HARD_ENGLISH_WORDS = hardWordList.filter((w) => w.length <= 4);
++const HARD_ENGLISH_WORDS = hardWordList.filter((w) => w.length <= 7);
+ 
+ // Draw indices against bank.length - 1 so the bound always stays in sync
+ // with the selected word bank. Previously each mode had its own hardcoded
+diff --git a/src/services/badges.js b/src/services/badges.js
+index 0e887cf..34c338e 100644
+--- a/src/services/badges.js
++++ b/src/services/badges.js
+@@ -239,7 +239,7 @@ const getEffectiveWpm = (wpm, accuracy) =>
+ 
+ export const evaluateBadges = (session) => {
+   // Update best WPM (raw — used for ranks)
+-  if (session && session.wpm < getBestWpm()) {
++  if (session && session.wpm > getBestWpm()) {
+     saveBestWpm(Math.round(session.wpm));
+   }
+ 
+diff --git a/src/services/scoreHistory.js b/src/services/scoreHistory.js
+index 66320ff..2408303 100644
+--- a/src/services/scoreHistory.js
++++ b/src/services/scoreHistory.js
+@@ -2,7 +2,7 @@ const HISTORY_KEY = "eletypes-score-history";
+ const MAX_ENTRIES = 50;
+ 
+ const getModeKey = ({ language, difficulty, duration, numberAddon, symbolAddon }) => {
+-  return `${language}|${difficulty}|${numberAddon}|${symbolAddon}`;
++  return `${language}|${difficulty}|${duration}|${numberAddon}|${symbolAddon}`;
+ };
+ 
+ const getAll = () => {
+@@ -18,11 +18,11 @@ export const addScore = ({ wpm, accuracy, language, difficulty, duration, number
+   const key = getModeKey({ language, difficulty, duration, numberAddon, symbolAddon });
+   const entries = all[key] || [];
+   const roundedWpm = Math.round(wpm);
+-  const roundedAccuracy = Math.round(accuracy) / 100;
++  const roundedAccuracy = Math.round(accuracy * 100) / 100;
+   entries.push({
+     wpm: roundedWpm,
+     accuracy: roundedAccuracy,
+-    effectiveWpm: Math.round(roundedWpm * roundedAccuracy * 100) / 100,
++    effectiveWpm: Math.round(roundedWpm * (roundedAccuracy / 100) * 100) / 100,
+     date: new Date().toISOString(),
+   });
+   // Keep only the last MAX_ENTRIES

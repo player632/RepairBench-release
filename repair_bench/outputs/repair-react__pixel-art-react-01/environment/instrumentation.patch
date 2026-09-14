@@ -1,0 +1,43 @@
+diff --git a/src/components/PixelCell.jsx b/src/components/PixelCell.jsx
+index 7551680..019e897 100644
+--- a/src/components/PixelCell.jsx
++++ b/src/components/PixelCell.jsx
+@@ -24,6 +24,7 @@ export default class PixelCell extends React.Component {
+ 
+     return (
+       <div
++        data-testid={`par-cell-${id}`}
+         onMouseDown={ev => onMouseDown(id, ev)}
+         onMouseOver={ev => onMouseOver(id, ev)}
+         onFocus={ev => onMouseOver(id, ev)}
+diff --git a/src/index.jsx b/src/index.jsx
+index 485d323..3458e2f 100644
+--- a/src/index.jsx
++++ b/src/index.jsx
+@@ -7,4 +7,26 @@ import Root from './components/Root';
+ const devMode = process.env.NODE_ENV === 'development';
+ const store = configureStore(devMode);
+ 
++// Instrumentation bridge: re-installed on every store change; DSL readers must
++// read window.__PAR__ fresh on every access (never cache the object).
++const installParBridge = () => {
++  const present = store.getState().present;
++  const frames = present.get('frames');
++  const palette = present.get('palette');
++  window.__PAR__ = {
++    tool: present.get('drawingTool'),
++    duration: present.get('duration'),
++    cellSize: present.get('cellSize'),
++    loading: present.get('loading'),
++    framesCount: frames.get('list').size,
++    activeFrameIndex: frames.get('activeIndex'),
++    columns: frames.get('columns'),
++    rows: frames.get('rows'),
++    palettePosition: palette.get('position'),
++    notificationCount: present.get('notifications').size
++  };
++};
++store.subscribe(installParBridge);
++installParBridge();
++
+ ReactDOM.render(<Root store={store} />, document.getElementById('app'));

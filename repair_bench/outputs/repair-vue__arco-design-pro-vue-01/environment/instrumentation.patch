@@ -1,0 +1,286 @@
+diff --git a/src/components/global-setting/block.vue b/src/components/global-setting/block.vue
+index be43e8c..53b97b7 100644
+--- a/src/components/global-setting/block.vue
++++ b/src/components/global-setting/block.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <div class="block">
+     <h5 class="title">{{ title }}</h5>
+-    <div v-for="option in options" :key="option.name" class="switch-wrapper">
++    <div v-for="option in options" :key="option.name" class="switch-wrapper" :data-testid="`settings-opt-${option.key}`">
+       <span>{{ $t(option.name) }}</span>
+       <form-wrapper
+         :type="option.type || 'switch'"
+diff --git a/src/components/message-box/index.vue b/src/components/message-box/index.vue
+index c0a24f7..f0686d0 100644
+--- a/src/components/message-box/index.vue
++++ b/src/components/message-box/index.vue
+@@ -3,7 +3,7 @@
+     <a-tabs v-model:activeKey="messageType" type="rounded" destroy-on-hide>
+       <a-tab-pane v-for="item in tabList" :key="item.key">
+         <template #title>
+-          <span> {{ item.title }}{{ formatUnreadLength(item.key) }} </span>
++          <span :data-testid="`msg-tab-${item.key}`"> {{ item.title }}{{ formatUnreadLength(item.key) }} </span>
+         </template>
+         <a-result v-if="!renderList.length" status="404">
+           <template #subtitle> {{ $t('messageBox.noContent') }} </template>
+@@ -15,7 +15,7 @@
+         />
+       </a-tab-pane>
+       <template #extra>
+-        <a-button type="text" @click="emptyList">
++        <a-button type="text" @click="emptyList" data-testid="msg-empty-btn">
+           {{ $t('messageBox.tab.button') }}
+         </a-button>
+       </template>
+diff --git a/src/components/navbar/index.vue b/src/components/navbar/index.vue
+index 39cf4f9..17cfc0e 100644
+--- a/src/components/navbar/index.vue
++++ b/src/components/navbar/index.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div class="navbar">
++  <div class="navbar" data-testid="nav-bar">
+     <div class="left-side">
+       <a-space>
+         <img
+@@ -25,7 +25,7 @@
+     <ul class="right-side">
+       <li>
+         <a-tooltip :content="$t('settings.search')">
+-          <a-button class="nav-btn" type="outline" :shape="'circle'">
++          <a-button class="nav-btn" type="outline" :shape="'circle'" data-testid="nav-search-btn">
+             <template #icon>
+               <icon-search />
+             </template>
+@@ -34,12 +34,13 @@
+       </li>
+       <li>
+         <a-tooltip :content="$t('settings.language')">
+-          <a-button
+-            class="nav-btn"
+-            type="outline"
+-            :shape="'circle'"
+-            @click="setDropDownVisible"
+-          >
++        <a-button
++          class="nav-btn"
++          type="outline"
++          :shape="'circle'"
++          @click="setDropDownVisible"
++          data-testid="nav-locale-btn"
++        >
+             <template #icon>
+               <icon-language />
+             </template>
+@@ -74,6 +75,7 @@
+             type="outline"
+             :shape="'circle'"
+             @click="handleToggleTheme"
++            data-testid="nav-theme-btn"
+           >
+             <template #icon>
+               <icon-moon-fill v-if="theme === 'dark'" />
+@@ -86,12 +88,13 @@
+         <a-tooltip :content="$t('settings.navbar.alerts')">
+           <div class="message-box-trigger">
+             <a-badge :count="9" dot>
+-              <a-button
+-                class="nav-btn"
+-                type="outline"
+-                :shape="'circle'"
+-                @click="setPopoverVisible"
+-              >
++            <a-button
++              class="nav-btn"
++              type="outline"
++              :shape="'circle'"
++              @click="setPopoverVisible"
++              data-testid="nav-message-btn"
++            >
+                 <icon-notification />
+               </a-button>
+             </a-badge>
+@@ -122,6 +125,7 @@
+             type="outline"
+             :shape="'circle'"
+             @click="toggleFullScreen"
++            data-testid="nav-fullscreen-btn"
+           >
+             <template #icon>
+               <icon-fullscreen-exit v-if="isFullscreen" />
+@@ -137,6 +141,7 @@
+             type="outline"
+             :shape="'circle'"
+             @click="setVisible"
++            data-testid="nav-settings-btn"
+           >
+             <template #icon>
+               <icon-settings />
+@@ -149,6 +154,7 @@
+           <a-avatar
+             :size="32"
+             :style="{ marginRight: '8px', cursor: 'pointer' }"
++            data-testid="nav-avatar"
+           >
+             <img alt="avatar" :src="avatar" />
+           </a-avatar>
+diff --git a/src/components/tab-bar/index.vue b/src/components/tab-bar/index.vue
+index 609ba2a..77f0d2f 100644
+--- a/src/components/tab-bar/index.vue
++++ b/src/components/tab-bar/index.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div class="tab-bar-container">
++  <div class="tab-bar-container" data-testid="tab-bar-root">
+     <a-affix ref="affixRef" :offset-top="offsetTop">
+       <div class="tab-bar-box">
+         <div class="tab-bar-scroll">
+diff --git a/src/components/tab-bar/tab-item.vue b/src/components/tab-bar/tab-item.vue
+index bc2014d..816374c 100644
+--- a/src/components/tab-bar/tab-item.vue
++++ b/src/components/tab-bar/tab-item.vue
+@@ -8,13 +8,15 @@
+       class="arco-tag arco-tag-size-medium arco-tag-checked"
+       :class="{ 'link-activated': itemData.fullPath === $route.fullPath }"
+       @click="goto(itemData)"
++      :data-testid="`tab-tag-${index}`"
+     >
+-      <span class="tag-link">
++      <span class="tag-link" :data-testid="`tab-link-${index}`">
+         {{ $t(itemData.title) }}
+       </span>
+       <span
+         class="arco-icon-hover arco-tag-icon-hover arco-icon-hover-size-medium arco-tag-close-btn"
+         @click.stop="tagClose(itemData, index)"
++        :data-testid="`tab-close-${index}`"
+       >
+         <icon-close />
+       </span>
+diff --git a/src/layout/default-layout.vue b/src/layout/default-layout.vue
+index 6e57067..f50f046 100644
+--- a/src/layout/default-layout.vue
++++ b/src/layout/default-layout.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <a-layout class="layout" :class="{ mobile: appStore.hideMenu }">
++  <a-layout class="layout" :class="{ mobile: appStore.hideMenu }" data-testid="layout-shell">
+     <div v-if="navbar" class="layout-navbar">
+       <NavBar />
+     </div>
+diff --git a/src/views/dashboard/workplace/components/banner.vue b/src/views/dashboard/workplace/components/banner.vue
+index 00b5534..dcd15b5 100644
+--- a/src/views/dashboard/workplace/components/banner.vue
++++ b/src/views/dashboard/workplace/components/banner.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <a-col class="banner">
+     <a-col :span="8">
+-      <a-typography-title :heading="5" style="margin-top: 0">
++      <a-typography-title :heading="5" style="margin-top: 0" data-testid="wp-welcome">
+         {{ $t('workplace.welcome') }} {{ userInfo.name }}
+       </a-typography-title>
+     </a-col>
+diff --git a/src/views/dashboard/workplace/components/popular-content.vue b/src/views/dashboard/workplace/components/popular-content.vue
+index 1926a1c..f7c46df 100644
+--- a/src/views/dashboard/workplace/components/popular-content.vue
++++ b/src/views/dashboard/workplace/components/popular-content.vue
+@@ -17,13 +17,13 @@
+           type="button"
+           @change="typeChange as any"
+         >
+-          <a-radio value="text">
++          <a-radio value="text" data-testid="pc-radio-text">
+             {{ $t('workplace.popularContent.text') }}
+           </a-radio>
+-          <a-radio value="image">
++          <a-radio value="image" data-testid="pc-radio-image">
+             {{ $t('workplace.popularContent.image') }}
+           </a-radio>
+-          <a-radio value="video">
++          <a-radio value="video" data-testid="pc-radio-video">
+             {{ $t('workplace.popularContent.video') }}
+           </a-radio>
+         </a-radio-group>
+@@ -32,6 +32,7 @@
+           :pagination="false"
+           :bordered="false"
+           :scroll="{ x: '100%', y: '264px' }"
++          data-testid="pc-table"
+         >
+           <template #columns>
+             <a-table-column title="排名" data-index="key"></a-table-column>
+diff --git a/src/views/list/search-table/index.vue b/src/views/list/search-table/index.vue
+index 20cc3a1..826338b 100644
+--- a/src/views/list/search-table/index.vue
++++ b/src/views/list/search-table/index.vue
+@@ -83,13 +83,13 @@
+         <a-divider style="height: 84px" direction="vertical" />
+         <a-col :flex="'86px'" style="text-align: right">
+           <a-space direction="vertical" :size="18">
+-            <a-button type="primary" @click="search">
++            <a-button type="primary" @click="search" data-testid="st-search-btn">
+               <template #icon>
+                 <icon-search />
+               </template>
+               {{ $t('searchTable.form.search') }}
+             </a-button>
+-            <a-button @click="reset">
++            <a-button @click="reset" data-testid="st-reset-btn">
+               <template #icon>
+                 <icon-refresh />
+               </template>
+@@ -192,9 +192,10 @@
+         :bordered="false"
+         :size="size"
+         @page-change="onPageChange"
++        data-testid="st-table"
+       >
+         <template #index="{ rowIndex }">
+-          {{ rowIndex + 1 + (pagination.current - 1) * pagination.pageSize }}
++          <span data-testid="st-row-index">{{ rowIndex + 1 + (pagination.current - 1) * pagination.pageSize }}</span>
+         </template>
+         <template #contentType="{ record }">
+           <a-space>
+diff --git a/src/views/login/components/login-form.vue b/src/views/login/components/login-form.vue
+index 2c3b21c..27f2e05 100644
+--- a/src/views/login/components/login-form.vue
++++ b/src/views/login/components/login-form.vue
+@@ -1,14 +1,15 @@
+ <template>
+   <div class="login-form-wrapper">
+-    <div class="login-form-title">{{ $t('login.form.title') }}</div>
++    <div class="login-form-title" data-testid="login-title">{{ $t('login.form.title') }}</div>
+     <div class="login-form-sub-title">{{ $t('login.form.title') }}</div>
+-    <div class="login-form-error-msg">{{ errorMessage }}</div>
++    <div class="login-form-error-msg" data-testid="login-error-msg">{{ errorMessage }}</div>
+     <a-form
+       ref="loginForm"
+       :model="userInfo"
+       class="login-form"
+       layout="vertical"
+       @submit="handleSubmit"
++      data-testid="login-form"
+     >
+       <a-form-item
+         field="username"
+@@ -52,7 +53,7 @@
+           </a-checkbox>
+           <a-link>{{ $t('login.form.forgetPassword') }}</a-link>
+         </div>
+-        <a-button type="primary" html-type="submit" long :loading="loading">
++        <a-button type="primary" html-type="submit" long :loading="loading" data-testid="login-submit">
+           {{ $t('login.form.login') }}
+         </a-button>
+         <a-button type="text" long class="login-form-register-btn">
+diff --git a/src/views/login/index.vue b/src/views/login/index.vue
+index 28cc3c7..26051d4 100644
+--- a/src/views/login/index.vue
++++ b/src/views/login/index.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div class="container">
++  <div class="container" data-testid="login-page">
+     <div class="logo">
+       <img
+         alt="logo"

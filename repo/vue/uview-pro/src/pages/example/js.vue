@@ -1,0 +1,159 @@
+<template>
+    <demo-page :nav-title="t('nav.js')" :nav-back="false" :tabbar="true">
+        <view>
+            <page-nav :desc="desc" title="nav.js" :index="1"></page-nav>
+            <view class="u-p-10">
+                <u-swiper
+                    :list="recommendList"
+                    :effect3d="false"
+                    autoplay
+                    mode="none"
+                    :title="true"
+                    @click="swiperClick"
+                ></u-swiper>
+            </view>
+            <view class="tool-group-list">
+                <view class="tool-group-card" v-for="(item, index) in list" :key="index">
+                    <view class="tool-group-header">
+                        <u-icon
+                            :name="item.icon"
+                            custom-prefix="custom-icon"
+                            :size="50"
+                            :color="getRandomColor()"
+                        ></u-icon>
+                        <text class="group-title">{{ getTitle('groupName', item) }}</text>
+                    </view>
+                    <view class="tool-list">
+                        <view class="tool-card" v-for="tool in item.list" :key="tool.name">
+                            <u-icon
+                                custom-prefix="custom-icon"
+                                :name="tool.icon"
+                                :size="50"
+                                :color="getRandomColor()"
+                            ></u-icon>
+                            <view class="tool-info">
+                                <text class="tool-name">{{ getTitle('title', tool) }}</text>
+                                <text class="tool-desc">{{ getTitle('desc', tool) }}</text>
+                            </view>
+                            <u-button size="mini" type="primary" @click="openPage(tool.path)">{{
+                                t('common.tryit')
+                            }}</u-button>
+                        </view>
+                    </view>
+                </view>
+            </view>
+            <u-gap height="70"></u-gap>
+        </view>
+    </demo-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import rawList from './js.config';
+import { onShow } from '@dcloudio/uni-app';
+import { useTitle } from '@/common/useHooks';
+import { completeMission } from '@/common/useExperience';
+import { getRandomColor } from '@/common/util';
+
+const list = ref<any[]>(Array.isArray(rawList) ? rawList : []);
+
+// 推荐工具（可自定义）
+const recommendList = [
+    {
+        title: '统一封装的网络请求，支持拦截器和全局配置',
+        title_en: 'Unified network request, supporting interceptors and global configuration',
+        image: getBannerImage('swiper'),
+        path: 'http'
+    }
+];
+
+// 国际化
+const { t, locale } = useI18n();
+const { setTitle, getTitle } = useTitle(1);
+
+// 组件描述
+const desc = computed(() => t('js.desc'));
+
+function openPage(path: string) {
+    uni.navigateTo({
+        url: path.indexOf('/page') == 0 ? path : '/pages/library/' + path + '/index'
+    });
+}
+
+function swiperClick(index: number) {
+    openPage(recommendList[index].path);
+}
+
+function getBannerImage(name: string) {
+    let url = `https://ik.imagekit.io/anyup/uview-pro/swiper/${name}.png`;
+    // #ifdef APP-HARMONY
+    url = `/static/app/swiper/${name}.png`;
+    // #endif
+    return url;
+}
+
+// 设置标题
+onShow(() => {
+    setTitle();
+    completeMission('tools');
+});
+</script>
+
+<style lang="scss" scoped>
+.tool-group-list {
+    padding: 0 20rpx;
+}
+
+.tool-group-card {
+    background: $u-bg-color;
+    border-radius: 12rpx;
+    margin-bottom: 32rpx;
+    box-shadow: 0 12rpx 30rpx rgba(var(--u-type-primary-rgb), 0.08);
+    padding: 24rpx 20rpx 12rpx 20rpx;
+    border: 1rpx solid $u-border-color;
+}
+
+.tool-group-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 18rpx;
+}
+
+.group-title {
+    font-size: 36rpx;
+    font-weight: 500;
+    color: $u-main-color;
+    margin-left: 10rpx;
+}
+
+.tool-card {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: rgba(var(--u-type-primary-rgb), 0.05);
+    border-radius: 12rpx;
+    margin-bottom: 14rpx;
+    padding: 30rpx 26rpx;
+}
+
+.tool-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin-left: 16rpx;
+}
+
+.tool-name {
+    font-size: 30rpx;
+    color: $u-main-color;
+    font-weight: 500;
+}
+
+.tool-desc {
+    font-size: 24rpx;
+    color: $u-content-color;
+    margin-top: 10rpx;
+}
+</style>

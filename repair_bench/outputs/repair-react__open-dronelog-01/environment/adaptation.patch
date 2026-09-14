@@ -1,0 +1,885 @@
+diff --git a/index.html b/index.html
+index d0d3f82..f609909 100644
+--- a/index.html
++++ b/index.html
+@@ -7,9 +7,6 @@
+     <link rel="manifest" href="/manifest.json" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+     <title>Open DroneLog</title>
+-    <link rel="preconnect" href="https://fonts.googleapis.com">
+-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+     <style>
+       html, body {
+         margin: 0;
+diff --git a/src/main.tsx b/src/main.tsx
+index df15368..540868e 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,3 +1,4 @@
++import './rbBackend';
+ import React from 'react';
+ import ReactDOM from 'react-dom/client';
+ import { isWebMode } from '@/lib/api';
+diff --git a/src/rbBackend.ts b/src/rbBackend.ts
+new file mode 100644
+index 0000000..bbd17fa
+--- /dev/null
++++ b/src/rbBackend.ts
+@@ -0,0 +1,513 @@
++// RepairBench environment adaptation: the OFFLINE, DETERMINISTIC stand-in for this seed's
++// Rust/Tauri backend, installed before any application module can reach for it.
++//
++// The seed builds with `npm run build`, which leaves VITE_BACKEND unset, so src/lib/api.ts
++// compiles `isWeb === false` and routes all 62 of its backend calls through
++// `invoke()` from @tauri-apps/api/core -> `window.__TAURI_INTERNALS__.invoke(cmd, args, options)`
++// (core.js:201-203, measured out of the pinned @tauri-apps/api@2.10.1 in the nm archive).
++// Tauri plugin calls take the same road with a `plugin:<name>|<cmd>` command string
++// (plugin-fs dist-js/index.js, plugin-dialog dist-js/index.js:85-188, both measured).
++// In a plain browser that global is absent and every call rejects, so nothing loads.
++//
++// This module installs exactly the surface those three packages read:
++//   window.__TAURI_INTERNALS__.{invoke, transformCallback, unregisterCallback, runCallback,
++//                               callbacks, metadata, convertFileSrc}
++//   window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener
++// plus a same-shape fetch/XHR interceptor for the eleven runtime hosts measured in RECON §3.1.
++//
++// Discipline (RepairBench):
++//   * it is installed at module scope, and src/main.tsx imports this file FIRST, so the stub is
++//     in place before @/lib/api's lazy `await import('@tauri-apps/api/core')` can resolve;
++//   * it answers, it never asserts: unknown commands resolve to null and are recorded, so a gap
++//     shows up as a measurement instead of a crash;
++//   * it writes NO application state and changes NO seed logic - every seed code path still runs
++//     for real, it just talks to this stub instead of to Rust;
++//   * no timestamps, no randomness: the record is ordinal only, so two runs are byte-identical;
++//   * `window.__rbBackend` is the only global it adds, and src/rbProbe.ts (instrumentation)
++//     re-publishes it read-only under `window.__rb` for the verifier.
++
++import {
++  RB_ALL_TAGS,
++  RB_BATTERY_PAIRS,
++  RB_BLANK_PNG_B64,
++  RB_EMPTY_MAP_STYLE,
++  RB_EQUIPMENT_NAMES,
++  RB_FLIGHTS,
++  RB_MAP_HOSTS,
++  RB_NET_FIXTURES,
++  RB_OVERVIEW,
++  RB_PROFILES,
++  RB_SETTINGS,
++} from './rbFixtures';
++
++/** One recorded IPC call. Ordinal only - no clock, no randomness. */
++export interface RbIpcCall {
++  seq: number;
++  cmd: string;
++  argKeys: string;
++}
++
++/** One file the application asked the (virtual) filesystem to write. */
++export interface RbWrite {
++  seq: number;
++  path: string;
++  bytes: number;
++  text: string;
++}
++
++/** One intercepted cross-origin request. */
++export interface RbNetCall {
++  seq: number;
++  host: string;
++  url: string;
++  via: string;
++}
++
++export interface RbBackendRecord {
++  installed: boolean;
++  ipc: RbIpcCall[];
++  unknownCommands: string[];
++  writes: RbWrite[];
++  net: RbNetCall[];
++  /** Count of requests that were allowed through to the real network (must stay 0). */
++  passthrough: number;
++  vfs: Record<string, string>;
++  settings: Record<string, string>;
++  reset: () => void;
++}
++
++const record: RbBackendRecord = {
++  installed: false,
++  ipc: [],
++  unknownCommands: [],
++  writes: [],
++  net: [],
++  passthrough: 0,
++  vfs: {},
++  settings: { ...RB_SETTINGS },
++  reset() {
++    record.ipc.length = 0;
++    record.unknownCommands.length = 0;
++    record.writes.length = 0;
++    record.net.length = 0;
++    record.passthrough = 0;
++    record.vfs = {};
++    record.settings = { ...RB_SETTINGS };
++  },
++};
++
++/** Published for the verifier; the object itself is never re-created after install. */
++export const rbBackendRecord: RbBackendRecord = record;
++
++declare global {
++  interface Window {
++    __rbBackend?: RbBackendRecord;
++    __TAURI_INTERNALS__?: {
++      invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
++      transformCallback: (cb?: (payload: unknown) => void, once?: boolean) => number;
++      unregisterCallback: (id: number) => void;
++      runCallback: (id: number, payload: unknown) => void;
++      callbacks: Record<number, (payload: unknown) => void>;
++      metadata: { currentWindow: { label: string }; currentWebview: { label: string } };
++      convertFileSrc: (filePath: string, protocol?: string) => string;
++    };
++    // NB: __TAURI_EVENT_PLUGIN_INTERNALS__ is intentionally NOT redeclared here -
++    // @tauri-apps/api/event.d.ts:3 already declares it on Window as a REQUIRED member with
++    // exactly { unregisterListener(event, eventId): void }, and a second, optional declaration
++    // is a hard TS2687/TS2717 error under the seed's own `tsc` (build script = `tsc && vite build`).
++  }
++}
++
++// ---------------------------------------------------------------------------
++// virtual filesystem (plugin:fs)
++// ---------------------------------------------------------------------------
++
++const bytesToText = (value: unknown): string => {
++  if (typeof value === 'string') return value;
++  if (value instanceof Uint8Array) return new TextDecoder().decode(value);
++  if (Array.isArray(value)) return new TextDecoder().decode(Uint8Array.from(value as number[]));
++  if (value instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(value));
++  return '';
++};
++
++const textToBytes = (text: string): number[] => Array.from(new TextEncoder().encode(text));
++
++/** plugin-fs passes the path in `options.headers.path`, URI-encoded (index.js:687-693). */
++const headerPath = (options: unknown): string | null => {
++  const headers = (options as { headers?: Record<string, string> } | undefined)?.headers;
++  if (!headers || typeof headers.path !== 'string') return null;
++  try {
++    return decodeURIComponent(headers.path);
++  } catch {
++    return headers.path;
++  }
++};
++
++const argPath = (args: unknown): string | null => {
++  const p = (args as { path?: unknown } | undefined)?.path;
++  return typeof p === 'string' ? p : null;
++};
++
++const pngBytes = (): number[] => {
++  const bin = atob(RB_BLANK_PNG_B64);
++  const out = new Uint8Array(bin.length);
++  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
++  return Array.from(out);
++};
++
++// ---------------------------------------------------------------------------
++// command dispatch
++// ---------------------------------------------------------------------------
++
++/** Deep-copy on the way out so an application mutation can never reach the fixture. */
++const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
++
++function dispatch(cmd: string, args: unknown, options: unknown): unknown {
++  switch (cmd) {
++    // --- flight database -------------------------------------------------
++    case 'get_flights':
++      return clone(RB_FLIGHTS);
++    case 'get_overview_stats':
++      return clone(RB_OVERVIEW);
++    case 'get_flight_data': {
++      const id = Number((args as { flightId?: unknown })?.flightId);
++      const flight = RB_FLIGHTS.find((f) => f.id === id) ?? RB_FLIGHTS[0];
++      return clone({ flight, telemetry: { time: [], height: [], vpsHeight: [], speed: [], battery: [], batteryVoltage: [], batteryTemp: [], satellites: [], rcSignal: [], pitch: [], roll: [], yaw: [] }, track: [], messages: [] });
++    }
++    case 'get_battery_full_capacity_history':
++      return [];
++    case 'get_allowed_log_extensions':
++      return ['txt', 'csv'];
++    case 'compute_file_hash':
++      return 'rbhash0000';
++    case 'get_all_tags':
++      return clone(RB_ALL_TAGS);
++    case 'get_enabled_tag_types':
++      return [];
++    case 'get_smart_tags_enabled':
++      return true;
++    case 'set_smart_tags_enabled':
++      return true;
++    case 'get_battery_pairs':
++      return clone(RB_BATTERY_PAIRS);
++    case 'get_equipment_names':
++      return clone(RB_EQUIPMENT_NAMES);
++    case 'set_equipment_name':
++      return true;
++
++    // --- mutating database calls the verifier never triggers, answered so a
++    //     stray click cannot reject and surface as an application crash -----
++    case 'delete_flight':
++    case 'delete_all_flights':
++    case 'update_flight_name':
++    case 'update_flight_notes':
++    case 'update_flight_color':
++    case 'add_flight_tag':
++    case 'remove_flight_tag':
++    case 'deduplicate_flights':
++    case 'import_log':
++    case 'import_log_bytes':
++    case 'create_manual_flight':
++    case 'regenerate_all_smart_tags':
++    case 'remove_all_auto_tags':
++    case 'regenerate_flight_smart_tags':
++    case 'set_enabled_tag_types':
++    case 'add_to_sync_blacklist':
++    case 'remove_from_sync_blacklist':
++    case 'clear_sync_blacklist':
++    case 'log_sync_event':
++      return true;
++
++    // --- settings / profiles / session ------------------------------------
++    case 'get_setting_value': {
++      const key = String((args as { key?: unknown })?.key ?? '');
++      return Object.prototype.hasOwnProperty.call(record.settings, key) ? record.settings[key] : null;
++    }
++    case 'set_setting_value': {
++      const a = args as { key?: unknown; value?: unknown };
++      record.settings[String(a?.key ?? '')] = String(a?.value ?? '');
++      return true;
++    }
++    case 'list_profiles':
++      return clone(RB_PROFILES);
++    case 'get_active_profile':
++      return 'default';
++    case 'is_app_locked':
++      return false;
++    case 'switch_profile':
++      return { success: true };
++    case 'unlock_profile':
++    case 'set_profile_password':
++    case 'remove_profile_password':
++    case 'delete_profile':
++      return true;
++    case 'get_auto_logout':
++    case 'set_auto_logout':
++      return false;
++    case 'has_api_key':
++      return false;
++    case 'get_api_key_type':
++      return 'none';
++    case 'set_api_key':
++    case 'remove_api_key':
++      return true;
++    case 'get_supporter_status':
++      return false;
++    case 'verify_supporter_code':
++      return false;
++    case 'remove_supporter_badge':
++      return true;
++    case 'get_donation_acknowledged':
++      // true: the donation banner is a fixed overlay across the top of the shell and would
++      // otherwise sit between the verifier and the stat cards on every single checkpoint.
++      return true;
++    case 'set_donation_acknowledged':
++      return true;
++    case 'get_app_data_dir':
++      return '/rb/appdata';
++    case 'get_app_log_dir':
++      return '/rb/applog';
++    case 'get_sync_blacklist':
++      return [];
++    case 'get_keep_upload_settings':
++      return { enabled: false, folder_path: '' };
++    case 'set_keep_upload_settings':
++      return true;
++    case 'export_backup_bytes':
++      return textToBytes('{"rb":"backup"}');
++    case 'import_backup':
++    case 'import_backup_bytes':
++      return 'rb-restored';
++    case 'export_backup':
++      return true;
++
++    // --- Tauri plugins ----------------------------------------------------
++    case 'plugin:event|listen':
++    case 'plugin:event|unlisten':
++      return 1;
++    case 'plugin:log|log':
++    case 'plugin:log|attach_console':
++    case 'plugin:log|level_filter':
++      return null;
++    case 'plugin:dialog|save':
++      return '/rb/exports/rb-export.txt';
++    case 'plugin:dialog|open':
++      return '/rb/exports';
++    case 'plugin:dialog|message':
++    case 'plugin:dialog|ask':
++    case 'plugin:dialog|confirm':
++      return true;
++    case 'plugin:opener|open_url':
++    case 'plugin:opener|open_path':
++    case 'plugin:shell|open':
++      return null;
++    case 'plugin:fs|write_text_file':
++    case 'plugin:fs|write_file': {
++      const p = headerPath(options) ?? argPath(args) ?? '/rb/unknown';
++      const text = bytesToText(args);
++      record.vfs[p] = text;
++      record.writes.push({ seq: record.writes.length + 1, path: p, bytes: text.length, text });
++      return null;
++    }
++    case 'plugin:fs|read_text_file': {
++      const p = argPath(args) ?? headerPath(options) ?? '';
++      return textToBytes(Object.prototype.hasOwnProperty.call(record.vfs, p) ? record.vfs[p] : '');
++    }
++    case 'plugin:fs|read_file': {
++      const p = argPath(args) ?? headerPath(options) ?? '';
++      return Object.prototype.hasOwnProperty.call(record.vfs, p) ? textToBytes(record.vfs[p]) : pngBytes();
++    }
++    case 'plugin:fs|remove': {
++      const p = argPath(args) ?? headerPath(options) ?? '';
++      delete record.vfs[p];
++      return null;
++    }
++    case 'plugin:fs|exists': {
++      const p = argPath(args) ?? headerPath(options) ?? '';
++      return Object.prototype.hasOwnProperty.call(record.vfs, p);
++    }
++    case 'plugin:fs|mkdir':
++    case 'plugin:fs|rename':
++    case 'plugin:fs|copy_file':
++    case 'plugin:fs|truncate':
++      return null;
++    case 'plugin:fs|read_dir':
++      return [];
++    case 'plugin:fs|stat':
++    case 'plugin:fs|lstat':
++    case 'plugin:fs|fstat':
++      return { isFile: true, isDirectory: false, size: 0, mtime: 0, atime: 0, birthtime: 0 };
++    case 'plugin:path|resolve_directory':
++      return '/rb/appdata';
++    case 'plugin:path|join': {
++      const parts = (args as { paths?: unknown[] })?.paths;
++      return Array.isArray(parts) ? parts.map((p) => String(p)).join('/') : '/rb';
++    }
++    case 'plugin:window|internal_on_mousemove':
++    case 'plugin:window|internal_on_mousedown':
++      return null;
++    case 'plugin:app|version':
++      // flightStore.ts:1096-1099 calls getVersion() and only falls back to the vite-injected
++      // __APP_VERSION__ when it throws. Answering with the SAME literal the build injects
++      // (vite.config.ts:18 -> pkg.version) keeps `updateStatus` on 'latest' against the pinned
++      // RB_NET_FIXTURES github tag, so no update banner ever sits over the stat cards - and it
++      // closes the only `unknownCommands` entry measured by the 14:58 census leg.
++      return '3.3.0';
++    case 'plugin:app|name':
++      return 'open-dronelog';
++    case 'plugin:app|tauri_version':
++      return '2.0.0';
++    default:
++      if (!record.unknownCommands.includes(cmd)) record.unknownCommands.push(cmd);
++      return null;
++  }
++}
++
++// ---------------------------------------------------------------------------
++// network interception (RECON §3.1: 11 runtime hosts)
++// ---------------------------------------------------------------------------
++
++const hostOf = (url: string): string => {
++  try {
++    return new URL(url, location.href).hostname;
++  } catch {
++    return '';
++  }
++};
++
++/** null => not ours, let the real network handle it. */
++function netFixture(url: string): { status: number; type: string; body: string } | null {
++  const host = hostOf(url);
++  if (!host || host === location.hostname) return null;
++  const fix = RB_NET_FIXTURES[host];
++  if (fix) return fix;
++  if (host === 'fonts.googleapis.com') return { status: 200, type: 'text/css', body: '/* rb offline font stub */' };
++  if (host === 'fonts.gstatic.com') return { status: 200, type: 'font/woff2', body: '' };
++  if (RB_MAP_HOSTS.includes(host)) {
++    if (/\.png(\?|$)/i.test(url) || /\/tile\//i.test(url)) return { status: 200, type: 'image/png', body: RB_BLANK_PNG_B64 };
++    if (/\.pbf(\?|$)/i.test(url)) return { status: 200, type: 'application/x-protobuf', body: '' };
++    if (/tiles\.json(\?|$)/i.test(url)) {
++      return { status: 200, type: 'application/json', body: JSON.stringify({ tilejson: '2.2.0', name: 'rb-terrain', tiles: [], minzoom: 0, maxzoom: 0, bounds: [0, 0, 0, 0] }) };
++    }
++    return { status: 200, type: 'application/json', body: RB_EMPTY_MAP_STYLE };
++  }
++  return null;
++}
++
++function installNetStub(): void {
++  const originalFetch = window.fetch.bind(window);
++  window.fetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
++    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
++    const host = hostOf(url);
++    const fix = netFixture(url);
++    if (!fix) {
++      if (host && host !== location.hostname) record.passthrough += 1;
++      return originalFetch(input as RequestInfo, init);
++    }
++    record.net.push({ seq: record.net.length + 1, host, url, via: 'fetch' });
++    return Promise.resolve(new Response(fix.body, { status: fix.status, headers: { 'Content-Type': fix.type } }));
++  }) as unknown as typeof window.fetch;
++
++  const OriginalXHR = window.XMLHttpRequest;
++  const PatchedXHR = function (this: XMLHttpRequest) {
++    const xhr = new OriginalXHR();
++    let stubbed: { status: number; type: string; body: string } | null = null;
++    let stubUrl = '';
++    const proxy = xhr as unknown as Record<string, unknown>;
++    const originalOpen = xhr.open.bind(xhr);
++    proxy.open = ((method: string, url: string, ...rest: unknown[]) => {
++      stubUrl = String(url);
++      stubbed = netFixture(stubUrl);
++      if (stubbed) {
++        record.net.push({ seq: record.net.length + 1, host: hostOf(stubUrl), url: stubUrl, via: 'xhr' });
++        return undefined;
++      }
++      return (originalOpen as (m: string, u: string, ...r: unknown[]) => void)(method, url, ...rest);
++    }) as unknown as typeof xhr.open;
++    const originalSend = xhr.send.bind(xhr);
++    proxy.send = ((body?: Document | XMLHttpRequestBodyInit | null) => {
++      if (!stubbed) return originalSend(body);
++      const s = stubbed;
++      Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
++      Object.defineProperty(xhr, 'status', { get: () => s.status, configurable: true });
++      Object.defineProperty(xhr, 'responseText', { get: () => s.body, configurable: true });
++      Object.defineProperty(xhr, 'response', { get: () => s.body, configurable: true });
++      setTimeout(() => {
++        xhr.dispatchEvent(new Event('readystatechange'));
++        xhr.dispatchEvent(new ProgressEvent('load'));
++        xhr.dispatchEvent(new ProgressEvent('loadend'));
++      }, 0);
++      return undefined;
++    }) as unknown as typeof xhr.send;
++    return proxy as unknown as XMLHttpRequest;
++  } as unknown as typeof XMLHttpRequest;
++  PatchedXHR.prototype = OriginalXHR.prototype;
++  window.XMLHttpRequest = PatchedXHR;
++}
++
++// ---------------------------------------------------------------------------
++// install
++// ---------------------------------------------------------------------------
++
++function installTauriInternals(): void {
++  const callbacks: Record<number, (payload: unknown) => void> = {};
++  let nextCallbackId = 1;
++  let nextSeq = 1;
++
++  const argKeysOf = (args: unknown): string => {
++    if (args === null || args === undefined) return '';
++    if (Array.isArray(args)) return '[array:' + args.length + ']';
++    if (args instanceof Uint8Array) return '[bytes:' + args.byteLength + ']';
++    if (typeof args !== 'object') return '[' + typeof args + ']';
++    return Object.keys(args as Record<string, unknown>).sort().join(',');
++  };
++
++  window.__TAURI_INTERNALS__ = {
++    invoke: (cmd: string, args?: unknown, options?: unknown) => {
++      record.ipc.push({ seq: nextSeq++, cmd: String(cmd), argKeys: argKeysOf(args) });
++      try {
++        return Promise.resolve(dispatch(String(cmd), args, options));
++      } catch (e) {
++        return Promise.reject(e);
++      }
++    },
++    transformCallback: (cb?: (payload: unknown) => void) => {
++      const id = nextCallbackId++;
++      if (cb) callbacks[id] = cb;
++      return id;
++    },
++    unregisterCallback: (id: number) => {
++      delete callbacks[id];
++    },
++    runCallback: (id: number, payload: unknown) => {
++      const cb = callbacks[id];
++      if (cb) cb(payload);
++    },
++    callbacks,
++    metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
++    convertFileSrc: (filePath: string) => 'file://' + String(filePath),
++  };
++
++  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
++    unregisterListener: () => {
++      /* no-op: the stub never emits backend-originated events */
++    },
++  };
++}
++
++export function installRbBackend(): void {
++  if (record.installed) return;
++  record.installed = true;
++  installTauriInternals();
++  try {
++    installNetStub();
++  } catch {
++    // A failed network shim must never take the application down with it: the IPC stub above is
++    // the load-bearing half, and every host this shim covers is also unreachable-by-design.
++  }
++  if (typeof window !== 'undefined') window.__rbBackend = record;
++}
++
++// Installed at module scope: src/main.tsx imports this file as its very first import, so the
++// stub is guaranteed to exist before any lazily-imported @tauri-apps/* module resolves.
++if (typeof window !== 'undefined') installRbBackend();
+diff --git a/src/rbFixtures.ts b/src/rbFixtures.ts
+new file mode 100644
+index 0000000..0bd79ec
+--- /dev/null
++++ b/src/rbFixtures.ts
+@@ -0,0 +1,337 @@
++// RepairBench environment adaptation: the OFFLINE, DETERMINISTIC dataset that stands in
++// for this seed's Rust/Tauri backend database.
++//
++// Why this file exists: `npm run build` (the roster recipe) leaves VITE_BACKEND unset, so
++// src/lib/api.ts compiles with `isWeb === false` and every one of its 62 backend calls goes
++// through `invoke()` from @tauri-apps/api/core, which reads `window.__TAURI_INTERNALS__`.
++// In a plain browser that global does not exist, so the app cannot load a single flight.
++// rbBackend.ts installs that global; this file only supplies the bytes it answers with.
++//
++// Discipline (RepairBench):
++//   * every value here is a literal - no Math.random(), no Date.now(), no new Date() anchor,
++//     so two runs of the same tree produce byte-identical DOM;
++//   * no flight carries homeLat/homeLon, which is what keeps src/components/dashboard/
++//     FlightClusterMap.tsx on its `geojson.features.length === 0` branch (line 716) so the
++//     MapLibre GL canvas - and therefore the whole WebGL/software-rasteriser dependency -
++//     is never mounted by the view the verifier drives;
++//   * identifiers are prefixed RB- / rb- so harness-authored data can never be confused with
++//     seed-authored data, and so a model that hardcodes a fixture value is visible in review.
++
++import type { Flight, OverviewStats } from '@/types';
++
++/** Nine flights: enough to exercise pair aggregation, duplicate-name disambiguation,
++ *  null-cell fallbacks ('--'), the three duration buckets and eight distinct flight days. */
++export const RB_FLIGHTS: Flight[] = [
++  {
++    id: 1,
++    fileName: 'rb-log-0001.txt',
++    displayName: 'Harbour Line Survey',
++    fileHash: 'rbhash0001',
++    droneModel: 'DJI Mini 4 Pro',
++    droneSerial: 'RB-DR-01',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-01',
++    cycleCount: 120,
++    startTime: '2025-03-10T08:15:00Z',
++    durationSecs: 754,
++    totalDistance: 1832.4,
++    maxAltitude: 118.5,
++    maxSpeed: 14.2,
++    pointCount: 1520,
++    photoCount: 6,
++    videoCount: 1,
++    tags: [{ tag: 'survey', tagType: 'manual' }],
++    notes: null,
++    color: '#38bdf8',
++    rcSerial: 'RB-RC-01',
++    batteryLife: null,
++  },
++  {
++    id: 2,
++    fileName: 'rb-log-0002.txt',
++    displayName: 'Ridge Traverse',
++    fileHash: 'rbhash0002',
++    droneModel: 'DJI Mini 4 Pro',
++    droneSerial: 'RB-DR-02',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-02',
++    cycleCount: 88,
++    startTime: '2025-03-11T16:40:00Z',
++    durationSecs: 1423,
++    totalDistance: 4210.9,
++    maxAltitude: 205.0,
++    maxSpeed: 18.6,
++    pointCount: 2870,
++    photoCount: 12,
++    videoCount: 0,
++    tags: [{ tag: 'survey', tagType: 'manual' }],
++    notes: null,
++    color: '#a78bfa',
++    rcSerial: 'RB-RC-01',
++    batteryLife: null,
++  },
++  {
++    id: 3,
++    fileName: 'rb-log-0003.txt',
++    displayName: 'Quarry Volume Pass',
++    fileHash: 'rbhash0003',
++    droneModel: 'DJI Air 3',
++    droneSerial: 'RB-DR-03',
++    aircraftName: 'Air Three',
++    batterySerial: 'RB-BAT-03',
++    cycleCount: 210,
++    startTime: '2025-03-18T11:05:00Z',
++    durationSecs: 412,
++    totalDistance: 906.2,
++    maxAltitude: 62.3,
++    maxSpeed: 9.8,
++    pointCount: 840,
++    photoCount: 0,
++    videoCount: 0,
++    tags: [],
++    notes: 'second pass',
++    color: '#34d399',
++    rcSerial: 'RB-RC-02',
++    batteryLife: null,
++  },
++  {
++    id: 4,
++    fileName: 'rb-log-0004.txt',
++    displayName: 'Night Perimeter Loop',
++    fileHash: 'rbhash0004',
++    droneModel: 'DJI Air 3',
++    droneSerial: 'RB-DR-03',
++    aircraftName: 'Air Three',
++    batterySerial: 'RB-BAT-01',
++    cycleCount: 122,
++    startTime: '2025-04-02T21:30:00Z',
++    durationSecs: 2310,
++    totalDistance: 6480.0,
++    maxAltitude: 88.9,
++    maxSpeed: 16.1,
++    pointCount: 4610,
++    photoCount: 3,
++    videoCount: 2,
++    tags: [{ tag: 'night', tagType: 'auto' }],
++    notes: null,
++    color: '#f472b6',
++    rcSerial: 'RB-RC-02',
++    batteryLife: null,
++  },
++  {
++    id: 5,
++    fileName: 'rb-log-0005.txt',
++    displayName: 'Field Grid A',
++    fileHash: 'rbhash0005',
++    droneModel: 'Autel EVO Nano',
++    droneSerial: 'RB-DR-04',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-04',
++    cycleCount: 45,
++    startTime: '2025-04-09T07:00:00Z',
++    durationSecs: 599,
++    totalDistance: 1204.5,
++    maxAltitude: null,
++    maxSpeed: 11.3,
++    pointCount: 1180,
++    photoCount: 2,
++    videoCount: 0,
++    tags: [],
++    notes: null,
++    color: '#fbbf24',
++    rcSerial: 'RB-RC-03',
++    batteryLife: null,
++  },
++  {
++    id: 6,
++    fileName: 'rb-log-0006.txt',
++    displayName: 'Field Grid B',
++    fileHash: 'rbhash0006',
++    droneModel: 'Autel EVO Nano',
++    droneSerial: 'RB-DR-04',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-04',
++    cycleCount: 46,
++    startTime: '2025-04-09T09:20:00Z',
++    durationSecs: 601,
++    totalDistance: null,
++    maxAltitude: 141.2,
++    maxSpeed: 12.0,
++    pointCount: 1205,
++    photoCount: 0,
++    videoCount: 1,
++    tags: [],
++    notes: null,
++    color: '#fbbf24',
++    rcSerial: 'RB-RC-03',
++    batteryLife: null,
++  },
++  {
++    id: 7,
++    fileName: 'rb-log-0007.txt',
++    displayName: 'Coastline Sweep',
++    fileHash: 'rbhash0007',
++    droneModel: 'DJI Mini 4 Pro',
++    droneSerial: 'RB-DR-01',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-05',
++    cycleCount: 310,
++    startTime: '2025-04-21T14:55:00Z',
++    durationSecs: 3600,
++    totalDistance: 12450.75,
++    maxAltitude: 76.4,
++    maxSpeed: 21.7,
++    pointCount: 7200,
++    photoCount: 24,
++    videoCount: 3,
++    tags: [{ tag: 'survey', tagType: 'manual' }, { tag: 'night', tagType: 'auto' }],
++    notes: null,
++    color: '#38bdf8',
++    rcSerial: 'RB-RC-01',
++    batteryLife: null,
++  },
++  {
++    id: 8,
++    fileName: 'rb-log-0008.txt',
++    displayName: 'Rooftop Inspection',
++    fileHash: 'rbhash0008',
++    droneModel: 'DJI Mavic 3',
++    droneSerial: 'RB-DR-05',
++    aircraftName: null,
++    batterySerial: 'RB-BAT-06',
++    cycleCount: 12,
++    startTime: '2025-05-06T18:05:00Z',
++    durationSecs: 121,
++    totalDistance: 208.6,
++    maxAltitude: 34.0,
++    maxSpeed: 5.4,
++    pointCount: 240,
++    photoCount: 9,
++    videoCount: 0,
++    tags: [],
++    notes: null,
++    color: '#94a3b8',
++    rcSerial: null,
++    batteryLife: null,
++  },
++  {
++    id: 9,
++    fileName: 'rb-log-0009.txt',
++    displayName: 'Test Bench Hover',
++    fileHash: 'rbhash0009',
++    droneModel: 'DJI Mavic 3',
++    droneSerial: 'RB-DR-05',
++    aircraftName: null,
++    batterySerial: null,
++    cycleCount: null,
++    startTime: '2025-05-14T12:00:00Z',
++    durationSecs: null,
++    totalDistance: null,
++    maxAltitude: null,
++    maxSpeed: null,
++    pointCount: 60,
++    photoCount: 0,
++    videoCount: 0,
++    tags: [],
++    notes: 'no telemetry',
++    color: '#94a3b8',
++    rcSerial: null,
++    batteryLife: null,
++  },
++];
++
++/**
++ * `get_overview_stats` payload.
++ *
++ * 🔴 Deliberately NOT self-consistent with RB_FLIGHTS: the Rust backend counts every row in
++ * the database (including the three archived imports below), while src/components/dashboard/
++ * Overview.tsx recomputes every card it renders from the `flights` prop it is handed
++ * (`filteredStats`, Overview.tsx:95-278) and only ever reads `stats.maxDistanceFromHomeM`
++ * and `stats.topDistanceFlights` off this object. So totalFlights 12 here next to 9 loaded
++ * flights is the seed's intended two-layer shape, not a bug - it is registered as decoy
++ * symptom 1 in meta.json and guarded by a P2P checkpoint.
++ */
++export const RB_OVERVIEW: OverviewStats = {
++  totalFlights: 12,
++  totalDistanceM: 41288.5,
++  totalDurationSecs: 15233,
++  totalPoints: 20985,
++  totalPhotos: 88,
++  totalVideos: 11,
++  maxAltitudeM: 244.8,
++  maxDistanceFromHomeM: 0,
++  batteriesUsed: [],
++  dronesUsed: [],
++  flightsByDate: [],
++  topFlights: [],
++  topDistanceFlights: [],
++  batteryHealthPoints: [],
++};
++
++/** `list_profiles` — one unlocked profile so the InitializationOverlay auth wall never shows. */
++export const RB_PROFILES: { name: string; hasPassword: boolean }[] = [
++  { name: 'default', hasPassword: false },
++];
++
++/** `get_battery_pairs` — raw pair tokens, exactly the wire shape src/lib/api.ts:428 returns.
++ *  Token 2 is a deliberate AMBIGUOUS chain (RB-BAT-03 wants RB-BAT-02, which token 1 already
++ *  claimed): buildBatteryPairIndex must keep the first valid mapping and drop token 2.
++ *  Token 3 is a self-pair and token 4 has a non-serial-like left side; both must be rejected. */
++export const RB_BATTERY_PAIRS: string[] = [
++  'RB-BAT-01:RB-BAT-02',
++  'RB-BAT-03:RB-BAT-02',
++  'RB-BAT-05:RB-BAT-05',
++  'XX:RB-BAT-06',
++];
++
++/** `get_equipment_names` — the [[serial, name], ...] tuple shape src/lib/api.ts:476 decodes.
++ *  The battery name carries the seed's decommissioned marker "[X]" (utils.ts isDecommissioned),
++ *  and the aircraft name is the server-side rename that must WIN over any stale
++ *  localStorage `droneNameMap` left behind by loadEquipmentNames' documented merge. */
++export const RB_EQUIPMENT_NAMES: [Array<[string, string]>, Array<[string, string]>] = [
++  [['RB-BAT-05', 'Coast Pack [X]']],
++  [['RB-DR-03', 'Survey Hawk']],
++];
++
++/** `get_all_tags`. */
++export const RB_ALL_TAGS: string[] = ['night', 'survey'];
++
++/** `get_setting_value` backing store (empty: every setting falls back to its seed default). */
++export const RB_SETTINGS: Record<string, string> = {};
++
++/** Deterministic answers for the runtime hosts measured in RECON §3.1. Keyed by hostname. */
++export const RB_NET_FIXTURES: Record<string, { status: number; type: string; body: string }> = {
++  'api.github.com': {
++    status: 200,
++    type: 'application/json',
++    body: JSON.stringify({ tag_name: 'v0.0.0-rb', name: 'RB pinned release', html_url: 'https://example.invalid/rb' }),
++  },
++  'archive-api.open-meteo.com': {
++    status: 200,
++    type: 'application/json',
++    body: JSON.stringify({ latitude: 0, longitude: 0, hourly: { time: [], temperature_2m: [], wind_speed_10m: [] } }),
++  },
++  'nominatim.openstreetmap.org': {
++    status: 200,
++    type: 'application/json',
++    body: JSON.stringify([{ display_name: 'RB Reverse Geocode Fixture', lat: '0', lon: '0' }]),
++  },
++};
++
++/** Minimal valid MapLibre style: no sources, no layers, no glyphs, no sprite - so a style
++ *  request can never cascade into tile / glyph / sprite fetches. */
++export const RB_EMPTY_MAP_STYLE = JSON.stringify({ version: 8, name: 'rb-empty', sources: {}, layers: [] });
++
++/** 1x1 transparent PNG, base64 - answers every raster tile request without a network. */
++export const RB_BLANK_PNG_B64 =
++  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
++
++/** Hosts whose requests are pure presentation and must never reach the network. */
++export const RB_MAP_HOSTS: string[] = [
++  'basemaps.cartocdn.com',
++  'tiles.basemaps.cartocdn.com',
++  'services.arcgisonline.com',
++  'tile.opentopomap.org',
++  'tile.openstreetmap.org',
++  'demotiles.maplibre.org',
++];

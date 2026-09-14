@@ -1,0 +1,79 @@
+<div class="freecell-board">
+	<div class="game-header">
+		<div class="header-left">
+			<h1>Swarlehtaire - FreeCell</h1>
+			<div class="info-controls">
+				<a [href]="rulesInfo.wikipediaUrl" target="_blank" rel="noopener noreferrer" 
+				   class="wikipedia-link" title="How to play on Wikipedia">
+					📖
+				</a>
+				<button (click)="toggleRules()" class="rules-button" title="Show/hide rules">
+					{{ showRules ? '✕' : '❓' }}
+				</button>
+			</div>
+			@if (showRules) {
+				<div class="rules-panel">
+					<h3>FreeCell - Quick Rules</h3>
+					<ul>
+						@for (rule of rulesInfo.rules; track rule) {
+							<li>{{ rule }}</li>
+						}
+					</ul>
+				</div>
+			}
+		</div>
+		<div class="controls">
+			<button (click)="onNewGame()" class="btn btn-primary" data-testid="fc-new-game">New Game</button>
+			<button (click)="onUndo()" [disabled]="!gameState?.canUndo" class="btn btn-secondary" data-testid="fc-undo">Undo</button>
+			<button (click)="onAutoMove()" class="btn btn-secondary" data-testid="fc-automove">Auto Move</button>
+			<div class="move-counter" data-testid="fc-moves">Moves: {{ gameState?.moveCount || 0 }}</div>
+			<div class="info-text" data-testid="fc-maxmove" title="Supermove formula: 2^M × (N+1), M=empty cascades, N=empty cells">Max move: {{ getMaxMoveSize() }}</div>
+		</div>
+	</div>
+
+	@if (gameState) {
+		<div class="game-area">
+			<div class="top-row">
+				<div class="cells">
+					@for (cell of gameState.cells; track $index) {
+						<div class="cell" (click)="onCellClick($index)">
+							<app-stack [cards]="cell ? [cell] : []" stackType="tableau" spread="none" [testId]="'fc-cell-' + $index"
+								(cardDragStart)="onCellDragStart($index)"
+								(cardDragEnd)="onDragEnd()"
+								(stackDrop)="onCellDrop($index)">
+							</app-stack>
+						</div>
+					}
+				</div>
+				<div class="foundations">
+					@for (foundation of gameState.foundations; track $index) {
+						<app-stack [cards]="foundation" stackType="foundation" spread="none" [testId]="'fc-foundation-' + $index"
+							(stackDrop)="onFoundationDrop($index)">
+						</app-stack>
+					}
+				</div>
+			</div>
+
+			<div class="cascades">
+				@for (cascade of gameState.cascades; track $index) {
+					<app-stack [cards]="cascade" stackType="tableau" spread="down" [testId]="'fc-cascade-' + $index"
+						(cardClick)="onCascadeClick($index, $event.index)"
+						(cardDragStart)="onCascadeDragStart($index, $event)"
+						(cardDragEnd)="onDragEnd()"
+						(stackDrop)="onCascadeDrop($index)">
+					</app-stack>
+				}
+			</div>
+
+			@if (gameState.isWon) {
+				<div class="win-message">
+					<div class="win-content">
+						<h2>🎉 Victory! 🎉</h2>
+						<p>You completed the game in {{ gameState.moveCount }} moves!</p>
+						<button (click)="onNewGame()" class="btn btn-primary btn-large">Play Again</button>
+					</div>
+				</div>
+			}
+		</div>
+	}
+</div>

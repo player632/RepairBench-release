@@ -1,0 +1,190 @@
+diff --git a/src/js/controller/HeaderController.js b/src/js/controller/HeaderController.js
+index 58afe3d..3d634e3 100644
+--- a/src/js/controller/HeaderController.js
++++ b/src/js/controller/HeaderController.js
+@@ -27,10 +27,6 @@
+       this.updateHeader_.bind(this)
+     );
+     $.subscribe(Events.PISKEL_RESET, this.updateHeader_.bind(this));
+-    $.subscribe(
+-      Events.PISKEL_SAVED_STATUS_UPDATE,
+-      this.updateHeader_.bind(this)
+-    );
+ 
+     this.updateHeader_();
+   };
+diff --git a/src/js/controller/LayersListController.js b/src/js/controller/LayersListController.js
+index dd2ceab..4d7c7df 100644
+--- a/src/js/controller/LayersListController.js
++++ b/src/js/controller/LayersListController.js
+@@ -35,6 +35,15 @@
+     this.renderLayerList_();
+     this.updateToggleLayerPreview_();
+ 
++    // bind rename once on the boot-time layer nodes
++    var initialLayerItems = this.layersListEl.querySelectorAll(".layer-item");
++    Array.prototype.forEach.call(
++      initialLayerItems,
++      function (layerItem) {
++        layerItem.addEventListener("dblclick", this.startRenamingCurrentLayer_);
++      }.bind(this)
++    );
++
+     $.subscribe(Events.PISKEL_RESET, this.renderLayerList_.bind(this));
+     $.subscribe(
+       Events.USER_SETTINGS_CHANGED,
+@@ -49,7 +58,6 @@
+     this.layersListEl.innerHTML = "";
+     var layers = this.piskelController.getLayers();
+     layers.forEach(this.addLayerItem.bind(this));
+-    this.updateButtonStatus_();
+ 
+     // Restore scroll
+     this.layersListEl.scrollTop = scrollTop;
+@@ -169,13 +177,6 @@
+       layerNameEl.setAttribute("title", layer.getName());
+       layerNameEl.setAttribute("rel", "tooltip");
+     }
+-    if (isSelected) {
+-      layerItem.removeEventListener(
+-        "dblclick",
+-        this.startRenamingCurrentLayer_
+-      );
+-      layerItem.addEventListener("dblclick", this.startRenamingCurrentLayer_);
+-    }
+     if (isRenaming) {
+       var layerNameInputHtml = pskl.utils.Template.replace(
+         this.layerNameInputTemplate_,
+diff --git a/src/js/controller/PaletteController.js b/src/js/controller/PaletteController.js
+index effbe22..85edf4b 100644
+--- a/src/js/controller/PaletteController.js
++++ b/src/js/controller/PaletteController.js
+@@ -65,6 +65,7 @@
+ 
+     var swapColorsIcon = document.querySelector(".swap-colors-button");
+     swapColorsIcon.addEventListener("click", this.swapColors.bind(this));
++    swapColorsIcon.addEventListener("click", this.swapColors.bind(this));
+   };
+ 
+   /**
+diff --git a/src/js/controller/ToolController.js b/src/js/controller/ToolController.js
+index 2f9efbd..b00d052 100644
+--- a/src/js/controller/ToolController.js
++++ b/src/js/controller/ToolController.js
+@@ -133,7 +133,9 @@
+       var tool = this.tools[i];
+       pskl.app.shortcutService.registerShortcut(
+         tool.shortcut,
+-        this.onKeyboardShortcut_.bind(this, tool.toolId)
++        function () {
++          this.onKeyboardShortcut_(tool.toolId);
++        }.bind(this)
+       );
+     }
+   };
+diff --git a/src/js/controller/dialogs/DialogsController.js b/src/js/controller/dialogs/DialogsController.js
+index 027f909..a6de4ea 100644
+--- a/src/js/controller/dialogs/DialogsController.js
++++ b/src/js/controller/dialogs/DialogsController.js
+@@ -143,7 +143,6 @@
+ 
+     pskl.app.shortcutService.unregisterShortcut(this.closePopupShortcut);
+     this.dialogWrapper_.classList.remove("show");
+-    window.setTimeout(this.cleanupDialogContainer_.bind(this), 500);
+     this.isHiding_ = true;
+   };
+ 
+diff --git a/src/js/controller/preview/PreviewController.js b/src/js/controller/preview/PreviewController.js
+index ab3c5f6..005616a 100644
+--- a/src/js/controller/preview/PreviewController.js
++++ b/src/js/controller/preview/PreviewController.js
+@@ -8,6 +8,7 @@
+   ns.PreviewController = function (piskelController, container) {
+     this.piskelController = piskelController;
+     this.container = container;
++    this.layers = piskelController.getLayers();
+ 
+     this.elapsedTime = 0;
+     this.currentIndex = 0;
+@@ -100,7 +101,7 @@
+     if (this.shouldRender_() || this.currentIndex != index) {
+       this.currentIndex = index;
+       var frame = pskl.utils.LayerUtils.mergeFrameAt(
+-        this.piskelController.getLayers(),
++        this.layers,
+         index
+       );
+       this.renderer.render(frame);
+diff --git a/src/js/controller/settings/SaveController.js b/src/js/controller/settings/SaveController.js
+index 95bf14c..f1160cc 100644
+--- a/src/js/controller/settings/SaveController.js
++++ b/src/js/controller/settings/SaveController.js
+@@ -63,7 +63,7 @@
+       this.saveToFileDownload_
+     );
+ 
+-    this.addEventListener(this.saveForm, "submit", this.onSaveFormSubmit_);
++    this.saveForm.addEventListener("submit", this.onSaveFormSubmit_);
+ 
+     if (pskl.app.storageService.isSaving()) {
+       this.disableSaveButtons_();
+diff --git a/src/js/service/HistoryService.js b/src/js/service/HistoryService.js
+index e43392e..0b3397b 100644
+--- a/src/js/service/HistoryService.js
++++ b/src/js/service/HistoryService.js
+@@ -32,7 +32,7 @@
+   ns.HistoryService.SNAPSHOT_PERIOD = 50;
+ 
+   // Interval/buffer (in milliseconds) between two state load (ctrl+z/y spamming)
+-  ns.HistoryService.LOAD_STATE_INTERVAL = 50;
++  ns.HistoryService.LOAD_STATE_INTERVAL = 500;
+ 
+   // Maximum number of states that can be recorded.
+   ns.HistoryService.MAX_SAVED_STATES = 500;
+@@ -186,7 +186,7 @@
+     piskel.savePath = this.piskelController.piskel.savePath;
+     this.piskelController.setPiskel(piskel);
+ 
+-    for (var i = snapshotIndex + 1; i <= index; i++) {
++    for (var i = snapshotIndex + 1; i < index; i++) {
+       var state = this.stateQueue[i];
+       this.setupState(state);
+       this.replayState(state);
+diff --git a/src/js/service/SavedStatusService.js b/src/js/service/SavedStatusService.js
+index 338ff6e..1902a91 100644
+--- a/src/js/service/SavedStatusService.js
++++ b/src/js/service/SavedStatusService.js
+@@ -17,7 +17,6 @@
+   };
+ 
+   ns.SavedStatusService.prototype.onPiskelSaved = function () {
+-    this.lastSavedStateIndex = this.historyService.getCurrentStateId();
+     this.publishStatusUpdateEvent_();
+   };
+ 
+diff --git a/src/js/service/pensize/PenSizeService.js b/src/js/service/pensize/PenSizeService.js
+index dc328d4..ef72b42 100644
+--- a/src/js/service/pensize/PenSizeService.js
++++ b/src/js/service/pensize/PenSizeService.js
+@@ -40,7 +40,6 @@
+   ns.PenSizeService.prototype.setPenSize = function (size) {
+     if (this.isPenSizeValid_(size) && size != this.size) {
+       this.size = size;
+-      pskl.UserSettings.set(pskl.UserSettings.PEN_SIZE, size);
+       $.publish(Events.PEN_SIZE_CHANGED);
+     }
+   };
+diff --git a/src/js/service/storage/StorageService.js b/src/js/service/storage/StorageService.js
+index 13807dd..3380cd1 100644
+--- a/src/js/service/storage/StorageService.js
++++ b/src/js/service/storage/StorageService.js
+@@ -114,8 +114,7 @@
+   ns.StorageService.prototype.onSaveSuccess_ = function () {
+     $.publish(Events.SHOW_NOTIFICATION, [
+       {
+-        content: "Successfully saved !",
+-        hideDelay: 3000
++        content: "Successfully saved !"
+       }
+     ]);
+     $.publish(Events.PISKEL_SAVED);

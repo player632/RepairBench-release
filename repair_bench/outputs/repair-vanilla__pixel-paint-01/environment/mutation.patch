@@ -1,0 +1,147 @@
+diff --git a/js/algo.js b/js/algo.js
+index a700a75..fb10502 100644
+--- a/js/algo.js
++++ b/js/algo.js
+@@ -80,7 +80,7 @@ function Bresenham_Line_Algorithm(startX, startY, endX, endY, callback)
+ 		if (currentCell) {
+ 			callback(currentCell);
+ 		}
+-		if (Math.round(startX) === Math.round(endX) &&
++		if (Math.round(startX) === Math.round(endX) ||
+ 			Math.round(startY) === Math.round(endY)) break;
+ 
+ 		let error2 = 2 * error;
+diff --git a/js/eventHandlers.js b/js/eventHandlers.js
+index d3ec2d3..ba69ad8 100644
+--- a/js/eventHandlers.js
++++ b/js/eventHandlers.js
+@@ -61,8 +61,8 @@ function Paste_Selection() {
+     Remove_Selection();
+     Unlock_Selection();
+     
+-    let pasteX = lastMouseX;
+-    let pasteY = lastMouseY;
++    let pasteX = STATE["selectionCopy"]["initCursorX"];
++    let pasteY = STATE["selectionCopy"]["initCursorY"];
+     
+     if (pasteX + CLIPBOARD.width > CELLS_PER_ROW) {
+         pasteX = CELLS_PER_ROW - CLIPBOARD.width;
+@@ -544,7 +544,6 @@ function Add_EventHandlers_To_Canvas_Cells()
+ 	}
+ 
+ 	document.addEventListener("mouseup", function (e) {
+-		Exit_Drawing_Mode();
+ 		Reset_Previous_Cursor_Position();
+ 		if (e.target.id !== "undo-button" && e.target.id !== "redo-button") {
+ 			Save_Canvas_State();
+@@ -669,7 +668,7 @@ function Add_EventHandlers_To_Document()
+ 		if (e.code === "Escape") {
+ 			Remove_Selection();
+ 			Unlock_Selection();
+-			Set_Cursor(Tools[STATE["activeTool"]]["cursor"]);
++			Set_Cursor(Tools["selection"]["cursor"]);
+ 			STATE["selection"]["floatingCopy"] = false;
+ 		}
+ 		if (e.code === "KeyZ" && !(e.ctrlKey || e.metaKey)) {
+@@ -684,6 +683,7 @@ function Add_EventHandlers_To_Document()
+ 
+ 		if (e.code === STATE["grid"]["hotkey"]) {
+ 			STATE["grid"]["KeyG_Counter"] += 1;
++			Toggle_Grid();
+ 		}
+ 
+ 		for (const [toolLabel, toolConfig] of Object.entries(Tools)) {
+@@ -705,7 +705,6 @@ function Add_EventHandlers_To_Document()
+ 		}
+ 		if (e.code === STATE["grid"]["hotkey"]) {
+ 			STATE["grid"]["KeyG_Counter"] = 0;
+-			Toggle_Grid();
+ 		}
+ 	};
+ 	document.addEventListener("keydown", keyDownHandler);
+diff --git a/js/historyStates.js b/js/historyStates.js
+index cae3d11..5f53cae 100644
+--- a/js/historyStates.js
++++ b/js/historyStates.js
+@@ -33,7 +33,7 @@ class History_States {
+ 		if (this.ptr === 0) {
+ 			return true;
+ 		}
+-		return !_Arrays_Are_Equal(this.array[this.ptr], item);
++		return !_Arrays_Are_Equal(this.array[0], item);
+ 	}
+ 
+ 	_manageSize() {
+diff --git a/js/script.js b/js/script.js
+index a3d0ef1..0830e2d 100644
+--- a/js/script.js
++++ b/js/script.js
+@@ -122,7 +122,6 @@ function Alert_User(text)
+     popupMessage.classList.remove("fadeOutAnimation");
+     void popupMessage.offsetWidth;
+     popupMessage.innerHTML = text;
+-    popupMessage.style.animationPlayState = "running";
+     popupMessage.classList.add("fadeOutAnimation");
+ }
+ 
+@@ -252,8 +251,6 @@ function CursorXY_In_Selection(cursorXY, selection)
+ 
+ function Selection_Locked_To_Grid()
+ {
+-    STATE["selection"]["isLocked"] = true;
+-
+     let selection = document.getElementById("selection");
+     selection.style.outline = SELECTION_LOCKED_OUTLINE;
+ }
+@@ -315,7 +312,6 @@ function Select_Palette() {
+     }
+     else
+     {
+-        PALETTE_DISPLAY.nes.style.display = "none";
+         PALETTE_DISPLAY.gameboy.style.display = "block";
+     }
+ }
+@@ -337,7 +333,7 @@ function Show_Drop_Shadow(e) {
+         if (STATE[ACTIVE_COLOR_SELECT].startsWith("#aN")) {
+             dropShadowPreview.style.display = "none";
+         } else {
+-            dropShadowPreview.style.backgroundColor = STATE[ACTIVE_COLOR_SELECT];
++            dropShadowPreview.style.backgroundColor = STATE["firstColor"];
+         }
+     }
+     else if (STATE["activeTool"] === "eraser") {
+diff --git a/js/tools.js b/js/tools.js
+index 85df46b..aa725c7 100644
+--- a/js/tools.js
++++ b/js/tools.js
+@@ -32,11 +32,6 @@ function Activate_Tool(label)
+ 	let button = document.getElementById(object["button-id"]);
+ 	let buttonBkgdColor = button.style.backgroundColor;
+ 
+-	if (STATE["activeTool"] === "selection" && label !== "selection") {
+-        Remove_Selection();
+-        Unlock_Selection();
+-    }
+-
+ 	if(STATE["activeTool"] !== label)
+ 	{
+ 		Set_Cursor(object["cursor"]);
+diff --git a/js/utils.js b/js/utils.js
+index e84c489..69c53dc 100644
+--- a/js/utils.js
++++ b/js/utils.js
+@@ -42,12 +42,12 @@ function Random_Color()
+ 
+ function Get_X_From_CellInt(idx)
+ {
+-    return idx % CELLS_PER_ROW;
++    return Math.floor(idx / CELLS_PER_ROW);
+ }
+ 
+ function Get_Y_From_CellInt(idx)
+ {
+-    return Math.floor(idx / CELLS_PER_ROW);
++    return idx % CELLS_PER_ROW;
+ }
+ 
+ function Get_CellInt_From_CellXY(x, y)

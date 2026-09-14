@@ -1,0 +1,599 @@
+diff --git a/src/App.svelte b/src/App.svelte
+index 86dad4a..25332de 100644
+--- a/src/App.svelte
++++ b/src/App.svelte
+@@ -19,6 +19,7 @@
+ <Taskbar />
+ 
+ <div
++  data-testid="bootscreen"
+   class="bootscreen absolute inset-0 flex flex-col items-center justify-center gap-[10%] bg-black"
+   style="transition: opacity 750ms cubic-bezier(0.6, 0, 0.4, 1)"
+ >
+diff --git a/src/Desktop.svelte b/src/Desktop.svelte
+index bca9710..58adc43 100644
+--- a/src/Desktop.svelte
++++ b/src/Desktop.svelte
+@@ -1,6 +1,6 @@
+ <script lang="ts">
+   import { draggable } from "@neodrag/svelte";
+-  import { activeThing, brightness, openedApps } from "$store";
++  import { activeThing, battery, brightness, date, openedApps, speaker } from "$store";
+ 
+   const dskApps = ["Recycle Bin", "Microsoft Edge", "VS Code"];
+ 
+@@ -15,11 +15,12 @@
+   };
+ </script>
+ 
+-<div class="desktop">
++<div class="desktop" data-testid="desktop">
+   <div class="dskAppGrid">
+     {#each dskApps as app}
+       <button
+         use:draggable={{ grid: [75, 98] }}
++        data-testid="desktop-icon-{app.replace(/ /g, '-')}"
+         class="dskApp"
+         on:dblclick={() => toggleOpenApp(app)}
+       >
+@@ -29,7 +30,7 @@
+     {/each}
+   </div>
+ 
+-  <div class="apps">
++  <div class="apps" data-testid="windows">
+     {#each $openedApps as e}
+       {#if e === "Calculator"}
+         {#await import("$apps/Calculator.svelte") then { default: Calculator }}
+@@ -95,9 +96,18 @@
+       <Widgets />
+     {/await}
+   {/if}
++  <div data-testid="w11-probes" style="position:absolute;left:-9999px;top:0;">
++    <span data-testid="probe-active-thing">{$activeThing}</span>
++    <span data-testid="probe-opened-apps">{JSON.stringify($openedApps)}</span>
++    <span data-testid="probe-brightness">{$brightness}</span>
++    <span data-testid="probe-speaker">{$speaker}</span>
++    <span data-testid="probe-battery">{$battery}</span>
++    <span data-testid="probe-date-sec">{$date.getSeconds()}</span>
++  </div>
+ </div>
+ 
+ <div
++  data-testid="brightness-overlay"
+   class="brightoverlay"
+   style:background="rgb(0 0 0 / {100 - $brightness}%)"
+ />
+diff --git a/src/Taskbar.svelte b/src/Taskbar.svelte
+index c28475a..be60928 100644
+--- a/src/Taskbar.svelte
++++ b/src/Taskbar.svelte
+@@ -24,9 +24,10 @@
+   ];
+ </script>
+ 
+-<div class="taskbar">
++<div class="taskbar" data-testid="taskbar">
+   <div class="center">
+     <div
++      data-testid="taskbar-start"
+       class="taskIcon hvrBgLight"
+       class:bgLight={$activeThing === "Start"}
+       on:click={() => toggleActiveThing("Start")}
+@@ -35,6 +36,7 @@
+       <img src="img/icon/Start.png" alt="Start" height="24" width="24" />
+     </div>
+     <div
++      data-testid="taskbar-search"
+       class="taskIcon hvrBgLight"
+       class:bgLight={$activeThing === "Search"}
+       on:click={() => toggleActiveThing("Search")}
+@@ -58,6 +60,7 @@
+       </svg>
+     </div>
+     <div
++      data-testid="taskbar-taskview"
+       class="taskIcon hvrBgLight"
+       class:bgLight={$activeThing === "Task View"}
+       on:click={() => toggleActiveThing("Task View")}
+@@ -71,6 +74,7 @@
+       />
+     </div>
+     <div
++      data-testid="taskbar-widgets"
+       class="taskIcon widgetBtn hvrBgLight"
+       class:bgLight={$activeThing === "Widgets"}
+       on:click={() => toggleActiveThing("Widgets")}
+@@ -81,6 +85,7 @@
+ 
+     {#each taskApps as app}
+       <div
++        data-testid="taskbar-app-{app.replace(/ /g, '-')}"
+         class="taskIcon hvrBgLight"
+         class:openedApp={$openedApps.includes(app)}
+         class:bgLight={app === $activeThing}
+@@ -92,6 +97,7 @@
+       </div>
+     {/each}
+     <div
++      data-testid="taskbar-vercel"
+       class="taskIcon hvrBgLight"
+       on:click={() => {}}
+       on:keypress={() => {}}
+@@ -99,6 +105,7 @@
+       <img src="img/icon/Vercel.png" alt="Vercel" height="24" width="24" />
+     </div>
+     <div
++      data-testid="taskbar-github"
+       class="taskIcon hvrBgLight"
+       on:click={() => {}}
+       on:keypress={() => {}}
+@@ -109,6 +116,7 @@
+     {#each $openedApps as app}
+       {#if !taskApps.includes(app)}
+         <div
++          data-testid="taskbar-open-{app.replace(/ /g, '-')}"
+           class="taskIcon hvrBgLight"
+           class:openedApp={$openedApps.includes(app)}
+           class:bgLight={app === $activeThing}
+@@ -124,6 +132,7 @@
+ 
+   <div class="right">
+     <div
++      data-testid="taskbar-quick-settings"
+       class="actionCenterBtn hvrBgLight"
+       class:bgLight={$activeThing === "ActionCenter"}
+       on:click={() => toggleActiveThing("ActionCenter")}
+@@ -140,6 +149,7 @@
+       <Battery />
+     </div>
+     <div
++      data-testid="taskbar-clock"
+       class="date hvrBgLight"
+       class:bgLight={$activeThing === "Calendar"}
+       on:click={() => toggleActiveThing("Calendar")}
+diff --git a/src/apps/Calculator.svelte b/src/apps/Calculator.svelte
+index ce37192..8b10bd3 100644
+--- a/src/apps/Calculator.svelte
++++ b/src/apps/Calculator.svelte
+@@ -5,6 +5,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-calculator"
+   class="calculator activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+diff --git a/src/apps/Camera.svelte b/src/apps/Camera.svelte
+index 9cac61d..4547d30 100644
+--- a/src/apps/Camera.svelte
++++ b/src/apps/Camera.svelte
+@@ -20,6 +20,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-camera"
+   class="camera activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+diff --git a/src/apps/Edge.svelte b/src/apps/Edge.svelte
+index 7dfac3a..ce4b4c2 100644
+--- a/src/apps/Edge.svelte
++++ b/src/apps/Edge.svelte
+@@ -53,6 +53,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-edge"
+   class="edge activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+@@ -82,6 +83,7 @@
+           />
+         </IconButton>
+         <input
++          data-testid="edge-address"
+           bind:value
+           type="text"
+           on:keydown={searcher}
+@@ -123,7 +125,8 @@
+         {/each}
+       </div>
+     </div>
+-    <iframe title="broswer iframe" src={address} frameborder="0" />
++    <iframe data-testid="edge-frame" title="broswer iframe" src={address} frameborder="0" />
++    <span data-testid="probe-edge-address" style="position:absolute;left:-9999px;">{address}</span>
+   </div>
+ </div>
+ 
+diff --git a/src/apps/Explorer.svelte b/src/apps/Explorer.svelte
+index 2b09f05..daacabb 100644
+--- a/src/apps/Explorer.svelte
++++ b/src/apps/Explorer.svelte
+@@ -5,6 +5,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-explorer"
+   class="explorer activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+diff --git a/src/apps/Notepad.svelte b/src/apps/Notepad.svelte
+index c136cdc..46bdc8c 100644
+--- a/src/apps/Notepad.svelte
++++ b/src/apps/Notepad.svelte
+@@ -12,6 +12,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-notepad"
+   class="notepad activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+@@ -76,7 +77,7 @@
+         </svelte:fragment>
+       </MenuBarItem>
+     </MenuBar>
+-    <textarea />
++    <textarea data-testid="notepad-text" />
+   </div>
+ </div>
+ 
+diff --git a/src/apps/Settings.svelte b/src/apps/Settings.svelte
+index d9b57da..ab09d73 100644
+--- a/src/apps/Settings.svelte
++++ b/src/apps/Settings.svelte
+@@ -16,6 +16,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-settings"
+   class="settings activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+@@ -24,10 +25,11 @@
+ >
+   <Titlebar appName="Settings" canGoBack={true} />
+   <div class="mainApp">
++    <span data-testid="probe-settings-tab" style="position:absolute;left:-9999px;">{tab}</span>
+     {#each Object.entries(data) as [i]}
+       {#if tab === i}
+         <main>
+-          <h1>{tab}</h1>
++          <h1 data-testid="settings-heading">{tab}</h1>
+           <div class="tilesCont">
+             {#each data[tab] as e}
+               <div class={e.type}>
+@@ -67,6 +69,7 @@
+                       </p>
+                     </div>
+                     <div
++                      data-testid="settings-update-tile"
+                       class="column"
+                       on:click={() => setTab("Windows Update")}
+                       on:keypress={() => setTab("Windows Update")}
+@@ -124,8 +127,9 @@
+                   <div>
+                     <h3>Select a theme to apply</h3>
+                     <div class="bgBox">
+-                      {#each $themes as theme}
++                      {#each $themes as theme, ti}
+                         <img
++                          data-testid="settings-theme-{ti}"
+                           class:selected={theme === "Windows/img0"}
+                           src="img/Wallpaper/{theme}.jpg"
+                           alt=""
+@@ -206,6 +210,7 @@
+       <div class="nav_bottom">
+         {#each Object.keys(data) as e}
+           <div
++            data-testid="settings-nav-{e.replace(/&/g, 'and').replace(/ /g, '-')}"
+             class="navLink"
+             class:selected={tab === e}
+             on:click={() => setTab(e)}
+@@ -225,6 +230,7 @@
+     </nav>
+ 
+     <div
++      data-testid="settings-menu-btn"
+       class="navMenuBtn"
+       on:click={() => (navOpen = !navOpen)}
+       on:keypress={() => (navOpen = !navOpen)}
+diff --git a/src/apps/Store.svelte b/src/apps/Store.svelte
+index dadda72..3480364 100644
+--- a/src/apps/Store.svelte
++++ b/src/apps/Store.svelte
+@@ -7,6 +7,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-store"
+   class="store activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+@@ -19,6 +20,7 @@
+     <nav>
+       {#each ["Home", "Apps", "Gaming", "Library", "Help"] as e}
+         <div
++          data-testid="store-nav-{e}"
+           class="navBtn hvrBgDark"
+           on:click={() => (tab = e)}
+           on:keypress={() => (tab = e)}
+@@ -34,7 +36,8 @@
+       <!-- {#if tab === "Home"} -->
+       <img src="img/Wallpaper/Windows/img19.jpg" alt="" />
+       <div class="imgDiffuser" />
+-      <h1>{tab}</h1>
++      <h1 data-testid="store-heading">{tab}</h1>
++      <span data-testid="probe-store-tab" style="position:absolute;left:-9999px;">{tab}</span>
+       <h2>Top free apps</h2>
+       <div class="cardCont">
+         <div class="card hCard">card</div>
+diff --git a/src/apps/VSCode.svelte b/src/apps/VSCode.svelte
+index 81f8723..69a294e 100644
+--- a/src/apps/VSCode.svelte
++++ b/src/apps/VSCode.svelte
+@@ -5,6 +5,7 @@
+ </script>
+ 
+ <div
++  data-testid="window-vscode"
+   class="vscode activeShadow"
+   use:draggable={{
+     handle: ".title-bar",
+diff --git a/src/components/ActionCenter.svelte b/src/components/ActionCenter.svelte
+index 029a879..d856aed 100644
+--- a/src/components/ActionCenter.svelte
++++ b/src/components/ActionCenter.svelte
+@@ -17,6 +17,7 @@
+ </script>
+ 
+ <div
++  data-testid="quick-panel"
+   class="actionCenter activeShadow"
+   transition:fly={{ y: 450, duration: 200, opacity: 1 }}
+   use:clickOutside={{
+@@ -29,6 +30,7 @@
+       {#each items as { title, active, icon }}
+         <div class="btn">
+           <div
++            data-testid="qs-btn-{title.replace(/ /g, '-')}"
+             class="btnIcon"
+             class:active
+             on:click={() => (active = !active)}
+@@ -47,7 +49,7 @@
+       {/each}
+     </div>
+     <div class="sliderCont">
+-      <div class="slider">
++      <div class="slider" data-testid="slider-brightness-wrap">
+         <IconButton>
+           <img
+             class="icon"
+@@ -58,11 +60,11 @@
+             style="transform: rotate({$brightness}deg)"
+           />
+         </IconButton>
+-        <Slider bind:value={$brightness} min={10} max={100} />
++        <Slider data-testid="slider-brightness" bind:value={$brightness} min={10} max={100} />
+       </div>
+-      <div class="slider">
++      <div class="slider" data-testid="slider-speaker-wrap">
+         <IconButton><Speaker /></IconButton>
+-        <Slider bind:value={$speaker} />
++        <Slider data-testid="slider-speaker" bind:value={$speaker} />
+       </div>
+     </div>
+   </div>
+diff --git a/src/components/Calendar.svelte b/src/components/Calendar.svelte
+index 3e7db80..f98b0ab 100644
+--- a/src/components/Calendar.svelte
++++ b/src/components/Calendar.svelte
+@@ -8,6 +8,7 @@
+ </script>
+ 
+ <div
++  data-testid="calendar-panel"
+   class="calnpane activeShadow"
+   class:collapse
+   transition:fly={{ x: 400, duration: 200, opacity: 1 }}
+@@ -16,15 +17,16 @@
+     exclude: [document.querySelector(".bgLight")],
+   }}
+ >
++  <span data-testid="probe-calendar-collapse" style="position:absolute;left:-9999px;visibility:visible;">{collapse}</span>
+   <div class="topBar">
+-    <div class="date">
++    <div class="date" data-testid="calendar-date">
+       {$date.toLocaleDateString([], {
+         weekday: "long",
+         month: "long",
+         day: "numeric",
+       })}
+     </div>
+-    <Button style="padding: 4px;" on:click={() => (collapse = !collapse)}>
++    <Button data-testid="calendar-collapse-btn" style="padding: 4px;" on:click={() => (collapse = !collapse)}>
+       <img
+         class="icon collapser"
+         src="img/icon/ui/ChevronUp.svg"
+diff --git a/src/components/Search.svelte b/src/components/Search.svelte
+index ecab8b4..7d6480a 100644
+--- a/src/components/Search.svelte
++++ b/src/components/Search.svelte
+@@ -24,6 +24,7 @@
+ </script>
+ 
+ <div
++  data-testid="search-panel"
+   class="search activeShadow"
+   transition:fly={{ y: 700, duration: 200, opacity: 1 }}
+   use:clickOutside={{
+@@ -45,6 +46,7 @@
+   <div class="topAppGrid">
+     {#each topApp as app}
+       <div
++        data-testid="search-app-{app.replace(/ /g, '-')}"
+         class="topApp hvrBgLight"
+         on:click={() => toggleOpenApp(app)}
+         on:keypress={() => toggleOpenApp(app)}
+diff --git a/src/components/Start.svelte b/src/components/Start.svelte
+index 09d2e31..dc1c391 100644
+--- a/src/components/Start.svelte
++++ b/src/components/Start.svelte
+@@ -27,6 +27,7 @@
+ </script>
+ 
+ <div
++  data-testid="start-panel"
+   class="start activeShadow"
+   transition:fly={{ y: 700, duration: 200, opacity: 1 }}
+   use:clickOutside={{
+@@ -48,11 +49,12 @@
+         <div class="pinned">
+           <div class="head">
+             <h4>Pinned</h4>
+-            <Button on:click={() => (allApps = true)}>All Apps &gt;</Button>
++            <Button data-testid="start-allapps-btn" on:click={() => (allApps = true)}>All Apps &gt;</Button>
+           </div>
+           <div class="pinAppsGrid">
+             {#each $appList as app}
+               <div
++                data-testid="start-app-{app.replace(/ /g, '-')}"
+                 class="pnApp hvrBgLight"
+                 on:click={() => toggleOpenApp(app)}
+                 on:keypress={() => toggleOpenApp(app)}
+@@ -70,6 +72,7 @@
+           <div class="recAppsGrid">
+             {#each recApp as app}
+               <div
++                data-testid="start-rec-{app.replace(/ /g, '-')}"
+                 class="recApp hvrBgLight"
+                 on:click={() => toggleOpenApp(app)}
+                 on:keypress={() => toggleOpenApp(app)}
+@@ -89,11 +92,12 @@
+       >
+         <div class="head">
+           <h4>All apps</h4>
+-          <Button on:click={() => (allApps = false)}>&lt; Back</Button>
++          <Button data-testid="start-back-btn" on:click={() => (allApps = false)}>&lt; Back</Button>
+         </div>
+         <div class="appList">
+           {#each $appList as app}
+             <div
++              data-testid="start-list-{app.replace(/ /g, '-')}"
+               class="allApp hvrBgLight"
+               on:click={() => toggleOpenApp(app)}
+               on:keypress={() => toggleOpenApp(app)}
+diff --git a/src/components/Widgets.svelte b/src/components/Widgets.svelte
+index a713ec3..da1710c 100644
+--- a/src/components/Widgets.svelte
++++ b/src/components/Widgets.svelte
+@@ -39,6 +39,7 @@
+ </script>
+ 
+ <div
++  data-testid="widgets-panel"
+   class="widgets"
+   transition:fly={{ x: -800, duration: 200, opacity: 1 }}
+   use:clickOutside={{
+@@ -46,7 +47,7 @@
+     exclude: [document.querySelector(".bgLight")],
+   }}
+ >
+-  <div class="time">
++  <div class="time" data-testid="widgets-clock">
+     {$date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+   </div>
+   <TextBox placeholder="Search the web" />
+@@ -58,6 +59,7 @@
+         <h2>Top Stories</h2>
+         {#each news.articles as n, i}{#if i < 3}
+             <a
++              data-testid="widget-article-{i}"
+               class="xs-article"
+               style:--newsImg="url({n.urlToImage})"
+               href={n.url}
+@@ -74,6 +76,7 @@
+       </div>
+       {#each news.articles as n, i}{#if i >= 3 && n.urlToImage != null}
+           <a
++            data-testid="widget-article-{i}"
+             class="article"
+             class:small={i < 5}
+             class:large={i % 5 === 2 && i > 5}
+diff --git a/src/components/shared/Battery.svelte b/src/components/shared/Battery.svelte
+index d401c42..44c90f0 100644
+--- a/src/components/shared/Battery.svelte
++++ b/src/components/shared/Battery.svelte
+@@ -50,7 +50,7 @@
+       />
+     </div>
+   </div>
+-  {#if pct}<div class="pct">{Math.abs($battery)}%</div>{/if}
++  {#if pct}<div class="pct" data-testid="battery-pct">{Math.abs($battery)}%</div>{/if}
+ </span>
+ 
+ <style>
+diff --git a/src/components/shared/Speaker.svelte b/src/components/shared/Speaker.svelte
+index 5acfbd7..ecd210d 100644
+--- a/src/components/shared/Speaker.svelte
++++ b/src/components/shared/Speaker.svelte
+@@ -4,6 +4,7 @@
+ 
+ {#if $speaker > 50}
+   <img
++    data-testid="taskbar-speaker-icon"
+     class="icon"
+     src="img/icon/ui/Speaker2.svg"
+     height="20"
+@@ -12,6 +13,7 @@
+   />
+ {:else if $speaker > 0}
+   <img
++    data-testid="taskbar-speaker-icon"
+     class="icon"
+     src="img/icon/ui/Speaker1.svg"
+     height="20"
+@@ -20,6 +22,7 @@
+   />
+ {:else}
+   <img
++    data-testid="taskbar-speaker-icon"
+     class="icon"
+     src="img/icon/ui/Speaker0.svg"
+     height="20"
+diff --git a/src/components/shared/Titlebar.svelte b/src/components/shared/Titlebar.svelte
+index d6a9e42..0cea7c6 100644
+--- a/src/components/shared/Titlebar.svelte
++++ b/src/components/shared/Titlebar.svelte
+@@ -27,7 +27,7 @@
+ <div class="title-bar" class:text-white={darkBg}>
+   <div class="actions">
+     {#if canGoBack}
+-      <button class="hvrBgDark" on:click={onClickGoBack}>
++      <button data-testid="titlebar-back" class="hvrBgDark" on:click={onClickGoBack}>
+         <svg
+           xmlns="http://www.w3.org/2000/svg"
+           viewBox="0 0 16.933333 16.933334"
+@@ -101,6 +101,7 @@
+ 
+     {#if canClose}
+       <button
++        data-testid="titlebar-close"
+         class="hover:bg-red-600 btn-close"
+         on:click={onClickClose}
+         on:keypress={onClickClose}
+diff --git a/src/store.ts b/src/store.ts
+index 849b8df..9b60422 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -48,3 +48,9 @@ export const themes = readable([
+   "Sunrise/img28",
+   "Flow/img32",
+ ]);
++
++if (typeof window !== "undefined") {
++  (window as any).__w11 = {
++    stores: { activeThing, openedApps, brightness, speaker, battery },
++  };
++}

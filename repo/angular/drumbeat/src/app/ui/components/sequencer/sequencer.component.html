@@ -1,0 +1,123 @@
+<div class="main-container">
+  <div class="sequencer-header">
+    <div class="flex label bpm-input-group">
+      <button class="play-pause-button cursor-pointer app-button"
+              data-testid="play-pause"
+              [attr.aria-label]="this.soundService.isPlaying ? 'Pause' : 'Play'"
+              (click)="this.soundService.playPause()">
+        <img [alt]="this.soundService.isPlaying ? 'Pause' : 'Play'"
+             aria-hidden="true"
+             [ngSrc]="(this.soundService.isPlaying ? 'assets/images/icons/pause.svg' : 'assets/images/icons/play.svg') | iconDarkMode"
+             height="28"
+             width="28">
+      </button>
+      <app-bpm-input [bpm]="this.tempoService.bpm" (bpmChange)="changeBeatBpm($event)"></app-bpm-input>
+      <div class="flex">
+        <button class="button square-button undo" data-testid="undo-btn" (click)="sequencerService.dispatch({ type: 'REDO'})"
+          [disabled]="sequencerService.vm$.getValue().historyLength <= minHistoryLength">
+          <img alt="undo" aria-label="Undo" [ngSrc]="'assets/images/icons/undo.svg' | iconDarkMode" height="28"
+            width="28">
+        </button>
+        <button class="button square-button redo ml-8" data-testid="redo-btn" (click)="this.sequencerService.dispatch({ type: 'REDO'})"
+          [disabled]="sequencerService.vm$.getValue().futureLength <= 0">
+          <img alt="redo" aria-label="Redo" [ngSrc]="'assets/images/icons/redo.svg' | iconDarkMode" height="28"
+            width="28">
+        </button>
+      </div>
+    </div>
+    <div class="label">
+      <app-select-input [elements]="sequencerService.genresLabel"
+        [selectedElement]="sequencerService.vm$.getValue().genre" (selectChange)="this.genreChange($event)"
+        placeHolder="{{ 'chooseGenre' | translate }}" testId="genre-select">
+      </app-select-input>
+    </div>
+    <div class="label">
+      <app-select-input [elements]="sequencerService.vm$.getValue().beats"
+        [selectedElement]="sequencerService.vm$.getValue().beat" (selectChange)="beatChange($event)"
+        placeHolder="{{ 'chooseBeat' | translate : { genre : sequencerService.vm$.getValue().genre } }}"
+        testId="beat-select">
+      </app-select-input>
+    </div>
+  </div>
+  <div class="tracks-name-container">
+    @for (track of beat.tracks; track track; let trackIdx = $index){
+    <div class="tracks-name" [attr.data-testid]="'track-row-' + trackIdx">
+      <button class="button square-button" title="Play sample" [attr.data-testid]="'preview-' + trackIdx" (mousedown)="soundService.playTrack(track.name)">
+        <img alt="drum" [ngSrc]="track.midiNote | drumImage | iconDarkMode" height="28" width="28">
+      </button>
+      <div class="track-name user-select-none medium" [attr.data-testid]="'track-name-' + trackIdx">
+        {{ track.name }}
+      </div>
+      <button class="button" [ngClass]="track.isMuted ? 'mute' : ''" [attr.data-testid]="'mute-' + trackIdx" (click)="toggleMuteTrack(track.name)">M</button>
+    </div>
+    }
+    @if(AddTrackFeatureToggle) {
+    <div class="tracks-name">
+      <button class="button square-button" title="Play sample" (mousedown)="this.addTrack()">
+        <img alt="drum" [ngSrc]="`assets/images/icons/add.svg` | iconDarkMode" height="28" width="28">
+      </button>
+      <div class="track-name user-select-none medium">
+        Add a track
+      </div>
+    </div>
+    }
+  </div>
+  <section class="tracks-container">
+    @for (track of beat.tracks; track $index; let trackIdx = $index) {
+    <article>
+      <div id="track" [class.eight-steps]="track.steps.steps.length == NumberOfSteps.eight"
+        [class.twelve-steps]="track.steps.steps.length == NumberOfSteps.twelve"
+        [class.sixteen-steps]="track.steps.steps.length == NumberOfSteps.sixteen"
+        [class.thirty-two-steps]="track.steps.steps.length == NumberOfSteps.thirty_two"
+        [class.sixty-four-steps]="track.steps.steps.length == NumberOfSteps.sixty_four">
+        @for (step of track.steps.steps; track $index){
+        <button class="step cursor-pointer" [attr.data-testid]="'step-' + trackIdx + '-' + $index"
+          [class.active]="getStepActive(track.name, $index, step)"
+          [class.current]="$index === soundService.index" [class.highlight]="Math.floor($index / (track.steps.steps.length == NumberOfSteps.twelve ? 3 : 4)) % 2 === 0"
+          [class.drag-range]="isInDragRange(track.name, $index)" (mousedown)="onStepMouseDown(track, $index)"
+          (mouseenter)="onStepMouseEnter(track.name, $index)" (mouseup)="onStepMouseUp(track.name, $index)">
+        </button>
+        }
+      </div>
+    </article>
+    }
+    @if(AddTrackFeatureToggle) {
+    <article>
+      <div id="track">
+        empty
+      </div>
+    </article>
+    }
+  </section>
+  <section class="export-button-container flex">
+    <button class="button" data-testid="export-wav-btn" (click)="isAudioExportModalOpen = true">{{ 'export.wavButton' | translate
+      }}</button>
+    <button class="button ml-8" data-testid="export-midi-btn" (click)="isMidiExportModalOpen = true">{{ 'exportMidi.button' | translate
+      }}</button>
+  </section>
+
+  <button
+    class="mobile-play-button"
+    type="button"
+    (click)="this.soundService.playPause()"
+    [attr.aria-label]="this.soundService.isPlaying ? 'Pause' : 'Play'">
+    <img
+      [alt]="this.soundService.isPlaying ? 'Pause' : 'Play'"
+      aria-hidden="true"
+      [ngSrc]="(this.soundService.isPlaying ? 'assets/images/icons/pause.svg' : 'assets/images/icons/play.svg') | iconDarkMode"
+      height="28"
+      width="28">
+  </button>
+</div>
+
+<app-export-modal [isOpen]="isAudioExportModalOpen" [beatName]="beat.label" (close)="isAudioExportModalOpen = false"
+  (validate)="onAudioExport($event)">
+</app-export-modal>
+
+<app-export-midi-modal [isOpen]="isMidiExportModalOpen" [beatName]="beat.label" (close)="isMidiExportModalOpen = false"
+  (validate)="onMidiExport($event)">
+</app-export-midi-modal>
+
+<app-browse-audio-samples-modal [isOpen]="isBrowseAudioSamplesModalOpen"
+  (close)="isBrowseAudioSamplesModalOpen = false">
+</app-browse-audio-samples-modal>

@@ -1,0 +1,188 @@
+diff --git a/package.json b/package.json
+index 74e7706..850346e 100644
+--- a/package.json
++++ b/package.json
+@@ -23,6 +23,7 @@
+ 	},
+ 	"type": "module",
+ 	"devDependencies": {
++		"@sveltejs/adapter-static": "1.0.0-next.48",
+ 		"@sveltejs/adapter-vercel": "^1.0.0-next.66",
+ 		"@sveltejs/kit": "^1.0.0-next.551",
+ 		"autoprefixer": "^10.4.8",
+diff --git a/src/app.html b/src/app.html
+index 18818cd..a86edda 100644
+--- a/src/app.html
++++ b/src/app.html
+@@ -37,15 +37,6 @@
+ 
+ 		%sveltekit.head%
+ 
+-		<script async src="https://www.googletagmanager.com/gtag/js?id=UA-211756322-1"></script>
+-		<script>
+-			window.dataLayer = window.dataLayer || [];
+-			function gtag() {
+-				dataLayer.push(arguments);
+-			}
+-			gtag('js', new Date());
+-			gtag('config', 'UA-211756322-1');
+-		</script>
+ 	</head>
+ 	<body>
+ 		<div id="svelte" class="svelte">%sveltekit.body%</div>
+diff --git a/src/lib/components/Iklan.svelte b/src/lib/components/Iklan.svelte
+index 2efe1ad..fb5e4dc 100644
+--- a/src/lib/components/Iklan.svelte
++++ b/src/lib/components/Iklan.svelte
+@@ -50,7 +50,7 @@
+ 		// End Ezoic
+ 	};
+ 
+-	$: if ($showAd && !dev && head && !type && !($isPWA && $isMobile)) loadHeaderAds();
++	$: if ($showAd && !dev && head && !type && !($isPWA && $isMobile)) { /* header ads disabled in the offline adaptation */ }
+ </script>
+ 
+ {#if dev && type === 'banner' && show}
+@@ -59,61 +59,8 @@
+ 	</div>
+ {/if}
+ 
+-{#if $showAd && !dev}
+-	{#if type === 'banner' && show}
+-		<ins
+-			data-ad-slot={adSize[size]}
+-			class="adsbygoogle"
+-			style="display:block"
+-			data-ad-client="ca-pub-1874822310102113"
+-			data-ad-format="auto"
+-			data-full-width-responsive="true"
+-		/>
+-	{/if}
+-
+-	{#if head && !type}
+-		<!-- Google Ad -->
+-		<script
+-			async
+-			src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1874822310102113"
+-			crossorigin="anonymous"></script>
+-		<!-- Google Ad -->
+-
+-		<!-- Ezoic -->
+-		<script src="https://the.gatekeeperconsent.com/cmp.min.js" data-cfasync="false"></script>
+-		<script src="https://the.gatekeeperconsent.com/ccpa/v2/standalone.js" async></script>
+-		<script async src="//www.ezojs.com/ezoic/sa.min.js"></script>
+-		<!-- Ezoic -->
+-
+-		<!-- Autotag -->
+-		<!-- don't show autotag if PWA -->
+-		{#if !($isPWA && $isMobile)}
+-			<!-- <script
+-				data-cfasync="false"
+-				type="text/javascript"
+-				data-adel="atag"
+-				src="//acacdn.com/script/atg.js"
+-				czid="v1xd6wvvpe"></script> -->
+-		{/if}
+-		<!-- Autotag -->
+-
+-		<!-- Desktop Only -->
+-		<!-- {#if !$isMobile} -->
+-		<!-- PopAds -->
+-		<!-- {#if randomNumber(1, 2) === 1}
+-				<script
+-					type="text/javascript"
+-					src="//pl17416355.profitablecpmgate.com/3e/70/98/3e7098724a8a6321d737e1bd39d9ffed.js"></script>
+-			{/if} -->
+-		<!-- PopAds -->
+-
+-		<!-- In-Push Page -->
+-		<!-- <script
+-				type="text/javascript"
+-				src="//pl17419889.profitablecpmgate.com/fb/35/45/fb3545e433a3f40f53c83f80f24037ec.js"></script> -->
+-		<!-- In-Push Page -->
+-		<!-- {/if} -->
+-	{/if}
++{#if false}
++	<!-- ad slots removed by the offline adaptation (pagead2/gatekeeper/ejoic external scripts) -->
+ {/if}
+ 
+ <style>
+diff --git a/src/lib/data/updates.json b/src/lib/data/updates.json
+index 68e8b04..5f6af94 100644
+--- a/src/lib/data/updates.json
++++ b/src/lib/data/updates.json
+@@ -310,7 +310,7 @@
+ 			"date": "23-May-2023",
+ 			"featured": true,
+ 			"description": [
+-				"<b>LIVE NOW!!!</b> <br/>Gacha Simulator for Honkai: Star Rail 👉 <b><a href='https://hsr.wishsimulator.app' target='_blank'>HSR.WishSimulator.App </a></b> <br/> <img src='https://hsr.wishsimulator.app/meta-picture.jpg' style='width:90%; margin: .5rem 0' alt='HSR Wish Simulator' />"
++				"<b>LIVE NOW!!!</b> <br/>Gacha Simulator for Honkai: Star Rail 👉 <b><a href='https://hsr.wishsimulator.app' target='_blank'>HSR.WishSimulator.App </a></b> <br/> "
+ 			]
+ 		},
+ 		{
+diff --git a/src/lib/helpers/accessKey.js b/src/lib/helpers/accessKey.js
+index b9b6b00..f289569 100644
+--- a/src/lib/helpers/accessKey.js
++++ b/src/lib/helpers/accessKey.js
+@@ -11,10 +11,8 @@ const digestMessage = async (message) => {
+ 
+ const fetchKey = async () => {
+ 	const date = new Date().toISOString();
+-	const data = await fetch(
+-		`https://gist.githubusercontent.com/AguzzTN54/3816708e01827a5c64f4903242ede7b0/raw?date=${date}`
+-	);
+-	const { hash, previousKey } = await data.json();
++	const data = { hash: '', previousKey: {} }; // [offline adaptation] remote key list removed; keys always resolve as invalid locally
++	const { hash, previousKey } = data;
+ 	return { baseKey: hash, previousKey };
+ };
+ 
+diff --git a/src/lib/helpers/donation.js b/src/lib/helpers/donation.js
+index d287a02..6bbf17f 100644
+--- a/src/lib/helpers/donation.js
++++ b/src/lib/helpers/donation.js
+@@ -1,9 +1,6 @@
+ const getFromSheet = async () => {
+ 	try {
+-		const data = await fetch(
+-			'https://opensheet.elk.sh/1qQZXxfa8pKrjFkCh4cLYyEbPIaFLMWimVaQmvFkRzlU/1'
+-		);
+-		const result = await data.json();
++		const result = []; // [offline adaptation] external supporter sheet removed
+ 		return result.reverse().map(({ message, name, amount, currency, timestamp, payment_type }) => {
+ 			const formatedAmount = setAmmount(amount, currency);
+ 			const date = formatDate(timestamp);
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 0c6fda8..fa3ba50 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -165,9 +165,7 @@
+ 	let chatLoaded = false; // initial load
+ 	let showChat = false; // toggle hide-show
+ 	const chatToggle = () => {
+-		chatLoaded = true;
+-		showChat = !showChat;
+-		playSfx(showChat ? 'shopnav' : 'close');
++		// [offline adaptation] the feedback chat is a cloud feature (firebase/disqus) and stays closed
+ 	};
+ 	setContext('chatToggle', chatToggle);
+ 	$: hotkeys('o', pageActive, chatToggle);
+diff --git a/svelte.config.js b/svelte.config.js
+index 7174d30..99aca94 100644
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,12 +1,12 @@
+ import path from 'path';
+-import adapter from '@sveltejs/adapter-vercel';
++import adapter from '@sveltejs/adapter-static';
+ import preprocess from 'svelte-preprocess';
+ 
+ /** @type {import('@sveltejs/kit').Config} */
+ const config = {
+ 	kit: {
+ 		appDir: 'internal',
+-		adapter: adapter(),
++		adapter: adapter({ fallback: 'index.html' }),
+ 		alias: {
+ 			$post: path.resolve('./src/post')
+ 		}

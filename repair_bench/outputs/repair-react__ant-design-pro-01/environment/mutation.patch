@@ -1,0 +1,143 @@
+diff --git a/src/components/RightContent/AvatarDropdown.tsx b/src/components/RightContent/AvatarDropdown.tsx
+index 046ed77..aa7ee57 100644
+--- a/src/components/RightContent/AvatarDropdown.tsx
++++ b/src/components/RightContent/AvatarDropdown.tsx
+@@ -70,7 +70,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
+       return;
+     }
+     if (key === 'theme') {
+-      setInitialState((s) => ({ ...s, settingDrawerOpen: true }));
++      setInitialState((s) => { s.settingDrawerOpen = true; return s; });
+       return;
+     }
+     history.push(`/account/${key}`);
+diff --git a/src/pages/account/settings/components/base.tsx b/src/pages/account/settings/components/base.tsx
+index 88637da..9a6834f 100644
+--- a/src/pages/account/settings/components/base.tsx
++++ b/src/pages/account/settings/components/base.tsx
+@@ -58,7 +58,6 @@ const BaseView: React.FC = () => {
+ 
+   const handleValuesChange = (changedValues: Record<string, unknown>) => {
+     if ('province' in changedValues) {
+-      formRef.current?.setFieldValue('city', undefined);
+     }
+   };
+ 
+diff --git a/src/pages/dashboard/monitor/components/ActiveChart/index.tsx b/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
+index ad41776..724f7d9 100644
+--- a/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
++++ b/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
+@@ -37,7 +37,6 @@ const ActiveChart = () => {
+   useEffect(() => {
+     const loopData = () => {
+       setActiveData(getActiveData());
+-      timerRef.current = window.setTimeout(loopData, 2000);
+     };
+     // Initial data is already created lazily; start the refresh cadence after one interval.
+     timerRef.current = window.setTimeout(loopData, 2000);
+diff --git a/src/pages/dashboard/monitor/components/Map/index.tsx b/src/pages/dashboard/monitor/components/Map/index.tsx
+index c72da88..ce4a876 100644
+--- a/src/pages/dashboard/monitor/components/Map/index.tsx
++++ b/src/pages/dashboard/monitor/components/Map/index.tsx
+@@ -332,7 +332,7 @@ export default function MonitorMap() {
+       resizeObserver.disconnect();
+       svg.selectAll('*').interrupt();
+     };
+-  }, [worldData, worldLoading, validFeatures, maxVal, highlightFeatures]);
++  }, []);
+ 
+   if (geoLoading || worldLoading) {
+     return <Skeleton.Node active style={{ width: '100%', height: 356 }} />;
+diff --git a/src/pages/dashboard/workplace/index.tsx b/src/pages/dashboard/workplace/index.tsx
+index cc420d6..7d5c14c 100644
+--- a/src/pages/dashboard/workplace/index.tsx
++++ b/src/pages/dashboard/workplace/index.tsx
+@@ -101,7 +101,7 @@ const Workplace: FC = () => {
+     queryFn: () => fakeChartData().then((res) => res.data),
+   });
+   const renderActivities = (item: ActivitiesType) => {
+-    const events = item.template.split(/@\{([^{}]*)\}/gi).map((key) => {
++    const events = item.template.split(/@@\{([^{}]*)\}/gi).map((key) => {
+       if (item[key as keyof ActivitiesType]) {
+         const value = item[key as 'user'];
+         return (
+@@ -127,7 +127,7 @@ const Workplace: FC = () => {
+           }
+           description={
+             <span className={styles.datetime} title={item.updatedAt} data-testid="activity-datetime">
+-              {dayjs(item.updatedAt).fromNow()}
++              {dayjs(item.updatedAt).format('YYYY-MM-DD')}
+             </span>
+           }
+         />
+diff --git a/src/pages/form/step-form/index.tsx b/src/pages/form/step-form/index.tsx
+index 10ea63a..0e69f81 100644
+--- a/src/pages/form/step-form/index.tsx
++++ b/src/pages/form/step-form/index.tsx
+@@ -106,7 +106,6 @@ const StepForm: React.FC<Record<string, any>> = () => {
+             initialValues={stepData}
+             onFinish={async (values) => {
+               setStepData(values);
+-              return true;
+             }}
+           >
+             <ProFormSelect
+@@ -220,7 +219,6 @@ const StepForm: React.FC<Record<string, any>> = () => {
+           <StepsForm.StepForm title="完成">
+             <StepResult
+               onFinish={async () => {
+-                setCurrent(0);
+                 form.resetFields();
+               }}
+             >
+diff --git a/src/pages/list/basic-list/index.tsx b/src/pages/list/basic-list/index.tsx
+index b30227a..4de750e 100644
+--- a/src/pages/list/basic-list/index.tsx
++++ b/src/pages/list/basic-list/index.tsx
+@@ -188,7 +188,7 @@ const BasicList: FC = () => {
+   };
+   const handleSubmit = (values: BasicListItemDataType) => {
+     setDone(true);
+-    const method = values?.id ? 'update' : 'add';
++    const method = values?.id ? 'add' : 'update';
+     runListOperation(method, values);
+   };
+   return (
+diff --git a/src/pages/table-list/index.tsx b/src/pages/table-list/index.tsx
+index ec732df..e3ba46b 100644
+--- a/src/pages/table-list/index.tsx
++++ b/src/pages/table-list/index.tsx
+@@ -37,7 +37,6 @@ const TableList: React.FC = () => {
+     mutationFn: removeRule,
+     onSuccess: () => {
+       setSelectedRows([]);
+-      actionRef.current?.reloadAndRest?.();
+       queryClient.invalidateQueries({ queryKey: ['rule'] });
+ 
+       messageApi.success('Deleted successfully and will refresh soon');
+diff --git a/src/pages/user/login/index.tsx b/src/pages/user/login/index.tsx
+index 3e4dd9c..c9fa00a 100644
+--- a/src/pages/user/login/index.tsx
++++ b/src/pages/user/login/index.tsx
+@@ -38,7 +38,7 @@ const getSafeRedirectUrl = (redirect: string | null): string => {
+ 
+   try {
+     const parsed = new URL(redirect, window.location.origin);
+-    if (parsed.origin !== window.location.origin) return '/';
++    if (parsed.origin === window.location.origin) return '/';
+     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+   } catch {
+     return '/';
+diff --git a/src/pages/user/register/index.tsx b/src/pages/user/register/index.tsx
+index 25d803d..37c7e4a 100644
+--- a/src/pages/user/register/index.tsx
++++ b/src/pages/user/register/index.tsx
+@@ -98,7 +98,7 @@ const Register: FC = () => {
+     setCount(counts);
+     interval = window.setInterval(() => {
+       counts -= 1;
+-      setCount(counts);
++      setCount(count);
+       if (counts === 0) {
+         clearInterval(interval);
+       }

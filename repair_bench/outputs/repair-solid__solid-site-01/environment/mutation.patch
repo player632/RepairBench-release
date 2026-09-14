@@ -1,0 +1,122 @@
+diff --git a/src/AppContext.tsx b/src/AppContext.tsx
+index 04c4f2f..0f0a1b8 100644
+--- a/src/AppContext.tsx
++++ b/src/AppContext.tsx
+@@ -173,7 +173,7 @@ export const AppContextProvider: ParentComponent = (props) => {
+   const [guidesList] = createResource(locale, getGuideDirectory);
+ 
+   createEffect(() => {
+-    document.documentElement.lang = settings.locale;
++    document.documentElement.lang = 'en';
+   });
+ 
+   createEffect(() => {
+@@ -200,7 +200,7 @@ export const AppContextProvider: ParentComponent = (props) => {
+     },
+     t,
+     get dir() {
+-      return t('global.dir') === 'ltr' ? 'ltr' : 'rtl';
++      return t('global.dir') === 'rtl' ? 'ltr' : 'rtl';
+     },
+     get guides() {
+       return guidesList();
+diff --git a/src/components/Nav/ModeToggle.tsx b/src/components/Nav/ModeToggle.tsx
+index 11d4c23..cbc36d2 100644
+--- a/src/components/Nav/ModeToggle.tsx
++++ b/src/components/Nav/ModeToggle.tsx
+@@ -6,7 +6,7 @@ import { useAppState } from '../../AppContext';
+ export const ModeToggle: VoidComponent = () => {
+   const context = useAppState();
+   const { t } = context;
+-  const title = () => (context.isDark ? t('global.light_mode') : t('global.dark_mode'));
++  const title = () => (context.isDark ? t('global.dark_mode') : t('global.light_mode'));
+ 
+   return (
+     <button
+diff --git a/src/components/Nav/index.tsx b/src/components/Nav/index.tsx
+index 0bd728e..5aed730 100644
+--- a/src/components/Nav/index.tsx
++++ b/src/components/Nav/index.tsx
+@@ -268,7 +268,7 @@ const Nav: ParentComponent<{ showLogo?: boolean; filled?: boolean }> = (props) =
+                 data-rb-langcode={lang}
+                 class="first:rounded-t hover:bg-solid-light hover:text-white last:rounded-b border-r p-3 text-sm border-b text-center dark:border-solid-darkbg/70 w-3/6"
+                 classList={{
+-                  'bg-solid-medium text-white': lang == ctx.locale,
++                  'bg-solid-medium text-white': lang != ctx.locale,
+                   'hover:bg-solid-light': lang == ctx.locale,
+                 }}
+                 onClick={() => {
+diff --git a/src/pages/Resources.tsx b/src/pages/Resources.tsx
+index db231bb..1479645 100644
+--- a/src/pages/Resources.tsx
++++ b/src/pages/Resources.tsx
+@@ -71,7 +71,7 @@ const AResource: Component<Resource> = (props) => {
+             <Show when={props.published_at}>
+               <div class="rtl:text-right text-xs text-gray-400 block" data-rb-published="">
+                 {t('resources.published')} {published.toDateString()}
+-                <Show when={difference() / DAY < 60}>
++                <Show when={difference() / DAY > 60}>
+                   <span class="text-gray-300" data-rb-timeago=""> - {publishTimeAgo()}</span>
+                 </Show>
+               </div>
+@@ -100,12 +100,12 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+   const { t } = useAppState();
+   const data = props.data;
+   const fs = new Fuse(data.list, {
+-    keys: ['author', 'title', 'categories', 'keywords', 'link', 'description'],
++    keys: ['author', 'categories', 'keywords', 'link', 'description'],
+     threshold: 0.3,
+   });
+   const [searchParams] = useSearchParams();
+   const [keyword, setKeyword] = createSignal(parseKeyword(searchParams.search || ''));
+-  const debouncedKeyword = debounce((str: string) => setKeyword(str), 250);
++  const debouncedKeyword = debounce((str: string) => setKeyword(str), 2500);
+   rememberSearch(keyword);
+   const resources = createMemo(() => {
+     if (keyword() === '') {
+@@ -122,11 +122,11 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+     get list() {
+       const filtered = resources().filter((item) => {
+         if (this.enabledTypes.length !== 0) {
+-          return this.enabledTypes.indexOf(item.type) !== -1;
++          return this.enabledTypes.indexOf(item.type) === -1;
+         }
+         return true;
+       });
+-      filtered.sort((b, a) => (a.published_at || 0) - (b.published_at || 0));
++      filtered.sort((b, a) => (b.published_at || 0) - (a.published_at || 0));
+       return filtered;
+     },
+     // Retrieve a list of type counts
+@@ -168,7 +168,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+   };
+ 
+   const filtersClickScrollToTop = () => {
+-    const top = toggleFilters() ? floatingPosScrollY : 0;
++    const top = toggleFilters() ? 0 : floatingPosScrollY;
+     window.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+   };
+ 
+diff --git a/src/utils/parseKeyword.ts b/src/utils/parseKeyword.ts
+index cce5282..21e23a5 100644
+--- a/src/utils/parseKeyword.ts
++++ b/src/utils/parseKeyword.ts
+@@ -1,4 +1,4 @@
+-const blacklistedCharacters = /[^a-z\s]+/gi;
++const blacklistedCharacters = /[a-z\s]+/gi;
+ export const parseKeyword = (hash: string): string => {
+   return decodeURIComponent(hash).replace(blacklistedCharacters, ' ').trim();
+ };
+diff --git a/src/utils/rememberSearch.ts b/src/utils/rememberSearch.ts
+index 4b9561e..4ce7139 100644
+--- a/src/utils/rememberSearch.ts
++++ b/src/utils/rememberSearch.ts
+@@ -9,7 +9,7 @@ export const rememberSearch = (search: Accessor<string>) => {
+     const url = globalThis.location;
+     const oldPath = `${url.pathname}${url.search}${url.hash}`;
+     const newPath = search()
+-      ? `${url.pathname}?search=${search()}${url.hash}`
++      ? `${url.pathname}?q=${search()}${url.hash}`
+       : `${url.pathname}${url.hash}`;
+     if (oldPath === newPath) return;
+     navigate(newPath, { replace: true, scroll: false });

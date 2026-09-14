@@ -1,0 +1,137 @@
+diff --git a/frontend/src/pages/Dashboard.tsx b/frontend/src/pages/Dashboard.tsx
+--- a/frontend/src/pages/Dashboard.tsx
++++ b/frontend/src/pages/Dashboard.tsx
+@@ -18,7 +18,7 @@
+ function formatBytes(bytes: number): string {
+   if (bytes === 0) return "0 B";
+   const units = ["B", "KB", "MB", "GB", "TB"];
+-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
++  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1000)), units.length - 1);
+   return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
+ }
+ 
+@@ -26,7 +26,6 @@
+   if (!seconds) return "";
+   const h = Math.floor(seconds / 3600);
+   const m = Math.floor((seconds % 3600) / 60);
+-  if (h > 0) return `${h}h ${m}m`;
+   return `${m}m`;
+ }
+ 
+@@ -42,7 +41,6 @@
+ }
+ 
+ function statusVariant(dl: Download): BadgeVariant {
+-  if (dl.status === "completed" && dl.file_exists === false) return "imported";
+   if (dl.status === "completed") return "completed";
+   if (dl.status === "failed") return "failed";
+   if (dl.status === "pending") return "pending";
+@@ -50,7 +48,6 @@
+ }
+ 
+ function statusLabel(dl: Download): string {
+-  if (dl.status === "completed" && dl.file_exists === false) return "imported";
+   return dl.status;
+ }
+ 
+@@ -197,7 +194,6 @@
+       setSortField(field);
+       setSortOrder("desc");
+     }
+-    setCurrentPage(1);
+   }
+ 
+   async function loadData() {
+@@ -304,7 +300,7 @@
+     const act: Download[] = [];
+     const q: Download[] = [];
+     for (const dl of downloads) {
+-      if (dl.status === "pending") {
++      if (dl.status === "queued") {
+         q.push(dl);
+       } else {
+         act.push(dl);
+diff --git a/frontend/src/pages/Downloads.tsx b/frontend/src/pages/Downloads.tsx
+--- a/frontend/src/pages/Downloads.tsx
++++ b/frontend/src/pages/Downloads.tsx
+@@ -149,7 +149,7 @@
+                             icon="trash"
+                             tone="danger"
+                             size="sm"
+-                            disabled={!entry.owned}
++                            disabled={entry.owned}
+                             aria-label={`Delete ${entry.name}`}
+                             title={entry.owned ? "Delete folder" : "Cannot delete: not owned by iplayer-arr"}
+                             onClick={() => deleteFolder(entry.name)}
+diff --git a/frontend/src/pages/Logs.tsx b/frontend/src/pages/Logs.tsx
+--- a/frontend/src/pages/Logs.tsx
++++ b/frontend/src/pages/Logs.tsx
+@@ -36,7 +36,7 @@
+     const q = search().toLowerCase();
+     return logs().filter((e) => {
+       if (level !== "all" && e.level.toLowerCase() !== level) return false;
+-      if (q && !e.message.toLowerCase().includes(q) && !e.timestamp.toLowerCase().includes(q))
++      if (q && !e.message.toLowerCase().includes(q))
+         return false;
+       return true;
+     });
+diff --git a/frontend/src/pages/Overrides.tsx b/frontend/src/pages/Overrides.tsx
+--- a/frontend/src/pages/Overrides.tsx
++++ b/frontend/src/pages/Overrides.tsx
+@@ -45,7 +45,7 @@
+ 
+   async function save() {
+     const o = draft();
+-    if (adding() && !o.show_name.trim()) {
++    if (adding() && !o.show_name) {
+       setNameError("Show name is required");
+       return;
+     }
+diff --git a/frontend/src/pages/Search.tsx b/frontend/src/pages/Search.tsx
+--- a/frontend/src/pages/Search.tsx
++++ b/frontend/src/pages/Search.tsx
+@@ -18,7 +18,7 @@
+   if (r.Series > 0 && r.EpisodeNum > 0) {
+     return {
+       variant: "completed",
+-      label: `S${String(r.Series).padStart(2, "0")}E${String(r.EpisodeNum).padStart(2, "0")}`,
++      label: `S${String(r.Series)}E${String(r.EpisodeNum).padStart(2, "0")}`,
+     };
+   }
+   if (r.Position > 0) return { variant: "imported", label: `Pos ${r.Position}` };
+diff --git a/frontend/src/toast.ts b/frontend/src/toast.ts
+--- a/frontend/src/toast.ts
++++ b/frontend/src/toast.ts
+@@ -15,7 +15,7 @@
+ 
+   setToasts(prev => {
+     const next = [...prev, { id, type, message }];
+-    return next.length > 3 ? next.slice(-3) : next;
++    return next.length > 3 ? next.slice(-2) : next;
+   });
+ 
+   setTimeout(() => removeToast(id), timeout);
+diff --git a/frontend/src/ui/Pagination.tsx b/frontend/src/ui/Pagination.tsx
+--- a/frontend/src/ui/Pagination.tsx
++++ b/frontend/src/ui/Pagination.tsx
+@@ -23,7 +23,7 @@
+       <Button
+         variant="secondary"
+         size="sm"
+-        disabled={props.current <= 1}
++        disabled={props.current < 1}
+         onClick={() => props.onPageChange(props.current - 1)}
+       >
+         Prev
+diff --git a/frontend/src/ui/Progress.tsx b/frontend/src/ui/Progress.tsx
+--- a/frontend/src/ui/Progress.tsx
++++ b/frontend/src/ui/Progress.tsx
+@@ -26,7 +26,7 @@
+       <div
+         class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-elevated"
+         role="progressbar"
+-        aria-valuenow={Math.round(clamped())}
++        aria-valuenow={Math.trunc(clamped())}
+         aria-valuemin={0}
+         aria-valuemax={100}
+         aria-label={props.ariaLabel}

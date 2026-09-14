@@ -1,0 +1,153 @@
+diff --git a/src/App.vue b/src/App.vue
+index 8b8f720..4eda918 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -519,7 +519,7 @@
+   // 重置游戏
+   const resetGame = () => {
+     gmNum.value++
+-    if (gmNum.value >= 10) {
++    if (gmNum.value >= 15) {
+       gameStore.isGm = true
+       ElMessage({ message: 'GM功能已开启', type: 'success' })
+       return
+diff --git a/src/components/EntropyProgress.vue b/src/components/EntropyProgress.vue
+index bd6445d..6173b0a 100644
+--- a/src/components/EntropyProgress.vue
++++ b/src/components/EntropyProgress.vue
+@@ -149,7 +149,7 @@
+   const currentEfficiency = computed(() => gameStore.getEntropyReductionBonus())
+   const quantumBonus = computed(() => {
+     const quantumComputer = gameStore.buildings.quantumComputer
+-    return quantumComputer.count > 0 ? quantumComputer.count * quantumComputer.level * 0.1 : 0
++    return quantumComputer.count > 0 ? quantumComputer.count * quantumComputer.level * 0.05 : 0
+   })
+   const spacetimeBonus = computed(() => {
+     const spacetimePortal = gameStore.buildings.spacetimePortal
+diff --git a/src/components/ExplorationPanel.vue b/src/components/ExplorationPanel.vue
+index 2669646..71a762f 100644
+--- a/src/components/ExplorationPanel.vue
++++ b/src/components/ExplorationPanel.vue
+@@ -140,7 +140,7 @@
+   }
+ 
+   const synthesize = item => {
+-    if (gameStore.explorationres[item.res] < item.need) return
++    if (gameStore.explorationres[item.res] <= item.need) return
+     gameStore.explorationres[item.res] -= item.need
+     Object.entries(item.reward).forEach(([res, val]) => {
+       if (res === 'techBoost') {
+diff --git a/src/components/buildings.vue b/src/components/buildings.vue
+index 7ab2780..8c4eae8 100644
+--- a/src/components/buildings.vue
++++ b/src/components/buildings.vue
+@@ -150,7 +150,7 @@
+     const stageOrder = gameStore.stageOrder
+     const idx = stageOrder.indexOf(gameStore.currentEntropyStage)
+     if (idx === -1) return
+-    for (let i = 0; i <= idx; i++) {
++    for (let i = 0; i < idx; i++) {
+       Object.keys(buildingsData).forEach(key => {
+         if (buildingsData[key].entropyStage === stageOrder[i] && !gameStore.buildings[key].unlocked) {
+           gameStore.buildings[key].unlocked = true
+diff --git a/src/data/buildings.js b/src/data/buildings.js
+index a015c33..5eb2414 100644
+--- a/src/data/buildings.js
++++ b/src/data/buildings.js
+@@ -6,7 +6,7 @@ export default {
+     count: 1,
+     level: 1,
+     add: true,
+-    outputs: { coordinateExposure: 0.05, energy: 0.1, matter: 0.1, knowledge: 0.001 },
++    outputs: { coordinateExposure: 0.05, energy: 0.05, matter: 0.1, knowledge: 0.001 },
+     cost: { matter: 10, energy: 5, knowledge: 0.01 },
+     upgradeCost: { matter: 20, energy: 10, knowledge: 0.02 },
+     unlocked: true,
+diff --git a/src/data/entropyReductions.js b/src/data/entropyReductions.js
+index 39ca5bc..aba4680 100644
+--- a/src/data/entropyReductions.js
++++ b/src/data/entropyReductions.js
+@@ -7,7 +7,7 @@ export default {
+     unlocked: true,
+     progress: 0,
+     maxProgress: 1000,
+-    efficiency: 0.1,
++    efficiency: 0.2,
+     cost: { energy: 0.5, matter: 0.5, knowledge: 0.001 },
+     effect: '基础熵减，减缓局部热运动'
+   },
+diff --git a/src/data/explorations.js b/src/data/explorations.js
+index 362ace5..a7df7ac 100644
+--- a/src/data/explorations.js
++++ b/src/data/explorations.js
+@@ -4,7 +4,7 @@ export default [
+     id: 'relic',
+     name: '宇宙遗迹',
+     desc: '发现远古文明遗迹，获得稀有知识与资源。',
+-    cost: { energy: 1000, knowledge: 1 },
++    cost: { energy: 1500, knowledge: 1 },
+     cooldown: 600, // 秒
+     commonPool: [
+       { res: 'knowledge', min: 0.1, max: 1, weight: 1 },
+diff --git a/src/data/resources.js b/src/data/resources.js
+index 99f3adf..199f2ab 100644
+--- a/src/data/resources.js
++++ b/src/data/resources.js
+@@ -1,6 +1,6 @@
+ export default {
+   knowledge: { name: '知识', count: 0.1 },
+-  energy: { name: '能量', count: 100 },
++  energy: { name: '能量', count: 90 },
+   matter: { name: '物质', count: 100 },
+   darkMatter: { name: '暗物质', count: 0 },
+   antiMatter: { name: '反物质', count: 0 },
+diff --git a/src/data/technologies.js b/src/data/technologies.js
+index 5e18b36..73a3986 100644
+--- a/src/data/technologies.js
++++ b/src/data/technologies.js
+@@ -15,7 +15,7 @@ export default {
+     effect: '通过精确控制分子热运动，降低系统温度，为更高阶有序度打下基础。',
+     unlocked: false,
+     efficiency: 1.2,
+-    cost: { energy: 50, matter: 20, knowledge: 10 },
++    cost: { energy: 500, matter: 20, knowledge: 10 },
+     entropyStage: 'molecularCooling',
+     prerequisites: ['atomicManipulation']
+   },
+diff --git a/src/plugins/achievementService.js b/src/plugins/achievementService.js
+index 3554a61..d362c13 100644
+--- a/src/plugins/achievementService.js
++++ b/src/plugins/achievementService.js
+@@ -33,7 +33,7 @@ const getAchievementReward = (cfg, state) => {
+   if (cfg.resource && cfg.baseReward) {
+     const reward = {}
+     cfg.resource.forEach(res => {
+-      reward[res] = cfg.baseReward * cfg.rewardMultiplier * (state.level + 1)
++      reward[res] = cfg.baseReward * (state.level + 1)
+     })
+     return reward
+   }
+diff --git a/src/plugins/worker-timer.js b/src/plugins/worker-timer.js
+index cf3dcb2..b555ac1 100644
+--- a/src/plugins/worker-timer.js
++++ b/src/plugins/worker-timer.js
+@@ -1,5 +1,5 @@
+ let running = false
+-let interval = 1000
++let interval = 2000
+ 
+ const loop = () => {
+   if (!running) return
+diff --git a/src/stores/gameStore.js b/src/stores/gameStore.js
+index 3b4a58a..eb0893e 100644
+--- a/src/stores/gameStore.js
++++ b/src/stores/gameStore.js
+@@ -355,7 +355,7 @@ export const useGameStore = defineStore(
+ 
+     // 返回“建造下一座”或“升级下一级”的实际成本
+     const getDisplayCost = (baseCost, count = 0, level = 1, isUpgrade = false) =>
+-      calcDynamicCost(baseCost, isUpgrade ? (level + 1) * 1.7 || 1 : count * 1.7 || 1)
++      calcDynamicCost(baseCost, isUpgrade ? (level + 1) * 1.7 || 1 : count * 2.0 || 1)
+ 
+     // 返回能否“建造下一座”或“升级下一级”
+     const updateDisplayCost = (baseCost, count = 0, level = 1, isUpgrade = false) => {

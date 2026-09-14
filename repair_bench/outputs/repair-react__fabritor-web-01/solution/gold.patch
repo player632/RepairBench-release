@@ -1,0 +1,167 @@
+diff --git a/src/editor/extensions/history.ts b/src/editor/extensions/history.ts
+index d6e8ee6..a1d4285 100644
+--- a/src/editor/extensions/history.ts
++++ b/src/editor/extensions/history.ts
+@@ -45,9 +45,10 @@ export default class FabricHistory {
+     if (this.doing || this.saving) return;
+     this.saving = true;
+ 
+-    this.currentState = this._getJSON();
+-    this.historyUndo.push(this.currentState);
++    const json = this.currentState;
++    this.historyUndo.push(json);
+     this._checkHistoryUndoLength();
++    this.currentState = this._getJSON();
+ 
+     this.saving = false;
+   }
+@@ -82,7 +83,7 @@ export default class FabricHistory {
+       this.historyRedo.push(this.currentState);
+       this._checkHistoryRedoLength();
+       this.currentState = _history;
+-      this.editor.loadFromJSON(_history);
++      await this.editor.loadFromJSON(_history);
+ 
+       this.doing = false;
+       this.canvas.fire('fabritor:history:undo');
+diff --git a/src/editor/index.tsx b/src/editor/index.tsx
+index 20104ce..03e7824 100644
+--- a/src/editor/index.tsx
++++ b/src/editor/index.tsx
+@@ -295,7 +295,7 @@ export default class Editor {
+     this.canvas.hoverCursor = this._pan.enable ? 'grab' : 'move';
+     this.canvas.getObjects().forEach((obj) => {
+       if (obj.id !== SKETCH_ID) {
+-        obj.set('selectable', this._pan.enable);
++        obj.set('selectable', !this._pan.enable);
+       }
+     });
+     this.canvas.selection = !this._pan.enable;
+diff --git a/src/fabritor/UI/header/BaseInfo/index.tsx b/src/fabritor/UI/header/BaseInfo/index.tsx
+index 7641fa0..0ab4aef 100644
+--- a/src/fabritor/UI/header/BaseInfo/index.tsx
++++ b/src/fabritor/UI/header/BaseInfo/index.tsx
+@@ -17,6 +17,8 @@ export default function BaseInfo () {
+     const { sketch } = editor;
+     // @ts-ignore custom desc
+     sketch.set('fabritor_desc', _v);
++
++    editor.fireCustomModifiedEvent();
+   }
+ 
+   useEffect(() => {
+diff --git a/src/fabritor/UI/header/Toolbar/index.tsx b/src/fabritor/UI/header/Toolbar/index.tsx
+index 91c51e2..ea420a3 100644
+--- a/src/fabritor/UI/header/Toolbar/index.tsx
++++ b/src/fabritor/UI/header/Toolbar/index.tsx
+@@ -32,7 +32,8 @@ export default function Toolbar () {
+   }
+ 
+   const enablePan = () => {
+-    editor.switchEnablePan();
++    const enable = editor.switchEnablePan();
++    setPanEnable(enable);
+   }
+ 
+   useEffect(() => {
+@@ -40,7 +41,7 @@ export default function Toolbar () {
+       setCanUndo(editor.fhistory.canUndo());
+       setCanRedo(editor.fhistory.canRedo());
+     }
+-  }, [editor]);
++  });
+ 
+   return (
+     <CenterV gap={4} style={{ borderRight: '1px solid #e8e8e8', paddingRight: 12 }}>
+diff --git a/src/fabritor/UI/panel/AppPanel/QRCode.tsx b/src/fabritor/UI/panel/AppPanel/QRCode.tsx
+index 283a437..a2557f8 100644
+--- a/src/fabritor/UI/panel/AppPanel/QRCode.tsx
++++ b/src/fabritor/UI/panel/AppPanel/QRCode.tsx
+@@ -18,7 +18,10 @@ export default function QRCodePanel (props) {
+   const { t } = useTranslation();
+ 
+   const handleValuesChange = (values) => {
+-    Object.assign(QRCodeConfig, values);
++    setQRCodeConfig({
++      ...QRCodeConfig,
++      ...values
++    });
+   }
+ 
+   const add2Canvas = () => {
+diff --git a/src/fabritor/UI/panel/DesignPanel/index.tsx b/src/fabritor/UI/panel/DesignPanel/index.tsx
+index 13e9fe9..ae46384 100644
+--- a/src/fabritor/UI/panel/DesignPanel/index.tsx
++++ b/src/fabritor/UI/panel/DesignPanel/index.tsx
+@@ -20,7 +20,7 @@ export default function Layer () {
+       return;
+     }
+     const activeObject = editor?.canvas.getActiveObject();
+-    for (let i = 0; i < length; i++) {
++    for (let i = length - 1; i >= 0; i--) {
+       let object = objects[i];
+       if (object && object.id !== SKETCH_ID) {
+         if (activeObject === object) {
+diff --git a/src/fabritor/UI/panel/PaintPanel/index.tsx b/src/fabritor/UI/panel/PaintPanel/index.tsx
+index 902e243..8d0029f 100644
+--- a/src/fabritor/UI/panel/PaintPanel/index.tsx
++++ b/src/fabritor/UI/panel/PaintPanel/index.tsx
+@@ -41,7 +41,7 @@ export default function PaintPanel () {
+ 
+   const stopFreeDrawMode = () => {
+     editor.canvas.isDrawingMode = !editor.canvas.isDrawingMode;
+-    setIsDrawingMode(false);
++    setIsDrawingMode(!isDrawingMode);
+   }
+ 
+   const initBrush = () => {
+diff --git a/src/fabritor/UI/panel/TextPanel/index.tsx b/src/fabritor/UI/panel/TextPanel/index.tsx
+index 72477ca..85b5c4e 100644
+--- a/src/fabritor/UI/panel/TextPanel/index.tsx
++++ b/src/fabritor/UI/panel/TextPanel/index.tsx
+@@ -10,7 +10,7 @@ export default function TextPanel () {
+   const { t } = useTranslation();
+   
+   const handleAddText = async (options) => {
+-    await createTextbox({ canvas: editor.canvas });
++    await createTextbox({  ...options, canvas: editor.canvas });
+   }
+ 
+   return (
+diff --git a/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx b/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
+index ae37b7a..31de61a 100644
+--- a/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/PositionSetter.tsx
+@@ -23,7 +23,7 @@ const PxInputNumber = (props) => {
+       changeOnBlur
+       value={innerValue}
+       onChange={setInnerValue}
+-      onPressEnter={() => { onChange?.(value) }}
++      onPressEnter={() => { onChange?.(innerValue) }}
+       {...rest}
+     />
+   )
+diff --git a/src/fabritor/UI/setter/CommonSetter/index.tsx b/src/fabritor/UI/setter/CommonSetter/index.tsx
+index b969900..005897b 100644
+--- a/src/fabritor/UI/setter/CommonSetter/index.tsx
++++ b/src/fabritor/UI/setter/CommonSetter/index.tsx
+@@ -62,6 +62,7 @@ export default function CommonSetter () {
+       hasControls: !!lock
+     });
+     editor.canvas.requestRenderAll();
++    setLock(!lock);
+     editor.fireCustomModifiedEvent();
+   }
+ 
+diff --git a/src/utils/helper.ts b/src/utils/helper.ts
+index 1161760..4f644e5 100644
+--- a/src/utils/helper.ts
++++ b/src/utils/helper.ts
+@@ -177,6 +177,7 @@ export const changeLayerLevel = (level, editor, target) => {
+     default:
+       break;
+   }
++  editor.sketch.sendToBack();
+   editor.canvas.requestRenderAll();
+   editor.fireCustomModifiedEvent();
+ }

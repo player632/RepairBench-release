@@ -1,0 +1,126 @@
+diff --git a/index.html b/index.html
+index a3366d3..f558415 100644
+--- a/index.html
++++ b/index.html
+@@ -59,7 +59,7 @@ void loop() {
+                     <button class="btn btn-warning" id="flashBtn" data-testid="rb-flash-btn" onclick="flashToESP32()" title="Connect to ESP32 via Web Serial">
+                         Flash / Connect
+                     </button>
+-                    <button class="btn btn-flash-continue" id="continueFlashBtn" data-testid="rb-continue-flash-btn" onclick="continueFlash()" title="Send code in editor to connected ESP32 terminal" disabled>
++                    <button class="btn btn-flash-continue" id="continueFlashBtn" data-testid="rb-continue-flash-btn" onclick="continueFlash()" title="Send code in editor to connected ESP32 terminal">
+                         &#9654; Continue Flash
+                     </button>
+                     <button class="btn btn-upload" id="uploadBtn" data-testid="rb-upload-btn" onclick="openUploadDialog()" title="Upload code from file or URL">
+@@ -96,7 +96,7 @@ void loop() {
+                 <div class="output terminal-output" id="terminalOutput" data-testid="rb-terminal-output">Terminal inactive. Connect via Flash / Connect button first...</div>
+                 <div class="terminal-input-row">
+                     <span class="terminal-prompt">&#x276F;</span>
+-                    <input type="text" class="terminal-input" id="terminalInput" data-testid="rb-terminal-input" placeholder="Type command and press Enter..." onkeydown="handleTerminalInput(event)" />
++                    <input type="text" class="terminal-input" id="terminalInput" data-testid="rb-terminal-input" placeholder="Type command and press Enter..." />
+                     <button class="btn btn-sm btn-primary" data-testid="rb-btn-send" onclick="sendTerminalCommand()">Send</button>
+                     <button class="btn btn-sm btn-secondary" data-testid="rb-btn-disconnect" onclick="disconnectSerial()" title="Disconnect serial port">Disconnect</button>
+                 </div>
+@@ -128,7 +128,7 @@ void loop() {
+                         <div class="shortcut-group-title">Common ESP32 Serial Commands</div>
+                         <div class="shortcut-row cmd-row" data-testid="rb-cmd-rst" onclick="pasteCommand('rst')"><kbd>rst</kbd><span>Soft reset ESP32</span></div>
+                         <div class="shortcut-row cmd-row" data-testid="rb-cmd-at" onclick="pasteCommand('AT')"><kbd>AT</kbd><span>AT command test (if AT firmware)</span></div>
+-                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-atgmr" onclick="pasteCommand('AT+GMR')"><kbd>AT+GMR</kbd><span>Get firmware version</span></div>
++                        <div class="shortcut-row cmd-row" data-testid="rb-cmd-atgmr" onclick="pasteCommand('AT')"><kbd>AT+GMR</kbd><span>Get firmware version</span></div>
+                         <div class="shortcut-row cmd-row" data-testid="rb-cmd-help" onclick="pasteCommand('help')"><kbd>help</kbd><span>Show available commands (if IDF)</span></div>
+                     </div>
+                     <div class="shortcut-group">
+@@ -146,13 +146,13 @@ void loop() {
+     <div class="modal-box">
+         <div class="modal-header">
+             <span>⬆️ Upload Code</span>
+-            <button class="modal-close" data-testid="rb-upload-close" onclick="closeUploadModal()">✕</button>
++            <button class="modal-close" data-testid="rb-upload-close" onclick="closeUploadModal(event)">✕</button>
+         </div>
+         <div class="modal-body">
+             <!-- Tab Buttons -->
+             <div class="upload-tabs">
+-                <button class="upload-tab-btn active" data-testid="rb-upload-tab-file" onclick="switchUploadTab('file')">📁 File Upload</button>
+-                <button class="upload-tab-btn" data-testid="rb-upload-tab-url" onclick="switchUploadTab('url')">🔗 Load from URL</button>
++                <button class="upload-tab-btn active" data-testid="rb-upload-tab-file" onclick="switchUploadTab('url')">📁 File Upload</button>
++                <button class="upload-tab-btn" data-testid="rb-upload-tab-url" onclick="switchUploadTab('file')">🔗 Load from URL</button>
+             </div>
+             
+             <!-- File Upload Tab -->
+diff --git a/script.js b/script.js
+index 9b6a21e..47a4885 100644
+--- a/script.js
++++ b/script.js
+@@ -652,7 +652,6 @@ function populateTemplates(boardKey) {
+ 
+ function changeBoard(boardType) {
+     currentBoard = boardType;
+-    pinConfigurations = {};
+     selectedPin = null;
+     createPinDiagram();
+     document.getElementById('pinConfig').innerHTML = '<p>Select a pin to configure</p>';
+@@ -694,7 +693,7 @@ function createPinDiagram() {
+ 
+ function selectPin(pinNumber, event) {
+     document.querySelectorAll('.pin-button').forEach(btn => btn.classList.remove('selected'));
+-    const target = event.target.closest('.pin-button');
++    const target = event.target;
+     if (target) target.classList.add('selected');
+     selectedPin = pinNumber;
+     showPinConfiguration(pinNumber);
+@@ -743,17 +742,6 @@ function showPinConfiguration(pinNumber) {
+     `;
+ 
+     configPanel.innerHTML = configHTML;
+-
+-    // Restore saved values
+-    if (pinConfigurations[pinNumber]) {
+-        const cfg = pinConfigurations[pinNumber];
+-        const modeEl = document.getElementById(`pinMode_${pinNumber}`);
+-        const varEl  = document.getElementById(`varName_${pinNumber}`);
+-        const descEl = document.getElementById(`description_${pinNumber}`);
+-        if (modeEl) modeEl.value = cfg.mode;
+-        if (varEl)  varEl.value  = cfg.varName;
+-        if (descEl) descEl.value = cfg.description;
+-    }
+ }
+ 
+ function capabilityToOptions(capability, isInputOnly) {
+@@ -870,7 +858,7 @@ function clearOutput() {
+ // ─── Output helpers ───────────────────────────────────────────────
+ function appendOutput(html) {
+     const el = document.getElementById('output');
+-    el.innerHTML += (el.innerHTML ? '\n' : '') + html;
++    el.innerHTML = html;
+     el.scrollTop = el.scrollHeight;
+ }
+ 
+@@ -885,7 +873,6 @@ function appendTerminal(text, cls = '') {
+ 
+ // ─── Tab Toggle ───────────────────────────────────────────────────
+ function switchTab(tab) {
+-    activeTab = tab;
+     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+     document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+     document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+@@ -998,7 +985,7 @@ async function handleTerminalInput(event) {
+         event.preventDefault();
+         if (historyIndex < terminalHistory.length - 1) {
+             historyIndex++;
+-            input.value = terminalHistory[terminalHistory.length - 1 - historyIndex];
++            input.value = terminalHistory[historyIndex];
+         }
+     } else if (event.key === 'ArrowDown') {
+         event.preventDefault();
+diff --git a/style.css b/style.css
+index d6854b4..31c1a7d 100644
+--- a/style.css
++++ b/style.css
+@@ -410,7 +410,7 @@ body {
+ 
+ /* Tab content */
+ .tab-content {
+-    display: none;
++    display: block;
+ }
+ 
+ .tab-content.active {

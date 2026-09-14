@@ -1,0 +1,116 @@
+name: Auto Version Bump
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'CHANGELOG.md'
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.x
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags origin
+
+      - name: Determine version bump type
+        id: bump-type
+        run: |
+          # Get commit messages since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            # No tags yet, get all commits
+            COMMITS=$(git log --pretty=format:"%s")
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s")
+          fi
+          
+          echo "Recent commits:"
+          echo "$COMMITS"
+          
+          # Check for breaking changes or major keywords
+          if echo "$COMMITS" | grep -qiE "^(BREAKING CHANGE|major):|breaking change:"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+            echo "Detected MAJOR version bump"
+          # Check for features or minor keywords  
+          elif echo "$COMMITS" | grep -qiE "^(feat|feature|minor):|Add .* (feature|game|mode)|Created? .*"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+            echo "Detected MINOR version bump"
+          # Default to patch for fixes and other changes
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+            echo "Detected PATCH version bump"
+          fi
+      
+      - name: Bump version
+        id: version
+        run: |
+          BUMP_TYPE=${{ steps.bump-type.outputs.type }}
+          echo "Bumping $BUMP_TYPE version..."
+          
+          # Bump version and capture the new version
+          NEW_VERSION=$(npm version $BUMP_TYPE -m "chore: bump version to %s [skip ci]" --no-git-tag-version)
+          
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "New version: ${NEW_VERSION}"
+      
+      - name: Commit version bump
+        run: |
+          git add package.json
+          if [ -f package-lock.json ]; then
+            git add package-lock.json
+          fi
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "No changes to commit"
+      
+      - name: Create and push tag
+        run: |
+          NEW_VERSION=${{ steps.version.outputs.new_version }}
+          if git tag --list | grep -q "^${NEW_VERSION}$"; then
+            echo "Tag ${NEW_VERSION} already exists — skipping tag and push"
+            exit 0
+          fi
+          git tag -a "${NEW_VERSION}" -m "Release ${NEW_VERSION}"
+          git pull --rebase origin main
+          git push origin main --tags
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.new_version }}" \
+            --title "${{ steps.version.outputs.new_version }}" \
+            --notes "Release ${{ steps.version.outputs.new_version }}"
+
+      - name: Summary
+        run: |
+          echo "✅ Version bumped to ${{ steps.version.outputs.new_version }}"
+          echo "🏷️  Tag created and pushed"
+          echo "🐋 Docker build will trigger automatically"

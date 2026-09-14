@@ -1,0 +1,318 @@
+diff --git a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.html b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.html
+index e83814e..134fc3a 100644
+--- a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.html
++++ b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.html
+@@ -1 +1 @@
+-<canvas id="canvas" #htmlCanvas></canvas>
++<canvas id="canvas" #htmlCanvas data-testid="aef-canvas"></canvas>
+diff --git a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
+index 1eaf40a..cbb0b85 100644
+--- a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
++++ b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
+@@ -1,4 +1,4 @@
+-import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
++import { Component, ViewChild, ElementRef, AfterViewInit, NgZone } from '@angular/core';
+ import { fabric } from 'fabric';
+ 
+ @Component({
+@@ -40,7 +40,7 @@ export class FabricjsEditorComponent implements AfterViewInit {
+   public figureEditor = false;
+   public selected: any;
+ 
+-  constructor() { }
++  constructor(private zone: NgZone) { }
+ 
+   ngAfterViewInit(): void {
+ 
+@@ -106,6 +106,27 @@ export class FabricjsEditorComponent implements AfterViewInit {
+       const canvasElement: any = document.getElementById('canvas');
+     });
+ 
++    // Repair-Bench instrumentation: DOM-side probe surface for canvas-state
++    // assertions (canvas pixels are never asserted; every check reads the
++    // fabric object model). select(i) activates object i through the
++    // component's own 'object:selected' handler - fabric >= 2 no longer
++    // emits that legacy canvas event, so the probe fires it explicitly
++    // inside the Angular zone to refresh the selection panels/bindings.
++    (window as any).fab = {
++      canvas: this.canvas,
++      component: this,
++      select: (i: number) => {
++        const c: any = this.canvas;
++        const obj = c.getObjects()[i];
++        if (!obj) { return 'no-object:' + i; }
++        return this.zone.run(() => {
++          c.discardActiveObject();
++          c.setActiveObject(obj);
++          c.fire('object:selected', { target: obj });
++          return 'selected:' + i;
++        });
++      }
++    };
+   }
+ 
+ 
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 2204d5f..e1f8bc8 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -1,22 +1,22 @@
+ <div class="container">
+   <div class="row">
+       <div class="col-xl-12 main-title">
+-          <h4>Github: <a href="https://github.com/saqib92/angular-editor-fabric-js">angular-editor-fabric-js</a></h4>
++          <h4>Github: <a data-testid="aef-github-link" href="https://github.com/saqib92/angular-editor-fabric-js">angular-editor-fabric-js</a></h4>
+       </div>
+       <div class="col-xl-12">
+           <div class="row">
+               <div class="col-xl-12 text-right">
+-                  <button data-toggle="tooltip" data-placement="bottom" title="Export to image" type="button" class="btn btn-primary m-1" (click)="rasterize();">
++                  <button data-toggle="tooltip" data-placement="bottom" title="Export to image" type="button" class="btn btn-primary m-1" data-testid="aef-export-image" (click)="rasterize();">
+                       <i class="fa fa-download" aria-hidden="true"></i> Export to image</button>
+-                  <button data-toggle="tooltip" data-placement="bottom" title="Export to SVG" type="button" class="btn btn-primary m-1" (click)="rasterizeSVG();">
++                  <button data-toggle="tooltip" data-placement="bottom" title="Export to SVG" type="button" class="btn btn-primary m-1" data-testid="aef-export-svg" (click)="rasterizeSVG();">
+                       <i class="fa fa-download" aria-hidden="true"></i> Export to SVG</button>
+-                  <button data-toggle="tooltip" data-placement="bottom" title="Save in localStorage" type="button" class="btn btn-primary m-1"
++                  <button data-toggle="tooltip" data-placement="bottom" title="Save in localStorage" type="button" class="btn btn-primary m-1" data-testid="aef-save-local"
+                       (click)="saveCanvasToJSON();">
+                       <i class="fa fa-save" aria-hidden="true"></i> Save local</button>
+-                  <button data-toggle="tooltip" data-placement="bottom" title="Load from localStorage" type="button" class="btn btn-primary m-1"
++                  <button data-toggle="tooltip" data-placement="bottom" title="Load from localStorage" type="button" class="btn btn-primary m-1" data-testid="aef-load-local"
+                       (click)="loadCanvasFromJSON();">
+                       <i class="fa fa-save" aria-hidden="true"></i> Load local</button>
+-                  <button data-toggle="tooltip" data-placement="bottom" title="Clean Canvas" type="button" class="btn btn-danger" (click)="confirmClear();">
++                  <button data-toggle="tooltip" data-placement="bottom" title="Clean Canvas" type="button" class="btn btn-danger" data-testid="aef-clean" (click)="confirmClear();">
+                       <i class="fa fa-ban" aria-hidden="true"></i> Clean</button>
+               </div>
+           </div>
+@@ -30,7 +30,7 @@
+               <div class="card-body">
+                   <div class="form-group">
+                       <div class="input-group">
+-                          <input type="text" class="form-control" [(ngModel)]="canvas.size.width" (keyup)="changeSize()">
++                          <input type="text" class="form-control" data-testid="aef-width-input" [(ngModel)]="canvas.size.width" (keyup)="changeSize()">
+                           <div class="input-group-append">
+                               <span class="input-group-text">
+                                   Width
+@@ -40,7 +40,7 @@
+                   </div>
+                   <div class="form-group">
+                       <div class="input-group mb-3">
+-                          <input type="text" class="form-control" [(ngModel)]="canvas.size.height" (keyup)="changeSize()">
++                          <input type="text" class="form-control" data-testid="aef-height-input" [(ngModel)]="canvas.size.height" (keyup)="changeSize()">
+                           <div class="input-group-append">
+                               <span class="input-group-text">
+                                   Height
+@@ -58,7 +58,7 @@
+ 
+                     <div class="input-group-append">
+                       <div class="custom-control custom-switch">
+-                        <input type="checkbox" class="custom-control-input" checked id="customSwitch1" (click)="drawMode()">
++                        <input type="checkbox" class="custom-control-input" checked id="customSwitch1" data-testid="aef-draw-switch" (click)="drawMode()">
+                         <label class="custom-control-label" for="customSwitch1">Enable / Disable</label>
+                       </div>
+                         <!-- <span class="input-group-text">
+@@ -75,10 +75,10 @@
+               <div class="card-header">Add text</div>
+               <div class="card-body">
+                   <div class="input-group">
+-                      <input type="text" class="form-control" [(ngModel)]="canvas.textString">
++                      <input type="text" class="form-control" data-testid="aef-text-input" [(ngModel)]="canvas.textString">
+                       <div class="input-group-append">
+                           <span class="input-group-text">
+-                              <button id="add-text" data-toggle="tooltip" data-placement="bottom" title="Add text" class="btn btn-primary" (click)="addText()">
++                              <button id="add-text" data-toggle="tooltip" data-placement="bottom" title="Add text" class="btn btn-primary" data-testid="aef-add-text" (click)="addText()">
+                                   <i class="fa fa-plus" aria-hidden="true"></i>
+                               </button>
+                           </span>
+@@ -90,7 +90,7 @@
+           <div class="card">
+               <div class="card-header">Add images</div>
+               <div class="card-body max-height">
+-                  <img draggable="true" class="images-item" (click)="getImgPolaroid($event)" src="../assets/img/pikachu.svg">
++                  <img draggable="true" class="images-item" data-testid="aef-img-pikachu" (click)="getImgPolaroid($event)" src="../assets/img/pikachu.svg">
+                   <img draggable="true" class="images-item" (click)="getImgPolaroid($event)" src="../assets/img/squirtle.svg">
+                   <img draggable="true" class="images-item" (click)="getImgPolaroid($event)" src="../assets/img/bullbasaur.svg">
+                   <img draggable="true" class="images-item" (click)="getImgPolaroid($event)" src="../assets/img/charmander.svg">
+@@ -130,10 +130,10 @@
+               <div class="card-header">Add figure</div>
+               <div class="card-body text-center max-height">
+                   <div class="btn-group btn-group-vertical" role="group" aria-label="...">
+-                      <button type="button" class="btn btn-primary" (click)="addFigure('rectangle');">Rectangle</button>
+-                      <button type="button" class="btn btn-primary" (click)="addFigure('square');">Square</button>
+-                      <button type="button" class="btn btn-primary" (click)="addFigure('triangle');">Triangle</button>
+-                      <button type="button" class="btn btn-primary" (click)="addFigure('circle');">Circle</button>
++                      <button type="button" class="btn btn-primary" data-testid="aef-fig-rectangle" (click)="addFigure('rectangle');">Rectangle</button>
++                      <button type="button" class="btn btn-primary" data-testid="aef-fig-square" (click)="addFigure('square');">Square</button>
++                      <button type="button" class="btn btn-primary" data-testid="aef-fig-triangle" (click)="addFigure('triangle');">Triangle</button>
++                      <button type="button" class="btn btn-primary" data-testid="aef-fig-circle" (click)="addFigure('circle');">Circle</button>
+                   </div>
+               </div>
+           </div>
+@@ -146,23 +146,23 @@
+               <div class="card-header">Options</div>
+               <div class="card-body text-center">
+                   <div class="btn-group" role="group" aria-label="...">
+-                      <button data-toggle="tooltip" data-placement="bottom" title="Delete element" type="button" class="btn btn-outline-danger" 
++                      <button data-toggle="tooltip" data-placement="bottom" title="Delete element" type="button" class="btn btn-outline-danger" data-testid="aef-delete" 
+                           (click)="removeSelected();">
+                           <i class="fa fa-trash" aria-hidden="true"></i>
+                       </button>
+-                      <button data-toggle="tooltip" data-placement="bottom" title="Send to back" type="button" class="btn btn-outline-primary" [disabled]="!canvas.selected"
++                      <button data-toggle="tooltip" data-placement="bottom" title="Send to back" type="button" class="btn btn-outline-primary" data-testid="aef-send-back" [disabled]="!canvas.selected"
+                           (click)="sendToBack();">
+                           <i class="fa fa-level-down" aria-hidden="true"></i>
+                       </button>
+-                      <button data-toggle="tooltip" data-placement="bottom" title="Send to front" type="button" class="btn btn-outline-primary" [disabled]="!canvas.selected"
++                      <button data-toggle="tooltip" data-placement="bottom" title="Send to front" type="button" class="btn btn-outline-primary" data-testid="aef-bring-front" [disabled]="!canvas.selected"
+                           (click)="bringToFront();">
+                           <i class="fa fa-level-up" aria-hidden="true"></i>
+                       </button>
+-                      <button data-toggle="tooltip" data-placement="bottom" title="Clone" type="button" class="btn btn-outline-primary" [disabled]="!canvas.selected || canvas.selected.type == 'group'"
++                      <button data-toggle="tooltip" data-placement="bottom" title="Clone" type="button" class="btn btn-outline-primary" data-testid="aef-clone" [disabled]="!canvas.selected || canvas.selected.type == 'group'"
+                           (click)="clone();">
+                           <i class="fa fa-clone" aria-hidden="true"></i>
+                       </button>
+-                      <button data-toggle="tooltip" data-placement="bottom" title="Unselect" type="button" class="btn btn-outline-primary" [disabled]="!canvas.selected"
++                      <button data-toggle="tooltip" data-placement="bottom" title="Unselect" type="button" class="btn btn-outline-primary" data-testid="aef-unselect" [disabled]="!canvas.selected"
+                           (click)="cleanSelect()">
+                           <i class="fa fa-remove" aria-hidden="true"></i>
+                       </button>
+@@ -176,20 +176,20 @@
+                   <div class="custom-item" *ngIf="!canvas.props.canvasImage">
+                       <div class="custom-item-title">Background Color</div>
+                       <div class="custom-item-body">
+-                          <input type="text" class="form-control" [cpPosition]="'bottom'" [(colorPicker)]="canvas.props.canvasFill" [style.background]="canvas.props.canvasFill"
++                          <input type="text" class="form-control" [cpPosition]="'bottom'" data-testid="aef-canvas-fill-input" [(colorPicker)]="canvas.props.canvasFill" [style.background]="canvas.props.canvasFill"
+                               [value]="canvas.props.canvasFill" (colorPickerChange)="setCanvasFill()">
+                       </div>
+                   </div>
+                   <div class="custom-item">
+                       <div class="custom-item-title">Background Image (url)</div>
+                       <div class="custom-item-body">
+-                          <input type="text" class="form-control" placeholder="http://example.jpg" [(ngModel)]="canvas.props.canvasImage" (keyup)="setCanvasImage()">
++                          <input type="text" class="form-control" data-testid="aef-canvas-image-input" placeholder="http://example.jpg" [(ngModel)]="canvas.props.canvasImage" (keyup)="setCanvasImage()">
+                       </div>
+                   </div>
+                   <div class="custom-item" *ngIf="!canvas.props.canvasImage">
+                     <div class="custom-item-title">Object Background</div>
+                     <div class="custom-item-body">
+-                        <input type="color" class="form-control" (change)="onObjectColorChange($event)" value="#efefef">
++                        <input type="color" class="form-control" data-testid="aef-object-bg" (change)="onObjectColorChange($event)" value="#efefef">
+                     </div>
+                   </div>
+               </div>
+@@ -203,25 +203,25 @@
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.selected.type != 'group'">
+                       <div class="custom-item-title">ID</div>
+                       <div class="custom-item-body">
+-                          <input type="text" class="form-control" [(ngModel)]="canvas.props.id" (keyup)="setId()">
++                          <input type="text" class="form-control" data-testid="aef-id-input" [(ngModel)]="canvas.props.id" (keyup)="setId()">
+                       </div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.selected.type != 'group'">
+                       <div class="custom-item-title">Opacity</div>
+                       <div class="custom-item-body">
+-                          <input type="range" [(ngModel)]="canvas.props.opacity" (change)="setOpacity()">{{canvas.props.opacity}}</div>
++                          <input type="range" data-testid="aef-opacity-slider" [(ngModel)]="canvas.props.opacity" (change)="setOpacity()">{{canvas.props.opacity}}</div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor || canvas.selected && canvas.figureEditor">
+                       <div class="custom-item-title">Fill</div>
+                       <div class="custom-item-body">
+-                          <input type="text" class="form-control" [cpPosition]="'bottom'" [(colorPicker)]="canvas.props.fill" [style.background]="canvas.props.fill"
++                          <input type="text" class="form-control" [cpPosition]="'bottom'" data-testid="aef-fill-input" [(colorPicker)]="canvas.props.fill" [style.background]="canvas.props.fill"
+                               [value]="canvas.props.fill" (colorPickerChange)="setFill()">
+                       </div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor">
+                       <div class="custom-item-title">Font family</div>
+                       <div class="custom-item-body">
+-                          <select [(ngModel)]="canvas.props.fontFamily" class="form-control" (change)="setFontFamily()">
++                          <select [(ngModel)]="canvas.props.fontFamily" class="form-control" data-testid="aef-font-family" (change)="setFontFamily()">
+                               <option value="arial">Arial</option>
+                               <option value="helvetica" selected>Helvetica</option>
+                               <option value="verdana">Verdana</option>
+@@ -246,16 +246,16 @@
+                       <div class="custom-item-title">Text Align</div>
+                       <div class="custom-item-body text-center">
+                           <div class="btn-group" role="group" aria-label="...">
+-                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'left' }" (click)="setTextAlign('left')">
++                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'left' }" data-testid="aef-align-left" (click)="setTextAlign('left')">
+                                   <i class="fa fa-align-left"></i>
+                               </button>
+-                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'center' }" (click)="setTextAlign('center')">
++                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'center' }" data-testid="aef-align-center" (click)="setTextAlign('center')">
+                                   <i class="fa fa-align-center"></i>
+                               </button>
+-                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'right' }" (click)="setTextAlign('right')">
++                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'right' }" data-testid="aef-align-right" (click)="setTextAlign('right')">
+                                   <i class="fa fa-align-right"></i>
+                               </button>
+-                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'justify' }" (click)="setTextAlign('justify')">
++                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'justify' }" data-testid="aef-align-justify" (click)="setTextAlign('justify')">
+                                   <i class="fa fa-align-justify"></i>
+                               </button>
+                           </div>
+@@ -265,22 +265,22 @@
+                       <div class="custom-item-title">Style</div>
+                       <div class="custom-item-body text-center">
+                           <div class="btn-group" role="group" aria-label="...">
+-                              <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': canvas.props.fontWeight }" (click)="setBold()">
++                              <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': canvas.props.fontWeight }" data-testid="aef-deco-bold" (click)="setBold()">
+                                   <i class="fa fa-bold"></i>
+                               </button>
+-                              <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': canvas.props.fontStyle }" (click)="setFontStyle()">
++                              <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': canvas.props.fontStyle }" data-testid="aef-deco-italic" (click)="setFontStyle()">
+                                   <i class="fa fa-italic"></i>
+                               </button>
+                               <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': hasTextDecoration('underline') }"
+-                                  (click)="setTextDecoration('underline')">
++                                  data-testid="aef-deco-underline" (click)="setTextDecoration('underline')">
+                                   <i class="fa fa-underline"></i>
+                               </button>
+                               <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': hasTextDecoration('overline') }"
+-                                  (click)="setTextDecoration('overline')">
++                                  data-testid="aef-deco-overline" (click)="setTextDecoration('overline')">
+                                   <i class="fa fa-underline fa-flip-vertical"></i>
+                               </button>
+                               <button type="button" class="btn btn-primary btn-sm" [ngClass]="{'active': hasTextDecoration('line-through') }"
+-                                  (click)="setTextDecoration('line-through')">
++                                  data-testid="aef-deco-linethrough" (click)="setTextDecoration('line-through')">
+                                   <i class="fa fa-strikethrough"></i>
+                               </button>
+                           </div>
+@@ -289,17 +289,17 @@
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor">
+                       <div class="custom-item-title">Font Size</div>
+                       <div class="custom-item-body">
+-                          <input type="range" [(ngModel)]="canvas.props.fontSize" (change)="setFontSize()" step="1" min="1" max="120">{{canvas.props.fontSize}}</div>
++                          <input type="range" data-testid="aef-fontsize-slider" [(ngModel)]="canvas.props.fontSize" (change)="setFontSize()" step="1" min="1" max="120">{{canvas.props.fontSize}}</div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor">
+                       <div class="custom-item-title">Line Height</div>
+                       <div class="custom-item-body">
+-                          <input type="range" [(ngModel)]="canvas.props.lineHeight" (change)="setLineHeight()" step="0.1" min="0" max="10">{{canvas.props.lineHeight}}</div>
++                          <input type="range" data-testid="aef-lineheight-slider" [(ngModel)]="canvas.props.lineHeight" (change)="setLineHeight()" step="0.1" min="0" max="10">{{canvas.props.lineHeight}}</div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor">
+                       <div class="custom-item-title">Char Spacing</div>
+                       <div class="custom-item-body">
+-                          <input type="range" [(ngModel)]="canvas.props.charSpacing" (change)="setCharSpacing()" step="10" min="-200" max="800">{{canvas.props.charSpacing}}</div>
++                          <input type="range" data-testid="aef-charspacing-slider" [(ngModel)]="canvas.props.charSpacing" (change)="setCharSpacing()" step="10" min="-200" max="800">{{canvas.props.charSpacing}}</div>
+                   </div>
+               </div>
+           </div>
+@@ -310,11 +310,11 @@
+           <br/>
+           <div class="card">
+               <div class="card-header">
+-                  <button type="button" class="btn btn-primary btn-sm" (click)="rasterizeJSON()">
++                  <button type="button" class="btn btn-primary btn-sm" data-testid="aef-render-json" (click)="rasterizeJSON()">
+                       <i class="fa fa-refresh" aria-hidden="true"></i> Render to json</button>
+               </div>
+               <div class="card-body">
+-                  <pre>{{canvas.json}}</pre>
++                  <pre data-testid="aef-json-output">{{canvas.json}}</pre>
+               </div>
+           </div>
+       </div>

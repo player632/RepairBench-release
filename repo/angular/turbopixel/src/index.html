@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>TurboPixel</title>
+    <base href="/">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#FF5E00">
+    <!-- repair-bench offline adaptation (environment/adaptation.patch):
+         1. the three external requests (analytics tag + two remote font stylesheets) are gone,
+            so the built app runs with zero runtime network and zero blocked-resource errors;
+         2. a deterministic synthetic capture device is installed BEFORE the application bundles.
+            The seed only ever takes input from getUserMedia (there is no upload/asset branch),
+            and the verifier runs headless with no capture device, so without this stub the app
+            can never leave its "waiting for camera" state. Query flag ?rbcam=deny makes the FIRST
+            getUserMedia call of a page load fail with NotAllowedError (one shot per page load, so
+            the camera-error dialog's "Try again" path can be exercised and a page reload re-arms it).
+         UNVERIFIED at design time (this round is write-only: no build, no browser). -->
+    <script>
+        (function () {
+            var SIZE = 320;
+            var PAINT_MS = 40;
+            var painter = 0;
+            var lastStream = null;
+            var deniedOnce = false;
+
+            function paint(ctx, phase) {
+                var i, y;
+                ctx.fillStyle = "#101820";
+                ctx.fillRect(0, 0, SIZE, SIZE);
+                for (i = 0; i < 8; i++) {
+                    ctx.fillStyle = "hsl(" + ((phase * 7 + i * 45) % 360) + ",70%," + (22 + i * 7) + "%)";
+                    ctx.fillRect((i * SIZE) / 8, 0, SIZE / 8, SIZE);
+                }
+                for (y = 0; y < SIZE; y += 16) {
+                    ctx.fillStyle = (((y / 16) + phase) % 2) ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)";
+                    ctx.fillRect(0, y, SIZE, 8);
+                }
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect((phase * 11) % SIZE, 0, 8, SIZE);
+            }
+
+            function makeStream() {
+                if (painter) { clearInterval(painter); painter = 0; }
+                if (lastStream) {
+                    try { lastStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { /* already gone */ }
+                    lastStream = null;
+                }
+                var canvas = document.createElement("canvas");
+                canvas.width = SIZE;
+                canvas.height = SIZE;
+                var ctx = canvas.getContext("2d");
+                var phase = 0;
+                paint(ctx, phase);
+                var stream = canvas.captureStream(25);
+                painter = setInterval(function () { phase = phase + 1; paint(ctx, phase); }, PAINT_MS);
+                lastStream = stream;
+                return stream;
+            }
+
+            function denyRequested() {
+                return /[?&]rbcam=deny(?:&|$)/.test(window.location.search);
+            }
+
+            function fakeDevice(id, label) {
+                return { deviceId: id, kind: "videoinput", label: label, groupId: "rbcam-group" };
+            }
+
+            var md = navigator.mediaDevices;
+            if (!md) {
+                md = {};
+                try { Object.defineProperty(navigator, "mediaDevices", { value: md, configurable: true }); }
+                catch (e) { navigator.mediaDevices = md; }
+            }
+            md.getUserMedia = function () {
+                if (denyRequested() && !deniedOnce) {
+                    deniedOnce = true;
+                    return Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+                }
+                return Promise.resolve(makeStream());
+            };
+            md.enumerateDevices = function () {
+                return Promise.resolve([fakeDevice("rbcam-synthetic-0", "Synthetic Camera 0"),
+                    fakeDevice("rbcam-synthetic-1", "Synthetic Camera 1")]);
+            };
+        })();
+    </script>
+</head>
+
+<body class="mat-typography mat-app-background">
+    <app-root></app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+</body>
+
+</html>

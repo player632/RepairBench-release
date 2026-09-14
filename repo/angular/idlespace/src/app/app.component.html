@@ -1,0 +1,400 @@
+<clr-main-container *ngIf="ms.webWorker && ms.show && ms.game" [@fadeInOut]>
+  <!-- Header -->
+  <clr-header class="header" [ngClass]="os.headerClass">
+    <div class="header-nav" [clr-nav-level]="1" data-testid="rb-topnav">
+      <a
+        routerLink="/home"
+        class="nav-link"
+        data-testid="rb-nav-home"
+        [routerLinkActive]="'active'"
+        (click)="navigateLast()"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Home
+          </span>
+          <clr-icon shape="home"></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'lab'"
+        class="nav-link"
+        data-testid="rb-nav-lab"
+        [routerLinkActive]="'active'"
+        *ngIf="ms.game.resourceManager.computing.unlocked"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Laboratory
+          </span>
+          <clr-icon
+            [ngClass]="{
+              'is-warning': ms.game.researchManager.isNew,
+              'is-solid': ms.game.researchManager.isNew
+            }"
+            shape="lightbulb"
+          ></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'fleet'"
+        class="nav-link"
+        data-testid="rb-nav-shipyard"
+        [routerLinkActive]="'active'"
+        *ngIf="ms.game.researchManager.corvette.firstDone"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Shipyard
+          </span>
+          <clr-icon
+            shape="cog"
+            [ngClass]="{ 'has-alert': ms.game.overNavalCap }"
+          ></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'battle'"
+        class="nav-link"
+        data-testid="rb-nav-battle"
+        [routerLinkActive]="'active'"
+        *ngIf="ms.game.researchManager.corvette.firstDone"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Battle
+          </span>
+          <clr-icon shape="crosshairs"></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'enemies'"
+        class="nav-link"
+        data-testid="rb-nav-worlds"
+        [routerLinkActive]="'active'"
+        *ngIf="ms.game.researchManager.telescope.firstDone"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Worlds
+          </span>
+          <clr-icon shape="world"></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'auto'"
+        class="nav-link"
+        data-testid="rb-nav-automators"
+        [routerLinkActive]="'active'"
+        *ngIf="AutomatorManager.automatorLevel >= 3"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Automators
+          </span>
+          <clr-icon shape="applications"></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'darkMatter'"
+        class="nav-link"
+        data-testid="rb-nav-darkmatter"
+        [routerLinkActive]="'active'"
+        *ngIf="ms.game.darkMatterManager.darkMatter.unlocked"
+      >
+        <span class="nav-text">
+          <span class="small-title">
+            Dark Matter
+          </span>
+          <clr-icon shape="darkMatter"></clr-icon>
+        </span>
+      </a>
+
+      <a
+        [routerLink]="'prestige'"
+        class="nav-link"
+        data-testid="rb-nav-prestige"
+        [routerLinkActive]="'active'"
+        *ngIf="
+          ms.game.prestigeManager.totalPrestige > 0 ||
+          ms.game.prestigeManager.prestigeToEarn > 0
+        "
+      >
+        <span class="nav-text">
+          Prestige
+          <!-- <clr-icon shape="star"></clr-icon> -->
+
+          <span
+            class="badge badge-info"
+            *ngIf="
+              ms.game.prestigeManager.prestigeToEarn > 0 &&
+              !this.ms.game.prestigeManager.canAscend()
+            "
+          >
+            <app-formatted-quantity
+              [quantity]="ms.game.prestigeManager.prestigeToEarn"
+              [integer]="true"
+              [monospace]="false"
+            ></app-formatted-quantity>
+          </span>
+          <span
+            class="badge badge-success"
+            *ngIf="this.ms.game.prestigeManager.canAscend()"
+          >
+            Ascend
+          </span>
+        </span>
+      </a>
+    </div>
+
+    <div class="header-actions">
+      <clr-dropdown>
+        <button class="nav-icon" clrDropdownTrigger>
+          <clr-icon shape="tools"></clr-icon>
+          <clr-icon shape="caret down"></clr-icon>
+        </button>
+        <clr-dropdown-menu *clrIfOpen clrPosition="bottom-right">
+          <a clrDropdownItem (click)="all100()">All 100%</a>
+          <a clrDropdownItem (click)="skip(1)">Warp 1 minute</a>
+
+          <clr-dropdown *ngIf="ms.game.darkMatterManager.darkMatter.unlocked">
+            <button type="button" clrDropdownTrigger>Time Warps</button>
+            <clr-dropdown-menu clrPosition="left-top" *clrIfOpen>
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(1) }"
+                (click)="skip(1)"
+                >Warp 1 minute</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(5) }"
+                (click)="skip(5)"
+                >Warp 5 minute</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(10) }"
+                (click)="skip(10)"
+                >Warp 10 minute</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(15) }"
+                (click)="skip(15)"
+                >Warp 15 minute</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(30) }"
+                (click)="skip(30)"
+                >Warp 30 minute</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(60) }"
+                (click)="skip(60)"
+                >Warp 1 hour</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(60 * 24) }"
+                (click)="skip(60 * 24)"
+                >Warp 1 day</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(60 * 24 * 7) }"
+                (click)="skip(60 * 24 * 7)"
+                >Warp 1 week</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(60 * 24 * 30) }"
+                (click)="skip(60 * 24 * 30)"
+                >Warp 1 month</a
+              >
+              <a
+                clrDropdownItem
+                [ngClass]="{ disabled: !warpAv(60 * 24 * 365) }"
+                (click)="skip(60 * 24 * 365)"
+                >Warp 1 year</a
+              >
+            </clr-dropdown-menu>
+          </clr-dropdown>
+
+          <clr-dropdown>
+            <button type="button" clrDropdownTrigger>Operativity</button>
+            <clr-dropdown-menu clrPosition="left-top" *clrIfOpen>
+              <a clrDropdownItem (click)="all100()">All 100%</a>
+              <a clrDropdownItem (click)="all(90)">All 90%</a>
+              <a clrDropdownItem (click)="all(80)">All 80%</a>
+              <a clrDropdownItem (click)="all(70)">All 70%</a>
+              <a clrDropdownItem (click)="all(60)">All 60%</a>
+              <a clrDropdownItem (click)="all(50)">All 50%</a>
+              <a clrDropdownItem (click)="all(40)">All 40%</a>
+              <a clrDropdownItem (click)="all(30)">All 30%</a>
+              <a clrDropdownItem (click)="all(20)">All 20%</a>
+              <a clrDropdownItem (click)="all(10)">All 10%</a>
+            </clr-dropdown-menu>
+          </clr-dropdown>
+        </clr-dropdown-menu>
+      </clr-dropdown>
+
+      <a
+        href="javascript://"
+        class="nav-link nav-icon"
+        data-testid="rb-nav-pause"
+      >
+        <clr-icon
+          [attr.shape]="ms.game.isPaused ? 'play' : 'pause'"
+          (click)="ms.game.isPaused = !ms.game.isPaused"
+        ></clr-icon>
+      </a>
+      <a
+        [routerLink]="'info'"
+        class="nav-link nav-icon"
+        data-testid="rb-nav-info"
+        [routerLinkActive]="'active'"
+      >
+        <clr-icon shape="help-info"></clr-icon>
+      </a>
+      <a
+        [routerLink]="'opt/save/'"
+        class="nav-link nav-icon"
+        data-testid="rb-nav-options"
+        [routerLinkActive]="'active'"
+      >
+        <clr-icon shape="cog"></clr-icon>
+      </a>
+    </div>
+  </clr-header>
+  <!-- End Header -->
+
+  <!-- Materials list -->
+  <app-material-list></app-material-list>
+
+  <router-outlet></router-outlet>
+
+  <!-- Modals -->
+  <clr-modal
+    [(clrModalOpen)]="ms.game.researchManager.isNewModal"
+    data-testid="rb-modal-research"
+  >
+    <h3 class="modal-title">
+      <clr-icon shape="lightbulb"></clr-icon>
+      Researches
+    </h3>
+    <div class="modal-body">
+      <p>
+        Congratulations on unlocking the Laboratory tab!<br />
+        It's the light bulb on top left.<br />
+        This message can be disabled from Options (cog, top right)->
+        Notifications -> Open Modal when unlocking Laboratory
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-testid="rb-modal-research-ok"
+        (click)="ms.game.researchManager.isNewModal = false"
+      >
+        Ok
+      </button>
+    </div>
+  </clr-modal>
+
+  <ng-container *ngIf="ms.game.prestigeManager.totalPrestige < 1">
+    <clr-modal [(clrModalOpen)]="ms.game.researchManager.corvetteModal">
+      <h3 class="modal-title">
+        <clr-icon shape="rank1"></clr-icon>
+        Corvette
+      </h3>
+      <div class="modal-body">
+        <p>
+          Congratulations on unlocking Corvettes!<br />
+          Corvettes will allow you to win battles and obtain more districts
+          (habitable space, mining districts and crystal districts).<br />
+          To make Corvettes you will need alloy and worker drones. Worker drones
+          works only when you make ships. Then click on the cog on top left and
+          make 20 corvettes. To attack the first enemy click the crosshairs
+          icon.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="ms.game.researchManager.corvetteModal = false"
+        >
+          Ok
+        </button>
+      </div>
+    </clr-modal>
+  </ng-container>
+
+  <clr-modal [(clrModalOpen)]="ms.game.enemyManager.prestigeModal">
+    <h3 class="modal-title">
+      <clr-icon shape="info"></clr-icon>
+      Prestige
+    </h3>
+    <div class="modal-body">
+      <p>
+        By defeating the first enemy you have unlocked prestige.<br />
+        You can prestige now to get one prestige point but you may want to get
+        more prestige point before prestige. To obtain more prestige point
+        defeat high level enemy, prestige point are equals to the max level of
+        defeated enemy.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="ms.game.enemyManager.prestigeModal = false"
+      >
+        Ok
+      </button>
+    </div>
+  </clr-modal>
+
+  <clr-modal [(clrModalOpen)]="ms.game.enemyManager.ascendModal">
+    <h3 class="modal-title">
+      <clr-icon shape="info"></clr-icon>
+      Ascension
+    </h3>
+    <div class="modal-body">
+      <p>
+        At Prestige level >= 20 and >=40 you can ascend, ascensions are not
+        skippable, you should ascend now.<br />
+        Ascension reset Prestige to 1 but you will get double effect from
+        prestige points (stack multi x2 x4) and increase Automator Level by 30%
+        (stack additive)
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="ms.game.enemyManager.ascendModal = false"
+      >
+        Ok
+      </button>
+    </div>
+  </clr-modal>
+</clr-main-container>
+
+<div *ngIf="!ms.webWorker">
+  <p>
+    Sorry! No web worker support.
+    <br />
+    Try with chrome or firefox
+  </p>
+</div>

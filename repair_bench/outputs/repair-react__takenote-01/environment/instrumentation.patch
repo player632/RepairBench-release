@@ -1,0 +1,155 @@
+diff --git a/src/client/components/LandingPage.tsx b/src/client/components/LandingPage.tsx
+index 2ea7038..9e5f9a5 100644
+--- a/src/client/components/LandingPage.tsx
++++ b/src/client/components/LandingPage.tsx
+@@ -22,7 +22,7 @@ const loginButton = (text: string) => (
+ 
+ export const LandingPage: React.FC = () => {
+   return (
+-    <section className="landing-page">
++    <section className="landing-page" data-testid="landing-view">
+       <section className="content">
+         <div className="container-small">
+           <div className="lead">
+@@ -43,7 +43,7 @@ export const LandingPage: React.FC = () => {
+                     TakeNote is only available as a demo. Your notes will be saved to local storage
+                     and <b>not</b> persisted in any database or cloud.
+                   </p>
+-                  <a className="button" href="/app">
++                  <a className="button" href="/app" data-testid="landing-demo-link">
+                     View Demo
+                   </a>
+                 </div>
+diff --git a/src/client/containers/NoteEditor.tsx b/src/client/containers/NoteEditor.tsx
+index dd56007..79db8a5 100644
+--- a/src/client/containers/NoteEditor.tsx
++++ b/src/client/containers/NoteEditor.tsx
+@@ -67,11 +67,13 @@ export const NoteEditor: React.FC = () => {
+       return <EmptyEditor />
+     } else if (previewMarkdown) {
+       return (
+-        <PreviewEditor
+-          directionText={codeMirrorOptions.direction}
+-          noteText={activeNote.text}
+-          notes={notes}
+-        />
++        <div data-testid="preview-editor">
++          <PreviewEditor
++            directionText={codeMirrorOptions.direction}
++            noteText={activeNote.text}
++            notes={notes}
++          />
++        </div>
+       )
+     }
+ 
+@@ -87,6 +89,8 @@ export const NoteEditor: React.FC = () => {
+           }, 0)
+           editor.setCursor(0)
+           setEditorOverlay(editor)
++          editor.getInputField().setAttribute('data-testid', 'editor-textarea')
++          editor.getWrapperElement().setAttribute('data-testid', 'editor-content')
+         }}
+         onBeforeChange={(editor, data, value) => {
+           _updateNote({
+diff --git a/src/client/containers/NoteList.tsx b/src/client/containers/NoteList.tsx
+index c8aac1c..2194aeb 100644
+--- a/src/client/containers/NoteList.tsx
++++ b/src/client/containers/NoteList.tsx
+@@ -182,7 +182,7 @@ export const NoteList: React.FC = () => {
+               noteTitle = (
+                 <>
+                   {noteTitle.slice(0, highlightStart)}
+-                  <strong className="highlighted">
++                  <strong className="highlighted" data-testid="search-highlight">
+                     {noteTitle.slice(highlightStart, highlightEnd)}
+                   </strong>
+                   {noteTitle.slice(highlightEnd)}
+@@ -197,6 +197,7 @@ export const NoteList: React.FC = () => {
+               className={
+                 selectedNotesIds.includes(note.id) ? 'note-list-each selected' : 'note-list-each'
+               }
++              data-active={String(selectedNotesIds.includes(note.id))}
+               key={note.id}
+               onClick={(event) => {
+                 event.stopPropagation()
+diff --git a/src/client/containers/NoteMenuBar.tsx b/src/client/containers/NoteMenuBar.tsx
+index a4c2b81..50397f7 100644
+--- a/src/client/containers/NoteMenuBar.tsx
++++ b/src/client/containers/NoteMenuBar.tsx
+@@ -124,7 +124,7 @@ export const NoteMenuBar = () => {
+                 <Star aria-hidden="true" size={18} />
+                 <span className="sr-only">Add note to favorites</span>
+               </button>
+-              <button className="note-menu-bar-button trash" onClick={trashNoteHandler}>
++              <button className="note-menu-bar-button trash" onClick={trashNoteHandler} data-testid="menubar-trash-button">
+                 <Trash2 aria-hidden="true" size={18} />
+                 <span className="sr-only">Delete note</span>
+               </button>
+@@ -143,7 +143,7 @@ export const NoteMenuBar = () => {
+             data-testid={TestID.UUID_MENU_BAR_COPY_ICON}
+           >
+             {copyNoteIcon}
+-            {uuidCopiedText && <span className="uuid-copied-text">{uuidCopiedText}</span>}
++            {uuidCopiedText && <span className="uuid-copied-text" data-testid="uuid-copied-text">{uuidCopiedText}</span>}
+             <span className="sr-only">Copy note</span>
+           </button>
+         </nav>
+@@ -169,7 +169,7 @@ export const NoteMenuBar = () => {
+           <span className="sr-only">Themes</span>
+         </button>
+ 
+-        <button className="note-menu-bar-button" onClick={settingsHandler}>
++        <button className="note-menu-bar-button" onClick={settingsHandler} data-testid="settings-menu-bar-button">
+           <Settings aria-hidden="true" size={18} />
+           <span className="sr-only">Settings</span>
+         </button>
+diff --git a/src/client/containers/SettingsModal.tsx b/src/client/containers/SettingsModal.tsx
+index e8da1de..3848bbd 100644
+--- a/src/client/containers/SettingsModal.tsx
++++ b/src/client/containers/SettingsModal.tsx
+@@ -141,10 +141,11 @@ export const SettingsModal: React.FC = () => {
+ 
+   return isOpen ? (
+     <div className="dimmer">
+-      <aside ref={node} className="settings-modal">
++      <aside ref={node} className="settings-modal" data-testid="settings-modal">
+         <header className="settings-modal-header">
+           <div
+             className="close-button"
++            data-testid="settings-modal-close"
+             onClick={() => {
+               if (isOpen) _toggleSettingsModal()
+             }}
+diff --git a/src/client/containers/TakeNoteApp.tsx b/src/client/containers/TakeNoteApp.tsx
+index c4c4c6d..f0437f3 100644
+--- a/src/client/containers/TakeNoteApp.tsx
++++ b/src/client/containers/TakeNoteApp.tsx
+@@ -97,7 +97,7 @@ export const TakeNoteApp: React.FC = () => {
+       </Helmet>
+ 
+       <TempStateProvider>
+-        <div className={determineAppClass(darkTheme, sidebarVisible, activeFolder)}>
++        <div className={determineAppClass(darkTheme, sidebarVisible, activeFolder)} data-testid="app-root" data-dark={String(darkTheme)}>
+           <DragDropContext onDragEnd={onDragEnd}>
+             <SplitPane split="vertical" minSize={150} maxSize={500} defaultSize={240}>
+               <AppSidebar />
+diff --git a/src/resources/TestID.ts b/src/resources/TestID.ts
+index 5f165e5..e1a034e 100644
+--- a/src/resources/TestID.ts
++++ b/src/resources/TestID.ts
+@@ -55,4 +55,14 @@ export enum TestID {
+   LAST_SYNCED_NOTIFICATION_SYNCING = 'last-synced-notification-syncing',
+   LAST_SYNCED_NOTIFICATION_UNSAVED = 'last-synced-notification-unsaved',
+   LAST_SYNCED_NOTIFICATION_DATE = 'last-synced-notification-date',
++  SETTINGS_MODAL = 'settings-modal',
++  SETTINGS_MODAL_CLOSE = 'settings-modal-close',
++  SETTINGS_MENU_BAR_BUTTON = 'settings-menu-bar-button',
++  MENUBAR_TRASH_BUTTON = 'menubar-trash-button',
++  UUID_COPIED_TEXT = 'uuid-copied-text',
++  SEARCH_HIGHLIGHT = 'search-highlight',
++  PREVIEW_EDITOR = 'preview-editor',
++  LANDING_VIEW = 'landing-view',
++  LANDING_DEMO_LINK = 'landing-demo-link',
++  APP_ROOT = 'app-root',
+ }

@@ -1,0 +1,106 @@
+import type { CellRangeDecoratorOption, SlickPlugin } from '../models/index.js';
+import { Utils as Utils_, type SlickRange } from '../slick.core.js';
+import type { SlickGrid } from '../slick.grid.js';
+
+// for (iife) load Slick methods from global Slick object, or use imports for (esm)
+const Utils = IIFE_ONLY ? Slick.Utils : Utils_;
+
+/***
+   * Displays an overlay on top of a given cell range.
+   *
+   * TODO:
+   * Currently, it blocks mouse events to DOM nodes behind it.
+   * Use FF and WebKit-specific "pointer-events" CSS style, or some kind of event forwarding.
+   * Could also construct the borders separately using 4 individual DIVs.
+   *
+   * @param {Grid} grid
+   * @param {Object} options
+   */
+export class SlickCellRangeDecorator implements SlickPlugin {
+  // --
+  // public API
+  pluginName = 'CellRangeDecorator' as const;
+
+  // --
+  // protected props
+  protected _options: CellRangeDecoratorOption;
+  protected _elem?: HTMLDivElement | null;
+  protected _selectionCss: CSSStyleDeclaration;
+  protected _defaults = {
+    selectionCssClass: 'slick-range-decorator',
+    selectionCss: {
+      zIndex: '9999',
+      border: '2px dashed red'
+    },
+    copyToSelectionCss : {
+        "zIndex": "9999",
+        "border": "2px dashed blue"
+    },
+    offset: { top: -1, left: -1, height: -2, width: -2 }
+  } as CellRangeDecoratorOption;
+
+  constructor(protected readonly grid: SlickGrid, options?: Partial<CellRangeDecoratorOption>) {
+    this._options = Utils.extend(true, {}, this._defaults, options);
+    this._selectionCss = options?.selectionCss || {} as CSSStyleDeclaration;
+  }
+
+  destroy() {
+    this.hide();
+  }
+
+  getSelectionCss() {
+    return this._selectionCss;
+  }
+
+  setSelectionCss(cssProps: CSSStyleDeclaration) {
+    this._selectionCss = cssProps;
+  }
+
+  init() { }
+
+  hide() {
+    this._elem?.remove();
+    this._elem = null;
+  }
+
+  show(range: SlickRange, isCopyTo?: boolean) {
+    if (!this._elem) {
+      this._elem = document.createElement('div');
+      this._elem.className = this._options.selectionCssClass;
+      this._elem.style.position = 'absolute';
+      const canvasNode = this.grid.getActiveCanvasNode();
+      if (canvasNode) {
+        canvasNode.appendChild(this._elem);
+      }
+    }
+
+    // Determine which CSS style to use
+    const css = isCopyTo && this._options.copyToSelectionCss ? this._options.copyToSelectionCss : this._options.selectionCss;
+
+    // Apply styles to the element
+    Utils.setStyles(this._elem, css);
+
+    // Get the boxes for the selected cells
+    const from = this.grid.getCellNodeBox(range.fromRow, range.fromCell);
+    const to = this.grid.getCellNodeBox(range.toRow, range.toCell);
+
+    // Update position and dimensions if both nodes are valid
+    if (from && to && this._options?.offset) {
+      this._elem.style.top = `${from.top + this._options.offset.top}px`;
+      this._elem.style.left = `${from.left + this._options.offset.left}px`;
+      this._elem.style.height = `${to.bottom - to.top + this._options.offset.height}px`;
+      this._elem.style.width = `${to.right - from.left + this._options.offset.width}px`;
+    }
+
+    return this._elem;
+  }
+}
+
+// extend Slick namespace on window object when building as iife
+if (IIFE_ONLY && window.Slick) {
+  Utils.extend(true, window, {
+    Slick: {
+      CellRangeDecorator: SlickCellRangeDecorator
+    }
+  });
+}

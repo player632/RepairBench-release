@@ -1,0 +1,157 @@
+/**
+ * 离线确定性 API 适配器（Repair-Bench adaptation）
+ *
+ * 生产环境的 VITE_API_URL 指向远端 mock 服务（运行时网络依赖）。
+ * 该适配器在 axios 实例上拦截全部 /api/* 请求，返回确定性本地数据，
+ * 保证离线环境下登录链、用户信息与表格分页链路完全可用。
+ */
+import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+
+interface PageParams {
+  current?: number
+  size?: number
+  userName?: string
+  userPhone?: string
+  userEmail?: string
+}
+
+const TOTAL_USERS = 57
+
+interface OfflineUser {
+  id: number
+  avatar: string
+  status: string
+  userName: string
+  userGender: string
+  nickName: string
+  userPhone: string
+  userEmail: string
+  userRoles: string[]
+  createBy: string
+  createTime: string
+  updateBy: string
+  updateTime: string
+}
+
+function buildUsers(): OfflineUser[] {
+  const users: OfflineUser[] = []
+  for (let i = 1; i <= TOTAL_USERS; i++) {
+    users.push({
+      id: i,
+      avatar: '',
+      status: i % 3 === 0 ? '2' : '1',
+      userName: `user${i}`,
+      userGender: i % 2 === 0 ? '女' : '男',
+      nickName: `用户${String(i).padStart(2, '0')}`,
+      userPhone: `138${String(10000000 + i * 1373).slice(0, 8)}`,
+      userEmail: `user${i}@example.com`,
+      userRoles: i === 1 ? ['R_SUPER'] : i % 5 === 0 ? ['R_ADMIN'] : ['R_USER'],
+      createBy: 'system',
+      createTime: '2026-01-01 09:00:00',
+      updateBy: 'system',
+      updateTime: '2026-01-01 09:00:00'
+    })
+  }
+  return users
+}
+
+const USERS = buildUsers()
+
+const ROLES = [
+  {
+    roleId: 1,
+    roleName: '超级管理员',
+    roleCode: 'R_SUPER',
+    description: '系统内置超级管理员',
+    enabled: true,
+    createTime: '2026-01-01 09:00:00'
+  },
+  {
+    roleId: 2,
+    roleName: '管理员',
+    roleCode: 'R_ADMIN',
+    description: '系统内置管理员',
+    enabled: true,
+    createTime: '2026-01-01 09:00:00'
+  },
+  {
+    roleId: 3,
+    roleName: '普通用户',
+    roleCode: 'R_USER',
+    description: '系统内置普通用户',
+    enabled: true,
+    createTime: '2026-01-01 09:00:00'
+  }
+]
+
+function ok(config: AxiosRequestConfig, data: unknown): AxiosResponse {
+  return {
+    data: { code: 200, msg: 'ok', data },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config: config as never
+  } as AxiosResponse
+}
+
+function paginate<T>(list: T[], params: PageParams) {
+  const current = Math.max(1, Number(params.current) || 1)
+  const size = Math.max(1, Number(params.size) || 10)
+  const start = (current - 1) * size
+  return {
+    records: list.slice(start, start + size),
+    current,
+    size,
+    total: list.length
+  }
+}
+
+/**
+ * 离线适配器：按 URL 返回确定性数据，分页参数（current/size）与
+ * 用户列表过滤参数（userName/userPhone/userEmail）均按语义生效。
+ */
+export const offlineApiAdapter = (config: AxiosRequestConfig): Promise<AxiosResponse> => {
+  const url = (config.url || '').split('?')[0]
+  const params = (config.params || {}) as PageParams
+
+  if (url.includes('/api/auth/login')) {
+    return Promise.resolve(
+      ok(config, {
+        token: 'offline-token-art-design-pro',
+        refreshToken: 'offline-refresh-token-art-design-pro'
+      })
+    )
+  }
+
+  if (url.includes('/api/user/info')) {
+    return Promise.resolve(
+      ok(config, {
+        buttons: [],
+        roles: ['R_SUPER'],
+        userId: 1,
+        userName: 'Super',
+        email: 'super@offline.local'
+      })
+    )
+  }
+
+  if (url.includes('/api/user/list')) {
+    let list = USERS
+    if (params.userName) list = list.filter((u) => u.userName.includes(String(params.userName)))
+    if (params.userPhone) list = list.filter((u) => u.userPhone.includes(String(params.userPhone)))
+    if (params.userEmail) list = list.filter((u) => u.userEmail.includes(String(params.userEmail)))
+    return Promise.resolve(ok(config, paginate(list, params)))
+  }
+
+  if (url.includes('/api/role/list')) {
+    return Promise.resolve(ok(config, paginate(ROLES, params)))
+  }
+
+  return Promise.resolve({
+    data: { code: 404, msg: 'offline mock: no such endpoint', data: null },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config: config as never
+  } as AxiosResponse)
+}

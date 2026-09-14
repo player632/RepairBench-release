@@ -1,0 +1,136 @@
+diff --git a/src/game/camera.js b/src/game/camera.js
+index 2be7c7b..927f6fc 100644
+--- a/src/game/camera.js
++++ b/src/game/camera.js
+@@ -56,7 +56,7 @@ export class CameraRig {
+     // threshold: lookX/lookY are in mouse pixels, and a thumbstick at a third
+     // of its travel never cleared the old 0.6 bar, so auto-centre fought the
+     // stick instead of standing down.
+-    this.lookIdle = input.looking ? 0 : this.lookIdle + dt;
++    this.lookIdle = input.looking ? this.lookIdle + dt : 0;
+ 
+     const rp = rover.pos;
+     const speed = rover.vel.length();
+diff --git a/src/game/gameplay.js b/src/game/gameplay.js
+index 2fb7c3d..891b45b 100644
+--- a/src/game/gameplay.js
++++ b/src/game/gameplay.js
+@@ -303,7 +303,7 @@ export class Game {
+     }
+     if (this.props.relays) {
+       for (const r of this.props.relays) {
+-        if (Math.hypot(r.position.x - p.x, r.position.z - p.z) < RELAY_SPACING) {
++        if (Math.hypot(r.position.x - p.x, r.position.z - p.z) > RELAY_SPACING) {
+           this.log('RELAY SPACING TOO TIGHT — MOVE 95 m', 'warn'); this.audio.ui('bad'); return;
+         }
+       }
+@@ -347,12 +347,12 @@ export class Game {
+         this.rover.gprGlow.material.opacity = 0;
+         this._finishScan();
+       }
+-    } else if (this.scan.cool > 0) this.scan.cool -= dt;
++    } else if (this.scan.cool > 0) this.scan.cool += dt;
+ 
+     /* ---- drill ---- */
+     if (this.drill.active) {
+       this.drill.t += dt;
+-      this.power -= DRILL_COST / OPS.drillTime * dt;
++      this.power -= DRILL_COST * dt;
+       const fx = this.rover.armTarget.x, fz = this.rover.armTarget.z;
+       const fy = this.terrain.heightAt(fx, fz);
+       if (Math.random() < dt * 55) {
+diff --git a/src/game/rover.js b/src/game/rover.js
+index 73eb541..036fc0a 100644
+--- a/src/game/rover.js
++++ b/src/game/rover.js
+@@ -34,7 +34,7 @@ const MOTOR_TORQUE = 118;                   // N·m at the hub — just past the
+ 
+    The floor exists so a dead pack never strands you: 0.18 still crawls, which
+    is enough to reach sunlight and let the array recover. */
+-export const POWER_FLOOR = 0.18, POWER_KNEE = 25;
++export const POWER_FLOOR = 0.18, POWER_KNEE = 2.5;
+ const BRAKE_TORQUE = 300;
+ /* The drive envelope. Mutable, because REALISTIC MODE swaps maxSpeed for a real
+    rover's — and because every speed threshold below is written as a FRACTION of
+diff --git a/src/main.js b/src/main.js
+index 813dc8d..f051a8d 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -418,7 +418,7 @@ function applySettings() {
+   // Apollo's LRV cruised at ~13 km/h; the arcade default is 30. Every speed
+   // threshold in the rover, camera and audio is a fraction of this, so the one
+   // assignment retunes all of them.
+-  DRIVE.maxSpeed = S.realistic ? 3.6 : 8.4;
++  DRIVE.maxSpeed = S.realistic ? 8.4 : 3.6;
+   DRIVE.commsDelay = S.comms ? EARTH_RTT : 0;
+   OPS.drillTime = S.realistic ? 45 : 4.2;
+   OPS.drainScale = S.realistic ? 0.125 : 1;
+diff --git a/src/ui/hud.js b/src/ui/hud.js
+index 7e14133..d722c0a 100644
+--- a/src/ui/hud.js
++++ b/src/ui/hud.js
+@@ -97,7 +97,7 @@ export class HUD {
+   refreshBay(game) {
+     const slots = this.el.bay.children;
+     for (let i = 0; i < slots.length; i++) {
+-      const s = game.bay[i];
++      const s = game.bay[i + 1];
+       slots[i].className = 'slot' + (s ? ' full' : '') + (s && s.rare ? ' rare' : '');
+       slots[i].title = s ? s.name : 'EMPTY';
+     }
+@@ -469,7 +469,7 @@ export class HUD {
+     const ht = clamp((game.heat + 60) / 120, 0, 1);
+     this.el.heat.querySelector('i').style.transform = `scaleX(${ht})`;
+     this.el.heat.querySelector('b').textContent = `${game.heat > 0 ? '+' : ''}${Math.round(game.heat)}°`;
+-    this.el.heat.classList.toggle('warn', game.heat < -35 || game.heat > 55);
++    this.el.heat.classList.toggle('warn', game.heat > -35 && game.heat < 55);
+     this.el.heat.classList.toggle('crit', game.heat < -55 || game.heat > 75);
+ 
+     // system chips
+diff --git a/src/world/props.js b/src/world/props.js
+index b1b2f24..eec3852 100644
+--- a/src/world/props.js
++++ b/src/world/props.js
+@@ -513,7 +513,7 @@ export class Props {
+     for (const c of this.colliders) {
+       const dx = px - c.x, dz = pz - c.z;
+       const d2 = dx * dx + dz * dz;
+-      const R = c.r + 1.05;
++      const R = c.r - 1.05;
+       if (d2 > R * R || d2 < 1e-8) continue;
+       const d = Math.sqrt(d2);
+       const push = (R - d);
+diff --git a/src/world/terrain.js b/src/world/terrain.js
+index db31805..a7623a9 100644
+--- a/src/world/terrain.js
++++ b/src/world/terrain.js
+@@ -17,7 +17,7 @@ import * as THREE from 'three';
+ import { fbm, ridged, vnoise, hash2i, clamp, sstep, lerp } from '../core/rng.js';
+ 
+ /* ---------------- world constants (metres) ---------------- */
+-export const MOON_G = 1.62;
++export const MOON_G = 1.26;
+ 
+ export const MACRO_EXT = 1200, MACRO_RES = 2048;      // 0.586 m / texel
+ export const FAR_EXT = 7200, FAR_RES = 512;           // horizon scenery
+@@ -530,7 +530,7 @@ export class Terrain {
+     let h = lerp(m, f, sstep(520, 596, r));
+     h += bilinearWrap(this.det, DET_RES, x / DET_TILE, z / DET_TILE) * DET_AMP;
+     h += bilinearWrap(this.det, DET_RES, x / DET_SCALE2 + 0.37, z / DET_SCALE2 + 0.71) * DET_AMP2;
+-    h -= this.dentAt(x, z);
++    h += this.dentAt(x, z);
+     return h;
+   }
+   dentAt(x, z) {
+@@ -931,11 +931,6 @@ export class Terrain {
+           if (dig) D[i] = Math.min(DIG_CAP, D[i] + dig * (1 - 0.5 * t));
+           else if (D[i] < target) D[i] = Math.min(target, D[i] + depth * 0.6);
+         } else if (t < BERM_OUT) {
+-          // Never let the berm pass eat a trough. Successive calls overlap as
+-          // the wheel rolls, so a texel that was rut floor one step ago lands
+-          // in the berm annulus the next — and without this guard the two
+-          // passes fight and cancel each other into flat ground.
+-          if (D[i] > 0.004) continue;
+           const u = (t - 1) / (BERM_OUT - 1);
+           const lobe = Math.sin(u * Math.PI) * (1 - u) * 1.55;
+           const target = -depth * lobe * BERM_GAIN - (dig ? dig * lobe * 2.2 : 0);

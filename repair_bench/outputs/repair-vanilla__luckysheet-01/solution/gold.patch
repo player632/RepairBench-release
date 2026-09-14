@@ -1,0 +1,156 @@
+diff --git a/src/controllers/controlHistory.js b/src/controllers/controlHistory.js
+--- a/src/controllers/controlHistory.js
++++ b/src/controllers/controlHistory.js
+@@ -123,6 +123,9 @@
+             jfrefreshgrid_pastcut(s, t, ctr.RowlChange);
+         }
+         else if (ctr.type == "rangechange") {
++            //如果有单元格为null,则对应公式应该删除
++            formulaHistoryHanddler(ctr);
++            
+             jfrefreshrange(ctr.data, ctr.range, ctr.cdformat);
+             // formula.execFunctionGroup(null, null, null, null, ctr.data);//取之前的数据
+         }
+@@ -478,7 +481,7 @@
+         else if (ctr.type == "rangechange") {
+             // formula.execFunctionGroup();
+             formulaHistoryHanddler(ctr, "undo");
+-            jfrefreshrange(ctr.data, ctr.range, ctr.curCdformat);
++            jfrefreshrange(ctr.curdata, ctr.range, ctr.curCdformat);
+         }
+         else if (ctr.type == "resize") {
+             Store.config = ctr.curconfig;
+diff --git a/src/controllers/dropCell.js b/src/controllers/dropCell.js
+--- a/src/controllers/dropCell.js
++++ b/src/controllers/dropCell.js
+@@ -1470,6 +1470,7 @@
+ 
+                     if(direction == "up" || direction == "left"){
+                         data.reverse();
++                        dataNumArr.reverse();
+                     }
+ 
+                     if(_this.isEqualDiff(dataNumArr)){
+diff --git a/src/controllers/handler.js b/src/controllers/handler.js
+--- a/src/controllers/handler.js
++++ b/src/controllers/handler.js
+@@ -2611,6 +2611,10 @@
+                     Store.luckysheet_select_save[Store.luckysheet_select_save.length - 1] = last;
+ 
+                     selectHightlightShow();
++                    clearTimeout(Store.countfuncTimeout);
++                    Store.countfuncTimeout = setTimeout(function() {
++                        countfunc();
++                    }, 500);
+                 } else if (Store.luckysheet_cell_selected_move) {
+                     let mouse = mouseposition(event.pageX, event.pageY);
+ 
+diff --git a/src/controllers/menuButton.js b/src/controllers/menuButton.js
+--- a/src/controllers/menuButton.js
++++ b/src/controllers/menuButton.js
+@@ -3522,7 +3522,7 @@
+ 
+             const locale_comment = locale().comment;
+ 
+-            $menuButton.hide();
++            $menuButton.remove();
+ 
+             // if($menuButton.length == 0){
+             luckysheetPostil.removeActivePs();
+@@ -4425,7 +4425,7 @@
+     },
+     menuButtonFocus: function(d, r, c) {
+         let _this = this;
+-        let foucsList = ["bl", "it", "cl", "ff", "ht", "vt", "fs", "tb", "tr", "ct", "nu"];
++        let foucsList = ["bl", "it", "cl", "ff", "ht", "vt", "fs", "tb", "tr", "ct", "un"];
+         const _locale = locale();
+         for (let i = 0; i < foucsList.length; i++) {
+             let attr = foucsList[i];
+diff --git a/src/controllers/searchReplace.js b/src/controllers/searchReplace.js
+--- a/src/controllers/searchReplace.js
++++ b/src/controllers/searchReplace.js
+@@ -536,7 +536,7 @@
+                                 let reg = new RegExp(func_methods.getRegExpStr(searchText), regExpFlags);
+                                 wasFound = reg.test(value);
+                             } else {
+-                                wasFound = value.indexOf(searchText);
++                                wasFound = ~value.indexOf(searchText);
+                             }
+ 
+                             wasFound && addResult(r, c);
+diff --git a/src/controllers/sheetmanage.js b/src/controllers/sheetmanage.js
+--- a/src/controllers/sheetmanage.js
++++ b/src/controllers/sheetmanage.js
+@@ -80,7 +80,7 @@
+         const copy_i = name.toString().indexOf(copyWord);
+ 
+         if (~copy_i) {
+-            name = name.toString().substring(copy_i);
++            name = name.toString().substring(0, copy_i);
+         }
+ 
+         let index = "";
+@@ -1673,6 +1673,8 @@
+         for (let i = 0; i < Store.luckysheetfile.length; i++) {
+             if (Store.luckysheetfile[i]["index"] == index) {
+                 Store.luckysheetfile[i].status = 1;
++            } else {
++                Store.luckysheetfile[i].status = 0;
+             }
+         }
+ 
+diff --git a/src/function/functionImplementation.js b/src/function/functionImplementation.js
+--- a/src/function/functionImplementation.js
++++ b/src/function/functionImplementation.js
+@@ -3948,7 +3948,7 @@
+ 
+             //计算
+             var sign = (number > 0) ? 1 : -1;
+-            return sign * (Math.round(number * Math.pow(10, digits))) / Math.pow(10, digits);
++            return sign * (Math.round(Math.abs(number) * Math.pow(10, digits))) / Math.pow(10, digits);
+         }
+         catch (e) {
+             var err = e;
+diff --git a/src/global/api.js b/src/global/api.js
+--- a/src/global/api.js
++++ b/src/global/api.js
+@@ -6934,7 +6934,7 @@
+         if(cell == null){
+             return false;
+         }
+-        return cell[type] != status;
++        return cell[type] == status;
+     })
+ 
+     return flag;
+diff --git a/src/global/sort.js b/src/global/sort.js
+--- a/src/global/sort.js
++++ b/src/global/sort.js
+@@ -28,11 +28,11 @@
+         }
+ 
+         if(isRealNull(x1)){
+-            return -1;
++            return 1;
+         }
+ 
+         if(isRealNull(y1)){
+-            return 1;
++            return -1;
+         }
+ 
+         if (isdatetime(x1) && isdatetime(y1)) {
+@@ -64,11 +64,11 @@
+         }
+ 
+         if(isRealNull(x1)){
+-            return -1;
++            return 1;
+         }
+ 
+         if(isRealNull(y1)){
+-            return 1;
++            return -1;
+         }
+ 
+         if (isdatetime(x1) && isdatetime(y1)) {

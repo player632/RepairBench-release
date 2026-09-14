@@ -1,0 +1,140 @@
+diff --git a/src/$ColorBox.js b/src/$ColorBox.js
+index 0170ef7..20ef236 100644
+--- a/src/$ColorBox.js
++++ b/src/$ColorBox.js
+@@ -107,7 +107,7 @@ function $ColorBox(vertical) {
+ 			const color_selection_slot = e.ctrlKey ? "ternary" : e.button === 0 ? "foreground" : e.button === 2 ? "background" : null;
+ 			if (color_selection_slot) {
+ 				if (within_double_click_period && e.button === double_click_button) {
+-					show_edit_colors_window(color_selection_slot, $b);
++					show_edit_colors_window($b, color_selection_slot);
+ 				} else {
+ 					selected_colors[color_selection_slot] = $b.data("swatch");
+ 					$G.trigger("option-changed");
+@@ -118,12 +118,14 @@ function $ColorBox(vertical) {
+ 					within_double_click_period = false;
+ 					double_click_button = null;
+ 				}, double_click_period_ms);
++				within_double_click_period = true;
+ 				double_click_button = e.button;
+ 			}
+ 		});
+ 	};
+ 
+ 	const build_palette = () => {
++		$palette.empty();
+ 
+ 		palette.forEach(make_color_button);
+ 
+diff --git a/src/$ToolBox.js b/src/$ToolBox.js
+index 6fae3ba..1aacaf9 100644
+--- a/src/$ToolBox.js
++++ b/src/$ToolBox.js
+@@ -81,7 +81,10 @@ function $ToolBox(tools, is_extras) {
+ 			if (showing_tooltips) {
+ 				show_tooltip();
+ 			} else {
+-				setTimeout(show_tooltip, 300);
++				const tid = setTimeout(show_tooltip, 300);
++				$b.on("pointerleave", () => {
++					clearTimeout(tid);
++				});
+ 			}
+ 		});
+ 
+@@ -106,7 +109,7 @@ function $ToolBox(tools, is_extras) {
+ 			selected_tool.$button.addClass("selected");
+ 		});
+ 		$tools.attr("data-selected-tool", selected_tool ? selected_tool.id : "");
+-		$tool_options.children().remove();
++		$tool_options.children().detach();
+ 		$tool_options.append(selected_tool.$options);
+ 		$tool_options.children().trigger("update");
+ 		$canvas.css({
+diff --git a/src/app.js b/src/app.js
+index 8b392b7..53485d9 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -1484,8 +1484,7 @@ function tool_go(selected_tool, event_name) {
+ 	update_fill_and_stroke_colors_and_lineWidth(selected_tool);
+ 
+ 	if (selected_tool[event_name]) {
+-		const handler = selected_tool[event_name];
+-		handler(main_ctx, pointer.x, pointer.y);
++		selected_tool[event_name](main_ctx, pointer.x, pointer.y);
+ 	}
+ 	if (selected_tool.paint) {
+ 		selected_tool.paint(main_ctx, pointer.x, pointer.y);
+@@ -1779,6 +1778,11 @@ $canvas.on("pointerdown", (e) => {
+ 				});
+ 			}
+ 
++			if (selected_tools.length === 1) {
++				if (selected_tool.deselect) {
++					select_tools(return_to_tools);
++				}
++			}
+ 			$G.off("pointermove", canvas_pointer_move);
+ 			for (const interval_id of interval_ids) {
+ 				clearInterval(interval_id);
+@@ -1801,6 +1805,7 @@ $canvas_area.on("pointerdown", (e) => {
+ 	if (e.button === 0) {
+ 		if ($canvas_area.is(e.target)) {
+ 			if (selection) {
++				deselect();
+ 			}
+ 		}
+ 	}
+diff --git a/src/functions.js b/src/functions.js
+index 9c1255b..b62bb12 100644
+--- a/src/functions.js
++++ b/src/functions.js
+@@ -449,9 +449,8 @@ function show_custom_zoom_window() {
+ 
+ 	$w.$main.append(`<div class='current-zoom'>${localize("Current zoom:")} <bdi data-testid="custom-zoom-current">${magnification * 100}%</bdi></div>`);
+ 	// update when zoom changes
+-	const zoom_percent_at_open = magnification * 100;
+ 	$G.on("magnification-changed", () => {
+-		$w.$main.find(".current-zoom bdi").text(`${zoom_percent_at_open}%`);
++		$w.$main.find(".current-zoom bdi").text(`${magnification * 100}%`);
+ 	});
+ 
+ 	const $fieldset = $(E("fieldset")).appendTo($w.$main);
+@@ -2204,6 +2203,11 @@ function undo() {
+ 	redos.push(current_history_node);
+ 	let target_history_node = undos.pop();
+ 
++	while (target_history_node.soft && undos.length) {
++		redos.push(target_history_node);
++		target_history_node = undos.pop();
++	}
++
+ 	go_to_history_node(target_history_node);
+ 
+ 	return true;
+@@ -2228,7 +2232,7 @@ function redo() {
+ 	}
+ 
+ 	undos.push(current_history_node);
+-	let target_history_node = undos.pop();
++	let target_history_node = redos.pop();
+ 
+ 	while (target_history_node.soft && redos.length) {
+ 		undos.push(target_history_node);
+@@ -2919,6 +2923,7 @@ function select_tool(tool, toggle) {
+ 		tool.preload();
+ 	}
+ 
++	$toolbox.update_selected_tool();
+ 	// $toolbox2.update_selected_tool();
+ 	window.update_state_probe?.();
+ }
+@@ -3235,7 +3240,7 @@ function image_attributes() {
+ 		$width.val(width_in_px / unit_sizes_in_px[new_unit]);
+ 		$height.val(height_in_px / unit_sizes_in_px[new_unit]);
+ 		current_unit = new_unit;
+-	});
++	}).triggerHandler("change");
+ 
+ 	const $colors = $(E("fieldset")).appendTo($main).append(`
+ 		<legend>${localize("Colors")}</legend>

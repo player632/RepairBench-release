@@ -1,0 +1,758 @@
+diff --git a/src/components/AddressInput.svelte b/src/components/AddressInput.svelte
+index c8998b2..2506ab7 100644
+--- a/src/components/AddressInput.svelte
++++ b/src/components/AddressInput.svelte
+@@ -64,6 +64,7 @@
+ 
+ <input
+ 	type="text"
++	data-rb-address-input
+ 	bind:value
+ 	{name}
+ 	{required}
+diff --git a/src/components/Collapsible.svelte b/src/components/Collapsible.svelte
+index 237ad02..fe74c6c 100644
+--- a/src/components/Collapsible.svelte
++++ b/src/components/Collapsible.svelte
+@@ -159,6 +159,7 @@
+ 		}
+ 		{...$$restProps}
+ 		data-collapsible-container
++		data-rb-collapsible
+ 		data-can-toggle={canToggle ? '' : undefined}
+ 		class="container {$$props.containerClass ?? ''}"
+ 		class:column-block={canToggle && type === 'details'}
+@@ -189,6 +190,7 @@
+ 						: 'div'
+ 				}
+ 				data-collapsible-trigger
++				data-rb-collapsible-trigger
+ 				class={$$props.contentClass ?? `bar wrap`}
+ 				{...{
+ 					'label': {
+@@ -238,6 +240,7 @@
+ 
+ 		<div
+ 			data-collapsible-content
++			data-rb-collapsible-content
+ 			class="collapsible column-block with-hidden-transitions {$$props.class ?? ''}"
+ 			class:clip
+ 			{...type === 'label' ? {
+diff --git a/src/components/CollapsibleToolbar.svelte b/src/components/CollapsibleToolbar.svelte
+index d6c4c36..1b2d003 100644
+--- a/src/components/CollapsibleToolbar.svelte
++++ b/src/components/CollapsibleToolbar.svelte
+@@ -29,6 +29,7 @@
+ 		{#if !$hasCollapsedNavigation}
+ 			<div
+ 				role="toolbar"
++				data-rb-toolbar-default
+ 				class="default-size row wrap align-end"
+ 				transition:scale={{ duration: 200 }}
+ 			>
+@@ -50,6 +51,7 @@
+ 	{#if $hasCollapsedNavigation}
+ 		<div
+ 			role="toolbar"
++			data-rb-toolbar-collapsed
+ 			class="row wrap align-end"
+ 			transition:scale={{ duration: 200 }}
+ 		>
+diff --git a/src/components/Nav.svelte b/src/components/Nav.svelte
+index 5c0ecad..de04dd2 100644
+--- a/src/components/Nav.svelte
++++ b/src/components/Nav.svelte
+@@ -14,7 +14,7 @@
+ </script>
+ 
+ 
+-<nav>
++<nav data-rb-nav>
+ 	<CollapsibleToolbar
+ 		type="label"
+ 		breakpointWidth="30rem"
+@@ -24,7 +24,7 @@
+ 	>
+ 		<svelte:fragment slot="title">
+ 			<ul>
+-				<li><a aria-current="{$page.url.pathname === '/' ? 'page' : undefined}" href="/"><span class="logo">Blockhead</span></a></li>
++				<li><a data-rb-nav-home aria-current="{$page.url.pathname === '/' ? 'page' : undefined}" href="/"><span class="logo">Blockhead</span></a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/portfolio') ? 'page' : undefined}" href="/portfolio">Portfolio</a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/explorer') ? 'page' : undefined}" href="/explorer">Explorer</a></li>
+ 				<li><a aria-current="{$page.url.pathname.startsWith('/apps') ? 'page' : undefined}" href="/apps">Apps</a></li>
+diff --git a/src/components/Preferences.svelte b/src/components/Preferences.svelte
+index a75c0a5..c230cb3 100644
+--- a/src/components/Preferences.svelte
++++ b/src/components/Preferences.svelte
+@@ -60,6 +60,7 @@
+ 
+ <form
+ 	class="preferences"
++	data-rb-preferences
+ 	class:is-showing-all={isShowingAll}
+ 	transition:fly={{ y: '100%' }}
+ >
+@@ -218,6 +219,7 @@
+ 		/> -->
+ 		<button
+ 			id="preferences-button"
++			data-rb-preferences-toggle
+ 			type="button"
+ 			class="medium"
+ 			data-before={isShowingAll ? '✓' : '· · ·'}
+diff --git a/src/rb-probe.ts b/src/rb-probe.ts
+new file mode 100644
+index 0000000..1d6f541
+--- /dev/null
++++ b/src/rb-probe.ts
+@@ -0,0 +1,561 @@
++// INSTRUMENTATION (repair-bench, environment/instrumentation.patch) - src/rb-probe.ts
++//
++// A READ-ONLY observation bridge for the offline verifier, published on window.__BH__.
++//
++// The seed ships no test facility of its own: no test id, no data-attribute contract, no
++// exported state accessor that a headless browser could read. Nothing was removed to make room
++// for this file. It observes the document and the app's own Svelte stores through their public
++// subscriptions; it never writes to a store, never patches a component and never changes a
++// rendered value. The only thing it mutates is its own error counter.
++//
++// Every reader returns a SCALAR (number | string | boolean). Collections are returned as a
++// joined string or a length, because the delivered DSL asserts with js_eval and that compares
++// scalars. Readers are deliberately written against the DOM the seed already produces
++// (data-preference, data-collapsible-container, data-state, data-before, data-after,
++// aria-current, inert) plus the data-rb-* structural hooks this patch adds, so a reading stays
++// meaningful even if the agent's fix rewrites the components around them.
++//
++// The drivers at the bottom dispatch the events the seed ALREADY listens for - a cross-window
++// StorageEvent (src/utils/localStorageWritable.ts:15), the app's own
++// blockhead_addAccountConnection window event (src/routes/+layout.svelte:267), a real
++// requestSubmit() on the contact form, and ordinary input/change events on a bound input - so
++// an interaction exercises the seed's own event contract instead of poking private state.
++
++import { get } from 'svelte/store'
++
++import { preferences, preferencesConfig } from '$/state/preferences'
++import { colorTheme } from '$/state/colorTheme'
++import { prefersReducedMotion } from '$/state/prefersReducedMotion'
++
++const W = globalThis as any
++
++// ---------------------------------------------------------------- error trap
++let errorCount = 0
++const errorTexts: string[] = []
++
++const trap = () => {
++	const note = (text: string) => {
++		errorCount++
++		if (errorTexts.length < 40) errorTexts.push(String(text).slice(0, 200))
++	}
++
++	W.addEventListener?.('error', (e: any) => note(e?.message || e))
++	W.addEventListener?.('unhandledrejection', (e: any) => note(e?.reason?.message || e?.reason || e))
++}
++
++// ---------------------------------------------------------------- dom helpers
++const q = (sel: string): Element | null => { try { return document.querySelector(sel) } catch (e) { return null } }
++const qa = (sel: string): Element[] => { try { return Array.from(document.querySelectorAll(sel)) } catch (e) { return [] } }
++const norm = (s: any) => String(s ?? '').replace(/\s+/g, ' ').trim()
++const attr = (sel: string, name: string): string | null => { const el = q(sel); return el ? el.getAttribute(name) : null }
++const text = (sel: string) => { const el = q(sel); return el ? norm(el.textContent) : '' }
++const count = (sel: string) => qa(sel).length
++const computed = (sel: string, prop: string) => { const el = q(sel) as HTMLElement | null; return el ? norm(W.getComputedStyle(el).getPropertyValue(prop)) : '' }
++const boolAttr = (sel: string, name: string) => { const el = q(sel); return el ? el.hasAttribute(name) : false }
++
++// ---------------------------------------------------------------- zero-network face
++// House definition (the delivered graphml-viewer package uses the same one): a reference tag is
++// an element that makes the browser FETCH something, carrying an absolute http(s) or a
++// protocol-relative URL. data: / blob: URIs are inline payloads, not requests, and are excluded
++// by construction because they do not start with http or //.
++// MEASURED CORRECTION (leg BH2 run 4 -> run 5). The origin-blind selector form of this census -
++// counting every link[href^="http"] - is a FALSE POSITIVE on a SvelteKit client-rendered face: the
++// kit's own router injects modulepreload and stylesheet links whose href is an ABSOLUTE SAME-ORIGIN
++// url, so 25 tags matched href^="http" and 26 stylesheets matched, while the browser made 129
++// requests, every single one to 127.0.0.1:12326, 0 failed, 0 websockets, and the Performance API
++// reported 0 cross-origin resources. "Zero runtime network" means nothing leaves this origin, so the
++// census resolves every candidate URL against the document origin and counts only what would leave
++// it. The origin-blind counts stay published beside it under names that say what they are, so both
++// readings are on the record and neither can be mistaken for the other.
++const ABS_REF_SEL = 'link[href^="http"], script[src^="http"], link[href^="//"], script[src^="//"]'
++const ABS_RES_SEL = 'link[href], script[src], img[src], iframe[src], source[src], video[src], audio[src], embed[src], object[data]'
++const isCrossOrigin = (raw: string): boolean => {
++	const url = String(raw || '')
++	if (!/^(https?:)?\/\//i.test(url)) return false
++	try { return new W.URL(url, W.location.href).origin !== W.location.origin } catch (e) { return true }
++}
++function externalRefTagCount(): number {
++	return qa(ABS_REF_SEL).filter((el) => isCrossOrigin(String(el.getAttribute('href') || el.getAttribute('src') || ''))).length
++}
++function externalRefTags(): string {
++	const hits: string[] = []
++	for (const el of qa(ABS_REF_SEL)) {
++		const url = String(el.getAttribute('href') || el.getAttribute('src') || '')
++		if (isCrossOrigin(url)) hits.push(el.tagName.toLowerCase() + ':' + url.slice(0, 120))
++	}
++	return hits.sort().join('|')
++}
++// Wider sweep: EVERY element capable of pulling a subresource, cross-origin only.
++function externalResourceTagCount(): number {
++	return qa(ABS_RES_SEL).filter((el) => isCrossOrigin(String(el.getAttribute('href') || el.getAttribute('src') || el.getAttribute('data') || ''))).length
++}
++function hasGtag(): boolean { try { return typeof W.gtag === 'function' || !!W.google_tag_manager } catch (e) { return false } }
++function hasDataLayer(): boolean { try { return W.dataLayer !== undefined } catch (e) { return false } }
++function remoteStyleSheetCount(): number {
++	let n = 0
++	for (let i = 0; i < document.styleSheets.length; i++) {
++		const href = (document.styleSheets[i] as any).href
++		if (href && isCrossOrigin(String(href))) n++
++	}
++	return n
++}
++// The origin-blind readings, kept on the record. These are NOT asserted as zero: on this face they
++// count the kit's own same-origin absolute URLs (measured 25 / 26 / 26 at boot).
++function absoluteUrlRefTagCount(): number { return qa(ABS_REF_SEL).length }
++function absoluteUrlResourceTagCount(): number {
++	return qa(ABS_RES_SEL).filter((el) => /^(https?:)?\/\//i.test(String(el.getAttribute('href') || el.getAttribute('src') || el.getAttribute('data') || ''))).length
++}
++function absoluteUrlStyleSheetCount(): number {
++	let n = 0
++	for (let i = 0; i < document.styleSheets.length; i++) { const href = (document.styleSheets[i] as any).href; if (href && /^(https?:)?\/\//i.test(String(href))) n++ }
++	return n
++}
++function sameOriginAbsoluteRefTagCount(): number { return absoluteUrlRefTagCount() - externalRefTagCount() }
++function externalPerformanceResourceCount(): number {
++	try {
++		const origin = W.location.origin
++		return W.performance.getEntriesByType('resource')
++			.filter((e: any) => { try { return new W.URL(String(e.name), W.location.href).origin !== origin } catch (err) { return false } })
++			.length
++	} catch (e) { return -1 }
++}
++function performanceResourceCount(): number { try { return W.performance.getEntriesByType('resource').length } catch (e) { return -1 } }
++
++// ---------------------------------------------------------------- document / landing face
++function documentTitle(): string { return norm(document.title) }
++function locationPathname(): string { try { return W.location.pathname } catch (e) { return '' } }
++function locationSearch(): string { try { return W.location.search } catch (e) { return '' } }
++function locationHash(): string { try { return W.location.hash } catch (e) { return '' } }
++function styleSheetCount(): number { return document.styleSheets.length }
++function anchorCount(): number { return count('a') }
++function documentHeight(): number { return document.documentElement.scrollHeight }
++function bodyBackgroundColor(): string { return computed('body', 'background-color') }
++function primaryColorVar(): string { return computed('html', '--primary-color') }
++
++function h1LogoText(): string { return text('[data-rb-logo]') || text('h1.logo') }
++function h1LogoDataText(): string { return attr('[data-rb-logo]', 'data-text') ?? attr('h1.logo', 'data-text') ?? '' }
++function heroBoldWords(): string { return qa('h2.description.top b').map((b) => norm(b.textContent)).join(',') }
++function heroBoldCount(): number { return count('h2.description.top b') }
++function cardCount(): number { return count('[data-rb-cards] .card') || count('.card') }
++function cardHeadings(): string { return qa('[data-rb-cards] .card h3').map((h) => norm(h.textContent)).join('|') }
++function cardHeadingCount(): number { return count('[data-rb-cards] .card h3') }
++function cardRuleCount(): number { return qa('[data-rb-cards] .card').filter((c) => c.querySelector('hr')).length }
++function landingSectionCount(): number { return count('[data-rb-landing] ~ section') + count('main > section') - count('main > section') + count('main > section') }
++function footerText(): string { return text('[data-rb-landing] footer') }
++function footerOutboundHrefs(): string { return qa('[data-rb-landing] footer a').map((a) => String(a.getAttribute('href'))).sort().join('|') }
++function learnMoreText(): string { return norm(text('.learn-more')) }
++function mainTransform(): string { return computed('main', 'transform') }
++
++// ---------------------------------------------------------------- navigation
++function navPresent(): boolean { return !!q('[data-rb-nav]') || !!q('body > nav') }
++function navLinkHrefs(): string { return qa('[data-rb-nav] ul a[href]').map((a) => String(a.getAttribute('href'))).join(',') }
++function navLinkCount(): number { return count('[data-rb-nav] ul a[href]') }
++function navHomeAriaCurrent(): string { return attr('[data-rb-nav-home]', 'aria-current') ?? '' }
++function navAriaCurrentCount(): number { return qa('[data-rb-nav] a[aria-current]').length }
++function navSocialButtonTexts(): string { return qa('[data-rb-nav] [role="toolbar"] a.button').map((a) => norm(a.textContent)).join('|') }
++function navSocialButtonCount(): number { return count('[data-rb-nav] [role="toolbar"] a.button') }
++function defaultSizeToolbarCount(): number { return count('[data-rb-toolbar-default]') }
++function defaultSizeToolbarButtonTexts(): string { return qa('[data-rb-toolbar-default] a.button').map((a) => norm(a.textContent)).join('|') }
++function defaultSizeToolbarFontSize(): string { return computed('[data-rb-toolbar-default]', 'font-size') }
++function collapsedSizeToolbarCount(): number { return count('[data-rb-toolbar-collapsed]') }
++function navToolbarCount(): number { return count('[data-rb-nav] [role="toolbar"]') }
++function triggerText(): string { return text('[data-rb-collapsible-trigger]') }
++function triggerDataAfter(): string { return attr('[data-rb-collapsible-trigger]', 'data-after') ?? '' }
++function triggerAriaExpanded(): string { return attr('[data-rb-collapsible-trigger]', 'aria-expanded') ?? '' }
++function collapsibleDataState(): string { return attr('[data-rb-collapsible]', 'data-state') ?? '' }
++function collapsibleCanToggle(): boolean { return boolAttr('[data-rb-collapsible]', 'data-can-toggle') }
++function collapsibleGridTemplateRows(): string { return computed('[data-rb-collapsible]', 'grid-template-rows') }
++function collapsibleContentOpacity(): string { return computed('[data-rb-collapsible-content]', 'opacity') }
++function collapsibleContentVisibility(): string { return computed('[data-rb-collapsible-content]', 'visibility') }
++// id-independent ARIA wiring: the disclosure trigger's aria-controls must resolve to a real element.
++function ariaControlsResolves(): boolean {
++	const id = attr('[data-rb-collapsible-trigger]', 'aria-controls')
++	if (!id) return false
++	return !!q('[data-rb-collapsible-content]') && q('[data-rb-collapsible-content]')!.getAttribute('id') === id
++}
++function triggerForResolves(): boolean {
++	const forId = attr('[data-rb-collapsible-trigger]', 'for')
++	const el = q('[data-rb-collapsible-trigger]')
++	if (!forId || !el) return false
++	return el.getAttribute('id') === forId
++}
++// gate sentinel, not a pin sentinel: Collapsible.svelte:222's id is canToggle-gated and shut here.
++function firstCollapsibleTriggerId(): string { return attr('[data-rb-collapsible-trigger]', 'id') ?? '' }
++function ariaIdShapeOk(): boolean {
++	const id = attr('[data-rb-collapsible-trigger]', 'aria-controls') ?? ''
++	return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)
++}
++
++// ---------------------------------------------------------------- account-connection aside
++function asidePresent(): boolean { return !!q('[data-rb-aside]') }
++function asideInert(): boolean { return boolAttr('[data-rb-aside]', 'inert') }
++function asideOpacity(): string { return computed('[data-rb-aside]', 'opacity') }
++function asideTranslate(): string { return computed('[data-rb-aside]', 'translate') }
++function asidePointerEvents(): string { return computed('[data-rb-aside]', 'pointer-events') }
++function mainMinWidth(): string { return computed('main', 'min-width') }
++function mainPaddingRight(): string { return computed('main', 'padding-right') }
++function walletsToggleText(): string { return text('.wallets-toggle') }
++function walletsToggleDataAfter(): string { return attr('.wallets-toggle span', 'data-after') ?? '' }
++function walletsToggleChecked(): boolean { const el = q('.wallets-toggle input[type="checkbox"]') as HTMLInputElement | null; return el ? !!el.checked : false }
++function walletsTogglePresent(): boolean { return !!q('.wallets-toggle') }
++
++// ---------------------------------------------------------------- share dialog
++function sharePresent(): boolean { return !!q('[data-rb-share]') }
++function shareCount(): number { return count('[data-rb-share]') }
++
++// ---------------------------------------------------------------- html dataset (global residue)
++function htmlDataColorScheme(): string { return String(document.documentElement.dataset.colorScheme ?? '') }
++function htmlDataAnimations(): string { return String(document.documentElement.dataset.animations ?? '') }
++function htmlDataScrollSnap(): string { return String(document.documentElement.dataset.scrollSnap ?? '') }
++function htmlDataNames(): string { return Object.keys(document.documentElement.dataset).sort().join(',') }
++
++// ---------------------------------------------------------------- preferences
++function preferenceCount(): number { return count('[data-preference]') }
++function preferenceIds(): string { return qa('[data-preference]').map((el) => String(el.getAttribute('data-preference'))).sort().join(',') }
++function preferenceSectionCount(): number { return count('[data-preference-section]') }
++function preferenceSectionIds(): string { return qa('[data-preference-section]').map((el) => String(el.getAttribute('data-preference-section'))).sort().join(',') }
++function preferencesFormPresent(): boolean { return !!q('[data-rb-preferences]') }
++function preferencesToggleDataBefore(): string { return attr('[data-rb-preferences-toggle]', 'data-before') ?? '' }
++function resetAllButtonCount(): number { return qa('[data-rb-preferences] button').filter((b) => norm(b.textContent) === 'Reset All').length }
++function sectionHeadingCount(): number { return count('[data-rb-preferences] section.preference-section > h4') }
++function selectValue(preferenceId: string): string {
++	const el = q('[data-preference="' + preferenceId + '"] select') as HTMLSelectElement | null
++	return el ? String(el.value) : ''
++}
++function selectOptionCount(preferenceId: string): number { return count('[data-preference="' + preferenceId + '"] option') }
++function selectOptgroupCount(preferenceId: string): number { return count('[data-preference="' + preferenceId + '"] optgroup') }
++function optionLabel(preferenceId: string, value: string): string { return text('[data-preference="' + preferenceId + '"] option[value="' + value + '"]') }
++function themeAutoOptionLabel(): string { return optionLabel('theme', 'auto') }
++function animationsAutoOptionLabel(): string { return optionLabel('animations', 'auto') }
++function scrollSnapEnabledOptionLabel(): string { return optionLabel('scrollSnap', 'enabled') }
++function preferenceLabelText(preferenceId: string): string { return text('[data-preference="' + preferenceId + '"] > span') }
++// the seed's own stores, read through their public get()
++function storeTheme(): string { try { return String(get(preferences).theme) } catch (e) { return 'ERR' } }
++function storeScrollSnap(): string { try { return String(get(preferences).scrollSnap) } catch (e) { return 'ERR' } }
++function storeAnimations(): string { try { return String(get(preferences).animations) } catch (e) { return 'ERR' } }
++function storeQuoteCurrency(): string { try { return String(get(preferences).quoteCurrency) } catch (e) { return 'ERR' } }
++function storeKeyCount(): number { try { return Object.keys(get(preferences)).length } catch (e) { return -1 } }
++function colorThemeValue(): string { try { return String(get(colorTheme)) } catch (e) { return 'ERR' } }
++function prefersReducedMotionValue(): boolean { try { return !!get(prefersReducedMotion) } catch (e) { return false } }
++function configPreferenceCount(): number {
++	try { return preferencesConfig.reduce((n: number, s: any) => n + s.preferences.length, 0) } catch (e) { return -1 }
++}
++function configSectionCount(): number { try { return preferencesConfig.length } catch (e) { return -1 } }
++
++// ---------------------------------------------------------------- localStorage residue
++function localPreferencesKeyCount(): number {
++	try { const raw = W.localStorage.getItem('localPreferences'); return raw ? Object.keys(JSON.parse(raw)).length : -1 } catch (e) { return -2 }
++}
++function localPreferencesTheme(): string {
++	try { const raw = W.localStorage.getItem('localPreferences'); return raw ? String(JSON.parse(raw).theme ?? '') : '' } catch (e) { return 'ERR' }
++}
++function localPreferencesScrollSnap(): string {
++	try { const raw = W.localStorage.getItem('localPreferences'); return raw ? String(JSON.parse(raw).scrollSnap ?? '') : '' } catch (e) { return 'ERR' }
++}
++function localStorageKeyCount(): number { try { return W.localStorage.length } catch (e) { return -1 } }
++function localStorageKeyNames(): string { try { return Object.keys(W.localStorage).sort().join(',') } catch (e) { return '' } }
++
++// ---------------------------------------------------------------- contact form
++function contactRootPresent(): boolean { return !!q('[data-rb-contact]') }
++function contactFormCount(): number { return count('[data-rb-contact] form[name="contact"]') }
++function contactThankYouCount(): number { return count('[data-rb-contact-thanks]') }
++function contactLoaderCount(): number { return count('[data-rb-contact] [data-collapsible-container]') }
++function contactRoleCheckboxCount(): number { return count('[data-rb-contact] input[type="checkbox"][name="role"]') }
++function contactRoleValues(): string { return qa('[data-rb-contact] input[type="checkbox"][name="role"]').map((i) => String(i.getAttribute('value'))).join(',') }
++function contactFieldNames(): string { return qa('[data-rb-contact] form[name="contact"] input, [data-rb-contact] form[name="contact"] textarea').map((e) => e.tagName.toLowerCase() + ':' + String(e.getAttribute('name') || '')).join(',') }
++function contactHoneypotHidden(): boolean { return boolAttr('[data-rb-contact] input[name="blockhead"]', 'hidden') }
++function contactSubmitButtonText(): string { return text('[data-rb-contact] button[type="submit"]') }
++function contactHeadingText(): string { return text('[data-rb-contact] form[name="contact"] header h3') }
++function contactFormCheckValidity(): boolean { const el = q('[data-rb-contact] form[name="contact"]') as HTMLFormElement | null; return el ? el.checkValidity() : false }
++// the app.html netlify bot form is a SEPARATE, permanently hidden form that also carries
++// name="contact" - asserting on it proves the harness is not confusing the two.
++function netlifyBotFormHidden(): boolean { return boolAttr('body > form[name="contact"]', 'hidden') }
++function formsNamedContact(): number { return count('form[name="contact"]') }
++
++// ---------------------------------------------------------------- address input (pattern matcher)
++const ADDRESS_SEL = '[data-rb-address-input]'
++function addressValue(): string { const el = q(ADDRESS_SEL) as HTMLInputElement | null; return el ? String(el.value) : '' }
++function addressMatchedPattern(): string { return attr(ADDRESS_SEL, 'data-matched-input-pattern') ?? '' }
++function addressPatternAttrHead(): string { return String(attr(ADDRESS_SEL, 'pattern') ?? '').slice(0, 6) }
++function addressPatternAttrLength(): number { return String(attr(ADDRESS_SEL, 'pattern') ?? '').length }
++function addressCheckValidity(): boolean { const el = q(ADDRESS_SEL) as HTMLInputElement | null; return el ? el.checkValidity() : false }
++function addressName(): string { return attr(ADDRESS_SEL, 'name') ?? '' }
++function addressPlaceholder(): string { return attr(ADDRESS_SEL, 'placeholder') ?? '' }
++function addressDatalistResolves(): boolean {
++	const list = attr(ADDRESS_SEL, 'list')
++	if (!list) return false
++	return !!q('datalist') && qa('datalist').some((d) => d.getAttribute('id') === list)
++}
++
++// ---------------------------------------------------------------- drivers (harness side)
++// Each driver dispatches an event the seed ALREADY listens for. None of them reaches into a
++// component's private state.
++function dispatchAddAccountConnection(): number {
++	// ConnectedAccountSelect.svelte:70 is the app's own dispatcher:
++	//   globalThis.dispatchEvent(new CustomEvent('blockhead_addAccountConnection', { detail: { selector }, bubbles: true }))
++	// and AccountConnections.svelte:97 hands e.detail.selector straight to addAccountConnection(),
++	// which reaches src/state/account.ts:204 accountConnection.selector.knownWallet.
++	// MEASURED (leg BH2 run 4): dispatching this event WITHOUT that detail - which is what run 4 did -
++	// throws an uncaught TypeError ("Cannot read properties of null (reading 'selector')") in the
++	// CLEAN state, i.e. the harness was manufacturing a page error the seed does not have. The driver
++	// now sends the same shape the app sends, with an empty selector (no knownWallet, no eip6963):
++	// that is the plain "add a connection" branch, and account.ts:52 then draws one of the pinned
++	// UUIDs - but the census stays at 2, so that id is held in the store and never published to the DOM.
++	W.dispatchEvent(new W.CustomEvent('blockhead_addAccountConnection', { detail: { selector: {} }, bubbles: true }))
++	return 1
++}
++// A cross-window StorageEvent is the exact event src/utils/localStorageWritable.ts:15 subscribes
++// to. The payload is the seed's own resolved preference map with one key changed, so the store
++// receives a shape it would really receive from another tab.
++function dispatchPreferencesStorage(overridesJson: string, key: string): number {
++	const storageKey = key || 'localPreferences'
++	let payload: any = {}
++	try { payload = JSON.parse(W.localStorage.getItem('localPreferences') || '{}') } catch (e) { payload = {} }
++	const overrides = JSON.parse(overridesJson)
++	for (const k of Object.keys(overrides)) payload[k] = overrides[k]
++	W.dispatchEvent(new W.StorageEvent('storage', { key: storageKey, newValue: JSON.stringify(payload) }))
++	return 1
++}
++function poisonLocalPreferences(json: string): number {
++	W.localStorage.setItem('localPreferences', json)
++	return Object.keys(JSON.parse(json)).length
++}
++function clearLocalPreferences(): number { W.localStorage.removeItem('localPreferences'); return 1 }
++function clickPreferencesToggle(): number { const el = q('[data-rb-preferences-toggle]') as HTMLElement | null; if (!el) return 0; el.click(); return 1 }
++function clickResetAll(): number {
++	const el = qa('[data-rb-preferences] button').find((b) => norm(b.textContent) === 'Reset All') as HTMLElement | undefined
++	if (!el) return 0
++	el.click()
++	return 1
++}
++function clickCollapsibleTrigger(): number { const el = q('[data-rb-collapsible-trigger]') as HTMLElement | null; if (!el) return 0; el.click(); return 1 }
++function setAddressValue(value: string): number {
++	const el = q(ADDRESS_SEL) as HTMLInputElement | null
++	if (!el) return 0
++	el.value = value
++	el.dispatchEvent(new W.Event('input', { bubbles: true }))
++	return 1
++}
++function commitAddress(): number {
++	const el = q(ADDRESS_SEL) as HTMLInputElement | null
++	if (!el) return 0
++	el.dispatchEvent(new W.Event('change', { bubbles: true }))
++	return 1
++}
++function setAddress(value: string): number { setAddressValue(value); return commitAddress() }
++function fillContactRequired(): number {
++	const form = q('[data-rb-contact] form[name="contact"]')
++	if (!form) return 0
++	const set = (sel: string, value: string) => { const el = form.querySelector(sel) as HTMLInputElement | null; if (el) { el.value = value; el.dispatchEvent(new W.Event('input', { bubbles: true })) } }
++	set('input[name="name"]', 'Repair Bench')
++	set('input[name="email"]', 'bench@example.invalid')
++	set('input[name="referral"]', 'IRL')
++	return 1
++}
++function submitContact(): number {
++	const form = q('[data-rb-contact] form[name="contact"]') as HTMLFormElement | null
++	if (!form) return 0
++	if (typeof form.requestSubmit === 'function') form.requestSubmit()
++	else form.dispatchEvent(new W.Event('submit', { bubbles: true, cancelable: true }))
++	return 1
++}
++function clickContactBack(): number {
++	const el = qa('[data-rb-contact-thanks] button').find((b) => norm(b.textContent).endsWith('Back')) as HTMLElement | undefined
++	if (!el) return 0
++	el.click()
++	return 1
++}
++function setThemeSelect(value: string): number {
++	const el = q('[data-preference="theme"] select') as HTMLSelectElement | null
++	if (!el) return 0
++	el.value = value
++	el.dispatchEvent(new W.Event('change', { bubbles: true }))
++	return 1
++}
++function scrollSnapCss(): string { return computed('[data-rb-landing]', 'scroll-snap-type') + '/' + computed('main', 'scroll-snap-type') }
++
++// ---------------------------------------------------------------- contract readers (relational)
++// Each of these compares two things the app publishes about the SAME piece of state instead of
++// pinning one value, so it holds on every face except the one whose defect breaks exactly that
++// contract. None of them reimplements app logic: they read what the components already render.
++function collapsibleCount(): number { return count('[data-rb-collapsible]') }
++function collapsibleDataStates(): string { return qa('[data-rb-collapsible]').map((el) => String(el.getAttribute('data-state'))).join(',') }
++function collapsibleTriggerCount(): number { return count('[data-rb-collapsible-trigger]') }
++function collapsibleTriggerAriaExpandeds(): string { return qa('[data-rb-collapsible-trigger]').map((el) => String(el.getAttribute('aria-expanded'))).join(',') }
++function collapsibleCanToggles(): string { return qa('[data-rb-collapsible]').map((el) => (el.hasAttribute('data-can-toggle') ? '1' : '0')).join(',') }
++function collapsibleClasses(): string { return qa('[data-rb-collapsible]').map((el) => norm(el.className)).join('|') }
++// Collapsible.svelte:168 publishes 'data-state': isOpen ? 'open' : 'closed' on the container, while
++// the trigger's aria-expanded (:222 / :231) keeps reading the REAL isOpen. For every container that
++// owns a trigger the two must therefore agree. Requires at least one such pair, so it can never be
++// vacuously true on a face where the trigger is gated away.
++// MEASURED AND DROPPED (leg BH2 run 4): a reader that compared the container's data-state against
++// its own trigger's aria-expanded was written for this seam and cannot be satisfied on this face -
++// at 1440x900 canToggle is false, and Collapsible.svelte:216 renders the aria-expanded BUTTON only
++// inside that canToggle block, so the element carrying data-collapsible-trigger is the plain div at
++// :184 with no aria-expanded at all (measured collapsibleTriggerAriaExpandeds === "null"). Shipping a
++// contract reader that is false on the clean state would have been a red checkpoint by construction,
++// so F10 pins the disclosure label and its styling consequence directly instead.
++
++// ---------------------------------------------------------------- adaptation sentinels
++// environment/adaptation.patch replaces the two platform entropy SOURCES with a seeded mulberry32
++// stream and marks each function it installed, so "the pin is live in THIS bundle" is a reading on
++// every state rather than an assumption. Both markers read '' on an unpinned bundle.
++function entropyPinMarker(): string { try { return String(((W.crypto || {}).randomUUID as any)?.__rbEntropyPin ?? '') } catch (e) { return '' } }
++function mathRandomPinMarker(): string { try { return String((Math.random as any)?.__rbEntropyPin ?? '') } catch (e) { return '' } }
++const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
++// DOM census of generated identifiers, DOCUMENT-WIDE and owner-free: qa('[id]') records no element.
++// MEASURED (legs BHdiag + BH2b, 1440x900): uuidShapedIdCount() is 2 and idCount() is 6 in ALL 28
++// scenarios, firstUuidShapedId() being draw #2 - the full draw ledger is in the +layout.ts note.
++function uuidShapedIdCount(): number { return qa('[id]').filter((el) => UUID_RE.test(String(el.getAttribute('id')))).length }
++function firstUuidShapedId(): string { const el = qa('[id]').find((e) => UUID_RE.test(String(e.getAttribute('id')))); return el ? String(el.getAttribute('id')) : '' }
++function idCount(): number { return count('[id]') }
++// Shape and uniqueness of the pinned stream, i.e. the pin did not narrow the contract: a draw is
++// still a 36-character RFC-4122 v4 string, two draws still differ, and Math.random is still a float
++// in [0, 1). These CONSUME draws, so they are read last in every battery.
++function randomUuidShapeOk(): boolean { try { return UUID_RE.test(String(W.crypto.randomUUID())) } catch (e) { return false } }
++function randomUuidUniqueAcrossDraws(): boolean {
++	try { const a = String(W.crypto.randomUUID()); const b = String(W.crypto.randomUUID()); return a.length === 36 && b.length === 36 && a !== b } catch (e) { return false }
++}
++function mathRandomInRange(): boolean {
++	try { for (let i = 0; i < 8; i++) { const v = Math.random(); if (!(v >= 0 && v < 1)) return false } return true } catch (e) { return false }
++}
++// Nav.svelte:20 passes breakpointWidth="30rem" into CollapsibleToolbar, whose canToggle=
++// {$hasCollapsedNavigation} is republished by Collapsible.svelte:162 as data-can-toggle. The toolbar
++// branch (CollapsibleToolbar.svelte:29 default-size / :53 collapsed) must be the one matching THAT
++// store - read from the app itself, never from a viewport width hardcoded in the bridge.
++function navToolbarBranchMatchesCanToggle(): boolean {
++	const c = q('[data-rb-nav] [data-collapsible-container]')
++	if (!c) return false
++	const canToggle = c.hasAttribute('data-can-toggle')
++	const d = count('[data-rb-nav] [data-rb-toolbar-default]')
++	const k = count('[data-rb-nav] [data-rb-toolbar-collapsed]')
++	return canToggle ? (k === 1 && d === 0) : (d === 1 && k === 0)
++}
++function navToolbarMutuallyExclusive(): boolean {
++	return count('[data-rb-nav] [data-rb-toolbar-default]') + count('[data-rb-nav] [data-rb-toolbar-collapsed]') === 1
++}
++// +layout.svelte:290 inert={!showAccounts} and :280 <input type="checkbox" bind:checked={showAccounts}>
++// are two renderings of ONE signal, so the aside is inert exactly when the wallets toggle is off.
++function asideInertAgreesWithWalletsToggle(): boolean {
++	const el = q('.wallets-toggle input[type="checkbox"]') as HTMLInputElement | null
++	if (!el || !q('[data-rb-aside]')) return false
++	return boolAttr('[data-rb-aside]', 'inert') === !el.checked
++}
++// The behavioural face of the inert attribute: a control inside an inert subtree cannot take focus.
++// previously focused element so the reading leaves the page exactly as it found it.
++// MEASURED AND DROPPED (leg BH2 run 4): focus was going to be the behavioural face of the inert
++// attribute, but the wallets checkbox does not take focus even when the aside is NOT inert - the
++// toggle's input is a visually-hidden control - so that reader measured false in both the boot and
++// the account-connection scenarios. A reader that is false on every state discriminates nothing, so
++// F07 pins the inert attribute against the app's own second rendering of the same signal instead
++// (asideInertAgreesWithWalletsToggle), which measured true at boot AND after the event.
++// preferences.ts:102 makes the theme preference's "auto" option a FUNCTION of the colorTheme store,
++// which is derived from matchesMediaQuery('(prefers-color-scheme: dark)'). The rendered label must
++// announce the theme the media query really resolves to, in whatever scheme the run happens to use.
++function themeAutoLabelAgreesWithMedia(): boolean {
++	const label = optionLabel('theme', 'auto')
++	if (!label) return false
++	const dark = W.matchMedia('(prefers-color-scheme: dark)').matches
++	return label === (dark ? 'Auto (Dark)' : 'Auto (Light)')
++}
++// resolveDefaultPreferences (preferences.ts:888-901) guarantees that whatever ends up in the store is
++// one of the options that preference actually offers. Reads the config the app itself ships.
++function storeThemeIsOfferedOption(): boolean {
++	try {
++		const v = get(preferences).theme
++		const values: any[] = []
++		const walk = (opts: any[]) => { for (const o of opts) { if (o && 'groupId' in o) walk(o.options); else if (o) values.push(o.value) } }
++		for (const section of preferencesConfig as any[]) for (const pref of section.preferences) if (pref.preferenceId === 'theme') walk(pref.options)
++		if (!values.length) return false
++		return values.includes(v)
++	} catch (e) { return false }
++}
++// In Preferences.svelte the isShowingAll flag ALONE gates the Reset All button (:69), the per-section
++// <h4> headings (:102) and the toggle's data-before (:223). Those three must always tell the same
++// story whichever way the flag is set, so this holds on every face and serves as a P2P guard, while
++// the flag's DEFAULT value is F11's own sentinel.
++function showAllStateConsistent(): boolean {
++	const db = attr('[data-rb-preferences-toggle]', 'data-before')
++	if (db === null) return false
++	const showingAll = db === '\u2713'
++	const hasReset = resetAllButtonCount() > 0
++	const headings = sectionHeadingCount()
++	const sections = preferenceSectionCount()
++	if (showingAll !== hasReset) return false
++	return showingAll ? (headings === sections && headings > 0) : headings === 0
++}
++
++const RB: any = {
++	version: 'blockhead-01/1.0',
++	// error trap
++	errorCount: () => errorCount,
++	errorTexts: () => errorTexts.join('|'),
++	// zero-network face
++	externalRefTagCount, externalRefTags, externalResourceTagCount, hasGtag, hasDataLayer,
++	remoteStyleSheetCount, externalPerformanceResourceCount, performanceResourceCount,
++	// document / landing
++	documentTitle, locationPathname, locationSearch, locationHash, styleSheetCount, anchorCount,
++	documentHeight, bodyBackgroundColor, primaryColorVar, h1LogoText, h1LogoDataText,
++	heroBoldWords, heroBoldCount, cardCount, cardHeadings, cardHeadingCount, cardRuleCount,
++	footerText, footerOutboundHrefs, learnMoreText, mainTransform, scrollSnapCss,
++	// navigation / disclosure
++	navPresent, navLinkHrefs, navLinkCount, navHomeAriaCurrent, navAriaCurrentCount,
++	navSocialButtonTexts, navSocialButtonCount, defaultSizeToolbarCount,
++	defaultSizeToolbarButtonTexts, defaultSizeToolbarFontSize, collapsedSizeToolbarCount,
++	navToolbarCount, triggerText, triggerDataAfter, triggerAriaExpanded, collapsibleDataState,
++	collapsibleCanToggle, collapsibleGridTemplateRows, collapsibleContentOpacity,
++	collapsibleContentVisibility, ariaControlsResolves, triggerForResolves,
++	firstCollapsibleTriggerId, ariaIdShapeOk,
++	// aside / share
++	asidePresent, asideInert, asideOpacity, asideTranslate, asidePointerEvents, mainMinWidth,
++	mainPaddingRight, walletsToggleText, walletsToggleDataAfter, walletsToggleChecked,
++	walletsTogglePresent, sharePresent, shareCount,
++	// html dataset
++	htmlDataColorScheme, htmlDataAnimations, htmlDataScrollSnap, htmlDataNames,
++	// preferences
++	preferenceCount, preferenceIds, preferenceSectionCount, preferenceSectionIds,
++	preferencesFormPresent, preferencesToggleDataBefore, resetAllButtonCount, sectionHeadingCount,
++	selectValue, selectOptionCount, selectOptgroupCount, optionLabel, themeAutoOptionLabel,
++	animationsAutoOptionLabel, scrollSnapEnabledOptionLabel, preferenceLabelText,
++	storeTheme, storeScrollSnap, storeAnimations, storeQuoteCurrency, storeKeyCount,
++	colorThemeValue, prefersReducedMotionValue, configPreferenceCount, configSectionCount,
++	// storage residue
++	localPreferencesKeyCount, localPreferencesTheme, localPreferencesScrollSnap,
++	localStorageKeyCount, localStorageKeyNames,
++	// contact form
++	contactRootPresent, contactFormCount, contactThankYouCount, contactLoaderCount,
++	contactRoleCheckboxCount, contactRoleValues, contactFieldNames, contactHoneypotHidden,
++	contactSubmitButtonText, contactHeadingText, contactFormCheckValidity,
++	netlifyBotFormHidden, formsNamedContact,
++	// address input
++	addressValue, addressMatchedPattern, addressPatternAttrHead, addressPatternAttrLength,
++	addressCheckValidity, addressName, addressPlaceholder, addressDatalistResolves,
++	// contract readers (relational)
++	collapsibleCount, collapsibleDataStates, collapsibleTriggerCount,
++	collapsibleTriggerAriaExpandeds, collapsibleCanToggles, collapsibleClasses,
++	navToolbarBranchMatchesCanToggle, navToolbarMutuallyExclusive,
++	asideInertAgreesWithWalletsToggle, themeAutoLabelAgreesWithMedia,
++	storeThemeIsOfferedOption, showAllStateConsistent,
++	// zero-network census, origin-blind variants kept on the record
++	absoluteUrlRefTagCount, absoluteUrlResourceTagCount, absoluteUrlStyleSheetCount,
++	sameOriginAbsoluteRefTagCount,
++	// adaptation sentinels (entropyPinMarker and the draw-consuming three are read LAST)
++	entropyPinMarker, mathRandomPinMarker, uuidShapedIdCount, firstUuidShapedId, idCount,
++	randomUuidShapeOk, randomUuidUniqueAcrossDraws, mathRandomInRange,
++	// drivers
++	dispatchAddAccountConnection, dispatchPreferencesStorage, poisonLocalPreferences,
++	clearLocalPreferences, clickPreferencesToggle, clickResetAll, clickCollapsibleTrigger,
++	setAddressValue, commitAddress, setAddress, fillContactRequired, submitContact,
++	clickContactBack, setThemeSelect,
++}
++
++const publish = () => {
++	W.__BH__ = RB
++	W.__RB__ = RB
++	W.dispatchEvent?.(new W.CustomEvent('blockhead_probe_ready'))
++}
++
++trap()
++publish()
++
++export default RB
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 2b09d9d..2674d19 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -3,6 +3,11 @@
+ 	import '../fonts.css'
+ 	import '../app.css'
+ 
++	// INSTRUMENTATION (repair-bench, environment/instrumentation.patch): publish the read-only
++	// observation bridge on window.__BH__ before any component on this face initialises, so the
++	// verifier's error trap is installed before the first render and no reading can be missed.
++	import '$/rb-probe'
++
+ 	for(const propertyDefinition of [
+ 		{
+ 			name: '--primary-color',
+@@ -281,16 +286,17 @@
+ 
+ 	<aside
+ 		class="column"
++		data-rb-aside
+ 		inert={!showAccounts}
+ 	>
+ 		<AccountConnections layout="column" />
+ 	</aside>
+ 
+-	<div class="stack">
++	<div class="stack" data-rb-stack>
+ 		<slot></slot>
+ 
+ 		{#if metaTags.openGraph?.images?.[0]}
+-			<div class="share">
++			<div class="share" data-rb-share>
+ 				<SharePageDialog
+ 					url={$page.url.toString()}
+ 					title={metaTags.title}
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index e38172f..18fff70 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -283,7 +283,7 @@
+ 
+ 
+ <main in:fly={{ x: 150, easing: expoOut }} out:fly={{ x: -150, easing: expoOut }}>
+-	<section id="top">
++	<section id="top" data-rb-landing>
+ 		<header>
+ 			<h2 class="description top" in:scale={{delay: 150}}>
+ 				<b>Track</b>,
+@@ -304,7 +304,7 @@
+ 				in:scale={{delay: 200}}
+ 				on:mousedown={(e) => triggerEvent('Home/LogoMousedown')}
+ 			>
+-				<h1 class="logo" data-text="Blockhead">Blockhead</h1>
++				<h1 class="logo" data-rb-logo data-text="Blockhead">Blockhead</h1>
+ 			</div>
+ 		</header>
+ 
+@@ -390,7 +390,7 @@
+ 
+ 		<br>
+ 
+-		<div class="columns">
++		<div class="columns" data-rb-cards>
+ 			<div class="card" in:scale={{delay: 350}}>
+ 				<h3><b>Track</b> your crypto</h3>
+ 				<hr>
+diff --git a/src/routes/ContactForm.svelte b/src/routes/ContactForm.svelte
+index 1a4d57a..027fda0 100644
+--- a/src/routes/ContactForm.svelte
++++ b/src/routes/ContactForm.svelte
+@@ -76,7 +76,7 @@
+ </style>
+ 
+ 
+-<div id="contact" class="stack align-top">
++<div id="contact" class="stack align-top" data-rb-contact>
+ 	{#if status === 'idle'}
+ 		<form
+ 			class="column card"
+@@ -190,7 +190,7 @@
+ 				}}
+ 				let:result={result}
+ 			>
+-				<div class="thank-you card column">
++				<div class="thank-you card column" data-rb-contact-thanks>
+ 					<span class="emoji">💝</span>
+ 
+ 					<h3>Thank you</h3>

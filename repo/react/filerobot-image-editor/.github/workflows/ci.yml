@@ -1,0 +1,39 @@
+name: CI
+
+# Build + production-dependency audit gate.
+# Runs on every PR (especially dependency bumps) and on pushes to master.
+# Intentionally minimal: there is no test suite, so this gates on a successful
+# build and a clean PRODUCTION-dependency audit. Dev/build-tooling advisories are
+# excluded on purpose (they do not ship to consumers of the published packages).
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build packages
+        run: yarn build:packages
+
+      - name: Build JS bundle
+        run: yarn build:js-bundle
+
+      # Gate on production (runtime) dependencies at high/critical severity only.
+      # This is what actually reaches library consumers; dev-tooling noise is ignored.
+      - name: Audit production dependencies
+        run: yarn audit --groups dependencies --level high

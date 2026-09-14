@@ -1,0 +1,168 @@
+diff --git a/src/engine.js b/src/engine.js
+index b49ac31..70a02a5 100644
+--- a/src/engine.js
++++ b/src/engine.js
+@@ -620,7 +620,7 @@
+ 			wavesurfer.pause();
+ 		});
+ 		app.listenFor ('RequestTransportToggle', function ( mode ) {
+-			if (mode === 'stop') {
++			if (mode === 'pause') {
+ 				wavesurfer.isPlaying () ? wavesurfer.pause () : playLoop ();
+ 				return ;
+ 			}
+@@ -652,6 +652,16 @@
+ 				else
+ 					wavesurfer.regions.list[0].loop = true;
+ 			}
++			else
++			{
++				skip_seek = true;
++				wavesurfer.regions.add({
++					start:0,
++					end:wavesurfer.getDuration(),
++					id:'t'
++				});
++				wavesurfer.regions.list[0].loop = true;
++			}
+ 
+ 			var will_loop = wavesurfer.regions.list[0].loop;
+ 			app.fireEvent('DidSetLoop', will_loop);
+@@ -991,7 +1001,20 @@
+ 				// buffer swap (undo, fx) would concatenate instead of replace
+ 				if (wavesurfer.backend) wavesurfer.backend._add = 0;
+ 
+-				q.is_ready = false;
++				// a failed load must not lock the editor: if a valid buffer
++				// survived (e.g. a failed append), keep the session usable.
++				// was_load_flow (not a re-read) so an unrelated load that
++				// started inside this timeout window is left alone
++				if (wavesurfer.backend && wavesurfer.backend.buffer) {
++					if (was_load_flow && !q.is_ready) {
++						q.is_ready = true;
++						wavesurfer.drawBuffer (1); // the display was blanked when loading began
++						app.fireEvent ('DidLoadFile');
++					}
++				}
++				else {
++					q.is_ready = false;
++				}
+ 
+ 				if (was_load_flow) app.stopListeningForName ('RequestCancelModal');
+ 			}, 20);
+@@ -3333,6 +3356,8 @@
+ 				source.disconnect ();
+ 				// audio_ctx.close ();
+ 				// -
++				q.in_fx = false;
++				app.ui.InteractionHandler.on = false;
+ 			};
+ 
+ 			var offline_renderer = audio_ctx.startRendering();
+@@ -3402,7 +3427,7 @@
+ 				else val = 1;
+ 			}
+ 
+-			if (oldval === val)
++			if (oldval !== val)
+ 			{
+ 				wavesurfer.ActiveChannels[ chan_index ] = val;
+ 				if (val === 0) {
+diff --git a/src/keys.js b/src/keys.js
+index ee46c91..898a8c9 100644
+--- a/src/keys.js
++++ b/src/keys.js
+@@ -62,6 +62,7 @@
+ 		};
+ 
+ 		q.keyUp = function ( keyCode ) {
++			q.keyMap[keyCode] = 0;
+ 		};
+ 
+ 		q.keyPress = function ( keyCode, e ) {
+diff --git a/src/markers.js b/src/markers.js
+index fcd8ebf..76e5578 100644
+--- a/src/markers.js
++++ b/src/markers.js
+@@ -228,6 +228,8 @@
+ 					if (n._o !== m.color) { n.style.color = m.color; n._o = m.color; }
+ 					if (n._t !== tr) { n.style.transform = tr; n._t = tr; }
+ 				}
++				for (id in nodes)
++					if (nodes[id]._s !== stamp) { nodes[id].parentNode && nodes[id].parentNode.removeChild (nodes[id]); delete nodes[id]; }
+ 			}
+ 			function openMenu ( e, id ) {
+ 				if (!app._deps.ContextMenu) return false;
+diff --git a/src/state.js b/src/state.js
+index 76c62fe..79f691e 100644
+--- a/src/state.js
++++ b/src/state.js
+@@ -118,6 +118,12 @@
+ 				if (undo_state_list[undo_state_list.length - 1].id !== state.id - 1)
+ 					undo_state_list = [];
+ 			}
++			if (redo_state_list.length > 0)
++			{
++				if (redo_state_list[0].id !== state.id + 1)
++					redo_state_list = [];
++			}
++
+ 			undo_state_list.push ( state );
+ 			trimForMemory ();
+ 
+diff --git a/src/ui.js b/src/ui.js
+index 244d933..22ce3ad 100644
+--- a/src/ui.js
++++ b/src/ui.js
+@@ -1938,6 +1938,7 @@
+ 			else
+ 			{
+ 				target_el_old = null;
++				d.addEventListener ( 'mouseup', mouseup, false );
+ 				_checkForAct ( e.target || e.srcElement );
+ 			}
+ 			// -
+@@ -2549,8 +2550,8 @@
+ 			this.blur();
+ 		};
+ 		UI.listenFor('DidSetLoop', function( val ) {
+-			val ? btn_loop.classList.remove('pk_act') :
+-				  btn_loop.classList.add('pk_act');
++			val ? btn_loop.classList.add('pk_act') :
++				  btn_loop.classList.remove('pk_act');
+ 		});
+ 
+ 		var btn_back_jump = d.createElement ('button');
+@@ -2619,6 +2620,9 @@
+ 					if (count >= activeSeekWarmupFor ( app ))
+ 						num += num * activeSeekRampFor ( app );
+ 
++					btn_back_tm = setTimeout(function() {
++						step (num, ++count);
++					},40);
+ 				}
+ 			};
+ 			btn_back_tm = setTimeout(function(){
+@@ -3136,6 +3140,10 @@
+ 
+ 		}, 1000);
+ 
++		UI.listenFor ('DidUpdateLen', function( val ) {
++			td = val || 0;
++			total_duration.textContent = formatTime (val);
++		});
+ 		
+ 		function formatTime( time ) {
+ 			var time_s = time >> 0;
+diff --git a/src/welcome.js b/src/welcome.js
+index 0802bd0..0f75674 100644
+--- a/src/welcome.js
++++ b/src/welcome.js
+@@ -41,6 +41,7 @@ setTimeout(function () {
+ 			var md = new PKSimpleModal({
+ 				title: '<font style="font-size:15px">Welcome to AudioMass</font>',
+ 				ondestroy: function( q ) {
++					PKAE.ui.InteractionHandler.on = false;
+ 					PKAE.ui.KeyHandler.removeCallback ('modalTemp');
+ 					showScrollHint ();
+ 			},

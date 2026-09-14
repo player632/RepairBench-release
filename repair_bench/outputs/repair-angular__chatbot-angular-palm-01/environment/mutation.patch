@@ -1,0 +1,124 @@
+diff --git a/src/app/app.component.css b/src/app/app.component.css
+index a00494863964e2865f25a47fb218ed8643c927e0..ff07c0488dcfc05457122f61a6a80ec019dad034 100644
+--- a/src/app/app.component.css
++++ b/src/app/app.component.css
+@@ -36,7 +36,7 @@
+ }
+ 
+ .chat-message {
+-  display: flex;
++  display: block;
+   align-items: flex-start;
+   padding: 10px;
+   margin-top: 10px;
+@@ -44,7 +44,7 @@
+ }
+ 
+ .avatar {
+-  width: 50px;
++  width: 32px;
+   height: 50px;
+   border-radius: 50%;
+   margin-right: 10px;
+@@ -89,5 +89,5 @@
+ 
+ .loading {
+   font-size: 30px;
+-  animation: fadeIn 1s ease-in-out infinite;
++  animation: fadeIn 1s ease-in-out 1;
+ }
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index ea9ea3d09e591258d785858efc1fed586612c9d5..136b200f852ed48c4180394e0d798b363504e4b4 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -1,6 +1,6 @@
+ <div class="app-container">
+   <div class="chat-container" data-rb-transcript>
+-    <div class="message-container" *ngIf="contents.length === 0" data-rb-welcome>
++    <div class="message-container" *ngIf="contents.length === 0 && message === ''" data-rb-welcome>
+       <p class="message">
+         Welcome to PaLM ChatBot <br />
+         Write a text to start.
+@@ -9,7 +9,7 @@
+     <div
+       *ngFor="let content of contents"
+       class="chat-message"
+-      [ngClass]="content.agent"
++      [ngClass]="content.agent + '-message'"
+       data-rb-message
+     >
+       <img [src]="'assets/avatar-' + content.agent + '.png'" class="avatar" data-rb-avatar />
+@@ -31,7 +31,7 @@
+         matInput
+         #inputMessage
+         [(ngModel)]="message"
+-        (keyup.enter)="sendMessage(message)"
++        (keyup)="sendMessage(message)"
+         data-rb-input
+       />
+     </mat-form-field>
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index ea435979fd2309000bd3369bab56fa232321b70d..62b2528b60403f2169170d64ee89ce1b0f58f2eb 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -38,7 +38,7 @@ export class AppComponent {
+   sendMessage(message: string): void {
+     const chatContent: ChatContent = {
+       agent: 'user',
+-      message,
++      message: message.trim(),
+     };
+ 
+     this.contents.push(chatContent);
+@@ -48,7 +48,6 @@ export class AppComponent {
+       loading: true,
+     });
+     
+-    this.message = '';
+     this.chatService
+       .chat(chatContent)
+       .pipe(
+@@ -57,7 +56,7 @@ export class AppComponent {
+             (content) => content.loading
+           );
+           if (loadingMessageIndex !== -1) {
+-            this.contents.splice(loadingMessageIndex, 1);
++            this.contents.splice(loadingMessageIndex, 0);
+           }
+         })
+       )
+diff --git a/src/app/chat.service.ts b/src/app/chat.service.ts
+index ea9b615edf5d362bbfc53645b969d53db607ef27..afcb4444191478d39042aad17e80ac2e705f6547 100644
+--- a/src/app/chat.service.ts
++++ b/src/app/chat.service.ts
+@@ -10,6 +10,6 @@ export class ChatService {
+   constructor(private httpClient: HttpClient) { }
+ 
+   chat(chatContent: ChatContent): Observable<ChatContent> {
+-    return this.httpClient.post<ChatContent>('http://localhost:3000/api/chatbot', chatContent);
++    return this.httpClient.put<ChatContent>('http://localhost:3000/api/chatbot', chatContent);
+   }
+ }
+diff --git a/src/app/line-break.pipe.ts b/src/app/line-break.pipe.ts
+index 412321d3ecdd61586d6847701d5b4eb68be44a62..60f7dfc769da167f263bb9eb32b1e0f84fde2c02 100644
+--- a/src/app/line-break.pipe.ts
++++ b/src/app/line-break.pipe.ts
+@@ -7,7 +7,7 @@ import { Pipe, PipeTransform } from '@angular/core';
+ export class LineBreakPipe implements PipeTransform {
+ 
+   transform(value: string, ...args: unknown[]): unknown {
+-    return value.replace(/(?:\r\n|\r|\n)/g, '<br/>');
++    return value.replace(/(?:\r\n|\r|\n)/, '<br/>');
+   }
+ 
+ }
+diff --git a/src/styles.css b/src/styles.css
+index 7e7239a2eeea2a25f548d2e04302921d28c2a27e..3858b88a77c2394db10ab02f7c91c002f6d5ba26 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -1,4 +1,4 @@
+ /* You can add global styles to this file, and also import other style files */
+ 
+ html, body { height: 100%; }
+-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
++body { font-family: Roboto, "Helvetica Neue", sans-serif; }

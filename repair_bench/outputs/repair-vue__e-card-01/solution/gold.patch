@@ -1,0 +1,152 @@
+diff --git a/src/i18n/cn.ts b/src/i18n/cn.ts
+index acd95c8..9c94f6f 100644
+--- a/src/i18n/cn.ts
++++ b/src/i18n/cn.ts
+@@ -35,6 +35,6 @@ export default {
+         'explain6': '皇帝赢市民，市民赢奴隶，奴隶赢皇帝',
+         'explain7': '市民对市民互相抵消，各自弃牌进入下一轮，抵消牌不再交还各方',
+         'explain8': '皇帝或奴隶被杀，游戏宣告结束，被杀方告负',
+-        'explain9': '赢则积1分，数则积0分，先赢到12分则游戏结束'
++        'explain9': '赢则积1分，数则积0分，先赢到11分则游戏结束'
+     }
+ }
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 8afd95d..81e0bac 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -8,7 +8,7 @@ const message = {
+     cn: CN,
+     en: EN,
+     jp: JP,
+-    kr: JP
++    kr: KR
+ }
+ 
+ const i18n = createI18n({
+diff --git a/src/store/index.ts b/src/store/index.ts
+index 414cbd2..8b275b1 100644
+--- a/src/store/index.ts
++++ b/src/store/index.ts
+@@ -7,7 +7,7 @@ export const useGlobalState: () => Ref<GameStateType> = createGlobalState(
+     // 最开始未确定玩家角色
+     playerRole: null,
+     // 语言设置
+-    language: 'en',
++    language: 'cn',
+     // 人机对战
+     isAiBattle: true,
+     // 游戏难度
+diff --git a/src/utils/game.util.ts b/src/utils/game.util.ts
+index 80789dc..4ca8d27 100644
+--- a/src/utils/game.util.ts
++++ b/src/utils/game.util.ts
+@@ -21,7 +21,7 @@ export const createCard = (role: Role, sort: number, group: GroupEn): CardItem =
+  * @returns 
+  */
+ export const initRoleItems = (group: GroupEn, isPlayer: boolean = true): CardItem[] => {
+-    const items: CardItem[] = Array(4).fill(0).map((_, idx) => createCard('citizen', idx + 1, group));
++    const items: CardItem[] = Array(5).fill(0).map((_, idx) => createCard('citizen', idx + 1, group));
+     const sort = getRandomNumber(5);
+     items[sort] = (createCard(group, sort + 1, group));
+     items.map(card => card.isBack = !isPlayer)
+diff --git a/src/utils/index.ts b/src/utils/index.ts
+index 756f955..8144834 100644
+--- a/src/utils/index.ts
++++ b/src/utils/index.ts
+@@ -64,7 +64,7 @@ export const debounce = (fn: Function, delay: number = 500) => {
+  */
+ let throttleTimer;
+ export const throttle = (fn:Function, still = 300) => {
+-    if (throttleTimer) {
++    if (!throttleTimer) {
+         fn();
+         throttleTimer = setTimeout(() => {
+             if (throttleTimer) clearTimeout(throttleTimer)
+diff --git a/src/views/Component/Card.vue b/src/views/Component/Card.vue
+index c67c7ef..1904b2b 100644
+--- a/src/views/Component/Card.vue
++++ b/src/views/Component/Card.vue
+@@ -24,7 +24,7 @@ const emits = defineEmits(['card-click'])
+     <div w-full h-full absolute bg-cover backface-hidden
+       :style="{ backgroundImage: `url(${getAssetsFile(cardInfo.img)})` }"></div>
+     <div w-full h-full absolute bg-cover backface-hidden transform-rotate-y-180
+-      :style="{ backgroundImage: `url(${getAssetsFile('card-back.jpg')})` }"></div>
++      :style="{ backgroundImage: `url(${getAssetsFile('card-bg.jpg')})` }"></div>
+   </div>
+ </template>
+ 
+diff --git a/src/views/Component/ComputedCard.vue b/src/views/Component/ComputedCard.vue
+index 60f499f..de7a7d8 100644
+--- a/src/views/Component/ComputedCard.vue
++++ b/src/views/Component/ComputedCard.vue
+@@ -7,7 +7,7 @@ const state = useGlobalState()
+ <template>
+   <div grid="~ cols-5 gap-5">
+     <div card-size relative cursor-pointer transition-all-500 v-for="cardItem in state.computerCardItems" :key="cardItem.sort">
+-      <Card :card-info="cardItem" />
++      <Card :card-info="cardItem" is-back />
+     </div>
+   </div>
+ </template>
+diff --git a/src/views/Component/GameInformation.vue b/src/views/Component/GameInformation.vue
+index a088568..4a45879 100644
+--- a/src/views/Component/GameInformation.vue
++++ b/src/views/Component/GameInformation.vue
+@@ -20,7 +20,7 @@ const computerFinalScore = computed(() => getScoreSum('computerScore'))
+ watch(
+   () => playerFinalScore.value,
+   (score: number) => {
+-    if (score === 10) {
++    if (score === 11) {
+       state.value.gameState = 'win'
+     }
+   },
+diff --git a/src/views/Game/GameMain.vue b/src/views/Game/GameMain.vue
+index 46e8d23..b43eda7 100644
+--- a/src/views/Game/GameMain.vue
++++ b/src/views/Game/GameMain.vue
+@@ -55,7 +55,7 @@ const playerCardCheck = (cardInfo: CardItem): void => {
+  */
+ const judgeRoundWinner = (playerCard: CardItem, computerCard: CardItem): LogItem => {
+   const results = {
+-    emperor: { emperor: null, citizen: 'lose', slave: 'win' },
++    emperor: { emperor: null, citizen: 'win', slave: 'lose' },
+     citizen: { emperor: 'lose', citizen: null, slave: 'win' },
+     slave: { emperor: 'win', citizen: 'lose', slave: null },
+   };
+@@ -101,7 +101,7 @@ const checkedCard = (playerCard: CardItem, computerCard: CardItem): void => {
+ watch(
+   () => state.value.gameState,
+   (gameState: GameStatus) => {
+-    if (['init'].includes(gameState)) {
++    if (['init', 'win', 'lose'].includes(gameState)) {
+       state.value.rounds = 1
+       state.value.dropedCardItems = []
+       state.value.gameLogItems = []
+@@ -121,11 +121,11 @@ watch(
+         </div>
+         <div bg-gray:50 flex-center>
+           <!-- 电脑检查区域 -->
+-          <CheckCard :card-info="[playerCardInfo]" />
++          <CheckCard :card-info="[computerCardInfo]" />
+         </div>
+         <div w-full bg-gray:50 flex-center>
+           <!-- 玩家检查区域 -->
+-          <CheckCard :card-info="[computerCardInfo]" />
++          <CheckCard :card-info="[playerCardInfo]" />
+         </div>
+         <div w-full bg-gray:50 flex-center>
+           <!-- 玩家手牌区域 -->
+diff --git a/src/views/NavButton/ChangeBackImage.vue b/src/views/NavButton/ChangeBackImage.vue
+index e81826d..90c285d 100644
+--- a/src/views/NavButton/ChangeBackImage.vue
++++ b/src/views/NavButton/ChangeBackImage.vue
+@@ -5,7 +5,7 @@ const state = useGlobalState()
+  * 切换背景
+  */
+ const toggleBackImage = (): void => {
+-  if (state.value.bgImage > 4) {
++  if (state.value.bgImage >= 4) {
+     state.value.bgImage = 1
+   } else {
+     state.value.bgImage++

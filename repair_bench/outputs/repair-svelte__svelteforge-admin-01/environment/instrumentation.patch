@@ -1,0 +1,1372 @@
+diff --git a/src/lib/components/app-sidebar.svelte b/src/lib/components/app-sidebar.svelte
+index 7fea7bf2..ef8c3d9b 100644
+--- a/src/lib/components/app-sidebar.svelte
++++ b/src/lib/components/app-sidebar.svelte
+@@ -53,6 +53,21 @@
+ 			.slice(0, 2);
+ 	}
+ 
++	function navTestId(url: string) {
++		const map: Record<string, string> = {
++			"/": "nav-dashboard",
++			"/analytics": "nav-analytics",
++			"/users": "nav-users",
++			"/content": "nav-content",
++			"/roles": "nav-roles",
++			"/notifications": "nav-notifications",
++			"/database": "nav-database",
++			"/settings": "nav-settings",
++			"/docs": "nav-docs",
++		};
++		return map[url];
++	}
++
+ 	type NavItem = {
+ 		title: string;
+ 		url: string;
+@@ -131,14 +146,14 @@
+ 							<Sidebar.MenuItem>
+ 								<Sidebar.MenuButton>
+ 									{#snippet child({ props })}
+-										<a href={item.url} {...props} onclick={handleNavigate}>
++										<a href={item.url} data-testid={navTestId(item.url)} {...props} onclick={handleNavigate}>
+ 											<item.icon class="size-4" />
+ 											<span>{item.title}</span>
+ 										</a>
+ 									{/snippet}
+ 								</Sidebar.MenuButton>
+ 								{#if item.badge}
+-									<Sidebar.MenuBadge>{item.badge}</Sidebar.MenuBadge>
++									<Sidebar.MenuBadge data-testid="nav-notifications-badge">{item.badge}</Sidebar.MenuBadge>
+ 								{/if}
+ 							</Sidebar.MenuItem>
+ 						{/each}
+@@ -174,6 +189,7 @@
+ 							<Sidebar.MenuButton
+ 								size="lg"
+ 								class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
++								data-testid="user-menu-trigger"
+ 								{...props}
+ 							>
+ 								<Avatar.Root class="size-8 rounded-lg">
+@@ -249,6 +265,7 @@
+ 						</DropdownMenu.Item>
+ 						<DropdownMenu.Separator />
+ 						<DropdownMenu.Item
++							data-testid="logout-item"
+ 							variant="destructive"
+ 							onclick={() => {
+ 								const form = document.getElementById("logout-form");
+diff --git a/src/lib/components/apps-menu.svelte b/src/lib/components/apps-menu.svelte
+index 34532ff1..015d451d 100644
+--- a/src/lib/components/apps-menu.svelte
++++ b/src/lib/components/apps-menu.svelte
+@@ -28,14 +28,14 @@
+ <Popover.Root bind:open>
+ 	<Popover.Trigger>
+ 		{#snippet child({ props })}
+-			<Button variant="ghost" size="icon" {...props}>
++			<Button data-testid="apps-menu-trigger" variant="ghost" size="icon" {...props}>
+ 				<LayoutGridIcon class="size-4" />
+ 				<span class="sr-only">Apps menu</span>
+ 			</Button>
+ 		{/snippet}
+ 	</Popover.Trigger>
+ 	<Popover.Content class="w-64 p-2" align="end">
+-		<div class="grid grid-cols-3 gap-1">
++		<div data-testid="apps-menu-grid" class="grid grid-cols-3 gap-1">
+ 			{#each apps as app (app.href)}
+ 				{@const Icon = app.icon}
+ 				<a
+diff --git a/src/lib/components/command-palette.svelte b/src/lib/components/command-palette.svelte
+index b64724b2..a0f77447 100644
+--- a/src/lib/components/command-palette.svelte
++++ b/src/lib/components/command-palette.svelte
+@@ -145,6 +145,7 @@
+ 
+ <button
+ 	type="button"
++	data-testid="search-trigger"
+ 	class="border-input bg-muted/40 text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex h-8 items-center gap-2 rounded-md border px-3 text-sm transition-colors"
+ 	onclick={() => (open = true)}
+ >
+@@ -166,21 +167,23 @@
+ >
+ 	<Dialog.Content
+ 		showCloseButton={false}
++		data-testid="palette-dialog"
+ 		class="top-[20%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-lg"
+ 	>
+ 		<Command.Root shouldFilter={true} loop label="Command palette">
+ 			<div class="flex items-center border-b px-3">
+ 				<SearchIcon class="text-muted-foreground mr-2 size-4 shrink-0" />
+ 				<Command.Input
++					data-testid="palette-input"
+ 					class="placeholder:text-muted-foreground flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+ 					placeholder="Type a command or search..."
+ 					bind:value={query}
+ 				/>
+ 				{#if loading}
+-					<LoaderIcon class="text-muted-foreground ml-2 size-4 shrink-0 animate-spin" />
++					<LoaderIcon data-testid="palette-loading" class="text-muted-foreground ml-2 size-4 shrink-0 animate-spin" />
+ 				{/if}
+ 			</div>
+-			<Command.List class="max-h-[300px] overflow-x-hidden overflow-y-auto px-1 py-1.5">
++			<Command.List data-testid="palette-results" class="max-h-[300px] overflow-x-hidden overflow-y-auto px-1 py-1.5">
+ 				<Command.Empty class="text-muted-foreground py-6 text-center text-sm">
+ 					No results found.
+ 				</Command.Empty>
+@@ -213,10 +216,11 @@
+ 						<Command.GroupItems>
+ 							{#each searchResults as result (result.id)}
+ 								{@const Icon = resultIcon(result.type)}
+-								<Command.Item
+-									value={`search-${result.id}`}
+-									forceMount
+-									onSelect={() => navigate(result.href)}
++							<Command.Item
++								value={`search-${result.id}`}
++								forceMount
++								data-testid="palette-result-item"
++								onSelect={() => navigate(result.href)}
+ 									class="data-[selected]:bg-accent data-[selected]:text-accent-foreground relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+ 								>
+ 									<Icon class="text-muted-foreground size-4 shrink-0" />
+diff --git a/src/lib/components/data-table-pagination.svelte b/src/lib/components/data-table-pagination.svelte
+index ba657709..524e6594 100644
+--- a/src/lib/components/data-table-pagination.svelte
++++ b/src/lib/components/data-table-pagination.svelte
+@@ -28,7 +28,7 @@
+ </script>
+ 
+ <div class="flex items-center justify-between px-2 py-4">
+-	<div class="text-muted-foreground text-sm">
++	<div data-testid="showing-range" class="text-muted-foreground text-sm">
+ 		{#if totalItems > 0}
+ 			Showing {startItem}–{endItem} of {totalItems}
+ 		{:else}
+@@ -48,18 +48,19 @@
+ 					}
+ 				}}
+ 			>
+-				<Select.Trigger class="h-8 w-16">
++				<Select.Trigger data-testid="rows-select-trigger" class="h-8 w-16">
+ 					<span>{pageSize}</span>
+ 				</Select.Trigger>
+ 				<Select.Content>
+ 					{#each pageSizes as size (size)}
+-						<Select.Item value={size}>{size}</Select.Item>
++						<Select.Item data-testid={"rows-option-" + size} value={size}>{size}</Select.Item>
+ 					{/each}
+ 				</Select.Content>
+ 			</Select.Root>
+ 		</div>
+ 		<div class="flex items-center gap-1">
+ 			<Button
++				data-testid="page-first"
+ 				variant="outline"
+ 				size="icon"
+ 				class="size-8"
+@@ -70,6 +71,7 @@
+ 				<span class="sr-only">First page</span>
+ 			</Button>
+ 			<Button
++				data-testid="page-prev"
+ 				variant="outline"
+ 				size="icon"
+ 				class="size-8"
+@@ -79,10 +81,11 @@
+ 				<ChevronLeftIcon class="size-4" />
+ 				<span class="sr-only">Previous page</span>
+ 			</Button>
+-			<span class="text-muted-foreground px-2 text-sm">
++			<span data-testid="page-indicator" class="text-muted-foreground px-2 text-sm">
+ 				{currentPage} / {totalPages}
+ 			</span>
+ 			<Button
++				data-testid="page-next"
+ 				variant="outline"
+ 				size="icon"
+ 				class="size-8"
+@@ -93,6 +96,7 @@
+ 				<span class="sr-only">Next page</span>
+ 			</Button>
+ 			<Button
++				data-testid="page-last"
+ 				variant="outline"
+ 				size="icon"
+ 				class="size-8"
+diff --git a/src/lib/components/delete-confirm-dialog.svelte b/src/lib/components/delete-confirm-dialog.svelte
+index 00953e81..b1b68265 100644
+--- a/src/lib/components/delete-confirm-dialog.svelte
++++ b/src/lib/components/delete-confirm-dialog.svelte
+@@ -13,7 +13,7 @@
+ </script>
+ 
+ <AlertDialog.Root bind:open>
+-	<AlertDialog.Content>
++	<AlertDialog.Content data-testid="confirm-dialog">
+ 		<AlertDialog.Header>
+ 			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
+ 			<AlertDialog.Description>
+@@ -21,7 +21,7 @@
+ 			</AlertDialog.Description>
+ 		</AlertDialog.Header>
+ 		<AlertDialog.Footer>
+-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
++			<AlertDialog.Cancel data-testid="confirm-cancel-button">Cancel</AlertDialog.Cancel>
+ 			<form
+ 				method="POST"
+ 				{action}
+@@ -34,6 +34,7 @@
+ 			>
+ 				<input type="hidden" name="id" value={id} />
+ 				<AlertDialog.Action
++					data-testid="confirm-delete-button"
+ 					type="submit"
+ 					class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+ 				>
+diff --git a/src/lib/components/notification-bell.svelte b/src/lib/components/notification-bell.svelte
+index be7024a8..9d37b301 100644
+--- a/src/lib/components/notification-bell.svelte
++++ b/src/lib/components/notification-bell.svelte
+@@ -62,11 +62,12 @@
+ <Popover.Root>
+ 	<Popover.Trigger>
+ 		{#snippet child({ props })}
+-			<Button variant="ghost" size="icon" {...props}>
++			<Button data-testid="notification-bell-button" variant="ghost" size="icon" {...props}>
+ 				<span class="relative">
+ 					<BellIcon class="size-4" />
+ 					{#if count > 0}
+ 						<span
++							data-testid="bell-badge"
+ 							class="bg-destructive text-destructive-foreground absolute -top-2.5 -right-2.5 flex size-4 items-center justify-center rounded-full text-[10px] font-bold"
+ 						>
+ 							{count > 9 ? "9+" : count}
+@@ -82,7 +83,7 @@
+ 			<div class="flex items-center justify-between">
+ 				<h4 class="text-sm font-semibold">Notifications</h4>
+ 				{#if count > 0}
+-					<Badge variant="secondary" class="text-[10px]">{count} unread</Badge>
++					<Badge data-testid="bell-unread-label" variant="secondary" class="text-[10px]">{count} unread</Badge>
+ 				{/if}
+ 			</div>
+ 		</div>
+diff --git a/src/lib/components/role-change-dialog.svelte b/src/lib/components/role-change-dialog.svelte
+index 7f20354e..82fcd143 100644
+--- a/src/lib/components/role-change-dialog.svelte
++++ b/src/lib/components/role-change-dialog.svelte
+@@ -16,7 +16,7 @@
+ </script>
+ 
+ <Dialog.Root bind:open>
+-	<Dialog.Content class="sm:max-w-[350px]">
++	<Dialog.Content data-testid="role-dialog" class="sm:max-w-[350px]">
+ 		<Dialog.Header>
+ 			<Dialog.Title>Change Role</Dialog.Title>
+ 			<Dialog.Description>
+@@ -40,7 +40,7 @@
+ 				<div class="grid gap-2">
+ 					<Label for="newRole">New Role</Label>
+ 					<Select.Root name="newRole" type="single" value={currentRole}>
+-						<Select.Trigger>
++						<Select.Trigger data-testid="new-role-select-trigger">
+ 							<span>{currentRole}</span>
+ 						</Select.Trigger>
+ 						<Select.Content>
+@@ -52,7 +52,7 @@
+ 				</div>
+ 			</div>
+ 			<Dialog.Footer>
+-				<Button type="submit">Update Role</Button>
++				<Button data-testid="role-update-submit" type="submit">Update Role</Button>
+ 			</Dialog.Footer>
+ 		</form>
+ 	</Dialog.Content>
+diff --git a/src/lib/components/theme-toggle.svelte b/src/lib/components/theme-toggle.svelte
+index 39f6dd69..be9c73ab 100644
+--- a/src/lib/components/theme-toggle.svelte
++++ b/src/lib/components/theme-toggle.svelte
+@@ -5,7 +5,7 @@
+ 	import { Button } from "$lib/components/ui/button/index.js";
+ </script>
+ 
+-<Button onclick={toggleMode} variant="ghost" size="icon" class="size-8">
++<Button data-testid="theme-toggle" onclick={toggleMode} variant="ghost" size="icon" class="size-8">
+ 	<SunIcon class="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+ 	<MoonIcon class="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+ 	<span class="sr-only">Toggle theme</span>
+diff --git a/src/lib/components/user-form-dialog.svelte b/src/lib/components/user-form-dialog.svelte
+index 8eb73414..f2734c54 100644
+--- a/src/lib/components/user-form-dialog.svelte
++++ b/src/lib/components/user-form-dialog.svelte
+@@ -27,9 +27,9 @@
+ </script>
+ 
+ <Dialog.Root bind:open>
+-	<Dialog.Content class="sm:max-w-[425px]">
++	<Dialog.Content data-testid="user-dialog" class="sm:max-w-[425px]">
+ 		<Dialog.Header>
+-			<Dialog.Title>{title}</Dialog.Title>
++			<Dialog.Title data-testid="user-dialog-title">{title}</Dialog.Title>
+ 			<Dialog.Description>
+ 				{mode === "create" ? "Create a new user account." : "Update user details."}
+ 			</Dialog.Description>
+@@ -52,21 +52,22 @@
+ 			<div class="grid gap-4 py-4">
+ 				<div class="grid gap-2">
+ 					<Label for="name">Name</Label>
+-					<Input id="name" name="name" value={user?.name ?? ""} required />
++					<Input id="name" name="name" data-testid="field-name" value={user?.name ?? ""} required />
+ 				</div>
+ 				<div class="grid gap-2">
+ 					<Label for="email">Email</Label>
+-					<Input id="email" name="email" type="email" value={user?.email ?? ""} required />
++					<Input id="email" name="email" data-testid="field-email" type="email" value={user?.email ?? ""} required />
+ 				</div>
+ 				{#if mode === "create"}
+ 					<div class="grid gap-2">
+ 						<Label for="username">Username</Label>
+-						<Input id="username" name="username" placeholder="lowercase, 3-31 chars" required />
++						<Input id="username" name="username" data-testid="field-username" placeholder="lowercase, 3-31 chars" required />
+ 					</div>
+ 					<div class="grid gap-2">
+ 						<Label for="password">Password</Label>
+ 						<Input
+ 							id="password"
++							data-testid="field-password"
+ 							name="password"
+ 							type="password"
+ 							placeholder="6+ characters"
+@@ -77,7 +78,8 @@
+ 				<div class="grid gap-2">
+ 					<Label for="role">Role</Label>
+ 					<Select.Root name="role" type="single" value={user?.role ?? "viewer"}>
+-						<Select.Trigger>
++						
++						<Select.Trigger data-testid="role-select-trigger">
+ 							<span>{user?.role ?? "viewer"}</span>
+ 						</Select.Trigger>
+ 						<Select.Content>
+@@ -89,7 +91,7 @@
+ 				</div>
+ 			</div>
+ 			<Dialog.Footer>
+-				<Button type="submit">{mode === "create" ? "Create" : "Save Changes"}</Button>
++				<Button data-testid="user-dialog-submit" type="submit">{mode === "create" ? "Create" : "Save Changes"}</Button>
+ 			</Dialog.Footer>
+ 		</form>
+ 	</Dialog.Content>
+diff --git a/src/routes/(app)/+layout.svelte b/src/routes/(app)/+layout.svelte
+index 9b900380..61066091 100644
+--- a/src/routes/(app)/+layout.svelte
++++ b/src/routes/(app)/+layout.svelte
+@@ -24,7 +24,7 @@
+ 	}
+ </script>
+ 
+-<Sidebar.Provider>
++<Sidebar.Provider data-testid="app-shell">
+ 	<AppSidebar user={data.user} notificationCount={data.unreadNotificationCount} />
+ 	<Sidebar.Inset>
+ 		<header
+@@ -33,7 +33,7 @@
+ 			<Sidebar.Trigger class="-ml-1" />
+ 			<Separator orientation="vertical" class="mr-2 !h-4" />
+ 			<Breadcrumb.Root>
+-				<Breadcrumb.List>
++			<Breadcrumb.List data-testid="breadcrumb-list">
+ 					{#each getBreadcrumbs() as crumb, i (crumb.href)}
+ 						{#if i > 0}
+ 							<Breadcrumb.Separator />
+@@ -66,4 +66,4 @@
+ 	</Sidebar.Inset>
+ </Sidebar.Provider>
+ 
+-<Toaster />
++<Toaster data-testid="toaster" />
+diff --git a/src/routes/(app)/+page.svelte b/src/routes/(app)/+page.svelte
+index 59d8ed7c..65e57e10 100644
+--- a/src/routes/(app)/+page.svelte
++++ b/src/routes/(app)/+page.svelte
+@@ -159,6 +159,24 @@
+ 			.slice(0, 2);
+ 	}
+ 
++	function statTestId(title: string) {
++		const map: Record<string, string> = {
++			"Total Users": "stat-total-users",
++			"Active Sessions": "stat-active-sessions",
++			"Total Pages": "stat-total-pages",
++			"Unread Notifications": "stat-unread-notifications",
++		};
++		return map[title];
++	}
++
++	function trendTestId(title: string) {
++		const map: Record<string, string> = {
++			"Total Users": "trend-users",
++			"Total Pages": "trend-pages",
++		};
++		return map[title];
++	}
++
+ 	function notifIcon(type: string) {
+ 		switch (type) {
+ 			case "warning":
+@@ -216,11 +234,16 @@
+ 					<stat.icon class="text-muted-foreground size-4" />
+ 				</Card.Header>
+ 				<Card.Content>
+-					<div class="text-2xl font-bold"><AnimatedCounter value={stat.rawValue} /></div>
++					<div class="text-2xl font-bold">
++						<span data-testid={statTestId(stat.title)}
++							><AnimatedCounter value={stat.rawValue} /></span
++						>
++					</div>
+ 					{#if stat.trend !== null}
+ 						<div class="mt-1.5 flex items-center gap-1.5">
+ 							{#if stat.trend > 0}
+ 								<span
++									data-testid={trendTestId(stat.title)}
+ 									class="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-400"
+ 								>
+ 									<TrendingUpIcon class="size-3" />
+@@ -228,6 +251,7 @@
+ 								</span>
+ 							{:else if stat.trend < 0}
+ 								<span
++									data-testid={trendTestId(stat.title)}
+ 									class="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-400"
+ 								>
+ 									<TrendingDownIcon class="size-3" />
+@@ -235,6 +259,7 @@
+ 								</span>
+ 							{:else}
+ 								<span
++									data-testid={trendTestId(stat.title)}
+ 									class="bg-muted text-muted-foreground inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+ 								>
+ 									No change
+@@ -258,7 +283,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if chartData.length > 0}
+-						<Chart.Container config={signupChartConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="chart-signups" config={signupChartConfig} class="h-[300px] w-full">
+ 							<AreaChart
+ 								data={chartData}
+ 								x="date"
+@@ -306,7 +331,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if contentTrendData().length > 0}
+-						<Chart.Container config={contentTrendConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="chart-content-trend" config={contentTrendConfig} class="h-[300px] w-full">
+ 							<BarChart
+ 								data={contentTrendData()}
+ 								x="month"
+@@ -341,7 +366,7 @@
+ 							</BarChart>
+ 						</Chart.Container>
+ 					{:else}
+-						<div class="flex h-[300px] flex-col justify-end gap-2 px-4 pb-8">
++						<div data-testid="content-trend-skeleton" class="flex h-[300px] flex-col justify-end gap-2 px-4 pb-8">
+ 							<div class="flex items-end gap-3">
+ 								{#each [60, 80, 45, 70, 55, 90] as h}
+ 									<Skeleton class="flex-1" style="height: {h}%" />
+@@ -365,7 +390,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if roleData.length > 0}
+-						<Chart.Container config={roleChartConfig} class="h-[220px] w-full">
++						<Chart.Container data-testid="chart-role-dist" config={roleChartConfig} class="h-[220px] w-full">
+ 							<PieChart
+ 								data={roleData}
+ 								value="value"
+@@ -398,7 +423,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if pageStatusData.length > 0}
+-						<Chart.Container config={pageStatusConfig} class="h-[220px] w-full">
++						<Chart.Container data-testid="chart-page-status" config={pageStatusConfig} class="h-[220px] w-full">
+ 							<PieChart
+ 								data={pageStatusData}
+ 								value="value"
+@@ -433,7 +458,7 @@
+ 						<BookOpenIcon class="text-muted-foreground size-4" />
+ 						<span class="text-muted-foreground text-sm">Published</span>
+ 					</div>
+-					<span class="text-sm font-bold">{data.quickStats.publishedPages}</span>
++					<span data-testid="quickstat-published" class="text-sm font-bold">{data.quickStats.publishedPages}</span>
+ 				</div>
+ 				<Separator />
+ 				<div class="flex items-center justify-between">
+@@ -441,7 +466,7 @@
+ 						<PenToolIcon class="text-muted-foreground size-4" />
+ 						<span class="text-muted-foreground text-sm">Active Editors</span>
+ 					</div>
+-					<span class="text-sm font-bold">{data.quickStats.activeEditors}</span>
++					<span data-testid="quickstat-editors" class="text-sm font-bold">{data.quickStats.activeEditors}</span>
+ 				</div>
+ 				<Separator />
+ 				<div class="flex items-center justify-between">
+@@ -450,11 +475,11 @@
+ 						<span class="text-muted-foreground text-sm">System</span>
+ 					</div>
+ 					{#if data.systemStatus.maintenanceMode}
+-						<Badge variant="outline" class="border-yellow-500 text-yellow-600 dark:text-yellow-400"
++						<Badge data-testid="system-status-badge" variant="outline" class="border-yellow-500 text-yellow-600 dark:text-yellow-400"
+ 							>Maintenance</Badge
+ 						>
+ 					{:else}
+-						<Badge variant="outline" class="border-green-500 text-green-600 dark:text-green-400"
++						<Badge data-testid="system-status-badge" variant="outline" class="border-green-500 text-green-600 dark:text-green-400"
+ 							>Operational</Badge
+ 						>
+ 					{/if}
+@@ -480,9 +505,9 @@
+ 			</Card.Header>
+ 			<Card.Content>
+ 				{#if data.recentActivity.length > 0}
+-					<div class="space-y-4">
++					<div data-testid="activity-list" class="space-y-4">
+ 						{#each data.recentActivity as activity (activity.time)}
+-							<div class="flex items-center gap-3">
++							<div data-testid="activity-item" class="flex items-center gap-3">
+ 								<div
+ 									class="bg-primary/10 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-medium"
+ 								>
+@@ -515,10 +540,10 @@
+ 			<Card.Content>
+ 				{#if data.recentNotifications.length > 0}
+ 					<ScrollArea class="max-h-[250px]">
+-						<div class="space-y-3">
++						<div data-testid="dash-notif-feed" class="space-y-3">
+ 							{#each data.recentNotifications as notif (notif.id)}
+ 								{@const Icon = notifIcon(notif.type)}
+-								<div class="flex items-start gap-3">
++								<div data-testid="dash-notif-item" class="flex items-start gap-3">
+ 									<div class={`mt-0.5 shrink-0 ${notifColor(notif.type)}`}>
+ 										<Icon class="size-4" />
+ 									</div>
+diff --git a/src/routes/(app)/analytics/+page.svelte b/src/routes/(app)/analytics/+page.svelte
+index 5a78de04..3384bde2 100644
+--- a/src/routes/(app)/analytics/+page.svelte
++++ b/src/routes/(app)/analytics/+page.svelte
+@@ -67,7 +67,7 @@
+ 
+ <div class="space-y-6">
+ 	<div>
+-		<h1 class="text-3xl font-bold tracking-tight">Analytics</h1>
++		<h1 data-testid="analytics-heading" class="text-3xl font-bold tracking-tight">Analytics</h1>
+ 		<p class="text-muted-foreground">Monitor your platform metrics and performance.</p>
+ 	</div>
+ 
+@@ -80,7 +80,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if signupData.length > 0}
+-						<Chart.Container config={signupConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="chart-analytics-signups" config={signupConfig} class="h-[300px] w-full">
+ 							<AreaChart
+ 								data={signupData}
+ 								x="date"
+@@ -120,7 +120,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if contentData.length > 0}
+-						<Chart.Container config={contentConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="chart-analytics-content" config={contentConfig} class="h-[300px] w-full">
+ 							<LineChart
+ 								data={contentData}
+ 								x="date"
+@@ -162,7 +162,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if statusData.length > 0}
+-						<Chart.Container config={statusConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="chart-analytics-status" config={statusConfig} class="h-[300px] w-full">
+ 							<PieChart
+ 								data={statusData}
+ 								value="value"
+@@ -193,7 +193,7 @@
+ 			<Card.Content>
+ 				{#key mode.current}
+ 					{#if data.topAuthors.length > 0}
+-						<Chart.Container config={authorsConfig} class="h-[300px] w-full">
++						<Chart.Container data-testid="top-authors-table" config={authorsConfig} class="h-[300px] w-full">
+ 							<BarChart
+ 								data={data.topAuthors}
+ 								x="name"
+diff --git a/src/routes/(app)/content/+page.svelte b/src/routes/(app)/content/+page.svelte
+index 59c0d6c6..039c7358 100644
+--- a/src/routes/(app)/content/+page.svelte
++++ b/src/routes/(app)/content/+page.svelte
+@@ -150,7 +150,7 @@
+ 			<h1 class="text-3xl font-bold tracking-tight">Content</h1>
+ 			<p class="text-muted-foreground">Create and manage your platform content.</p>
+ 		</div>
+-		<Button href="/content/new">
++		<Button data-testid="new-page-button" href="/content/new">
+ 			<PlusIcon class="mr-2 size-4" />
+ 			New Page
+ 		</Button>
+@@ -160,9 +160,9 @@
+ 	<div class="flex items-center gap-2">
+ 		<div class="relative max-w-sm flex-1">
+ 			<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+-			<Input placeholder="Search pages..." class="pl-9" bind:value={search} />
++			<Input data-testid="content-search" placeholder="Search pages..." class="pl-9" bind:value={search} />
+ 		</div>
+-		<p class="text-muted-foreground text-sm">
++		<p data-testid="content-count" class="text-muted-foreground text-sm">
+ 			{filtered.length} page{filtered.length !== 1 ? "s" : ""}
+ 		</p>
+ 		<div class="ml-auto flex items-center gap-2">
+@@ -194,7 +194,7 @@
+ 
+ 	<!-- Table -->
+ 	<div class="rounded-md border">
+-		<Table.Root>
++		<Table.Root data-testid="content-table">
+ 			<Table.Header>
+ 				<Table.Row>
+ 					<Table.Head class="w-[40px]">
+@@ -222,7 +222,7 @@
+ 			</Table.Header>
+ 			<Table.Body>
+ 				{#each paginated as p (p.id)}
+-					<Table.Row class={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
++					<Table.Row data-testid="content-row" class={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+ 						<Table.Cell>
+ 							<input
+ 								type="checkbox"
+@@ -241,12 +241,13 @@
+ 						<Table.Cell class="text-muted-foreground">{formatDate(p.updatedAt)}</Table.Cell>
+ 						<Table.Cell>
+ 							<div class="flex items-center gap-1">
+-								<Button variant="ghost" size="icon" class="size-8" href="/content/{p.id}/edit">
++								<Button data-testid="content-edit-button" variant="ghost" size="icon" class="size-8" href="/content/{p.id}/edit">
+ 									<PencilIcon class="size-4" />
+ 								</Button>
+ 								<Button
+ 									variant="ghost"
+ 									size="icon"
++									data-testid="content-delete-button"
+ 									class="text-destructive size-8"
+ 									onclick={() => openDelete(p.id)}
+ 								>
+diff --git a/src/routes/(app)/content/[id]/edit/+page.svelte b/src/routes/(app)/content/[id]/edit/+page.svelte
+index de82c7ed..8aa9aea9 100644
+--- a/src/routes/(app)/content/[id]/edit/+page.svelte
++++ b/src/routes/(app)/content/[id]/edit/+page.svelte
+@@ -50,6 +50,7 @@
+ 					<Label for="title">Title</Label>
+ 					<Input
+ 						id="title"
++						data-testid="page-title-input"
+ 						name="title"
+ 						placeholder="Page title"
+ 						value={title}
+@@ -64,6 +65,7 @@
+ 						<span class="text-muted-foreground text-sm">/</span>
+ 						<Input
+ 							id="slug"
++							data-testid="page-slug-input"
+ 							name="slug"
+ 							placeholder="page-slug"
+ 							value={slug}
+@@ -77,6 +79,7 @@
+ 					<Label for="content">Content</Label>
+ 					<Textarea
+ 						id="content"
++						data-testid="page-content-input"
+ 						name="content"
+ 						placeholder="Write your page content here..."
+ 						rows={12}
+@@ -88,7 +91,7 @@
+ 					<div class="grid gap-2">
+ 						<Label>Template</Label>
+ 						<Select.Root name="template" type="single" value={data.page.template}>
+-							<Select.Trigger>
++							<Select.Trigger data-testid="template-select-trigger">
+ 								<span class="capitalize">{data.page.template}</span>
+ 							</Select.Trigger>
+ 							<Select.Content>
+@@ -102,7 +105,7 @@
+ 					<div class="grid gap-2">
+ 						<Label>Status</Label>
+ 						<Select.Root name="status" type="single" value={data.page.status}>
+-							<Select.Trigger>
++							<Select.Trigger data-testid="status-select-trigger">
+ 								<span class="capitalize">{data.page.status}</span>
+ 							</Select.Trigger>
+ 							<Select.Content>
+@@ -116,7 +119,7 @@
+ 
+ 				<div class="flex justify-end gap-2">
+ 					<Button variant="outline" href="/content">Cancel</Button>
+-					<Button type="submit">Save Changes</Button>
++					<Button data-testid="page-edit-submit" type="submit">Save Changes</Button>
+ 				</div>
+ 			</form>
+ 		</Card.Content>
+diff --git a/src/routes/(app)/content/new/+page.svelte b/src/routes/(app)/content/new/+page.svelte
+index ea1aede6..fe399e54 100644
+--- a/src/routes/(app)/content/new/+page.svelte
++++ b/src/routes/(app)/content/new/+page.svelte
+@@ -63,6 +63,7 @@
+ 					<Label for="title">Title</Label>
+ 					<Input
+ 						id="title"
++						data-testid="page-title-input"
+ 						name="title"
+ 						placeholder="Page title"
+ 						value={title}
+@@ -77,6 +78,7 @@
+ 						<span class="text-muted-foreground text-sm">/</span>
+ 						<Input
+ 							id="slug"
++							data-testid="page-slug-input"
+ 							name="slug"
+ 							placeholder="page-slug"
+ 							value={slug}
+@@ -90,6 +92,7 @@
+ 					<Label for="content">Content</Label>
+ 					<Textarea
+ 						id="content"
++						data-testid="page-content-input"
+ 						name="content"
+ 						placeholder="Write your page content here..."
+ 						rows={12}
+@@ -100,7 +103,7 @@
+ 					<div class="grid gap-2">
+ 						<Label>Template</Label>
+ 						<Select.Root name="template" type="single" value="default">
+-							<Select.Trigger>
++							<Select.Trigger data-testid="template-select-trigger">
+ 								<span>Default</span>
+ 							</Select.Trigger>
+ 							<Select.Content>
+@@ -114,7 +117,7 @@
+ 					<div class="grid gap-2">
+ 						<Label>Status</Label>
+ 						<Select.Root name="status" type="single" value="draft">
+-							<Select.Trigger>
++							<Select.Trigger data-testid="status-select-trigger">
+ 								<span>Draft</span>
+ 							</Select.Trigger>
+ 							<Select.Content>
+@@ -128,7 +131,7 @@
+ 
+ 				<div class="flex justify-end gap-2">
+ 					<Button variant="outline" href="/content">Cancel</Button>
+-					<Button type="submit">Create Page</Button>
++					<Button data-testid="page-create-submit" type="submit">Create Page</Button>
+ 				</div>
+ 			</form>
+ 		</Card.Content>
+diff --git a/src/routes/(app)/database/+page.svelte b/src/routes/(app)/database/+page.svelte
+index 62c48ba0..484a4945 100644
+--- a/src/routes/(app)/database/+page.svelte
++++ b/src/routes/(app)/database/+page.svelte
+@@ -35,7 +35,7 @@
+ 				<HardDriveIcon class="text-muted-foreground size-4" />
+ 			</Card.Header>
+ 			<Card.Content>
+-				<div class="text-2xl font-bold">{formatBytes(data.dbSize)}</div>
++				<div data-testid="db-size" class="text-2xl font-bold">{formatBytes(data.dbSize)}</div>
+ 				<p class="text-muted-foreground text-xs">SQLite file size</p>
+ 			</Card.Content>
+ 		</Card.Root>
+@@ -46,7 +46,7 @@
+ 				<DatabaseIcon class="text-muted-foreground size-4" />
+ 			</Card.Header>
+ 			<Card.Content>
+-				<div class="text-2xl font-bold uppercase">{data.journalMode}</div>
++				<div data-testid="journal-mode" class="text-2xl font-bold uppercase">{data.journalMode}</div>
+ 				<p class="text-muted-foreground text-xs">Write-ahead logging</p>
+ 			</Card.Content>
+ 		</Card.Root>
+@@ -57,7 +57,7 @@
+ 				<TableIcon class="text-muted-foreground size-4" />
+ 			</Card.Header>
+ 			<Card.Content>
+-				<div class="text-2xl font-bold">{data.tables.length}</div>
++				<div data-testid="tables-count" class="text-2xl font-bold">{data.tables.length}</div>
+ 				<p class="text-muted-foreground text-xs">Active tables</p>
+ 			</Card.Content>
+ 		</Card.Root>
+@@ -68,7 +68,7 @@
+ 				<RowsIcon class="text-muted-foreground size-4" />
+ 			</Card.Header>
+ 			<Card.Content>
+-				<div class="text-2xl font-bold">{data.totalRows.toLocaleString()}</div>
++				<div data-testid="total-rows" class="text-2xl font-bold">{data.totalRows.toLocaleString()}</div>
+ 				<p class="text-muted-foreground text-xs">Across all tables</p>
+ 			</Card.Content>
+ 		</Card.Root>
+@@ -90,7 +90,7 @@
+ 				</Table.Header>
+ 				<Table.Body>
+ 					{#each data.tables as table (table.name)}
+-						<Table.Row>
++						<Table.Row data-testid="db-table-row">
+ 							<Table.Cell class="font-mono text-sm">{table.name}</Table.Cell>
+ 							<Table.Cell class="text-right">{table.rows.toLocaleString()}</Table.Cell>
+ 							<Table.Cell class="text-right">
+diff --git a/src/routes/(app)/notifications/+page.svelte b/src/routes/(app)/notifications/+page.svelte
+index b68faa4a..9b9a4f58 100644
+--- a/src/routes/(app)/notifications/+page.svelte
++++ b/src/routes/(app)/notifications/+page.svelte
+@@ -20,6 +20,7 @@
+ 	});
+ 
+ 	const unreadCount = $derived(data.notifications.filter((n) => !n.read).length);
++	const firstUnreadId = $derived(data.notifications.find((n) => !n.read)?.id);
+ 
+ 	function typeIcon(type: string) {
+ 		switch (type) {
+@@ -66,7 +67,7 @@
+ 	<div class="flex items-center justify-between">
+ 		<div>
+ 			<h1 class="text-3xl font-bold tracking-tight">Notifications</h1>
+-			<p class="text-muted-foreground">
++			<p data-testid="notifications-summary" class="text-muted-foreground">
+ 				{#if unreadCount > 0}
+ 					You have {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}.
+ 				{:else}
+@@ -76,7 +77,7 @@
+ 		</div>
+ 		{#if unreadCount > 0}
+ 			<form method="POST" action="?/markAllRead" use:enhance>
+-				<Button variant="outline" type="submit">
++				<Button data-testid="mark-all-read-button" variant="outline" type="submit">
+ 					<CheckIcon class="mr-2 size-4" />
+ 					Mark All Read
+ 				</Button>
+@@ -95,7 +96,7 @@
+ 		<div class="space-y-3">
+ 			{#each data.notifications as notification (notification.id)}
+ 				{@const Icon = typeIcon(notification.type)}
+-				<Card.Root class={!notification.read ? "border-primary/30 bg-primary/5" : ""}>
++				<Card.Root data-testid="notification-card" class={!notification.read ? "border-primary/30 bg-primary/5" : ""}>
+ 					<Card.Content class="flex items-start gap-4 pt-6">
+ 						<div class={`mt-0.5 ${typeColor(notification.type)}`}>
+ 							<Icon class="size-5" />
+@@ -106,7 +107,7 @@
+ 									<p class="text-sm leading-none font-medium">
+ 										{notification.title}
+ 										{#if !notification.read}
+-											<Badge variant="default" class="ml-2 text-[10px]">New</Badge>
++											<Badge data-testid="notification-new-badge" variant="default" class="ml-2 text-[10px]">New</Badge>
+ 										{/if}
+ 									</p>
+ 									<p class="text-muted-foreground mt-1 text-sm">{notification.message}</p>
+@@ -126,6 +127,7 @@
+ 										class="size-8"
+ 										type="submit"
+ 										title="Mark as read"
++									data-testid={notification.id === firstUnreadId ? "notification-mark-read" : undefined}
+ 									>
+ 										<CheckIcon class="size-4" />
+ 									</Button>
+@@ -139,6 +141,7 @@
+ 									class="text-destructive size-8"
+ 									type="submit"
+ 									title="Delete"
++								data-testid="notification-delete"
+ 								>
+ 									<TrashIcon class="size-4" />
+ 								</Button>
+diff --git a/src/routes/(app)/roles/+page.svelte b/src/routes/(app)/roles/+page.svelte
+index c9f83641..10673163 100644
+--- a/src/routes/(app)/roles/+page.svelte
++++ b/src/routes/(app)/roles/+page.svelte
+@@ -58,7 +58,7 @@
+ 
+ 	<div class="grid gap-6">
+ 		{#each data.roles as role (role.name)}
+-			<Card.Root class={roleColor(role.name)}>
++			<Card.Root data-testid="role-card" class={roleColor(role.name)}>
+ 				<Card.Header>
+ 					<div class="flex items-center justify-between">
+ 						<div class="flex items-center gap-3">
+@@ -72,7 +72,7 @@
+ 								<Card.Description>{role.description}</Card.Description>
+ 							</div>
+ 						</div>
+-						<Badge variant="secondary" class="gap-1">
++						<Badge data-testid="role-count-badge" variant="secondary" class="gap-1">
+ 							<UsersIcon class="size-3" />
+ 							{role.count} user{role.count !== 1 ? "s" : ""}
+ 						</Badge>
+@@ -99,8 +99,8 @@
+ 								Users
+ 							</p>
+ 							<div class="space-y-2">
+-								{#each role.users as user (user.id)}
+-									<div class="flex items-center justify-between rounded-lg border p-3">
++								{#each role.users as user, i (user.id)}
++									<div data-testid="role-user-row" class="flex items-center justify-between rounded-lg border p-3">
+ 										<div class="flex items-center gap-3">
+ 											<Avatar.Root class="size-8">
+ 												<Avatar.Fallback class="text-xs">{getInitials(user.name)}</Avatar.Fallback>
+@@ -111,6 +111,7 @@
+ 											</div>
+ 										</div>
+ 										<Button
++											data-testid={"role-change-button-" + role.name + "-" + i}
+ 											variant="ghost"
+ 											size="sm"
+ 											onclick={() =>
+diff --git a/src/routes/(app)/settings/+page.svelte b/src/routes/(app)/settings/+page.svelte
+index 1ec3ceaf..f57078bc 100644
+--- a/src/routes/(app)/settings/+page.svelte
++++ b/src/routes/(app)/settings/+page.svelte
+@@ -104,11 +104,11 @@
+ 
+ 	<Tabs.Root value="profile">
+ 		<Tabs.List>
+-			<Tabs.Trigger value="profile">Profile</Tabs.Trigger>
+-			<Tabs.Trigger value="sessions">Sessions</Tabs.Trigger>
+-			<Tabs.Trigger value="notifications">Notifications</Tabs.Trigger>
++			<Tabs.Trigger data-testid="tab-profile" value="profile">Profile</Tabs.Trigger>
++			<Tabs.Trigger data-testid="tab-sessions" value="sessions">Sessions</Tabs.Trigger>
++			<Tabs.Trigger data-testid="tab-notifications" value="notifications">Notifications</Tabs.Trigger>
+ 			{#if data.isAdmin}
+-				<Tabs.Trigger value="application">Application</Tabs.Trigger>
++				<Tabs.Trigger data-testid="tab-application" value="application">Application</Tabs.Trigger>
+ 			{/if}
+ 			{#if data.isAdmin && data.isDemoMode}
+ 				<Tabs.Trigger value="demo">Demo</Tabs.Trigger>
+@@ -125,18 +125,18 @@
+ 					<form method="POST" action="?/updateProfile" use:enhance class="space-y-4">
+ 						<div class="grid gap-2">
+ 							<Label for="name">Name</Label>
+-							<Input id="name" name="name" value={data.profile.name} required />
++							<Input id="name" name="name" data-testid="profile-name" value={data.profile.name} required />
+ 						</div>
+ 						<div class="grid gap-2">
+ 							<Label for="email">Email</Label>
+-							<Input id="email" name="email" type="email" value={data.profile.email} required />
++							<Input id="email" name="email" data-testid="profile-email" type="email" value={data.profile.email} required />
+ 						</div>
+ 						<div class="grid gap-2">
+ 							<Label>Username</Label>
+ 							<Input value={data.profile.username} disabled />
+ 							<p class="text-muted-foreground text-xs">Username cannot be changed.</p>
+ 						</div>
+-						<Button type="submit">Save Profile</Button>
++						<Button data-testid="profile-save" type="submit">Save Profile</Button>
+ 					</form>
+ 				</Card.Content>
+ 			</Card.Root>
+@@ -152,14 +152,15 @@
+ 					<form method="POST" action="?/changePassword" use:enhance class="space-y-4">
+ 						<div class="grid gap-2">
+ 							<Label for="currentPassword">Current Password</Label>
+-							<Input id="currentPassword" name="currentPassword" type="password" required />
++							<Input id="currentPassword" name="currentPassword" data-testid="current-password" type="password" required />
+ 						</div>
+ 						<Separator />
+ 						<div class="grid gap-2">
+ 							<Label for="newPassword">New Password</Label>
+ 							<Input
+ 								id="newPassword"
+-								name="newPassword"
++								data-testid="new-password"
++						name="newPassword"
+ 								type="password"
+ 								placeholder="6+ characters"
+ 								required
+@@ -167,9 +168,9 @@
+ 						</div>
+ 						<div class="grid gap-2">
+ 							<Label for="confirmPassword">Confirm New Password</Label>
+-							<Input id="confirmPassword" name="confirmPassword" type="password" required />
++							<Input id="confirmPassword" name="confirmPassword" data-testid="confirm-password" type="password" required />
+ 						</div>
+-						<Button type="submit">Change Password</Button>
++						<Button data-testid="password-save" type="submit">Change Password</Button>
+ 					</form>
+ 				</Card.Content>
+ 			</Card.Root>
+@@ -185,7 +186,7 @@
+ 						</div>
+ 						{#if data.sessions.length > 1}
+ 							<form method="POST" action="?/revokeAllOtherSessions" use:enhance>
+-								<Button type="submit" variant="destructive" size="sm">Revoke All Others</Button>
++								<Button data-testid="revoke-all-others" type="submit" variant="destructive" size="sm">Revoke All Others</Button>
+ 							</form>
+ 						{/if}
+ 					</div>
+@@ -196,7 +197,7 @@
+ 							{@const ua = parseUserAgent(session.userAgent)}
+ 							{@const isCurrent = session.id === data.currentSessionId}
+ 							{@const DeviceIcon = getDeviceIcon(ua.device)}
+-							<div class="flex items-center justify-between rounded-lg border p-4">
++							<div data-testid="session-row" class="flex items-center justify-between rounded-lg border p-4">
+ 								<div class="flex items-center gap-4">
+ 									<div class="bg-muted flex size-10 items-center justify-center rounded-lg">
+ 										<DeviceIcon class="text-muted-foreground size-5" />
+@@ -219,7 +220,7 @@
+ 								{#if !isCurrent}
+ 									<form method="POST" action="?/revokeSession" use:enhance>
+ 										<input type="hidden" name="sessionId" value={session.id} />
+-										<Button type="submit" variant="outline" size="sm">Revoke</Button>
++										<Button data-testid="session-revoke" type="submit" variant="outline" size="sm">Revoke</Button>
+ 									</form>
+ 								{/if}
+ 							</div>
+@@ -248,7 +249,7 @@
+ 										<p class="text-muted-foreground text-xs">{description}</p>
+ 									</div>
+ 								</div>
+-								<Switch name={key} checked={data.notificationPrefs[key]} />
++								<Switch data-testid="pref-switch" name={key} checked={data.notificationPrefs[key]} />
+ 							</div>
+ 						{/each}
+ 						<Button type="submit">Save Preferences</Button>
+@@ -268,13 +269,13 @@
+ 						<form method="POST" action="?/updateSettings" use:enhance class="space-y-6">
+ 							<div class="grid gap-2">
+ 								<Label for="siteName">Site Name</Label>
+-								<Input id="siteName" name="siteName" value={data.settings.siteName} />
++								<Input id="siteName" name="siteName" data-testid="site-name-input" value={data.settings.siteName} />
+ 							</div>
+ 
+ 							<div class="grid gap-2">
+ 								<Label>Timezone</Label>
+ 								<Select.Root name="timezone" type="single" value={data.settings.timezone}>
+-									<Select.Trigger>
++									<Select.Trigger data-testid="timezone-select-trigger">
+ 										<span>{data.settings.timezone}</span>
+ 									</Select.Trigger>
+ 									<Select.Content>
+@@ -293,7 +294,7 @@
+ 							<div class="grid gap-2">
+ 								<Label>Default User Role</Label>
+ 								<Select.Root name="defaultRole" type="single" value={data.settings.defaultRole}>
+-									<Select.Trigger>
++									<Select.Trigger data-testid="default-role-select-trigger">
+ 										<span class="capitalize">{data.settings.defaultRole}</span>
+ 									</Select.Trigger>
+ 									<Select.Content>
+@@ -312,10 +313,10 @@
+ 										When enabled, non-admin users will see a maintenance page.
+ 									</p>
+ 								</div>
+-								<Switch name="maintenanceMode" checked={data.settings.maintenanceMode === "true"} />
++								<Switch data-testid="maintenance-switch" name="maintenanceMode" checked={data.settings.maintenanceMode === "true"} />
+ 							</div>
+ 
+-							<Button type="submit">Save Settings</Button>
++							<Button data-testid="settings-save" type="submit">Save Settings</Button>
+ 						</form>
+ 					</Card.Content>
+ 				</Card.Root>
+diff --git a/src/routes/(app)/users/+page.svelte b/src/routes/(app)/users/+page.svelte
+index 210cad46..d4c7c158 100644
+--- a/src/routes/(app)/users/+page.svelte
++++ b/src/routes/(app)/users/+page.svelte
+@@ -172,7 +172,7 @@
+ 			<h1 class="text-3xl font-bold tracking-tight">Users</h1>
+ 			<p class="text-muted-foreground">Manage user accounts and permissions.</p>
+ 		</div>
+-		<Button onclick={() => (createOpen = true)}>
++		<Button data-testid="users-add-button" onclick={() => (createOpen = true)}>
+ 			<PlusIcon class="mr-2 size-4" />
+ 			Add User
+ 		</Button>
+@@ -182,16 +182,16 @@
+ 	<div class="flex items-center gap-2">
+ 		<div class="relative max-w-sm flex-1">
+ 			<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+-			<Input placeholder="Search users..." class="pl-9" bind:value={search} />
++			<Input data-testid="users-search" placeholder="Search users..." class="pl-9" bind:value={search} />
+ 		</div>
+-		<p class="text-muted-foreground text-sm">
++		<p data-testid="users-count" class="text-muted-foreground text-sm">
+ 			{filtered.length} user{filtered.length !== 1 ? "s" : ""}
+ 		</p>
+ 		<div class="ml-auto flex items-center gap-2">
+ 			{#if selectedIds.size > 0}
+ 				<form method="POST" action="?/bulkDelete" use:enhance>
+ 					<input type="hidden" name="ids" value={[...selectedIds].join(",")} />
+-					<Button variant="destructive" size="sm" type="submit">
++					<Button data-testid="bulk-delete-button" variant="destructive" size="sm" type="submit">
+ 						<TrashIcon class="mr-2 size-4" />
+ 						Delete {selectedIds.size}
+ 					</Button>
+@@ -200,15 +200,15 @@
+ 			<DropdownMenu.Root>
+ 				<DropdownMenu.Trigger>
+ 					{#snippet child({ props })}
+-						<Button variant="outline" size="sm" {...props}>
++						<Button data-testid="export-button" variant="outline" size="sm" {...props}>
+ 							<DownloadIcon class="mr-2 size-4" />
+ 							Export
+ 						</Button>
+ 					{/snippet}
+ 				</DropdownMenu.Trigger>
+ 				<DropdownMenu.Content>
+-					<DropdownMenu.Item onclick={() => handleExport("csv")}>Export as CSV</DropdownMenu.Item>
+-					<DropdownMenu.Item onclick={() => handleExport("json")}>Export as JSON</DropdownMenu.Item>
++					<DropdownMenu.Item data-testid="export-csv-item" onclick={() => handleExport("csv")}>Export as CSV</DropdownMenu.Item>
++					<DropdownMenu.Item data-testid="export-json-item" onclick={() => handleExport("json")}>Export as JSON</DropdownMenu.Item>
+ 				</DropdownMenu.Content>
+ 			</DropdownMenu.Root>
+ 		</div>
+@@ -216,7 +216,7 @@
+ 
+ 	<!-- Table -->
+ 	<div class="rounded-md border">
+-		<Table.Root>
++		<Table.Root data-testid="users-table">
+ 			<Table.Header>
+ 				<Table.Row>
+ 					<Table.Head class="w-[40px]">
+@@ -224,6 +224,7 @@
+ 							type="checkbox"
+ 							checked={paginated.length > 0 && selectedIds.size === paginated.length}
+ 							onchange={toggleSelectAll}
++							data-testid="select-all-checkbox"
+ 							class="accent-primary size-4"
+ 						/>
+ 					</Table.Head>
+@@ -231,6 +232,7 @@
+ 						{@const SortIcon = sortIcon(col.key)}
+ 						<Table.Head>
+ 							<button
++								data-testid={col.key === "name" ? "sort-header-name" : undefined}
+ 								class="flex items-center gap-1 text-left font-medium"
+ 								onclick={() => toggleSort(col.key)}
+ 							>
+@@ -244,12 +246,13 @@
+ 			</Table.Header>
+ 			<Table.Body>
+ 				{#each paginated as user (user.id)}
+-					<Table.Row class={selectedIds.has(user.id) ? "bg-muted/50" : ""}>
++					<Table.Row data-testid="user-row" class={selectedIds.has(user.id) ? "bg-muted/50" : ""}>
+ 						<Table.Cell>
+ 							<input
+ 								type="checkbox"
+ 								checked={selectedIds.has(user.id)}
+ 								onchange={() => toggleSelect(user.id)}
++								data-testid="user-checkbox"
+ 								class="accent-primary size-4"
+ 							/>
+ 						</Table.Cell>
+@@ -262,13 +265,14 @@
+ 						<Table.Cell class="text-muted-foreground">{formatDate(user.createdAt)}</Table.Cell>
+ 						<Table.Cell>
+ 							<div class="flex items-center gap-1">
+-								<Button variant="ghost" size="icon" class="size-8" onclick={() => openEdit(user)}>
++								<Button data-testid="user-edit-button" variant="ghost" size="icon" class="size-8" onclick={() => openEdit(user)}>
+ 									<PencilIcon class="size-4" />
+ 								</Button>
+ 								{#if user.id !== data.currentUserId}
+ 									<Button
+ 										variant="ghost"
+ 										size="icon"
++										data-testid="user-delete-button"
+ 										class="text-destructive size-8"
+ 										onclick={() => openDelete(user.id)}
+ 									>
+diff --git a/src/routes/(auth)/forgot-password/+page.svelte b/src/routes/(auth)/forgot-password/+page.svelte
+index 6a5717ad..cbd23585 100644
+--- a/src/routes/(auth)/forgot-password/+page.svelte
++++ b/src/routes/(auth)/forgot-password/+page.svelte
+@@ -41,8 +41,9 @@
+ 				<form method="POST" use:enhance class="space-y-4">
+ 					<div class="space-y-2">
+ 						<Label for="email">Email</Label>
+-						<Input
+-							id="email"
++				<Input
++					id="email"
++					data-testid="forgot-email"
+ 							name="email"
+ 							type="email"
+ 							placeholder="you@example.com"
+@@ -50,7 +51,7 @@
+ 							autocomplete="email"
+ 						/>
+ 					</div>
+-					<Button type="submit" class="w-full">Send reset link</Button>
++					<Button data-testid="forgot-submit" type="submit" class="w-full">Send reset link</Button>
+ 				</form>
+ 			{/if}
+ 		</Card.Content>
+diff --git a/src/routes/(auth)/login/+page.svelte b/src/routes/(auth)/login/+page.svelte
+index 891cde09..00e41b56 100644
+--- a/src/routes/(auth)/login/+page.svelte
++++ b/src/routes/(auth)/login/+page.svelte
+@@ -39,7 +39,7 @@
+ 				</p>
+ 			</div>
+ 			{#if form?.message}
+-				<div class="bg-destructive/10 text-destructive mb-4 rounded-md p-3 text-sm">
++				<div data-testid="login-error" class="bg-destructive/10 text-destructive mb-4 rounded-md p-3 text-sm">
+ 					{form.message}
+ 				</div>
+ 			{/if}
+@@ -49,6 +49,7 @@
+ 					<Input
+ 						id="username"
+ 						name="username"
++						data-testid="login-username"
+ 						type="text"
+ 						placeholder="Enter your username"
+ 						required
+@@ -61,6 +62,7 @@
+ 					<Input
+ 						id="password"
+ 						name="password"
++						data-testid="login-password"
+ 						type="password"
+ 						placeholder="Enter your password"
+ 						required
+@@ -68,7 +70,7 @@
+ 						value="SvelteDemo2026!"
+ 					/>
+ 				</div>
+-				<Button type="submit" class="w-full">Sign in</Button>
++				<Button data-testid="login-submit" type="submit" class="w-full">Sign in</Button>
+ 			</form>
+ 			{#if providers.length > 0}
+ 				<div class="relative my-4">
+diff --git a/src/routes/(auth)/register/+page.svelte b/src/routes/(auth)/register/+page.svelte
+index 8eac0ca1..b3b16461 100644
+--- a/src/routes/(auth)/register/+page.svelte
++++ b/src/routes/(auth)/register/+page.svelte
+@@ -37,6 +37,7 @@
+ 					<Label for="name">Full Name</Label>
+ 					<Input
+ 						id="name"
++						data-testid="register-name"
+ 						name="name"
+ 						type="text"
+ 						placeholder="John Doe"
+@@ -48,6 +49,7 @@
+ 					<Label for="email">Email</Label>
+ 					<Input
+ 						id="email"
++						data-testid="register-email"
+ 						name="email"
+ 						type="email"
+ 						placeholder="john@example.com"
+@@ -59,6 +61,7 @@
+ 					<Label for="username">Username</Label>
+ 					<Input
+ 						id="username"
++						data-testid="register-username"
+ 						name="username"
+ 						type="text"
+ 						placeholder="johndoe"
+@@ -70,6 +73,7 @@
+ 					<Label for="password">Password</Label>
+ 					<Input
+ 						id="password"
++						data-testid="register-password"
+ 						name="password"
+ 						type="password"
+ 						placeholder="6+ characters"
+@@ -77,7 +81,7 @@
+ 						autocomplete="new-password"
+ 					/>
+ 				</div>
+-				<Button type="submit" class="w-full">Create account</Button>
++				<Button data-testid="register-submit" type="submit" class="w-full">Create account</Button>
+ 			</form>
+ 		</Card.Content>
+ 		<Card.Footer class="justify-center">
+diff --git a/src/routes/(auth)/reset-password/+page.svelte b/src/routes/(auth)/reset-password/+page.svelte
+index b27b6ed3..74caeb47 100644
+--- a/src/routes/(auth)/reset-password/+page.svelte
++++ b/src/routes/(auth)/reset-password/+page.svelte
+@@ -46,6 +46,7 @@
+ 						<Label for="password">New Password</Label>
+ 						<Input
+ 							id="password"
++							data-testid="reset-password"
+ 							name="password"
+ 							type="password"
+ 							placeholder="6+ characters"
+@@ -57,6 +58,7 @@
+ 						<Label for="confirmPassword">Confirm Password</Label>
+ 						<Input
+ 							id="confirmPassword"
++							data-testid="reset-confirm"
+ 							name="confirmPassword"
+ 							type="password"
+ 							placeholder="Repeat your password"
+@@ -64,7 +66,7 @@
+ 							autocomplete="new-password"
+ 						/>
+ 					</div>
+-					<Button type="submit" class="w-full">Reset password</Button>
++					<Button data-testid="reset-submit" type="submit" class="w-full">Reset password</Button>
+ 				</form>
+ 			{/if}
+ 		</Card.Content>
+diff --git a/src/routes/(public)/pricing/+page.svelte b/src/routes/(public)/pricing/+page.svelte
+index 31623605..6a3c9b26 100644
+--- a/src/routes/(public)/pricing/+page.svelte
++++ b/src/routes/(public)/pricing/+page.svelte
+@@ -76,12 +76,12 @@
+ 		</p>
+ 	</div>
+ 
+-	<div class="grid gap-8 md:grid-cols-3">
++	<div data-testid="pricing-grid" class="grid gap-8 md:grid-cols-3">
+ 		{#each plans as plan}
+-			<Card.Root class="{plan.popular ? 'border-primary shadow-lg' : ''} relative">
++			<Card.Root data-testid="plan-card" class="{plan.popular ? 'border-primary shadow-lg' : ''} relative">
+ 				{#if plan.popular}
+ 					<div class="absolute -top-3 left-1/2 -translate-x-1/2">
+-						<Badge>Most Popular</Badge>
++						<Badge data-testid="plan-badge-popular">Most Popular</Badge>
+ 					</div>
+ 				{/if}
+ 				<Card.Header class="text-center">
+diff --git a/src/routes/+error.svelte b/src/routes/+error.svelte
+index 7878a12c..165ff012 100644
+--- a/src/routes/+error.svelte
++++ b/src/routes/+error.svelte
+@@ -56,9 +56,9 @@
+ 			<div class="text-muted-foreground mx-auto">
+ 				<info.icon class="size-16 stroke-1" />
+ 			</div>
+-			<div class="text-muted-foreground text-6xl font-bold">{page.status}</div>
++			<div data-testid="error-status" class="text-muted-foreground text-6xl font-bold">{page.status}</div>
+ 			<Card.Title class="text-xl">{info.title}</Card.Title>
+-			<Card.Description>
++			<Card.Description data-testid="error-message">
+ 				{page.error?.message || info.description}
+ 			</Card.Description>
+ 		</Card.Header>
+diff --git a/src/routes/docs/+layout.svelte b/src/routes/docs/+layout.svelte
+index 3b87ea46..ea9f9b6b 100644
+--- a/src/routes/docs/+layout.svelte
++++ b/src/routes/docs/+layout.svelte
+@@ -123,6 +123,7 @@
+ 		<div class="lg:grid lg:grid-cols-[240px_1fr] lg:gap-8">
+ 			<!-- Sidebar Navigation -->
+ 			<aside
++				data-testid="docs-sidebar"
+ 				class="bg-background fixed inset-0 top-14 z-40 w-64 overflow-y-auto border-r p-4 transition-transform lg:sticky lg:block lg:h-[calc(100vh-3.5rem)] lg:w-auto lg:translate-x-0 lg:border-r-0 lg:p-0 lg:pt-8 {mobileMenuOpen
+ 					? 'translate-x-0'
+ 					: '-translate-x-full'}"
+@@ -187,7 +188,7 @@
+ 			{/if}
+ 
+ 			<!-- Main Content -->
+-			<main class="min-w-0 py-8">
++			<main data-testid="docs-content" class="min-w-0 py-8">
+ 				<article class="prose prose-zinc dark:prose-invert max-w-none">
+ 					{@render children()}
+ 				</article>

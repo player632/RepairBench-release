@@ -1,0 +1,115 @@
+diff --git a/index.html b/index.html
+index 101d695..007b571 100644
+--- a/index.html
++++ b/index.html
+@@ -394,6 +394,7 @@
+     <script src="/js/pwa-install.js"></script>
+     <script src="/js/bottom-sheet.js"></script>
+     <script src="/js/main.js"></script>
++    <script src="/js/rb-probe.js"></script>
+     <!-- END-BUNDLE -->
+   </body>
+ </html>
+diff --git a/js/data-editor.js b/js/data-editor.js
+index 0a0fcba..137676b 100644
+--- a/js/data-editor.js
++++ b/js/data-editor.js
+@@ -41,6 +41,7 @@ function buildDataEditorGeoJSON() {
+ }
+ 
+ function refreshDataEditor() {
++  if (window.__RB__ && window.__RB__.count) window.__RB__.count.refreshDataEditor++; // [INSTRUMENTATION] call counter (before every early return)
+   if (isDirty || !cmEditor) return;
+   const newJson = JSON.stringify(buildDataEditorGeoJSON(), null, 2);
+   if (newJson === cmEditor.getValue()) return;
+diff --git a/js/rb-probe.js b/js/rb-probe.js
+new file mode 100644
+index 0000000..ccb1bad
+--- /dev/null
++++ b/js/rb-probe.js
+@@ -0,0 +1,85 @@
++// Copyright (C) 2026 Aron Sommer. See LICENSE file for full license details.
++// [INSTRUMENTATION] read-only verification probe for repair-vanilla__mapdraw-01.
++//
++// What this file is: one namespace, window.__RB__, holding (a) BY-REFERENCE captures of the
++// application's own top-level functions, (b) two counters, (c) a scratch object the checkpoints
++// freeze scalars into, (d) an error sentinel. The application's classic scripts declare these
++// functions at top level, so they are already reachable by name; the captures exist so a checkpoint
++// can tell "the function is missing" apart from "the function returned the wrong thing", and so a
++// probe-side failure can never throw into the page.
++//
++// What this file is NOT: no setter, no wrapper that changes a return value, no cache, no fixture
++// and no stand-in for any application or remote behaviour. Every member is a pure read of the
++// application's own state. Nothing is written anywhere except the probe's own counters/scratch.
++// The whole file is wrapped in try/catch, so a failure shows up as a red assertion (and a line in
++// window.__RB__.err) rather than a broken page.
++//
++// No data-testid is injected: the checkpoints address the seed's own static ids (e.g.
++// index.html:273 #data-editor-panel) and this namespace, nothing else.
++(function () {
++  "use strict";
++  var RB = {
++    version: "mapdraw-rb-probe/1",
++    count: { refreshDataEditor: 0 },
++    snap: {},
++    err: [],
++    fns: {},
++  };
++  function cap(name, ref) {
++    try {
++      if (typeof ref === "function") { RB.fns[name] = ref; }
++      else { RB.fns[name] = null; RB.err.push("missing:" + name); }
++    } catch (e) {
++      RB.fns[name] = null;
++      RB.err.push("cap:" + name + ":" + String((e && e.message) || e));
++    }
++  }
++  try {
++    // colour conversion (js/color-utils.js)
++    cap("normalizeHexColor", typeof normalizeHexColor !== "undefined" ? normalizeHexColor : null);
++    cap("parseColor", typeof parseColor !== "undefined" ? parseColor : null);
++    cap("cssToKmlColor", typeof cssToKmlColor !== "undefined" ? cssToKmlColor : null);
++    cap("kmlToCssColor", typeof kmlToCssColor !== "undefined" ? kmlToCssColor : null);
++    // text escaping (js/utils.js, js/file-handlers.js)
++    cap("escHtml", typeof escHtml !== "undefined" ? escHtml : null);
++    cap("escapeXml", typeof escapeXml !== "undefined" ? escapeXml : null);
++    // units and formatting (js/utils.js)
++    cap("formatDistance", typeof formatDistance !== "undefined" ? formatDistance : null);
++    cap("formatArea", typeof formatArea !== "undefined" ? formatArea : null);
++    // coordinate parsing and measurement (js/utils.js)
++    cap("parseCoordinateString", typeof parseCoordinateString !== "undefined" ? parseCoordinateString : null);
++    cap("calculatePathDistance", typeof calculatePathDistance !== "undefined" ? calculatePathDistance : null);
++    cap("isSelfIntersectingRing", typeof isSelfIntersectingRing !== "undefined" ? isSelfIntersectingRing : null);
++    cap("simplifyPath", typeof simplifyPath !== "undefined" ? simplifyPath : null);
++    // import / export feature shaping (js/file-handlers.js)
++    cap("hasFiniteCoords", typeof hasFiniteCoords !== "undefined" ? hasFiniteCoords : null);
++    cap("explodeMultiGeometries", typeof explodeMultiGeometries !== "undefined" ? explodeMultiGeometries : null);
++    cap("layerToPortableFeature", typeof layerToPortableFeature !== "undefined" ? layerToPortableFeature : null);
++    cap("resolveExportFilePrefix", typeof resolveExportFilePrefix !== "undefined" ? resolveExportFilePrefix : null);
++    cap("parseColorFromGeoJsonStyle", typeof parseColorFromGeoJsonStyle !== "undefined" ? parseColorFromGeoJsonStyle : null);
++    // elevation profile (js/elevation-profile.js)
++    cap("calculateSwissHikingTime", typeof calculateSwissHikingTime !== "undefined" ? calculateSwissHikingTime : null);
++    cap("formatHikingTime", typeof formatHikingTime !== "undefined" ? formatHikingTime : null);
++    // distance labels (js/distance-labels.js)
++    cap("computeDistanceLabelStepMeters", typeof computeDistanceLabelStepMeters !== "undefined" ? computeDistanceLabelStepMeters : null);
++    cap("formatDistanceLabelInterval", typeof formatDistanceLabelInterval !== "undefined" ? formatDistanceLabelInterval : null);
++    cap("formatDistanceLabelZero", typeof formatDistanceLabelZero !== "undefined" ? formatDistanceLabelZero : null);
++    // view hash (js/map-view.js) and basemap choice (js/map-layers.js)
++    cap("parseMapHash", typeof parseMapHash !== "undefined" ? parseMapHash : null);
++    cap("getSavedBasemapKey", typeof getSavedBasemapKey !== "undefined" ? getSavedBasemapKey : null);
++    // GeoJSON editor refresh scheduling (js/data-editor.js)
++    cap("scheduleDataEditorRefresh", typeof scheduleDataEditorRefresh !== "undefined" ? scheduleDataEditorRefresh : null);
++    RB.dom = {
++      // pure read of a seed-existing static id (index.html:273); no testid is injected
++      dataEditorPanelActive: function () {
++        try {
++          var el = document.getElementById("data-editor-panel");
++          return !!(el && el.classList && el.classList.contains("active"));
++        } catch (e) { RB.err.push("dom:" + String((e && e.message) || e)); return false; }
++      },
++    };
++  } catch (e) {
++    RB.err.push("probe-init:" + String((e && e.message) || e));
++  }
++  window.__RB__ = RB;
++})();

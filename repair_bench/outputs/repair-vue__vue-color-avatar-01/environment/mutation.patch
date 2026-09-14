@@ -1,0 +1,194 @@
+diff --git a/src/App.vue b/src/App.vue
+index 45eb97f..12068b8 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -189,9 +189,6 @@ async function handleDownload() {
+       event_category: 'click',
+     })
+   } finally {
+-    setTimeout(() => {
+-      downloading.value = false
+-    }, DOWNLOAD_DELAY)
+   }
+ }
+ 
+@@ -208,14 +205,6 @@ function handleAction(actionType: ActionType) {
+       })
+       break
+ 
+-    case ActionType.Redo:
+-      store[REDO]()
+-      recordEvent('action_redo', {
+-        event_category: 'action',
+-        event_label: 'Redo',
+-      })
+-      break
+-
+     case ActionType.Flip:
+       flipped.value = !flipped.value
+       recordEvent('action_flip_avatar', {
+@@ -237,10 +226,8 @@ function handleAction(actionType: ActionType) {
+ const avatarListVisible = ref(false)
+ const avatarList = ref<AvatarOption[]>([])
+ 
+-watchEffect(() => {
+-  avatarListVisible.value =
+-    Array.isArray(avatarList.value) && avatarList.value.length > 0
+-})
++avatarListVisible.value =
++  Array.isArray(avatarList.value) && avatarList.value.length > 0
+ 
+ async function generateMultiple(count = 5 * 6) {
+   const { default: hash } = await import('object-hash')
+diff --git a/src/components/ActionBar.vue b/src/components/ActionBar.vue
+index 571df8a..20d187f 100644
+--- a/src/components/ActionBar.vue
++++ b/src/components/ActionBar.vue
+@@ -42,13 +42,13 @@ const actions = computed(() => [
+     type: ActionType.Undo,
+     icon: IconBack,
+     tip: t('action.undo'),
+-    disabled: !canUndo.value,
++    disabled: !canRedo.value,
+   },
+   {
+     type: ActionType.Redo,
+     icon: IconNext,
+     tip: t('action.redo'),
+-    disabled: !canRedo.value,
++    disabled: !canUndo.value,
+   },
+   {
+     type: ActionType.Flip,
+diff --git a/src/components/Configurator.vue b/src/components/Configurator.vue
+index 13e745e..076ad75 100644
+--- a/src/components/Configurator.vue
++++ b/src/components/Configurator.vue
+@@ -205,7 +205,7 @@ async function getWidgets(widgetType: WidgetType) {
+ 
+ function switchWrapperShape(wrapperShape: WrapperShape) {
+   if (wrapperShape !== avatarOption.value.wrapperShape) {
+-    setAvatarOption({ ...avatarOption.value, wrapperShape })
++    setAvatarOption({ ...avatarOption.value })
+   }
+ }
+ 
+@@ -220,10 +220,7 @@ function switchBorderColor(borderColor: string) {
+ 
+ function switchBgColor(bgColor: string) {
+   if (bgColor !== avatarOption.value.background.color) {
+-    setAvatarOption({
+-      ...avatarOption.value,
+-      background: { ...avatarOption.value.background, color: bgColor },
+-    })
++    avatarOption.value.background.color = bgColor
+   }
+ }
+ 
+@@ -236,9 +233,6 @@ function switchWidget(widgetType: WidgetType, widgetShape: WidgetShape) {
+         [widgetType]: {
+           ...avatarOption.value.widgets?.[widgetType],
+           shape: widgetShape,
+-          ...(widgetShape === BeardShape.Scruff
+-            ? { zIndex: AVATAR_LAYER['mouth'].zIndex - 1 }
+-            : undefined),
+         },
+       },
+     })
+diff --git a/src/components/Modal/CodeModal.vue b/src/components/Modal/CodeModal.vue
+index ef985b4..2f65714 100644
+--- a/src/components/Modal/CodeModal.vue
++++ b/src/components/Modal/CodeModal.vue
+@@ -52,7 +52,7 @@ const { t } = useI18n()
+ 
+ const [avatarOption] = useAvatarOption()
+ 
+-const codeJSON = computed(() => JSON.stringify(avatarOption.value, null, 4))
++const codeJSON = computed(() => JSON.stringify(avatarOption, null, 4))
+ 
+ const highlightedCode = ref('')
+ 
+diff --git a/src/components/VueColorAvatar.vue b/src/components/VueColorAvatar.vue
+index 1d24635..2671f65 100644
+--- a/src/components/VueColorAvatar.vue
++++ b/src/components/VueColorAvatar.vue
+@@ -68,7 +68,7 @@ function getWrapperShapeClassName() {
+ }
+ 
+ function getWrapperShapeStyle() {
+-  return SHAPE_STYLE_SET[avatarOption.value.wrapperShape ?? WrapperShape.Circle]
++  return SHAPE_STYLE_SET[WrapperShape.Squircle]
+ }
+ 
+ const svgContent = ref('')
+@@ -76,8 +76,8 @@ const svgContent = ref('')
+ watchEffect(async () => {
+   const sortedList = Object.entries(avatarOption.value.widgets).sort(
+     ([prevShape, prev], [nextShape, next]) => {
+-      const ix = prev.zIndex ?? AVATAR_LAYER[prevShape]?.zIndex ?? 0
+-      const iix = next.zIndex ?? AVATAR_LAYER[nextShape]?.zIndex ?? 0
++      const ix = AVATAR_LAYER[prevShape]?.zIndex ?? 0
++      const iix = AVATAR_LAYER[nextShape]?.zIndex ?? 0
+       return ix - iix
+     }
+   )
+@@ -107,9 +107,6 @@ watchEffect(async () => {
+       if (widgetType === WidgetType.Face) {
+         skinColor = widgetFillColor
+       }
+-      if (skinColor && widgetType === WidgetType.Ear) {
+-        widgetFillColor = skinColor
+-      }
+ 
+       const content = svgRaw
+         .slice(svgRaw.indexOf('>', svgRaw.indexOf('<svg')) + 1)
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index bf5c712..3b5563c 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -8,8 +8,8 @@ import { zh } from './locales/zh'
+ const messages = { en, zh }
+ 
+ const [locale, fallbackLocale] = /^zh\b/.test(window.navigator.language)
+-  ? [Locale.ZH, Locale.EN]
+-  : [Locale.EN, Locale.ZH]
++  ? [Locale.EN, Locale.ZH]
++  : [Locale.ZH, Locale.EN]
+ 
+ export const i18n = createI18n({
+   locale,
+diff --git a/src/layouts/Sider.vue b/src/layouts/Sider.vue
+index e16cfcc..1443510 100644
+--- a/src/layouts/Sider.vue
++++ b/src/layouts/Sider.vue
+@@ -10,7 +10,7 @@
+     <div
+       class="trigger"
+       data-testid="sider-trigger"
+-      @click="isCollapsed ? openSider() : closeSider()"
++      @click="initialCollapsed ? openSider() : closeSider()"
+     >
+       <img :src="IconRight" class="icon-right" alt="arrow" />
+     </div>
+@@ -22,6 +22,8 @@ import IconRight from '@/assets/icons/icon-right.svg'
+ import { useSider } from '@/hooks'
+ 
+ const { isCollapsed, openSider, closeSider } = useSider()
++
++const initialCollapsed = isCollapsed.value
+ </script>
+ 
+ <style lang="scss" scoped>
+diff --git a/src/store/index.ts b/src/store/index.ts
+index 8fbfc94..5465e51 100644
+--- a/src/store/index.ts
++++ b/src/store/index.ts
+@@ -36,7 +36,7 @@ export const useStore = defineStore('store', {
+       this.history = {
+         past: [...this.history.past, this.history.present],
+         present: data,
+-        future: [],
++        future: this.history.future,
+       }
+     },
+ 

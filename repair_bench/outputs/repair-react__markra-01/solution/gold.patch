@@ -1,0 +1,146 @@
+diff --git a/packages/app/src/components/NativeTitleBar.tsx b/packages/app/src/components/NativeTitleBar.tsx
+index a52a10b..c849a60 100644
+--- a/packages/app/src/components/NativeTitleBar.tsx
++++ b/packages/app/src/components/NativeTitleBar.tsx
+@@ -535,7 +535,7 @@ export function NativeTitleBar({
+       const currentEditorViewModeOption =
+         editorViewModeOptions.find((option) => option.mode === editorViewMode) ?? editorViewModeOptions[0]!;
+       const CurrentIcon = currentEditorViewModeOption.Icon;
+-      const nextEditorViewMode = editorViewMode === "visual" ? "split" : editorViewMode === "source" ? "source" : "visual";
++      const nextEditorViewMode = editorViewMode === "visual" ? "source" : editorViewMode === "source" ? "split" : "visual";
+       return (
+         <IconButton
+           className={mergeClassNames(
+diff --git a/packages/app/src/components/file-tree/outline-model.ts b/packages/app/src/components/file-tree/outline-model.ts
+index e71f939..c2e4844 100644
+--- a/packages/app/src/components/file-tree/outline-model.ts
++++ b/packages/app/src/components/file-tree/outline-model.ts
+@@ -21,7 +21,7 @@ function outlineItemHasVisibleChildren(
+ 
+   for (let nextIndex = index + 1; nextIndex < items.length; nextIndex += 1) {
+     const nextItem = items[nextIndex];
+-    if (!nextItem || nextItem.level < item.level) return false;
++    if (!nextItem || nextItem.level <= item.level) return false;
+     if (maxLevel === null || nextItem.level <= maxLevel) return true;
+   }
+ 
+@@ -48,7 +48,7 @@ export function visibleOutlineRenderItems(items: OutlineRenderItem[], collapsedK
+     const hiddenByAncestor = collapsedAncestorLevel !== null && item.level > collapsedAncestorLevel;
+     if (hiddenByAncestor) return false;
+ 
+-    collapsedAncestorLevel = collapsedKeys.has(key) ? item.level + 1 : null;
++    collapsedAncestorLevel = collapsedKeys.has(key) ? item.level : null;
+     return true;
+   });
+ }
+diff --git a/packages/app/src/hooks/useAppTheme.ts b/packages/app/src/hooks/useAppTheme.ts
+index 508d209..9e2030a 100644
+--- a/packages/app/src/hooks/useAppTheme.ts
++++ b/packages/app/src/hooks/useAppTheme.ts
+@@ -263,7 +263,7 @@ export function useAppTheme() {
+   const toggleTheme = useCallback(() => {
+     updateThemePreferences({
+       ...themePreferences,
+-      appearanceMode: resolvedTheme === "dark" ? "dark" : "light"
++      appearanceMode: resolvedTheme === "dark" ? "light" : "dark"
+     });
+   }, [resolvedTheme, themePreferences, updateThemePreferences]);
+ 
+diff --git a/packages/app/src/hooks/useMarkdownDocument.ts b/packages/app/src/hooks/useMarkdownDocument.ts
+index 579fea7..04b596f 100644
+--- a/packages/app/src/hooks/useMarkdownDocument.ts
++++ b/packages/app/src/hooks/useMarkdownDocument.ts
+@@ -1884,7 +1884,7 @@ export function useMarkdownDocument({
+   }, [documentTabsEnabled, handleDroppedMarkdownPath, isCurrentDocumentEmptyUntitled, isFileInCurrentWorkspace, loadNativeMarkdownPath]);
+ 
+   useEffect(() => {
+-    const title = document.open && document.dirty ? `${document.name}*` : document.name;
++    const title = document.open && document.dirty ? `${document.name} *` : document.name;
+     setNativeWindowTitle(title);
+   }, [document.name, document.dirty, document.open]);
+ 
+diff --git a/packages/app/src/lib/editor-width.ts b/packages/app/src/lib/editor-width.ts
+index 5b1e022..45b295c 100644
+--- a/packages/app/src/lib/editor-width.ts
++++ b/packages/app/src/lib/editor-width.ts
+@@ -31,7 +31,7 @@ export function shouldShowEditorWidthResizer({
+   editorContentWidth: number;
+   gutterMin?: number;
+ }) {
+-  if (!aiAgentOpen) return false;
++  if (!aiAgentOpen) return true;
+ 
+   return editorAreaWidth - editorContentWidth >= gutterMin * 2;
+ }
+diff --git a/packages/app/src/lib/log-level.ts b/packages/app/src/lib/log-level.ts
+index ff471c7..d4ed64d 100644
+--- a/packages/app/src/lib/log-level.ts
++++ b/packages/app/src/lib/log-level.ts
+@@ -2,7 +2,7 @@ export const appLogLevelOptions = ["debug", "info", "warn", "error"] as const;
+ export type AppLogLevel = typeof appLogLevelOptions[number];
+ 
+ // Preserve the pre-setting behavior while keeping verbose native command traces opt-in.
+-export const defaultAppLogLevel: AppLogLevel = "debug";
++export const defaultAppLogLevel: AppLogLevel = "info";
+ 
+ const appLogLevelPriority: Record<AppLogLevel, number> = {
+   debug: 0,
+diff --git a/packages/app/src/lib/settings/app-settings.ts b/packages/app/src/lib/settings/app-settings.ts
+index f0cebd2..27ce10d 100644
+--- a/packages/app/src/lib/settings/app-settings.ts
++++ b/packages/app/src/lib/settings/app-settings.ts
+@@ -563,7 +563,7 @@ export const defaultEditorPreferences: EditorPreferences = {
+   autoSaveEnabled: true,
+   autoSaveIntervalMinutes: defaultAutoSaveIntervalMinutes,
+   autoUpdateEnabled: true,
+-  bodyFontSize: 18,
++  bodyFontSize: 16,
+   clipboardImageFolder: "assets",
+   closeAiCommandOnAgentPanelOpen: false,
+   closeWindowOnLastTabClose: false,
+diff --git a/packages/app/src/lib/ui-zoom.ts b/packages/app/src/lib/ui-zoom.ts
+index dbc22cc..5bea5bd 100644
+--- a/packages/app/src/lib/ui-zoom.ts
++++ b/packages/app/src/lib/ui-zoom.ts
+@@ -1,5 +1,5 @@
+ export const uiZoomPercentOptions = [60, 80, 100, 120, 140, 160, 180, 200] as const;
+-export const defaultUiZoomPercent = 120;
++export const defaultUiZoomPercent = 100;
+ 
+ export function normalizeUiZoomPercent(value: unknown, fallback: unknown = defaultUiZoomPercent) {
+   if (uiZoomPercentOptions.includes(value as typeof uiZoomPercentOptions[number])) {
+diff --git a/packages/app/src/lib/view-mode.ts b/packages/app/src/lib/view-mode.ts
+index fbf688d..57e8500 100644
+--- a/packages/app/src/lib/view-mode.ts
++++ b/packages/app/src/lib/view-mode.ts
+@@ -84,7 +84,7 @@ const viewModeChromePresets: Record<Exclude<ViewMode, "custom">, ViewModeChrome>
+     fileTree: false,
+     fileTreeButton: true,
+     openButton: true,
+-    outline: true,
++    outline: false,
+     quickCreateButton: true,
+     recentFolders: false,
+     sidebarLayout: false,
+@@ -175,7 +175,7 @@ export function normalizeViewModeCustomizations(value: unknown): ViewModeCustomi
+ 
+ export function resolveViewModeChrome(mode: unknown, customizations: unknown): ViewModeChrome {
+   const normalizedMode = normalizeViewMode(mode);
+-  if (normalizedMode !== "custom") return viewModeChromePresets.full;
++  if (normalizedMode !== "custom") return viewModeChromePresets[normalizedMode];
+ 
+   const normalizedCustomizations = normalizeViewModeCustomizations(customizations);
+ 
+diff --git a/packages/markdown/src/markdown.ts b/packages/markdown/src/markdown.ts
+index 191e7bb..8038fe6 100644
+--- a/packages/markdown/src/markdown.ts
++++ b/packages/markdown/src/markdown.ts
+@@ -5,7 +5,7 @@ import remarkParse from "remark-parse";
+ import { unified } from "unified";
+ 
+ const countableWordUnits =
+-  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])[\p{L}\p{N}])+/gu;
++  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])[\p{L}\p{N}_'-])+/gu;
+ const markraHighlightPattern = /(?<!=)==[^=\n][^\n]*?==(?!=)/gu;
+ const inlineMarkdownParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath).use(markraHighlightRemarkPlugin);
+ 

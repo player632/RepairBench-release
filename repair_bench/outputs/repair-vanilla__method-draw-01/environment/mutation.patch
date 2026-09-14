@@ -1,0 +1,145 @@
+diff --git a/src/js/Canvas.js b/src/js/Canvas.js
+index 5850ad5..0839c80 100644
+--- a/src/js/Canvas.js
++++ b/src/js/Canvas.js
+@@ -63,7 +63,7 @@ MD.Canvas = function(){
+   });
+ 
+   function resize(w, h){
+-    const res = svgCanvas.setResolution(w, h);
++    const res = svgCanvas.setResolution(h, w);
+     if (!res) return $.alert("No content to fit to");
+     if (w === 'fit' || h === 'fit') state.set("canvasSize", res);
+     $("#canvas_width").val(w);
+diff --git a/src/js/Darkmode.js b/src/js/Darkmode.js
+index 69e0438..77746c4 100644
+--- a/src/js/Darkmode.js
++++ b/src/js/Darkmode.js
+@@ -7,7 +7,7 @@ MD.Darkmode = function(){
+   function set(isDark) {
+ 
+     button.setAttribute("title", isDark ? "Switch to lightmode" : "Switch to darkmode")
+-    body.classList.toggle("inverted", !isDark);
++    body.classList.toggle("inverted", isDark);
+     body.classList.add("cancel-transitions");
+     setTimeout(function(){
+       body.classList.remove("cancel-transitions");
+diff --git a/src/js/Keyboard.js b/src/js/Keyboard.js
+index d1075d2..9cff0af 100644
+--- a/src/js/Keyboard.js
++++ b/src/js/Keyboard.js
+@@ -42,7 +42,7 @@ MD.Keyboard = function(){
+     "cmd_+":  { name: "Zoom in",             cb: ()=> editor.zoom.multiply(1.5)},
+     "cmd_-":  { name: "Zoom out",            cb: ()=> editor.zoom.multiply(0.75)},
+     "cmd_=":  { name: "Actual size",         cb: ()=> editor.zoom.reset()},
+-    "arrowleft":  { name: "Nudge left",      cb: ()=> editor.moveSelected(-1,0)},
++    "arrowleft":  { name: "Nudge left",      cb: ()=> editor.moveSelected(1,0)},
+     "arrowright":  { name: "Nudge right",    cb: ()=> editor.moveSelected(1,0)},
+     "arrowup":  { name: "Nudge up",          cb: ()=> editor.moveSelected(0,-1)},
+     "arrowdown":  { name: "Nudge down",      cb: ()=> editor.moveSelected(0,1)},
+diff --git a/src/js/PaintBox.js b/src/js/PaintBox.js
+index dd99586..34c0bca 100644
+--- a/src/js/PaintBox.js
++++ b/src/js/PaintBox.js
+@@ -168,7 +168,7 @@ MD.PaintBox = function(container, type){
+   this.update = function(apply) {
+     const selectedElement = editor.selected[0];
+     if(!selectedElement) return;
+-    var type = this.type;
++    var type = this.type === "fill" ? "stroke" : "fill";
+     switch ( selectedElement.tagName ) {
+     case 'use':
+     case 'image':
+diff --git a/src/js/Text.js b/src/js/Text.js
+index 5a70039..a315302 100644
+--- a/src/js/Text.js
++++ b/src/js/Text.js
+@@ -67,7 +67,6 @@ MD.Text = function(){
+         editor.saveCanvas();
+         return editor.escapeMode();
+       }
+-      svgCanvas.setTextContent(this.value);
+       var elems = svgCanvas.getSelectedElems();
+       svgCanvas.selectorManager.requestSelector(elems[0]).reset(elems[0]);
+     })
+diff --git a/src/js/Title.js b/src/js/Title.js
+index 5b26e51..f5628fb 100644
+--- a/src/js/Title.js
++++ b/src/js/Title.js
+@@ -13,7 +13,6 @@ MD.Title = function(){
+     .keyup(function(e){
+       e.stopPropagation();
+       svgCanvas.setDocumentTitle(this.value);
+-      state.set("canvasTitle", this.value);
+     })
+     .click(function(e) {
+       this.focus();
+diff --git a/src/js/Toolbar.js b/src/js/Toolbar.js
+index 455cd47..3825b0e 100644
+--- a/src/js/Toolbar.js
++++ b/src/js/Toolbar.js
+@@ -8,7 +8,6 @@ MD.Toolbar = function(){
+   });
+ 
+   function setMode(mode) {
+-    $(".tool_button").removeClass("current");
+     $("#tool_" + mode).addClass("current");
+     $("#workarea").attr("class", mode);
+     svgCanvas.setMode(mode);
+diff --git a/src/js/Zoom.js b/src/js/Zoom.js
+index c7735c2..dfd74ed 100644
+--- a/src/js/Zoom.js
++++ b/src/js/Zoom.js
+@@ -50,7 +50,7 @@ MD.Zoom = function(){
+     if (typeof animatedZoom !== 'undefined') window.cancelAnimationFrame(animatedZoom)
+     // zoom duration 500ms
+     var start = Date.now();
+-    var duration = 500;
++    var duration = 5000;
+     var diff = (zoomlevel) - (res.zoom)
+     var zoom = $('#zoom')[0]
+     var current_zoom = res.zoom
+diff --git a/src/js/editor.js b/src/js/editor.js
+index 7af6655..3bb6d19 100644
+--- a/src/js/editor.js
++++ b/src/js/editor.js
+@@ -32,7 +32,7 @@ MD.Editor = function(){
+   function undo(){
+     if (!svgCanvas.undoMgr.getUndoStackSize()) return false;
+     _self.menu.flash($('#edit_menu'));
+-    svgCanvas.undoMgr.undo();
++    svgCanvas.undoMgr.redo();
+   }
+ 
+   function redo(){
+@@ -153,8 +153,6 @@ MD.Editor = function(){
+   function selectedChanged(window,elems) {
+     const mode = svgCanvas.getMode();
+     _self.selected = elems.filter(Boolean);
+-    editor.paintBox.fill.update();
+-    editor.paintBox.stroke.update();
+     editor.panel.updateContextPanel(_self.selected);
+   };
+ 
+@@ -312,7 +310,7 @@ MD.Editor = function(){
+ 
+   function groupSelected(){
+     // group
+-    if (_self.selected.length > 1) {
++    if (_self.selected.length > 2) {
+       editor.menu.flash($('#object_menu'));
+       svgCanvas.groupSelectedElements();
+       saveCanvas();
+diff --git a/src/js/svgcanvas.js b/src/js/svgcanvas.js
+index 3513703..4c4b8ba 100644
+--- a/src/js/svgcanvas.js
++++ b/src/js/svgcanvas.js
+@@ -8333,7 +8333,7 @@ this.ungroupSelectedElement = function() {
+   }
+   
+   // Look for parent "a"
+-  if (g.tagName === "g" || g.tagName === "a") {
++  if (g.tagName === "G" || g.tagName === "a") {
+     
+     var batchCmd = new BatchCommand("Ungroup Elements");
+     var cmd = pushGroupProperties(g, true);

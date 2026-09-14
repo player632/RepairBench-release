@@ -1,0 +1,141 @@
+diff --git a/src/lib/components/organisms/AssetBinPanel.svelte b/src/lib/components/organisms/AssetBinPanel.svelte
+index 471596c..7940629 100644
+--- a/src/lib/components/organisms/AssetBinPanel.svelte
++++ b/src/lib/components/organisms/AssetBinPanel.svelte
+@@ -35,7 +35,7 @@
+ 	const bin = $derived(editor.project.bin);
+ 	const presentKinds = $derived(new Set(bin.map((i) => clipKindForMediaType(i.mediaType))));
+ 	const filteredBin = $derived(
+-		binFilter === 'all' ? bin : bin.filter((i) => clipKindForMediaType(i.mediaType) === binFilter)
++		binFilter === 'all' ? bin : bin.filter((i) => clipKindForMediaType(i.mediaType) !== binFilter)
+ 	);
+ 	// Drop back to "all" if the selected type no longer has any items.
+ 	$effect(() => {
+diff --git a/src/lib/components/organisms/TimelineEditor.svelte b/src/lib/components/organisms/TimelineEditor.svelte
+index 3b80794..cce3dfa 100644
+--- a/src/lib/components/organisms/TimelineEditor.svelte
++++ b/src/lib/components/organisms/TimelineEditor.svelte
+@@ -412,7 +412,7 @@
+ 		} else if (!mod && key === 'o') {
+ 			e.preventDefault();
+ 			if (e.altKey) editor.clearRange();
+-			else editor.setRangeOut();
++			else editor.setRangeIn();
+ 		} else if (!mod && key === 'm') {
+ 			e.preventDefault();
+ 			if (e.shiftKey) editor.jumpToMarker(1);
+diff --git a/src/lib/components/organisms/TimelineRuler.svelte b/src/lib/components/organisms/TimelineRuler.svelte
+index 38c86ab..ba2fa27 100644
+--- a/src/lib/components/organisms/TimelineRuler.svelte
++++ b/src/lib/components/organisms/TimelineRuler.svelte
+@@ -97,7 +97,7 @@
+ 
+ 	function seekFromEvent(e: PointerEvent) {
+ 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+-		editor.seek(pxToTime(e.clientX - rect.left, zoom));
++		editor.seek(pxToTime(e.clientX - rect.left + TRACK_HEADER_W, zoom));
+ 	}
+ 
+ 	function onPointerDown(e: PointerEvent) {
+diff --git a/src/lib/components/organisms/TimelineToolbar.svelte b/src/lib/components/organisms/TimelineToolbar.svelte
+index 0dfda7a..c808112 100644
+--- a/src/lib/components/organisms/TimelineToolbar.svelte
++++ b/src/lib/components/organisms/TimelineToolbar.svelte
+@@ -73,7 +73,7 @@
+ 
+ 	function addText() {
+ 		// Topmost (last) unlocked track renders text above the media layers.
+-		let track = [...editor.project.tracks].reverse().find((t) => !t.locked);
++		let track = [...editor.project.tracks].find((t) => !t.locked);
+ 		if (!track) {
+ 			addTrack();
+ 			track = editor.project.tracks.at(-1);
+diff --git a/src/lib/components/organisms/TimelineTrackRow.svelte b/src/lib/components/organisms/TimelineTrackRow.svelte
+index 1a98e7e..1aa872a 100644
+--- a/src/lib/components/organisms/TimelineTrackRow.svelte
++++ b/src/lib/components/organisms/TimelineTrackRow.svelte
+@@ -234,7 +234,6 @@
+ 					data-testid={`track-rename-input-${rowIndex}`}
+ 					class="h-5 px-1 text-xs"
+ 					value={renameValue}
+-					oninput={(e: Event) => (renameValue = (e.currentTarget as HTMLInputElement).value)}
+ 					onblur={commitRename}
+ 					onkeydown={(e: KeyboardEvent) => {
+ 						if (e.key === 'Enter') commitRename();
+diff --git a/src/lib/core/state.svelte.ts b/src/lib/core/state.svelte.ts
+index bf8bb2c..a106a9d 100644
+--- a/src/lib/core/state.svelte.ts
++++ b/src/lib/core/state.svelte.ts
+@@ -181,7 +181,7 @@ export class TimelineEditorStore {
+ 
+ 	play(): void {
+ 		if (this.durationF <= 0) return;
+-		if (this.playhead >= this.duration) this.seek(0);
++		if (this.playhead > 0) this.seek(0);
+ 		this.playing = true;
+ 		this.engine.play();
+ 	}
+@@ -525,8 +525,8 @@ export class TimelineEditorStore {
+ 			this.selectedClipIds.size > 0
+ 				? [...this.selectedClipIds]
+ 				: this.project.clips.filter((c) => c.startF < atF && atF < clipEndF(c)).map((c) => c.id);
+-		if (ids.length === 0) return;
+-		this.#op(() => splitClips(this.project, ids, atF));
++		if (ids.length > 0) return;
++		this.#op(() => splitClips(this.project, ids, atF + 1));
+ 	}
+ 
+ 	splitAllAtPlayhead(): void {
+@@ -729,7 +729,7 @@ export class TimelineEditorStore {
+ 		const marker: TimelineMarker = {
+ 			id: uid(),
+ 			frame: this.playheadF,
+-			color: MARKER_COLORS[this.project.markers.length % MARKER_COLORS.length],
++			color: MARKER_COLORS[(this.project.markers.length + 1) % MARKER_COLORS.length],
+ 			label: ''
+ 		};
+ 		this.#mutate(() => {
+@@ -757,7 +757,7 @@ export class TimelineEditorStore {
+ 		const current = this.playheadF;
+ 		const target =
+ 			direction === 1
+-				? sorted.find((m) => m.frame > current)
++				? sorted.find((m) => m.frame < current)
+ 				: [...sorted].reverse().find((m) => m.frame < current);
+ 		if (target) this.seekFrame(target.frame);
+ 	}
+@@ -852,7 +852,7 @@ export class TimelineEditorStore {
+ 	redo(): void {
+ 		const snapshot = this.#redoStack.pop();
+ 		if (snapshot === undefined) return;
+-		this.#undoStack.push(JSON.stringify(this.project));
++		this.#redoStack.push(JSON.stringify(this.project));
+ 		this.project = JSON.parse(snapshot) as TimelineProject;
+ 		this.#afterRestore();
+ 	}
+diff --git a/src/routes/demo-host.ts b/src/routes/demo-host.ts
+index e8abf93..b607da0 100644
+--- a/src/routes/demo-host.ts
++++ b/src/routes/demo-host.ts
+@@ -20,7 +20,7 @@ export function loadProject(advanced = false): TimelineProject | null {
+ 
+ export function saveProject(project: TimelineProject, advanced = false): void {
+ 	try {
+-		localStorage.setItem(advanced ? ADV_PROJECT_KEY : PROJECT_KEY, JSON.stringify(project));
++		localStorage.setItem(PROJECT_KEY, JSON.stringify(project));
+ 	} catch {
+ 		/* ignore */
+ 	}
+diff --git a/src/routes/theme.svelte.ts b/src/routes/theme.svelte.ts
+index 5e3e8d9..f9b687e 100644
+--- a/src/routes/theme.svelte.ts
++++ b/src/routes/theme.svelte.ts
+@@ -15,7 +15,7 @@ class Theme {
+ 	toggle() {
+ 		this.dark = !this.dark;
+ 		this.apply();
+-		if (browser) localStorage.setItem(KEY, this.dark ? 'dark' : 'light');
++		if (browser) localStorage.setItem(KEY, this.dark ? 'light' : 'dark');
+ 	}
+ 
+ 	private apply() {

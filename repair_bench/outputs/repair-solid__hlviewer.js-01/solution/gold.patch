@@ -1,0 +1,137 @@
+diff --git a/src/Fullscreen.ts b/src/Fullscreen.ts
+index 9be0e0a04b695449b05d744faf7034542863b7f8..bc00decd939f395895d11f65c5b3b243efb136fc 100644
+--- a/src/Fullscreen.ts
++++ b/src/Fullscreen.ts
+@@ -41,7 +41,7 @@ interface Doc {
+ const doc: Doc = document
+ 
+ for (let i = 0; i < apis.length; ++i) {
+-  if (typeof doc[apis[i].enabled] === 'undefined') {
++  if (typeof doc[apis[i].enabled] !== 'undefined') {
+     apiIdx = i
+     break
+   }
+diff --git a/src/Game.ts b/src/Game.ts
+index aff8f30204cbe8dda167e69c901e5814e52e6855..7262cb7465590c29228722e70419492049a919f2 100644
+--- a/src/Game.ts
++++ b/src/Game.ts
+@@ -207,6 +207,7 @@ export class Game {
+ 
+   setTitle(title: string) {
+     this.title = title
++    this.events.emit('titlechange', title)
+   }
+ 
+   getTitle() {
+diff --git a/src/PlayerInterface/App/index.tsx b/src/PlayerInterface/App/index.tsx
+index e3f18d925600ed054344f96c40ef13dd89b6f966..58599352a4d0adb894c14eccb0ccc0dbcd59aeee 100644
+--- a/src/PlayerInterface/App/index.tsx
++++ b/src/PlayerInterface/App/index.tsx
+@@ -156,7 +156,7 @@ export function App(props: { game: Game; root: Element }) {
+ 
+       case 'KeyJ':
+       case 'ArrowLeft': {
+-        props.game.player.seek(props.game.player.currentTime - 50)
++        props.game.player.seek(props.game.player.currentTime - 5)
+         fadeReset()
+         break
+       }
+@@ -207,6 +207,7 @@ export function App(props: { game: Game; root: Element }) {
+       setIsVisible(true)
+     }
+ 
++    clearTimeout(fadeOut)
+     fadeOut = setTimeout(() => {
+       setIsVisible(false)
+       fadeOut = undefined
+diff --git a/src/PlayerInterface/Timeline/index.tsx b/src/PlayerInterface/Timeline/index.tsx
+index b577b42849e97124c2398163c0518d0099302c81..e2ab1766c9c5fb5f1464637edb6c2ee2274b8859 100644
+--- a/src/PlayerInterface/Timeline/index.tsx
++++ b/src/PlayerInterface/Timeline/index.tsx
+@@ -11,7 +11,7 @@ export function Timeline(props: { game: Game }) {
+ 
+   onMount(() => {
+     const offPostUpdate = props.game.events.on('postupdate', () => {
+-      setProgress(props.game.player.currentTime)
++      setProgress(props.game.player.currentTime / props.game.player.replay.length)
+     })
+     onCleanup(() => {
+       offPostUpdate?.()
+@@ -49,7 +49,7 @@ export function Timeline(props: { game: Game }) {
+   }
+ 
+   const onMouseEnter = () => {
+-    setGhostKnobActive(false)
++    setGhostKnobActive(true)
+   }
+ 
+   const onMouseLeave = () => {
+diff --git a/src/PlayerInterface/VolumeControl/index.tsx b/src/PlayerInterface/VolumeControl/index.tsx
+index e5655ced16442d59c2627e8e0d2f80bf391dfb88..ae92c86e814566b6edd4fe54797d99e2c50f09b7 100644
+--- a/src/PlayerInterface/VolumeControl/index.tsx
++++ b/src/PlayerInterface/VolumeControl/index.tsx
+@@ -7,7 +7,7 @@ export function VolumeControl(props: { game: Game }) {
+ 
+   const onMouseDown = (e: MouseEvent & { currentTarget: HTMLDivElement }) => {
+     const rects = e.currentTarget.getClientRects()[0]
+-    const volume = (rects.right - e.pageX) / (rects.right - rects.left)
++    const volume = 1 - (rects.right - e.pageX) / (rects.right - rects.left)
+     props.game.soundSystem.setVolume(volume)
+ 
+     const onMouseMove = (e: MouseEvent) => {
+diff --git a/src/ReplayPlayer.ts b/src/ReplayPlayer.ts
+index 81d97a3a5a0db4a655a816da4e3aba0ef5958317..a039e96e0492f1ca736c9d776387a95c739de888 100644
+--- a/src/ReplayPlayer.ts
++++ b/src/ReplayPlayer.ts
+@@ -81,7 +81,7 @@ export class ReplayPlayer {
+   }
+ 
+   speedUp() {
+-    this.speed = Math.min(this.speed + 2, 4)
++    this.speed = Math.min(this.speed * 2, 4)
+   }
+ 
+   speedDown() {
+@@ -89,7 +89,7 @@ export class ReplayPlayer {
+   }
+ 
+   seek(value: number) {
+-    const t = Math.min(this.replay.length, value)
++    const t = Math.max(0, Math.min(this.replay.length, value))
+ 
+     const maps = this.replay.maps
+     for (let i = 0; i < maps.length; ++i) {
+@@ -134,7 +134,7 @@ export class ReplayPlayer {
+   }
+ 
+   update(dt: number) {
+-    if (!this.isPlaying) {
++    if (!this.isPlaying || this.isPaused) {
+       return
+     }
+ 
+diff --git a/src/SoundSystem.ts b/src/SoundSystem.ts
+index a2f440c38ea013e014281dcdd53e6b769b406691..bfa084946ed7c0984a13a39033aea77808828206 100644
+--- a/src/SoundSystem.ts
++++ b/src/SoundSystem.ts
+@@ -74,6 +74,7 @@ export class SoundSystem {
+ 
+     this.masterGain.gain.value = value
+ 
++    localStorage.setItem('volume', value.toString())
+     this.events.emit('volumeChange', value)
+   }
+ 
+diff --git a/src/Time.ts b/src/Time.ts
+index e59bbc64732f54ef7ce9644a74b0d4b38dc37434..d0a50018b43a63e468ba416905b145bc816749de 100644
+--- a/src/Time.ts
++++ b/src/Time.ts
+@@ -2,7 +2,7 @@ export const now = performance.now.bind(performance)
+ 
+ export const formatTime = (seconds: number) => {
+   const m = Math.floor(seconds / 60)
+-  const s = Math.round(seconds - m * 60)
++  const s = Math.floor(seconds - m * 60)
+   const mm = m < 10 ? `0${m}` : m.toString()
+   const ss = s < 10 ? `0${s}` : s.toString()
+   return `${mm}:${ss}`

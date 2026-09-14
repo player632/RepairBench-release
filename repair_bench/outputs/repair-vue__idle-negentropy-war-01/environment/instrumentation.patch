@@ -1,0 +1,184 @@
+diff --git a/index.html b/index.html
+index a31f104..c5996bc 100644
+--- a/index.html
++++ b/index.html
+@@ -14,6 +14,57 @@
+     <script type="module" src="/src/main.js"></script>
+     <!-- 统计代码 -->
+     <!-- [WLB adaptation] 51.la analytics stripped for offline operation -->
++    <script>
++    window.__NEG__ = function () {
++      var out = { ready: false, error: null };
++      try {
++        var st = window.__neg_store;
++        if (!st || !st.resources) return out;
++        out.ready = true;
++        out.gameTime = st.gameTime;
++        out.civilizationLevel = st.civilizationLevel;
++        out.universeState = st.universeState;
++        out.isGm = st.isGm;
++        out.energy = st.resources.energy;
++        out.matter = st.resources.matter;
++        out.knowledge = st.resources.knowledge;
++        out.darkMatter = st.resources.darkMatter;
++        out.coordinateExposure = st.resources.coordinateExposure;
++        out.probe = st.explorationres.probe;
++        out.relicShard = st.explorationres.relicShard;
++        out.alienFragment = st.explorationres.alienFragment;
++        out.atomicSorterCount = st.buildings.atomicSorter.count;
++        out.atomicSorterLevel = st.buildings.atomicSorter.level;
++        out.molecularCoolerUnlocked = st.buildings.molecularCooler.unlocked;
++        out.thermalControlUnlocked = st.technologies.thermalControl.unlocked;
++        out.atomicProgress = st.entropyReductionStages.atomicOrdering.progress;
++        out.energyAchCompleted = st.achievements.energy_achievement.completed;
++        out.eventsLen = (st.events || []).length;
++        out.cooldownRelic = st.cooldowns.relic || 0;
++        out.quantumComputerCount = st.buildings.quantumComputer.count;
++        out.stageMaxAtomic = 1000;
++      } catch (e) { out.error = String((e && e.message) || e); }
++      return out;
++    };
++    window.__NEG_CMD__ = {
++      setResource: function (k, v) { var st = window.__neg_store; if (!(k in st.resources)) return false; st.resources[k] = v; return true; },
++      setExplorationRes: function (k, v) { var st = window.__neg_store; if (!(k in st.explorationres)) return false; st.explorationres[k] = v; return true; },
++      setBuilding: function (key, count, level, unlocked) { var b = window.__neg_store.buildings[key]; if (!b) return false; if (count != null) b.count = count; if (level != null) b.level = level; if (unlocked != null) b.unlocked = unlocked; return true; },
++      setTechUnlocked: function (k, v) { var t = window.__neg_store.technologies[k]; if (!t) return false; t.unlocked = v; return true; },
++      setCurrentStage: function (k) { window.__neg_store.currentEntropyStage = k; return true; },
++      setStageUnlocked: function (k, v) { var s = window.__neg_store.entropyReductionStages[k]; if (!s) return false; s.unlocked = v; return true; },
++      setAchCompleted: function (id, v) { var a = window.__neg_store.achievements[id]; if (!a) return false; a.completed = v; return true; },
++      consume: function (k, v) { var st = window.__neg_store; if (!(k in st.resources)) return false; if (st.resources[k] < v) return false; st.resources[k] -= v; return true; },
++      tick: function (n) { var st = window.__neg_store; for (var i = 0; i < n; i++) st.updateGame(); return true; },
++      build: function (k) { window.__neg_store.buildStructure(k); return true; },
++      upgrade: function (k) { window.__neg_store.upgradeBuilding(k); return true; },
++      unlockTech: function (k) { window.__neg_store.unlockTechnology(k); return true; },
++      reduce: function (n) { window.__neg_store.performEntropyReduction(n); return true; },
++      claimAch: function (id) { window.__neg_store.achievements; var svc = window.__neg_ach; if (svc) svc.claimAchievement(id); return true; },
++      canUnlockTech: function (k) { return window.__neg_store.canUnlockTech(k); },
++      ui: function (name) { var args = Array.prototype.slice.call(arguments, 1); var fn = window.__NEG_UI__ && window.__NEG_UI__[name]; return typeof fn === 'function' ? fn.apply(null, args) : '__missing__'; }
++    };
++  </script>
+   </body>
+ 
+ </html>
+\ No newline at end of file
+diff --git a/src/App.vue b/src/App.vue
+index 554985c..8b8f720 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -580,6 +580,13 @@
+     }
+     if (audioRef.value) audioRef.value.pause()
+   })
++
++// [WLB instrumentation] expose UI actions for probes
++window.__NEG_UI__ = Object.assign(window.__NEG_UI__ || {}, {
++  resetClickNow: () => { resetGame(); return true; },
++  workerStart: () => { worker.postMessage('start'); return true; },
++  workerStop: () => { worker.postMessage('pause'); return true; }
++})
+ </script>
+ 
+ <style scoped>
+diff --git a/src/components/EntropyProgress.vue b/src/components/EntropyProgress.vue
+index f4eec1e..bd6445d 100644
+--- a/src/components/EntropyProgress.vue
++++ b/src/components/EntropyProgress.vue
+@@ -181,6 +181,11 @@
+       ([resource, amount]) => resources.value[resource] >= amount * times
+     )
+   }
++
++// [WLB instrumentation] expose UI actions for probes
++window.__NEG_UI__ = Object.assign(window.__NEG_UI__ || {}, {
++  quantumBonusNow: () => quantumBonus.value
++})
+ </script>
+ 
+ <style scoped>
+diff --git a/src/components/ExplorationPanel.vue b/src/components/ExplorationPanel.vue
+index 0bb8c74..2669646 100644
+--- a/src/components/ExplorationPanel.vue
++++ b/src/components/ExplorationPanel.vue
+@@ -238,6 +238,13 @@
+       type: 'reward'
+     })
+   }
++
++// [WLB instrumentation] expose UI actions for probes
++window.__NEG_UI__ = Object.assign(window.__NEG_UI__ || {}, {
++  synthesizeByRes: res => { const item = collectList.find(x => x.res === res); if (item) synthesize(item); return !!item; },
++  makeProbeNow: () => { makeProbe(); return true; },
++  exploreById: id => { const t = explorations.find(x => x.id === id); if (t) startExploration(t); return !!t; }
++})
+ </script>
+ 
+ <style scoped>
+diff --git a/src/components/buildings.vue b/src/components/buildings.vue
+index cce2e2c..7ab2780 100644
+--- a/src/components/buildings.vue
++++ b/src/components/buildings.vue
+@@ -165,6 +165,11 @@
+   )
+ 
+   onMounted(unlockBuilding)
++
++// [WLB instrumentation] expose UI actions for probes
++window.__NEG_UI__ = Object.assign(window.__NEG_UI__ || {}, {
++  unlockBuildingNow: () => { unlockBuilding(); return true; }
++})
+ </script>
+ 
+ <style scoped>
+diff --git a/src/components/technologies.vue b/src/components/technologies.vue
+index 8baeda6..7014c8a 100644
+--- a/src/components/technologies.vue
++++ b/src/components/technologies.vue
+@@ -120,6 +120,11 @@
+     }
+     return Math.floor(num).toString()
+   }
++
++// [WLB instrumentation] expose UI actions for probes
++window.__NEG_UI__ = Object.assign(window.__NEG_UI__ || {}, {
++  visibleTechIdsNow: () => visibleTechnologies.value.map(([name]) => name)
++})
+ </script>
+ 
+ <style scoped>
+diff --git a/src/main.js b/src/main.js
+index cd222f5..251460e 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -11,3 +11,8 @@ const pinia = createPinia()
+ pinia.use(piniaPluginPersistedstate)
+ app.use(pinia)
+ app.mount('#app')
++
++// [WLB instrumentation] expose the game store singleton for probes
++import('@/stores/gameStore').then(({ useGameStore }) => {
++  window.__neg_store = useGameStore(pinia)
++})
+diff --git a/src/plugins/achievementService.js b/src/plugins/achievementService.js
+index 9b15190..3554a61 100644
+--- a/src/plugins/achievementService.js
++++ b/src/plugins/achievementService.js
+@@ -79,6 +79,19 @@ const checkAllAchievements = gameStore => {
+ }
+ 
+ export const useAchievementService = () => {
++  const gameStore = useGameStore()
++  // [WLB instrumentation] expose the service singleton for probes
++  const __svc = {
++    checkAllAchievements: () => checkAllAchievements(gameStore),
++    claimAchievement: id => claimAchievement(id, gameStore),
++    getAchievementReward: (cfg, state) => getAchievementReward(cfg, state),
++    checkAchievement: (cfg, state) => checkAchievement(cfg, state, gameStore)
++  }
++  window.__neg_ach = __svc
++  return __svc
++}
++
++const __unusedLegacyFactory = () => {
+   const gameStore = useGameStore()
+   return {
+     checkAllAchievements: () => checkAllAchievements(gameStore),

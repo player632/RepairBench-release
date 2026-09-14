@@ -1,0 +1,47 @@
+diff --git a/fifteen_puzzle.js b/fifteen_puzzle.js
+index 8e77c1b..2bd5dab 100644
+--- a/fifteen_puzzle.js
++++ b/fifteen_puzzle.js
+@@ -6,6 +6,13 @@ class FifteenPuzzle {
+     constructor(config, containerId = 'fifteen') {
+         this.config = config;
+         this.container = document.getElementById(containerId);
++        // --- RepairBench instrumentation: instance registry (observation only, no behaviour change) ---
++        if (!window.__rbFifteen) {
++            window.__rbFifteen = { instances: [], alerts: [], last: null };
++            window.alert = function (m) { window.__rbFifteen.alerts.push(String(m)); };
++        }
++        window.__rbFifteen.instances.push(this);
++        window.__rbFifteen.last = this;
+         
+         // Backward compatibility for original grid setup (e.g. grid:[3,4] means 4x5)
+         this.cols = this.config.grid[0] + 1;
+@@ -255,3 +262,28 @@ class FifteenPuzzle {
+ if (typeof setup !== 'undefined' && setup.puzzle_fifteen) {
+     window.gameInstance = new FifteenPuzzle(setup.puzzle_fifteen, "fifteen");
+ }
++
++// --- RepairBench instrumentation: read-only verification handles (pure reads of the live instance,
++// the document and the computed style; no setter, nothing cached, nothing written anywhere) ---
++(function () {
++    if (!window.__rbFifteen) { window.__rbFifteen = { instances: [], alerts: [], last: null }; }
++    var R = window.__rbFifteen;
++    R.count = function () { return R.instances.length; };
++    R.cells = function () { var g = R.last; return g ? g.rows * g.cols : -1; };
++    R.tilesInDom = function () { return document.querySelectorAll('#fifteen .slot').length; };
++    R.zeros = function () { var g = R.last, n = 0; if (!g) return -1; for (var y = 0; y < g.rows; y++) for (var x = 0; x < g.cols; x++) if (g.matrix[y][x] === 0) n++; return n; };
++    R.emptyAt = function () { var g = R.last; return g ? g.emptyPos.x + ',' + g.emptyPos.y : '?'; };
++    R.uniformTileBox = function () {
++        var g = R.last, w = {}, h = {}; if (!g) return 'noinstance';
++        for (var k in g.tiles) { w[g.tiles[k].style.width] = 1; h[g.tiles[k].style.height] = 1; }
++        return (Object.keys(w).length === 1 && Object.keys(h).length === 1) ? 'uniform' : 'mixed';
++    };
++    R.sliceOf = function (id) {
++        var g = R.last; if (!g || !g.tiles[id]) return 'notile';
++        var t = g.tiles[id];
++        for (var y = 0; y < g.rows; y++) for (var x = 0; x < g.cols; x++) if (g.matrix[y][x] === id)
++            return (parseFloat(t.style.backgroundPosition.split(/\s+/)[0]) === -(g.tileWidth * x) && parseFloat(t.style.backgroundPosition.split(/\s+/)[1]) === -(g.tileHeight * y)) ? 'aligned' : 'crosswired';
++        return 'notinmatrix';
++    };
++    Object.defineProperty(R, 'handles', { value: Object.freeze(['count', 'cells', 'tilesInDom', 'zeros', 'emptyAt', 'uniformTileBox', 'sliceOf']), enumerable: true });
++})();

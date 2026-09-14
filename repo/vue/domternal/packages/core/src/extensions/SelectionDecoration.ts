@@ -1,0 +1,75 @@
+/**
+ * SelectionDecoration Extension
+ *
+ * Collapses the editor's range selection to a cursor when the editor loses
+ * focus.  This prevents a "ghost selection" from lingering after the user
+ * clicks outside the editor (approach A - same as Google Docs / Notion).
+ *
+ * Toolbar and bubble-menu buttons call `event.preventDefault()` on
+ * `mousedown`, so they never trigger blur - the selection stays intact
+ * while the user interacts with editor UI.
+ */
+import { Plugin, PluginKey, TextSelection } from '@domternal/pm/state';
+import { Extension } from '../Extension.js';
+
+export interface SelectionDecorationOptions {}
+
+export const selectionDecorationPluginKey = new PluginKey(
+  'selectionDecoration'
+);
+
+export const SelectionDecoration = Extension.create<SelectionDecorationOptions>(
+  {
+    name: 'selectionDecoration',
+
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: selectionDecorationPluginKey,
+          props: {
+            handleDOMEvents: {
+              blur(view, event) {
+                // Don't collapse selection when focus moves to editor-related
+                // UI (e.g. toolbar, bubble menu, link popover input).
+                // Elements marked with [data-dm-editor-ui] or inside
+                // .dm-toolbar / .dm-bubble-menu are treated as part of the editor.
+                const related = event.relatedTarget;
+                if (related instanceof HTMLElement) {
+                  // Scope the "editor UI" check to THIS editor. On a page with
+                  // several editors, each editor container can carry
+                  // [data-dm-editor-ui] (e.g. the Angular editor host), so a
+                  // bare closest() match would treat a click into ANOTHER editor
+                  // as our own UI and wrongly keep this editor's ghost selection.
+                  const ownContainer = view.dom.closest('.dm-editor');
+                  const relatedContainer = related.closest('.dm-editor');
+                  const movedToAnotherEditor =
+                    ownContainer !== null &&
+                    relatedContainer !== null &&
+                    relatedContainer !== ownContainer;
+                  if (
+                    !movedToAnotherEditor &&
+                    (related.closest('[data-dm-editor-ui]') ||
+                     related.closest('.dm-toolbar') ||
+                     related.closest('.dm-bubble-menu'))
+                  ) {
+                    return false;
+                  }
+                }
+
+                const { from, to } = view.state.selection;
+                if (from !== to) {
+                  view.dispatch(
+                    view.state.tr.setSelection(
+                      TextSelection.create(view.state.doc, from)
+                    )
+                  );
+                }
+                return false;
+              },
+            },
+          },
+        }),
+      ];
+    },
+  }
+);

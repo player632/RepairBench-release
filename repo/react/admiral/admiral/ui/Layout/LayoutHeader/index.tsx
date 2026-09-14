@@ -1,0 +1,74 @@
+import React from 'react'
+import styles from '../Layout.module.scss'
+import { useNav } from '../../../navigation/NavContext'
+import { useTheme } from '../../../theme'
+import { ThemeName } from '../../../theme/interfaces'
+import { FiArrowLeft, FiX, FiMenu } from 'react-icons/fi'
+import { NavLink } from 'react-router-dom'
+import Icon from '../../../assets/icons'
+import cn from 'classnames'
+
+export type LogoType = string | LogoComponentType
+export type LogoComponentType = ({ themeName }: { themeName: ThemeName }) => React.JSX.Element
+
+function LayoutHeader({ logo = LogoDefault }: { logo?: LogoType }) {
+    const { themeName } = useTheme()
+    const { close: closeNav, collapsed, toggleCollapsed, toggle: toggleNav, visible } = useNav()
+
+    const LogoComponent = typeof logo === 'function' ? logo : null
+
+    return (
+        <header
+            className={cn(styles.panel_Header, { [styles.panel_Header__Collapsed]: collapsed })}
+        >
+            <NavLink
+                to="/"
+                data-testid="app-logo"
+                className={({ isActive }) => cn(styles.logo, { [styles.logo__Active]: isActive })}
+                end
+                onClick={closeNav}
+            >
+                {LogoComponent ? (
+                    <LogoComponent themeName={themeName} />
+                ) : (
+                    <img src={logo as string} alt="logo" />
+                )}
+            </NavLink>
+
+            <button
+                type="button"
+                className={cn(styles.collapseToggle, styles.collapseToggle__Desktop, {
+                    [styles.collapseToggle__Collapsed]: collapsed,
+                })}
+                aria-label="Toggle sidebar"
+                aria-expanded={!collapsed}
+                data-testid="nav-collapse-toggle"
+                onClick={toggleCollapsed}
+            >
+                <FiArrowLeft aria-hidden />
+            </button>
+
+            <button
+                type="button"
+                className={cn(styles.collapseToggle, styles.collapseToggle__Mobile)}
+                aria-label="Toggle navigation"
+                aria-expanded={visible}
+                data-testid="nav-mobile-toggle"
+                onClick={toggleNav}
+            >
+                {visible ? <FiX aria-hidden /> : <FiMenu aria-hidden />}
+            </button>
+        </header>
+    )
+}
+
+export default LayoutHeader
+
+const LogoDefault = ({ themeName }: { themeName: ThemeName }) => {
+    return (
+        <Icon
+            name={themeName === 'light' ? 'dev-family-logo' : 'dev-family-logo-inversion'}
+            width={84}
+        />
+    )
+}

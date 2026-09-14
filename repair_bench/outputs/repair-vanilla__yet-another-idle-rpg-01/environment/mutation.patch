@@ -1,0 +1,139 @@
+diff --git a/src/display.js b/src/display.js
+index ed3d9d59e..291cb8a99 100644
+--- a/src/display.js
++++ b/src/display.js
+@@ -1155,9 +1155,9 @@ function sort_displayed_inventory({sort_by, target = "character", change_directi
+ 
+         //equippables below non-equippables
+         if(a.classList.contains("character_item_equippable") && !b.classList.contains("character_item_equippable")) {
+-            return 1;
+-        } else if(!a.classList.contains("character_item_equippable") && b.classList.contains("character_item_equippable")){
+             return -1;
++        } else if(!a.classList.contains("character_item_equippable") && b.classList.contains("character_item_equippable")){
++            return 1;
+         } 
+         if(a.classList.contains("trader_item_equippable") && !b.classList.contains("trader_item_equippable")) {
+             return 1;
+@@ -3896,7 +3896,7 @@ function format_money(num) {
+             value = (Math.floor(num/10)%100 != 0?`${Math.floor(num/10)%100}<span class="coin coin_copper">C</span>${value?" ":""}` :'') + value;
+             if(num > 999) {
+                 value = (Math.floor(num/1000)%100 != 0?`${Math.floor(num/1000)%100}<span class="coin coin_silver">S</span>${value?" ":""}` :'') + value;
+-                if(num > 99999) {
++                if(num > 999999) {
+                     value = `${Math.floor(num/100000)}<span class="coin coin_gold">G</span>${value?" ":""}` + value;
+                 }
+             
+@@ -4835,7 +4835,7 @@ function update_stance_tooltip(stance) {
+  * @param {Stance} stance current stance 
+  */
+ function update_displayed_stance(stance) {
+-    stance_bar_divs[stance.id].children[1].children[0].checked = true;
++    stance_bar_divs[stance.id].children[0].children[0].checked = true;
+     document.getElementById("character_stance_name").children[0].innerText = stance.name;
+ 
+     const selection = document.getElementById("character_stance_selection");
+diff --git a/src/game_time.js b/src/game_time.js
+index 7a5ecd166..330ba14a2 100644
+--- a/src/game_time.js
++++ b/src/game_time.js
+@@ -93,7 +93,7 @@ function Game_Time(new_time) {
+     }
+ 
+     this.getDayOfTheWeek = function() {
+-        switch(this.day_count % 7) {
++        switch((this.day_count + 1) % 7) {
+             case 0:
+                 return "Sun";
+             case 1: 
+diff --git a/src/main.js b/src/main.js
+index 132793df6..66b9e8621 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -329,10 +329,10 @@ function option_uniform_textsize(option) {
+     const checkbox = document.getElementById("options_textsize");
+     if(checkbox.checked || option) {
+         game_options.uniform_text_size_in_action = true;    
+-        document.documentElement.style.setProperty('--options_action_textsize', '20px');
++        document.documentElement.style.setProperty('--options_action_textsize', '16px');
+     } else {
+         game_options.uniform_text_size_in_action = false;
+-        document.documentElement.style.setProperty('--options_action_textsize', '16px');
++        document.documentElement.style.setProperty('--options_action_textsize', '20px');
+     }
+ 
+     if(option !== undefined) {
+@@ -344,10 +344,10 @@ function option_bed_return(option) {
+     const checkbox = document.getElementById("options_bed_return");
+ 
+     if(option !== undefined) {
+-        game_options.auto_return_to_bed = option;
++        game_options.auto_return_to_bed = !option;
+         checkbox.checked = option;
+     } else {
+-        game_options.auto_return_to_bed = checkbox.checked;
++        game_options.auto_return_to_bed = !checkbox.checked;
+     }
+ }
+ 
+@@ -1360,7 +1360,7 @@ function change_stance({stance_id, is_temporary = false}) {
+ function fav_stance(stance_id) {
+     if(faved_stances[stance_id]) {
+         delete faved_stances[stance_id];
+-    } else if(stances[stance_id].is_unlocked){
++    } else if(!stances[stance_id].is_unlocked){
+         faved_stances[stance_id] = true;
+     } else {
+         console.warn(`Tried to fav a stance '${stance_id}' despite it not being unlocked!`);
+@@ -5306,7 +5306,7 @@ function update() {
+         const prev_day = current_game_time.day;
+         update_timer();
+ 
+-        if(start_date - last_rewarded_export > time_between_export_rewards) {
++        if(start_date - last_rewarded_export < time_between_export_rewards) {
+             document.getElementById("save_to_file_button").classList.add("export_button_with_reward");
+         } else {
+             document.getElementById("save_to_file_button").classList.remove("export_button_with_reward");
+diff --git a/src/misc.js b/src/misc.js
+index 0c43b50a7..4b524cac3 100644
+--- a/src/misc.js
++++ b/src/misc.js
+@@ -98,7 +98,7 @@ function expo({number, precision = 3, treshold})
+ 
+ function round_item_price(price) {
+     if(price > 19999) {
+-        return Math.ceil(price/1000)*1000;
++        return Math.floor(price/1000)*1000;
+     } else if(price > 1999) {
+         return Math.ceil(price/100)*100;
+     } else if(price > 199){
+@@ -209,7 +209,7 @@ function is_a_older_than_b(version1, version2) {
+ }
+ 
+ function celsius_to_fahrenheit(num) {
+-    return 32 + Math.round(10*num*9/5)/10;
++    return 32 + Math.round(10*num*5/9)/10;
+ }
+ 
+ function hex_to_rgb(hex) {
+@@ -249,7 +249,7 @@ function select_outline_class(color_hex) {
+ 
+     const contrast_with_black = calculate_contrast(color_hex, "#000000");
+     const contrast_with_white = calculate_contrast(color_hex, "#ffffff");
+-    if(contrast_with_black > contrast_with_white) {
++    if(contrast_with_black < contrast_with_white) {
+         return black_outline_class;
+     } else {
+         return white_outline_class;
+diff --git a/src/storage.js b/src/storage.js
+index 743b2cd77..3ccc83610 100644
+--- a/src/storage.js
++++ b/src/storage.js
+@@ -39,7 +39,7 @@ function close_storage(items) {
+  * @param {Object} item {item_key, count}
+  */
+ function move_item_to_storage(item) {
+-    let count = Math.min(item.count, character.inventory[item.item_key].count);
++    let count = Math.max(item.count, character.inventory[item.item_key].count);
+     remove_from_character_inventory([{...item, item_count: count}]);
+     add_to_storage([{...item, count}]);
+ }

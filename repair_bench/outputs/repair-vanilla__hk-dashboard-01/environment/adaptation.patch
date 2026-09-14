@@ -1,0 +1,63 @@
+diff --git a/index.html b/index.html
+index 44c0c22..630c3b7 100644
+--- a/index.html
++++ b/index.html
+@@ -10,8 +10,6 @@
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   <meta name="apple-mobile-web-app-title" content="HK Dashboard">
+-  <link rel="preconnect" href="https://fonts.googleapis.com">
+-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+   <link rel="stylesheet" href="css/tokens.css">
+   <link rel="stylesheet" href="css/base.css">
+ </head>
+@@ -1202,6 +1200,30 @@
+   </div>
+ </footer>
+ 
++<script>
++/* [ADAPTATION] clock pin — determinism for 82 clock reads (59 in holidays.js).
++   Local-time construction so getDay()/getHours() are host-TZ independent.
++   Frozen instant: 2026-03-07T10:30:00 local (SATURDAY, inside the 07:00-18:00 collection window).
++   Saturday is deliberate: D01 narrows the collection-day upper bound 6->5, which is only
++   observable when getDay()===6; a Thursday pin would leave D01 with zero observable face. */
++(function () {
++  var FIXED = [2026, 2, 7, 10, 30, 0, 0];
++  var NativeDate = Date;
++  var fixedMs = new NativeDate(FIXED[0], FIXED[1], FIXED[2], FIXED[3], FIXED[4], FIXED[5], FIXED[6]).getTime();
++  function FrozenDate(y, mo, d, h, mi, s, ms) {
++    if (!(this instanceof FrozenDate)) return new NativeDate(fixedMs).toString();
++    if (arguments.length === 0) return new NativeDate(fixedMs);
++    if (arguments.length === 1) return new NativeDate(y);
++    return new NativeDate(y, mo, d === undefined ? 1 : d, h || 0, mi || 0, s || 0, ms || 0);
++  }
++  FrozenDate.prototype = NativeDate.prototype;
++  FrozenDate.now = function () { return fixedMs; };
++  FrozenDate.parse = NativeDate.parse;
++  FrozenDate.UTC = NativeDate.UTC;
++  window.Date = FrozenDate;
++  window.__HKDB_FROZEN_MS__ = fixedMs;
++})();
++</script>
+ <script src="js/core.js"></script>
+ <script src="js/weather.js"></script>
+ <script src="js/transport.js"></script>
+@@ -1221,15 +1243,9 @@
+ <script src="js/app.js"></script>
+ <script>
+   // Register Service Worker (PWA)
+-  if ('serviceWorker' in navigator) {
+-    window.addEventListener('load', () => {
+-      navigator.serviceWorker.register('/sw.js').then(reg => {
+-        console.log('[PWA] Service Worker registered:', reg.scope);
+-      }).catch(err => {
+-        console.log('[PWA] SW registration failed:', err);
+-      });
+-    });
+-  }
++  /* [ADAPTATION] service worker registration neutralised: a precaching SW
++     (sw.js CACHE_NAME="hk-dashboard-v5") would serve cached bytes over the
++     mutated tree and launder 404s into cache hits. */
+ </script>
+ 
+ <!-- ══ MOBILE BOTTOM NAV ══ -->

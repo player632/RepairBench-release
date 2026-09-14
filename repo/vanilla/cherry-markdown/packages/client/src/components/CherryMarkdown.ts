@@ -1,0 +1,529 @@
+import Cherry from 'cherry-markdown';
+import { CherryOptions } from 'cherry-markdown/types/cherry';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+import { pinyin } from 'pinyin';
+import { WINDOW_EVENTS } from '../constants/events';
+
+/**
+ * ECharts优化导入 - 使用命名空间导入替代默认导入
+ * 优点：
+ * 1. 更好的TypeScript类型支持
+ * 2. 避免版本兼容性问题
+ * 3. 支持按需导入echarts功能
+ */
+import * as echarts from 'echarts';
+import type { CherryEditorInstance } from './editorTypes';
+import { getCurrentLightbox } from './composables/useImageLightbox';
+import { createImageBedFileUpload, createImageBedOnPaste } from './composables/useImageBedUploader';
+import { runCherryExport, type ExportType } from './composables/useCherryExport';
+import { usePreferencesStore, type EditorMode } from '../store';
+
+/**
+ * ECharts类型兼容性处理
+ * 由于cherry-markdown可能期望特定版本的echarts类型，
+ * 这里定义兼容性接口确保类型安全
+ */
+interface EChartsInstance {
+  init: typeof echarts.init;
+}
+
+const echartsInstance: EChartsInstance = echarts;
+
+const toPinyin = (text: string) => pinyin(text, { style: pinyin.STYLE_TONE, heteronym: false }).flat().join(' ');
+
+type CherryMenuHook = ReturnType<typeof Cherry.createMenuHook>;
+type ToolbarRightConfig = NonNullable<CherryOptions<CustomConfig>['toolbars']>['toolbarRight'];
+
+interface ToolbarMenuHookContext {
+  $cherry: Pick<CherryEditorInstance, 'getMarkdown' | 'switchModel' | 'focusMode'> & {
+    getStatus(): { editor: string };
+  };
+  updateMarkdown: boolean;
+}
+
+type CustomConfig = {
+  CustomToolbar: {
+    CustomMenuType: {
+      customMenu_fileUpload?: CherryMenuHook;
+      customMenuChangeModule: CherryMenuHook;
+      customSave: CherryMenuHook;
+      customExport: CherryMenuHook;
+    };
+  };
+};
+
+// Cherry upstream types do not include custom menu ids in toolbarRight,
+// but runtime supports them through customMenu registration.
+const toolbarRight = ['customSave', '|', 'togglePreview'] as unknown as ToolbarRightConfig;
+
+const customMenuChangeModule = Cherry.createMenuHook('编辑', {
+  iconName: 'pen' as const,
+  onClick(this: ToolbarMenuHookContext) {
+    const { editor } = this.$cherry.getStatus();
+    let nextMode: EditorMode;
+    if (editor === 'show') {
+      nextMode = 'previewOnly';
+      this.$cherry.switchModel('previewOnly');
+    } else if (this.$cherry.focusMode) {
+      nextMode = 'editOnly';
+      this.$cherry.switchModel('editOnly', false);
+    } else {
+      nextMode = 'edit&preview';
+      this.$cherry.switchModel('edit&preview');
+    }
+    try {
+      usePreferencesStore().setEditorMode(nextMode);
+    } catch {
+      // pinia 未就绪时忽略，避免影响功能
+    }
+  },
+});
+
+const customSave = Cherry.createMenuHook('保存', {
+  icon: {
+    // type: 'svg',
+    // iconStyle: 'width:16px;height:16px;',
+    noIcon: true,
+  },
+  onClick(this: ToolbarMenuHookContext) {
+    this.updateMarkdown = false;
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      const markdown = this.$cherry?.getMarkdown?.() ?? '';
+      const event = new CustomEvent(WINDOW_EVENTS.REQUEST_SAVE, { detail: { markdown } });
+      window.dispatchEvent(event);
+    }
+  },
+});
+
+/**
+ * 导出菜单：Tauri 环境下不能复用主包 utils/export.js（<a download> 在 WebView2/WKWebView 里
+ * 不会触发系统下载器），因此客户端自实现 runCherryExport，走 dialog.save + fs.writeTextFile / writeFile。
+ *
+ * 五种导出：
+ * - pdf：受限于 WebView 打印能力，降级为导出为 HTML 并提示用户"浏览器打开 → 另存为 PDF"
+ * - screenShot：html2canvas 出 PNG，二进制通过 fs.writeFile 落盘
+ * - markdown：cherry.getMarkdown() → fs.writeTextFile
+ * - html：previewer.getValue() 拼装 HTML5 文档 → fs.writeTextFile
+ * - word：写 text/html 到剪贴板，用户 Ctrl+V 粘贴到 Word（与主包一致）
+ *
+ * 菜单点击流：subMenuConfig → afterInit 里 bindSubClick(type) → onClick(_selection, type) → runCherryExport
+ */
+interface ExportMenuInstance {
+  $cherry: {
+    previewer: {
+      options: { previewerCache: { html: string } };
+      lazyLoadImg: { changeDataSrc2Src(html: string): string };
+      isPreviewerHidden(): boolean;
+      getDomContainer(): HTMLElement;
+      refresh(html: string): void;
+      getValue(): string;
+    };
+    getMarkdown(): string;
+    getFirstLineText?(fallback?: string): string;
+  };
+  subMenuConfig: Array<{ noIcon?: boolean; name: string; onclick?: unknown }>;
+  updateMarkdown: boolean;
+  bindSubClick(shortcut: string, selection?: string): unknown;
+}
+
+const customExport = Cherry.createMenuHook('导出', {
+  iconName: 'download' as const,
+  // 先占位（name 走主包 i18n），具体 onclick 在 afterInit 里用菜单实例重新绑定
+  subMenuConfig: [
+    { noIcon: true, name: 'exportToPdf' },
+    { noIcon: true, name: 'exportScreenshot' },
+    { noIcon: true, name: 'exportMarkdownFile' },
+    { noIcon: true, name: 'exportHTMLFile' },
+    { noIcon: true, name: 'exportWordFile' },
+  ],
+  afterInit(this: ExportMenuInstance) {
+    const typeMap: Record<string, ExportType> = {
+      exportToPdf: 'pdf',
+      exportScreenshot: 'screenShot',
+      exportMarkdownFile: 'markdown',
+      exportHTMLFile: 'html',
+      exportWordFile: 'word',
+    };
+    this.subMenuConfig.forEach((item) => {
+      const type = typeMap[item.name];
+      if (type) {
+        // eslint-disable-next-line no-param-reassign
+        item.onclick = this.bindSubClick.bind(this, type);
+      }
+    });
+  },
+  onClick(this: ExportMenuInstance, _selection: string, type: ExportType) {
+    this.updateMarkdown = false;
+    if (!type) return;
+    void runCherryExport(this.$cherry, type);
+  },
+});
+
+const cherryConfig: CherryOptions<CustomConfig> = {
+  id: 'markdown-editor',
+  // 第三方包
+  externals: {
+    // externals
+    katex,
+    echarts: echartsInstance,
+  },
+  // 解析引擎配置
+  engine: {
+    // 全局配置
+    global: {
+      // 是否启用经典换行逻辑
+      // true：一个换行会被忽略，两个以上连续换行会分割成段落，
+      // false： 一个换行会转成<br>，两个连续换行会分割成段落，三个以上连续换行会转成<br>并分割段落
+      classicBr: false,
+    },
+    // 内置语法配置
+    syntax: {
+      link: {
+        /** 生成的<a>标签追加target属性的默认值 空：在<a>标签里不会追加target属性， _blank：在<a>标签里追加target="_blank"属性 */
+        target: '_blank',
+        /** 生成的<a>标签追加rel属性的默认值 空：在<a>标签里不会追加rel属性， nofollow：在<a>标签里追加rel="nofollow：在"属性*/
+        rel: '',
+      },
+      autoLink: {
+        /** 生成的<a>标签追加target属性的默认值 空：在<a>标签里不会追加target属性， _blank：在<a>标签里追加target="_blank"属性 */
+        target: '_blank',
+        /** 生成的<a>标签追加rel属性的默认值 空：在<a>标签里不会追加rel属性， nofollow：在<a>标签里追加rel="nofollow：在"属性*/
+        rel: '',
+        /** 是否开启短链接 */
+        enableShortLink: true,
+        /** 短链接长度 */
+        shortLinkLength: 20,
+      },
+      table: {
+        enableChart: true,
+        selfClosing: true, // 自动闭合，为true时，当输入第一行table内容时，cherry会自动按表格进行解析
+      },
+      codeBlock: {
+        wrap: true, // 超出长度是否换行，false则显示滚动条
+        lineNumber: true, // 默认显示行号
+        copyCode: true, // 是否显示“复制”按钮
+        editCode: true, // 是否显示“编辑”按钮
+        changeLang: true, // 是否显示“切换语言”按钮
+        expandCode: true, // 是否展开/收起代码块，当代码块行数大于10行时，会自动收起代码块
+        selfClosing: true, // 自动闭合，为true时，当md中有奇数个```时，会自动在md末尾追加一个```
+        mermaid: {
+          svg2img: false, // 是否将mermaid生成的画图变成img格式
+          showSourceToolbar: true,
+        },
+        /**
+         * indentedCodeBlock是缩进代码块是否启用的开关
+         *
+         *    在6.X之前的版本中默认不支持该语法。
+         *    因为cherry的开发团队认为该语法太丑了（容易误触）
+         *    开发团队希望用```代码块语法来彻底取代该语法
+         *    但在后续的沟通中，开发团队发现在某些场景下该语法有更好的显示效果
+         *    因此开发团队在6.X版本中才引入了该语法
+         *    已经引用6.x以下版本的业务如果想做到用户无感知升级，可以去掉该语法：
+         *        indentedCodeBlock：false
+         */
+        indentedCodeBlock: false,
+      },
+      emoji: {
+        useUnicode: true, // 是否使用unicode进行渲染
+      },
+      fontEmphasis: {
+        /**
+         * 是否允许首尾空格
+         * 首尾、前后的定义： 语法前**语法首+内容+语法尾**语法后
+         * 例：
+         *    true:
+         *           __ hello __  ====>   <strong> hello </strong>
+         *           __hello__    ====>   <strong>hello</strong>
+         *    false:
+         *           __ hello __  ====>   <em>_ hello _</em>
+         *           __hello__    ====>   <strong>hello</strong>
+         */
+        allowWhitespace: false,
+        selfClosing: false, // 自动闭合，为true时，当输入**XXX时，会自动在末尾追加**
+      },
+      strikethrough: {
+        /**
+         * 是否必须有前后空格
+         * 首尾、前后的定义： 语法前**语法首+内容+语法尾**语法后
+         * 例：
+         *    true:
+         *            hello wor~~l~~d     ====>   hello wor~~l~~d
+         *            hello wor ~~l~~ d   ====>   hello wor <del>l</del> d
+         *    false:
+         *            hello wor~~l~~d     ====>   hello wor<del>l</del>d
+         *            hello wor ~~l~~ d     ====>   hello wor <del>l</del> d
+         */
+        needWhitespace: false,
+      },
+      mathBlock: {
+        engine: 'katex', // katex或MathJax
+        src: '',
+      },
+      inlineMath: {
+        engine: 'katex', // katex或MathJax
+        src: '',
+      },
+      toc: {
+        /** 默认只渲染一个目录 */
+        allowMultiToc: false,
+        /** 是否显示自增序号 */
+        showAutoNumber: false,
+      },
+      header: {
+        /**
+         * 标题的样式：
+         *  - default       默认样式，标题前面有锚点
+         *  - autonumber    标题前面有自增序号锚点
+         *  - none          标题没有锚点
+         */
+        anchorStyle: 'none',
+      },
+    },
+  },
+  editor: {
+    id: 'code', // textarea 的id属性值
+    name: 'code', // textarea 的name属性值
+    autoSave2Textarea: false, // 是否自动将编辑区的内容回写到textarea里
+    // 编辑器的高度，默认100%，如果挂载点存在内联设置的height则以内联样式为主
+    height: '100%',
+    // defaultModel 编辑器初始化后的默认模式，一共有三种模式：1、双栏编辑预览模式；2、纯编辑模式；3、预览模式
+    // edit&preview: 双栏编辑预览模式
+    // editOnly: 纯编辑模式（没有预览，可通过toolbar切换成双栏或预览模式）
+    // previewOnly: 预览模式（没有编辑框，toolbar只显示“返回编辑”按钮，可通过toolbar切换成编辑模式）
+    // 该字段在 cherryInstance 工厂函数里会被 usePreferencesStore().editorMode 覆盖
+    defaultModel: 'edit&preview',
+    // 粘贴时是否自动将html转成markdown
+    convertWhenPaste: true,
+    // 快捷键风格，目前仅支持 sublime 和 vim
+    keyMap: 'sublime',
+    codemirror: {
+      // 是否自动focus 默认为true
+      autofocus: false,
+      placeholder: '输入文本或「/」开始编辑',
+    },
+    writingStyle: 'normal', // 书写风格，normal 普通 | typewriter 打字机 | focus 专注，默认normal
+    keepDocumentScrollAfterInit: false, // 在初始化后是否保持网页的滚动，true：保持滚动；false：网页自动滚动到cherry初始化的位置
+    showFullWidthMark: true, // 是否高亮全角符号 ·|￥|、|：|“|”|【|】|（|）|《|》
+    showSuggestList: true, // 是否显示联想框
+    maxUrlLength: 200, // url最大长度，超过则自动截断
+  },
+  toolbars: {
+    toolbar: [
+      'bold',
+      {
+        italic: ['italic', 'strikethrough', 'underline', 'sub', 'sup', 'ruby'],
+      },
+      'size',
+      'color',
+      '|',
+      'header',
+      { ol: ['ol', 'ul', 'checklist'] },
+      'panel',
+      'align',
+      'timeline',
+      'detail',
+      '|',
+      {
+        insert: [
+          'image',
+          // 'audio',
+          // 'video',
+          'link',
+          'hr',
+          'br',
+          'code',
+          'quote',
+          // 'formula',
+          'toc',
+          'table',
+          'detail',
+          'drawIo',
+          // 'pdf',
+          // 'word',
+          // 'file',
+        ],
+      },
+      'formula',
+      'graph',
+      'proTable',
+      '|',
+      'search',
+      'shortcutKey',
+    ],
+    toolbarRight,
+    bubble: ['bold', 'italic', 'underline', 'strikethrough', 'sub', 'sup', 'quote', 'ruby', '|', 'size', 'color'], // array or false
+    sidebar: ['customMenuChangeModule', 'customExport', 'mobilePreview', 'theme', 'codeTheme'],
+    float: false,
+    // hiddenToolbar: [''],
+    // sidebar: ['customMenuChangeModule', 'mobilePreview', 'copy', 'theme', 'codeTheme'],
+    toc: {
+      updateLocationHash: false, // 要不要更新URL的hash
+      defaultModel: 'full', // pure: 精简模式/缩略模式，只有一排小点； full: 完整模式，会展示所有标题
+    },
+    customMenu: {
+      customMenuChangeModule,
+      customSave,
+      customExport,
+    },
+    config: {
+      // 地图表格配置 - 支持自定义地图数据源URL
+      mapTable: {
+        sourceUrl: [
+          // 在线高质量地图数据源（优先）
+          'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+          // 本地备用地图数据（公共资源目录）
+          '/data/china.json',
+        ],
+      },
+    },
+  },
+  // 打开draw.io编辑页的url，如果为空则drawio按钮失效
+  drawioIframeUrl: '../utils/drawio/drawio_demo.html',
+  // drawio iframe的样式
+  drawioIframeStyle: 'border: none;',
+  /**
+   * 上传文件的时候用来指定文件类型
+   */
+  fileTypeLimitMap: {
+    video: 'video/*',
+    audio: 'audio/*',
+    image: 'image/*',
+    word: '.doc,.docx',
+    pdf: '.pdf',
+    file: '*',
+  },
+  /**
+   * 上传文件的时候是否开启多选
+   */
+  multipleFileSelection: {
+    video: false,
+    audio: false,
+    image: false,
+    word: false,
+    pdf: false,
+    file: false,
+  },
+  previewer: {
+    dom: false,
+    className: 'cherry-markdown',
+    // 是否启用预览区域编辑能力（目前支持编辑图片尺寸、编辑表格内容）
+    enablePreviewerBubble: true,
+    floatWhenClosePreviewer: false,
+    /**
+     * 配置图片懒加载的逻辑
+     * - 如果不希望图片懒加载，可配置成 lazyLoadImg = {noLoadImgNum: -1}
+     * - 如果希望所有图片都无脑懒加载，可配置成 lazyLoadImg = {noLoadImgNum: 0, autoLoadImgNum: -1}
+     * - 如果一共有15张图片，希望：
+     *    1、前5张图片（1~5）直接加载；
+     *    2、后5张图片（6~10）不论在不在视区内，都无脑懒加载；
+     *    3、其他图片（11~15）在视区内时，进行懒加载；
+     *    则配置应该为：lazyLoadImg = {noLoadImgNum: 5, autoLoadImgNum: 5}
+     */
+    lazyLoadImg: {
+      // 加载图片时如果需要展示loading图，则配置loading图的地址
+      loadingImgPath: '',
+      // 同一时间最多有几个图片请求，最大同时加载6张图片
+      maxNumPerTime: 2,
+      // 不进行懒加载处理的图片数量，如果为0，即所有图片都进行懒加载处理， 如果设置为-1，则所有图片都不进行懒加载处理
+      noLoadImgNum: 5,
+      // 首次自动加载几张图片（不论图片是否滚动到视野内），autoLoadImgNum = -1 表示会自动加载完所有图片
+      autoLoadImgNum: 5,
+      // 针对加载失败的图片 或 beforeLoadOneImgCallback 返回false 的图片，最多尝试加载几次，为了防止死循环，最多5次。以图片的src为纬度统计重试次数
+      maxTryTimesPerSrc: 2,
+      // 加载一张图片之前的回调函数，函数return false 会终止加载操作
+      // beforeLoadOneImgCallback: (img) => {
+      //   return true;
+      // },
+      // // 加载一张图片失败之后的回调函数
+      // failLoadOneImgCallback: (img) => { },
+      // // 加载一张图片之后的回调函数，如果图片加载失败，则不会回调该函数
+      // afterLoadOneImgCallback: (img) => { },
+      // // 加载完所有图片后调用的回调函数
+      // afterLoadAllImgCallback: () => { },
+    },
+  },
+  callback: {
+    // 图床上传：根据用户在“设置”里选择的图床（none/picgo/custom）动态分发
+    fileUpload: createImageBedFileUpload(),
+    /**
+     * 粘贴回调：当剪贴板中含图片且已配置图床时，
+     * 先回显“正在上传图片…”语法糖占位，上传完成后自动替换为真实的 ![](url)。
+     * 其他情况（有文字 / 图床=none）返回 undefined 交给 Cherry 默认处理。
+     *
+     * 注：cherry-markdown 官方 d.ts 里 asyncCallback 的形参类型标注为 (text: string) => void，
+     * 但 Editor.js 运行时实际传递的是对象 { html, htmlText, mdText }，此处以运行时为准，
+     * 使用双重断言穿透类型系统。
+     */
+    onPaste: createImageBedOnPaste() as unknown as NonNullable<CherryOptions<CustomConfig>['callback']>['onPaste'],
+    // 把中文变成拼音的回调，当然也可以把中文变成英文、英文变成中文
+    changeString2Pinyin: toPinyin,
+    /**
+     * 预览区点击回调
+     * - 仅在纯预览模式（status.editor !== 'show'）下接管图片点击，弹出 viewerjs 大图
+     * - 返回 false 会中断 cherry 内部后续处理（如图片编辑气泡），避免冲突
+     */
+    onClickPreview(e: MouseEvent) {
+      const { target } = e;
+      if (!(target instanceof HTMLImageElement)) {
+        return;
+      }
+      // 通过 lazy import 避免循环依赖
+      const lightbox = getCurrentLightbox();
+      if (!lightbox) {
+        return;
+      }
+      if (lightbox.open(target)) {
+        return false;
+      }
+    },
+  },
+  /** 定义cherry缓存的作用范围，相同nameSpace的实例共享localStorage缓存 */
+  nameSpace: 'cherry',
+  themeSettings: {
+    // 主题列表，用于切换主题
+    themeList: [
+      { className: 'default', label: '明亮' }, // 曾用名：light 明亮
+      { className: 'dark', label: '暗黑' },
+      { className: 'green', label: '清新' },
+      { className: 'red', label: '热情' },
+      { className: 'violet', label: '淡雅' },
+      { className: 'blue', label: '清幽' },
+    ],
+    mainTheme: 'violet',
+    codeBlockTheme: 'twilight',
+    inlineCodeTheme: 'red', // red or black
+  },
+  // 预览页面不需要绑定事件
+  isPreviewOnly: false,
+  // 预览区域跟随编辑器光标自动滚动
+  autoScrollByCursor: true,
+  // 外层容器不存在时，是否强制输出到body上
+  forceAppend: false,
+  // The locale Cherry is going to use. Locales live in /src/locales/
+  locale: 'zh_CN',
+  // Supplementary locales
+  locales: {},
+  // cherry初始化后是否检查 location.hash 尝试滚动到对应位置
+  autoScrollByHashAfterInit: false,
+};
+
+/**
+ * @description cherryInstance
+ * 搜索能力已内嵌至 cherry-markdown 主包，默认 toolbar 含 search，无需额外注册
+ */
+export const cherryInstance = (() => {
+  return () => {
+    // 使用持久化的编辑器模式作为初始 defaultModel（若 store 不可用则回退默认值）
+    try {
+      const prefs = usePreferencesStore();
+      if (cherryConfig.editor) {
+        cherryConfig.editor.defaultModel = prefs.editorMode;
+      }
+    } catch {
+      // pinia 未就绪时使用默认配置
+    }
+    return new Cherry(cherryConfig);
+  };
+})();

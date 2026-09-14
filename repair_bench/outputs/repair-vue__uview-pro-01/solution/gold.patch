@@ -1,0 +1,118 @@
+diff --git a/src/common/useExperienceCenter.ts b/src/common/useExperienceCenter.ts
+--- a/src/common/useExperienceCenter.ts
++++ b/src/common/useExperienceCenter.ts
+@@ -101,7 +101,7 @@
+     const levelInfo = computed(() => {
+         let current = atlas[0];
+         for (const node of atlas) {
+-            if (xp.value > node.threshold) {
++            if (xp.value >= node.threshold) {
+                 current = node;
+             } else {
+                 break;
+@@ -121,7 +121,7 @@
+             return 100;
+         }
+         const currentThreshold = levelInfo.value.threshold;
+-        const span = next.threshold;
++        const span = next.threshold - currentThreshold;
+         if (span <= 0) return 100;
+         return Math.min(100, Math.round(((xp.value - currentThreshold) / span) * 100));
+     });
+@@ -146,7 +146,7 @@
+                               Math.round(((xp.value - node.threshold) / (next.threshold - node.threshold)) * 100)
+                           )
+                         : status === 'finish'
+-                          ? 0
++                          ? 100
+                           : 0
+             };
+         });
+@@ -159,7 +159,7 @@
+         const stats = keys.map(key => componentStats.value[key]);
+         const tasksCompleted = stats.reduce((sum, item) => sum + item.tasksCompleted, 0);
+         const totalXP = stats.reduce((sum, item) => sum + item.xp, 0);
+-        const mostActive = stats.sort((a, b) => a.xp - b.xp)[0];
++        const mostActive = stats.sort((a, b) => b.xp - a.xp)[0];
+         return {
+             components: keys.length,
+             tasksCompleted,
+@@ -202,7 +202,7 @@
+             [componentKey]: { ...stat }
+         };
+         const timestamp = Date.now();
+-        logs.value = [...logs.value, { message: `${source} +${amount}XP`, timestamp }].slice(0, 12);
++        logs.value = [{ message: `${source} +${amount}XP`, timestamp }, ...logs.value].slice(0, 12);
+         lastGain.value = { amount, source, componentKey, timestamp };
+         persistState();
+     };
+diff --git a/src/common/useHooks.ts b/src/common/useHooks.ts
+--- a/src/common/useHooks.ts
++++ b/src/common/useHooks.ts
+@@ -11,7 +11,7 @@
+         // 切换vue-i18n语言
+         locale.value = payload.locale;
+         // 切换uView Pro语言
+-        setLocale(payload.locale);
++        setLocale(payload.name);
+     }
+ 
+     return {
+@@ -27,7 +27,7 @@
+     const titles = ['nav.components', 'nav.js', 'nav.experience', 'nav.template', 'nav.about'];
+     function getTitle(key: string, item: any = null) {
+         if (!item) return key;
+-        return locale.value === 'en' ? item[key] : item[`${key}_en`];
++        return locale.value === 'zh-Hans' ? item[key] : item[`${key}_en`];
+     }
+ 
+     function setTitle() {
+diff --git a/src/components/demo-page/demo-page.vue b/src/components/demo-page/demo-page.vue
+--- a/src/components/demo-page/demo-page.vue
++++ b/src/components/demo-page/demo-page.vue
+@@ -645,13 +645,13 @@
+     const likeScore = toolbarState.value.liked ? 15 : 0;
+     const bookmarkScore = toolbarState.value.bookmarked ? 20 : 0;
+     const ratingScore = toolbarState.value.rating * 10;
+-    const interactionScore = toolbarState.value.interactions * 8;
++    const interactionScore = Math.min(toolbarState.value.interactions * 8, 45);
+     const total = likeScore + bookmarkScore + ratingScore + interactionScore;
+     return Math.min(100, total);
+ });
+ const rateText = computed(() => {
+     if (!toolbarState.value.rating) return '请为体验评分';
+-    if (toolbarState.value.rating > 4.5) return '沉浸式体验';
++    if (toolbarState.value.rating >= 4.5) return '沉浸式体验';
+     if (toolbarState.value.rating >= 3) return '不错，可以继续优化';
+     return '欢迎继续提建议';
+ });
+@@ -681,7 +681,7 @@
+         }
+         xpToastTimer = setTimeout(() => {
+             xpToast.value = null;
+-        }, 180);
++        }, 1800);
+     }
+ );
+ onUnmounted(() => {
+diff --git a/src/pages/example/components.vue b/src/pages/example/components.vue
+--- a/src/pages/example/components.vue
++++ b/src/pages/example/components.vue
+@@ -171,6 +171,7 @@
+ 
+ const switchTheme = (themeName: string) => {
+     setTheme(themeName);
++    completeMission('theme');
+ };
+ 
+ const list = ref<any[]>(Array.isArray(rawList) ? rawList : []); // 明确类型 any[]
+@@ -257,7 +258,8 @@
+                 return (
+                     title.includes(keyword) ||
+                     titleEn.includes(keyword) ||
+-                    desc.includes(keyword)
++                    desc.includes(keyword) ||
++                    path.includes(keyword)
+                 );
+             });
+ 

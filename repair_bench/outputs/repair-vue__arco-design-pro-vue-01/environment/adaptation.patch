@@ -1,0 +1,434 @@
+diff --git a/config/plugin/imagemin.ts b/config/plugin/imagemin.ts
+deleted file mode 100644
+index 6a45789..0000000
+--- a/config/plugin/imagemin.ts
++++ /dev/null
+@@ -1,37 +0,0 @@
+-/**
+- * Image resource files used to compress the output of the production environment
+- * 图片压缩
+- * https://github.com/anncwb/vite-plugin-imagemin
+- */
+-import viteImagemin from 'vite-plugin-imagemin';
+-
+-export default function configImageminPlugin() {
+-  const imageminPlugin = viteImagemin({
+-    gifsicle: {
+-      optimizationLevel: 7,
+-      interlaced: false,
+-    },
+-    optipng: {
+-      optimizationLevel: 7,
+-    },
+-    mozjpeg: {
+-      quality: 20,
+-    },
+-    pngquant: {
+-      quality: [0.8, 0.9],
+-      speed: 4,
+-    },
+-    svgo: {
+-      plugins: [
+-        {
+-          name: 'removeViewBox',
+-        },
+-        {
+-          name: 'removeEmptyAttrs',
+-          active: false,
+-        },
+-      ],
+-    },
+-  });
+-  return imageminPlugin;
+-}
+diff --git a/config/vite.config.prod.ts b/config/vite.config.prod.ts
+index 79a8864..65abe2d 100644
+--- a/config/vite.config.prod.ts
++++ b/config/vite.config.prod.ts
+@@ -3,7 +3,6 @@ import baseConfig from './vite.config.base';
+ import configCompressPlugin from './plugin/compress';
+ import configVisualizerPlugin from './plugin/visualizer';
+ import configArcoResolverPlugin from './plugin/arcoResolver';
+-import configImageminPlugin from './plugin/imagemin';
+ 
+ export default mergeConfig(
+   {
+@@ -12,7 +11,6 @@ export default mergeConfig(
+       configCompressPlugin('gzip'),
+       configVisualizerPlugin(),
+       configArcoResolverPlugin(),
+-      configImageminPlugin(),
+     ],
+     build: {
+       rollupOptions: {
+diff --git a/index.html b/index.html
+index 46cac70..3af3024 100644
+--- a/index.html
++++ b/index.html
+@@ -2,7 +2,7 @@
+ <html lang="en">
+   <head>
+     <meta charset="UTF-8" />
+-    <link rel="shortcut icon" type="image/x-icon" href="https://unpkg.byted-static.com/latest/byted/arco-config/assets/favicon.ico">
++    <link rel="shortcut icon" type="image/x-icon" href="./src/assets/logo.svg">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <title>Arco Design Pro - 开箱即用的中台前端/设计解决方案</title>
+   </head>
+diff --git a/package.json b/package.json
+index 10b0217..e88804c 100644
+--- a/package.json
++++ b/package.json
+@@ -7,12 +7,11 @@
+   "license": "MIT",
+   "scripts": {
+     "dev": "vite --config ./config/vite.config.dev.ts",
+-    "build": "vue-tsc --noEmit && vite build --config ./config/vite.config.prod.ts",
++    "build": "vite build --config ./config/vite.config.prod.ts",
+     "report": "cross-env REPORT=true npm run build",
+     "preview": "npm run build && vite preview --host",
+     "type:check": "vue-tsc --noEmit --skipLibCheck",
+-    "lint-staged": "npx lint-staged",
+-    "prepare": "husky install"
++    "lint-staged": "npx lint-staged"
+   },
+   "lint-staged": {
+     "*.{js,ts,jsx,tsx}": [
+@@ -87,7 +86,6 @@
+     "vite": "^3.2.5",
+     "vite-plugin-compression": "^0.5.1",
+     "vite-plugin-eslint": "^1.8.1",
+-    "vite-plugin-imagemin": "^0.6.1",
+     "vite-svg-loader": "^3.6.0",
+     "vue-tsc": "^1.0.14"
+   },
+diff --git a/src/components/navbar/index.vue b/src/components/navbar/index.vue
+index e37b697..39cf4f9 100644
+--- a/src/components/navbar/index.vue
++++ b/src/components/navbar/index.vue
+@@ -4,7 +4,7 @@
+       <a-space>
+         <img
+           alt="logo"
+-          src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/dfdba5317c0c20ce20e64fac803d52bc.svg~tplv-49unhts6dw-image.image"
++          :src="logoUrl"
+         />
+         <a-typography-title
+           :style="{ margin: 0, fontSize: '18px' }"
+@@ -197,6 +197,7 @@
+   import { Message } from '@arco-design/web-vue';
+   import { useDark, useToggle, useFullscreen } from '@vueuse/core';
+   import { useAppStore, useUserStore } from '@/store';
++  import logoUrl from '@/assets/logo.svg?url';
+   import { LOCALE_OPTIONS } from '@/locale';
+   import useLocale from '@/hooks/locale';
+   import useUser from '@/hooks/user';
+diff --git a/src/mock/index.ts b/src/mock/index.ts
+index cc1b572..bfdefdf 100644
+--- a/src/mock/index.ts
++++ b/src/mock/index.ts
+@@ -22,5 +22,5 @@ import '@/views/user/setting/mock';
+ /** simple end */
+ 
+ Mock.setup({
+-  timeout: '600-1000',
++  timeout: '10-10',
+ });
+diff --git a/src/mock/message-box.ts b/src/mock/message-box.ts
+index 6449e68..57014c9 100644
+--- a/src/mock/message-box.ts
++++ b/src/mock/message-box.ts
+@@ -10,7 +10,7 @@ const getMessageList = () => {
+       title: '郑曦月',
+       subTitle: '的私信',
+       avatar:
+-        '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/8361eeb82904210b4f55fab888fe8416.png~tplv-uwbnlip3yd-webp.webp',
++        '',
+       content: '审批请求已发送，请查收',
+       time: '今天 12:30:01',
+     },
+@@ -20,7 +20,7 @@ const getMessageList = () => {
+       title: '宁波',
+       subTitle: '的回复',
+       avatar:
+-        '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++        '',
+       content: '此处 bug 已经修复',
+       time: '今天 12:30:01',
+     },
+@@ -30,7 +30,7 @@ const getMessageList = () => {
+       title: '宁波',
+       subTitle: '的回复',
+       avatar:
+-        '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++        '',
+       content: '此处 bug 已经修复',
+       time: '今天 12:20:01',
+     },
+diff --git a/src/mock/user.ts b/src/mock/user.ts
+index 02920d1..f8e8592 100644
+--- a/src/mock/user.ts
++++ b/src/mock/user.ts
+@@ -18,7 +18,7 @@ setupMock({
+         return successResponseWrap({
+           name: 'admin',
+           avatar:
+-            '//lf1-xgcdn-tos.pstatp.com/obj/vcloud/vadmin/start.8e0e4855ee346a46ccff8ff3e24db27b.png',
++            '',
+           email: 'wangliqun@email.com',
+           job: 'frontend',
+           jobName: '前端艺术家',
+diff --git a/src/utils/env.ts b/src/utils/env.ts
+index 4147b35..f01f672 100644
+--- a/src/utils/env.ts
++++ b/src/utils/env.ts
+@@ -1,3 +1,3 @@
+-const debug = import.meta.env.MODE !== 'production';
++const debug = true;
+ 
+ export default debug;
+diff --git a/src/views/dashboard/monitor/components/data-statistic-list.vue b/src/views/dashboard/monitor/components/data-statistic-list.vue
+index 8b00394..1c874d0 100644
+--- a/src/views/dashboard/monitor/components/data-statistic-list.vue
++++ b/src/views/dashboard/monitor/components/data-statistic-list.vue
+@@ -37,7 +37,7 @@
+   const data: PreviewRecord[] = [
+     {
+       cover:
+-        'http://p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/c788fc704d32cf3b1136c7d45afc2669.png~tplv-uwbnlip3yd-webp.webp',
++        '',
+       name: '视频直播',
+       duration: '00:05:19',
+       id: '54e23ade',
+diff --git a/src/views/dashboard/monitor/components/studio.vue b/src/views/dashboard/monitor/components/studio.vue
+index 9bd3e09..bf50944 100644
+--- a/src/views/dashboard/monitor/components/studio.vue
++++ b/src/views/dashboard/monitor/components/studio.vue
+@@ -5,7 +5,7 @@
+     </template>
+     <div class="studio-wrapper">
+       <img
+-        src="http://p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/c788fc704d32cf3b1136c7d45afc2669.png~tplv-uwbnlip3yd-webp.webp"
++        src=""
+         class="studio-preview"
+       />
+       <div class="studio-bar">
+diff --git a/src/views/dashboard/workplace/components/carousel.vue b/src/views/dashboard/workplace/components/carousel.vue
+index 2dbbbde..ca4b3b5 100644
+--- a/src/views/dashboard/workplace/components/carousel.vue
++++ b/src/views/dashboard/workplace/components/carousel.vue
+@@ -15,10 +15,10 @@
+ 
+ <script lang="ts" setup>
+   const imageSrc = [
+-    '//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/5cc3cd1d994b7ef9db6a1f619a22addd.jpg~tplv-49unhts6dw-image.image',
+-    '//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/f256cbcc287139e191fecea9d255a1f0.jpg~tplv-49unhts6dw-image.image',
+-    '//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/b557ff0cd44146a2e471b477af2f30d0.jpg~tplv-49unhts6dw-image.image',
+-    '//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/665106f4bbd2a2df96eaf7aec52f7bc3.jpg~tplv-49unhts6dw-image.image',
+-    '//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/ea095a2c9c72b5d8f2f2818040db736d.jpg~tplv-49unhts6dw-image.image',
++    '',
++    '',
++    '',
++    '',
++    '',
+   ];
+ </script>
+diff --git a/src/views/dashboard/workplace/components/data-panel.vue b/src/views/dashboard/workplace/components/data-panel.vue
+index 43d8999..1df6272 100644
+--- a/src/views/dashboard/workplace/components/data-panel.vue
++++ b/src/views/dashboard/workplace/components/data-panel.vue
+@@ -8,7 +8,7 @@
+         <a-avatar :size="54" class="col-avatar">
+           <img
+             alt="avatar"
+-            src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/288b89194e657603ff40db39e8072640.svg~tplv-49unhts6dw-image.image"
++            src=""
+           />
+         </a-avatar>
+         <a-statistic
+@@ -33,7 +33,7 @@
+         <a-avatar :size="54" class="col-avatar">
+           <img
+             alt="avatar"
+-            src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/fdc66b07224cdf18843c6076c2587eb5.svg~tplv-49unhts6dw-image.image"
++            src=""
+           />
+         </a-avatar>
+         <a-statistic
+@@ -57,7 +57,7 @@
+         <a-avatar :size="54" class="col-avatar">
+           <img
+             alt="avatar"
+-            src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/77d74c9a245adeae1ec7fb5d4539738d.svg~tplv-49unhts6dw-image.image"
++            src=""
+           />
+         </a-avatar>
+         <a-statistic
+@@ -82,7 +82,7 @@
+         <a-avatar :size="54" class="col-avatar">
+           <img
+             alt="avatar"
+-            src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/c8b36e26d2b9bb5dbf9b74dd6d7345af.svg~tplv-49unhts6dw-image.image"
++            src=""
+           />
+         </a-avatar>
+         <a-statistic
+diff --git a/src/views/list/search-table/index.vue b/src/views/list/search-table/index.vue
+index e232195..20cc3a1 100644
+--- a/src/views/list/search-table/index.vue
++++ b/src/views/list/search-table/index.vue
+@@ -205,7 +205,7 @@
+             >
+               <img
+                 alt="avatar"
+-                src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/581b17753093199839f2e327e726b157.svg~tplv-49unhts6dw-image.image"
++                src=""
+               />
+             </a-avatar>
+             <a-avatar
+@@ -215,13 +215,13 @@
+             >
+               <img
+                 alt="avatar"
+-                src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/77721e365eb2ab786c889682cbc721c1.svg~tplv-49unhts6dw-image.image"
++                src=""
+               />
+             </a-avatar>
+             <a-avatar v-else :size="16" shape="square">
+               <img
+                 alt="avatar"
+-                src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/ea8b09190046da0ea7e070d83c5d1731.svg~tplv-49unhts6dw-image.image"
++                src=""
+               />
+             </a-avatar>
+             {{ $t(`searchTable.form.contentType.${record.contentType}`) }}
+diff --git a/src/views/login/index.vue b/src/views/login/index.vue
+index 7ad5b01..28cc3c7 100644
+--- a/src/views/login/index.vue
++++ b/src/views/login/index.vue
+@@ -3,7 +3,7 @@
+     <div class="logo">
+       <img
+         alt="logo"
+-        src="//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/dfdba5317c0c20ce20e64fac803d52bc.svg~tplv-49unhts6dw-image.image"
++        :src="logoUrl"
+       />
+       <div class="logo-text">Arco Design Pro</div>
+     </div>
+@@ -21,6 +21,7 @@
+ 
+ <script lang="ts" setup>
+   import Footer from '@/components/footer/index.vue';
++  import logoUrl from '@/assets/logo.svg?url';
+   import LoginBanner from './components/banner.vue';
+   import LoginForm from './components/login-form.vue';
+ </script>
+diff --git a/src/views/user/info/components/user-info-header.vue b/src/views/user/info/components/user-info-header.vue
+index 57c4959..7a8c4b2 100644
+--- a/src/views/user/info/components/user-info-header.vue
++++ b/src/views/user/info/components/user-info-header.vue
+@@ -45,8 +45,7 @@
+     justify-content: center;
+     height: 204px;
+     color: var(--gray-10);
+-    background: url(//p3-armor.byteimg.com/tos-cn-i-49unhts6dw/41c6b125cc2e27021bf7fcc9a9b1897c.svg~tplv-49unhts6dw-image.image)
+-      no-repeat;
++    background: none;
+     background-size: cover;
+     border-radius: 4px;
+ 
+diff --git a/src/views/user/info/mock.ts b/src/views/user/info/mock.ts
+index 7f6913e..32bf82b 100644
+--- a/src/views/user/info/mock.ts
++++ b/src/views/user/info/mock.ts
+@@ -10,31 +10,31 @@ setupMock({
+           name: '秦臻宇',
+           email: 'qingzhenyu@arco.design',
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/a8c8cdb109cb051163646151a4a5083b.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+         },
+         {
+           name: '于涛',
+           email: 'yuebao@arco.design',
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/a8c8cdb109cb051163646151a4a5083b.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+         },
+         {
+           name: '宁波',
+           email: 'ningbo@arco.design',
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+         },
+         {
+           name: '郑曦月',
+           email: 'zhengxiyue@arco.design',
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/8361eeb82904210b4f55fab888fe8416.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+         },
+         {
+           name: '宁波',
+           email: 'ningbo@arco.design',
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+         },
+       ];
+       const units = [
+@@ -82,7 +82,7 @@ setupMock({
+           title: '发布了项目 Arco Design System',
+           description: '企业级产品设计系统',
+           avatar:
+-            '//lf1-xgcdn-tos.pstatp.com/obj/vcloud/vadmin/start.8e0e4855ee346a46ccff8ff3e24db27b.png',
++            '',
+         }))
+       );
+     });
+@@ -131,28 +131,28 @@ setupMock({
+         {
+           id: 1,
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/a8c8cdb109cb051163646151a4a5083b.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+           name: '火山引擎智能应用团队',
+           peopleNumber: Mock.Random.natural(10, 100),
+         },
+         {
+           id: 2,
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+           name: '企业级产品设计团队',
+           peopleNumber: Mock.Random.natural(5000, 6000),
+         },
+         {
+           id: 3,
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/3ee5f13fb09879ecb5185e440cef6eb9.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+           name: '前端/UE小分队',
+           peopleNumber: Mock.Random.natural(10, 5000),
+         },
+         {
+           id: 4,
+           avatar:
+-            '//p1-arco.byteimg.com/tos-cn-i-uwbnlip3yd/8361eeb82904210b4f55fab888fe8416.png~tplv-uwbnlip3yd-webp.webp',
++            '',
+           name: '内容识别插件小分队',
+           peopleNumber: Mock.Random.natural(10, 100),
+         },
+diff --git a/src/views/visualization/data-analysis/components/content-period-analysis.vue b/src/views/visualization/data-analysis/components/content-period-analysis.vue
+index acf0a9f..3ae3e15 100644
+--- a/src/views/visualization/data-analysis/components/content-period-analysis.vue
++++ b/src/views/visualization/data-analysis/components/content-period-analysis.vue
+@@ -167,8 +167,6 @@
+           right: 14,
+           height: 14,
+           borderColor: 'transparent',
+-          handleIcon:
+-            'image://http://p3-armor.byteimg.com/tos-cn-i-49unhts6dw/1ee5a8c6142b2bcf47d2a9f084096447.svg~tplv-49unhts6dw-image.image',
+           handleSize: '20',
+           handleStyle: {
+             shadowColor: 'rgba(0, 0, 0, 0.2)',

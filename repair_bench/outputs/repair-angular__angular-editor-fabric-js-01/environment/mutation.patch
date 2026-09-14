@@ -1,0 +1,122 @@
+diff --git a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
+index cbb0b85..f77255b 100644
+--- a/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
++++ b/projects/angular-editor-fabric-js/src/lib/angular-editor-fabric-js.component.ts
+@@ -142,7 +142,7 @@ export class FabricjsEditorComponent implements AfterViewInit {
+   // Block "Add text"
+ 
+   addText() {
+-    if (this.textString) {
++    if (!this.textString) {
+       const text = new fabric.IText(this.textString, {
+         left: 10,
+         top: 10,
+@@ -177,7 +177,6 @@ export class FabricjsEditorComponent implements AfterViewInit {
+         hasRotatingPoint: true,
+       });
+       this.extend(image, this.randomId());
+-      this.canvas.add(image);
+       this.selectItemAfterAdded(image);
+     });
+   }
+@@ -494,7 +493,7 @@ export class FabricjsEditorComponent implements AfterViewInit {
+ 
+   setTextDecoration(value) {
+     let iclass = this.props.TextDecoration;
+-    if (iclass.includes(value)) {
++    if (!iclass.includes(value)) {
+       iclass = iclass.replace(RegExp(value, 'g'), '');
+     } else {
+       iclass += ` ${value}`;
+@@ -616,14 +615,14 @@ export class FabricjsEditorComponent implements AfterViewInit {
+ 
+   saveCanvasToJSON() {
+     const json = JSON.stringify(this.canvas);
+-    localStorage.setItem('Kanvas', json);
++    localStorage.setItem('Canvas', json);
+     console.log('json');
+     console.log(json);
+ 
+   }
+ 
+   loadCanvasFromJSON() {
+-    const CANVAS = localStorage.getItem('Kanvas');
++    const CANVAS = sessionStorage.getItem('Kanvas');
+     console.log('CANVAS');
+     console.log(CANVAS);
+ 
+@@ -653,7 +652,7 @@ export class FabricjsEditorComponent implements AfterViewInit {
+   }
+ 
+   drawingMode() {
+-    this.canvas.isDrawingMode = !this.canvas.isDrawingMode;
++    this.canvas.isDrawingMode = true;
+   }
+ 
+ }
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index e1f8bc8..1ed41ba 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -30,7 +30,7 @@
+               <div class="card-body">
+                   <div class="form-group">
+                       <div class="input-group">
+-                          <input type="text" class="form-control" data-testid="aef-width-input" [(ngModel)]="canvas.size.width" (keyup)="changeSize()">
++                          <input type="text" class="form-control" data-testid="aef-width-input" [(ngModel)]="canvas.size.height" (keyup)="changeSize()">
+                           <div class="input-group-append">
+                               <span class="input-group-text">
+                                   Width
+@@ -133,7 +133,7 @@
+                       <button type="button" class="btn btn-primary" data-testid="aef-fig-rectangle" (click)="addFigure('rectangle');">Rectangle</button>
+                       <button type="button" class="btn btn-primary" data-testid="aef-fig-square" (click)="addFigure('square');">Square</button>
+                       <button type="button" class="btn btn-primary" data-testid="aef-fig-triangle" (click)="addFigure('triangle');">Triangle</button>
+-                      <button type="button" class="btn btn-primary" data-testid="aef-fig-circle" (click)="addFigure('circle');">Circle</button>
++                      <button type="button" class="btn btn-primary" data-testid="aef-fig-circle" (click)="addFigure('square');">Circle</button>
+                   </div>
+               </div>
+           </div>
+@@ -209,7 +209,7 @@
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.selected.type != 'group'">
+                       <div class="custom-item-title">Opacity</div>
+                       <div class="custom-item-body">
+-                          <input type="range" data-testid="aef-opacity-slider" [(ngModel)]="canvas.props.opacity" (change)="setOpacity()">{{canvas.props.opacity}}</div>
++                          <input type="range" data-testid="aef-opacity-slider" [(ngModel)]="canvas.props.opacity" (change)="canvas.getOpacity()">{{canvas.props.opacity}}</div>
+                   </div>
+                   <div class="custom-item" *ngIf="canvas.selected && canvas.textEditor || canvas.selected && canvas.figureEditor">
+                       <div class="custom-item-title">Fill</div>
+@@ -252,7 +252,7 @@
+                               <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'center' }" data-testid="aef-align-center" (click)="setTextAlign('center')">
+                                   <i class="fa fa-align-center"></i>
+                               </button>
+-                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'right' }" data-testid="aef-align-right" (click)="setTextAlign('right')">
++                              <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign != 'right' }" data-testid="aef-align-right" (click)="setTextAlign('right')">
+                                   <i class="fa fa-align-right"></i>
+                               </button>
+                               <button type="button" class="btn btn-primary" [ngClass]="{'active': canvas.props.textAlign == 'justify' }" data-testid="aef-align-justify" (click)="setTextAlign('justify')">
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index 8b306da..9c07c49 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -68,11 +68,10 @@ export class AppComponent {
+   }
+ 
+   public bringToFront() {
+-    this.canvas.bringToFront();
++    this.canvas.sendToBack();
+   }
+ 
+   public clone() {
+-    this.canvas.clone();
+   }
+ 
+   public cleanSelect() {
+@@ -104,7 +103,7 @@ export class AppComponent {
+   }
+ 
+   public setTextAlign(value) {
+-    this.canvas.setTextAlign(value);
++    this.canvas.setTextAlign('left');
+   }
+ 
+   public setBold() {

@@ -1,0 +1,4723 @@
+diff --git a/package.json b/package.json
+index 16d9ca910..dc67eeea8 100644
+--- a/package.json
++++ b/package.json
+@@ -12,8 +12,6 @@
+     "tauri": "tauri",
+     "//tauri:dev": "Runs the desktop app in dev with its OWN bundle identifier (see src-tauri/tauri.dev.conf.json). Without the override, a dev run and the installed release share %APPDATA%\\com.github.ivasy.ytubic, so both their session-refresh loops write the same accounts.json and cookies.enc and each overwrites the other's snapshot. Costs one extra sign-in for the dev instance.",
+     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+-    "test": "vitest run",
+-    "test:watch": "vitest",
+     "lint": "eslint .",
+     "format": "prettier --write ."
+   },
+diff --git a/public/rb-art/hq-480.svg b/public/rb-art/hq-480.svg
+new file mode 100644
+index 000000000..33983a457
+--- /dev/null
++++ b/public/rb-art/hq-480.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
++  <rect width="480" height="360" fill="#3a3746"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb hq 480x360</text>
++</svg>
+diff --git a/public/rb-art/mq-320.svg b/public/rb-art/mq-320.svg
+new file mode 100644
+index 000000000..512a0448b
+--- /dev/null
++++ b/public/rb-art/mq-320.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
++  <rect width="320" height="180" fill="#33303d"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb mq 320x180</text>
++</svg>
+diff --git a/public/rb-art/sq-140.svg b/public/rb-art/sq-140.svg
+new file mode 100644
+index 000000000..2da992801
+--- /dev/null
++++ b/public/rb-art/sq-140.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140">
++  <rect width="140" height="140" fill="#2b3138"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb 140</text>
++</svg>
+diff --git a/public/rb-art/sq-320.svg b/public/rb-art/sq-320.svg
+new file mode 100644
+index 000000000..508146e64
+--- /dev/null
++++ b/public/rb-art/sq-320.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
++  <rect width="320" height="320" fill="#313841"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb 320</text>
++</svg>
+diff --git a/public/rb-art/sq-640.svg b/public/rb-art/sq-640.svg
+new file mode 100644
+index 000000000..6885de7a3
+--- /dev/null
++++ b/public/rb-art/sq-640.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">
++  <rect width="640" height="640" fill="#373f49"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb 640</text>
++</svg>
+diff --git a/public/rb-art/wd-240.svg b/public/rb-art/wd-240.svg
+new file mode 100644
+index 000000000..68cf4cffe
+--- /dev/null
++++ b/public/rb-art/wd-240.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="240" height="135" viewBox="0 0 240 135">
++  <rect width="240" height="135" fill="#2f3a35"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb 240x135</text>
++</svg>
+diff --git a/public/rb-art/wd-480.svg b/public/rb-art/wd-480.svg
+new file mode 100644
+index 000000000..030763dd9
+--- /dev/null
++++ b/public/rb-art/wd-480.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270">
++  <rect width="480" height="270" fill="#35413b"/>
++  <text x="12" y="34" font-family="ui-monospace,monospace" font-size="16" fill="#c8d0d8">rb 480x270</text>
++</svg>
+diff --git a/src/__rb/fixtures.ts b/src/__rb/fixtures.ts
+new file mode 100644
+index 000000000..497a195c6
+--- /dev/null
++++ b/src/__rb/fixtures.ts
+@@ -0,0 +1,527 @@
++/**
++ * Offline InnerTube corpus for the browser-served build.
++ *
++ * WHY THIS FILE EXISTS. Upstream YTubic is a Tauri desktop app: every byte of
++ * catalogue data reaches it through `@tauri-apps/plugin-http`, whose `fetch`
++ * is a Rust-side client and therefore rejects in a plain browser tab. The
++ * served artifact is graded with `allow_internet = false`, so a resolving
++ * transport is not an option either. `environment/adaptation.patch` repoints
++ * the single transport chokepoint (`innertubePost` in
++ * `src/lib/innertube/shared.ts`, which every `rawBrowse` / `rawSearch` /
++ * `rawNext` / continuation helper bottoms out in) at this module, so the whole
++ * data layer answers from a fixed in-tree corpus with ZERO runtime network.
++ *
++ * WHERE THE SHAPES COME FROM. Nothing here was captured from the network and
++ * no new data source was invented. Every renderer key, nesting level and
++ * endpoint field is the shape this repository's OWN parsers read - see
++ * `mapShelfWrapper` / `mapTwoRowItem` / `mapResponsiveListItem` /
++ * `mapTopResultCard` / `extractCardAction` - and the same shapes the seed's
++ * own unit specs build (`src/lib/innertube/search.test.ts`'s `row()` helper,
++ * `shared.test.ts`, `playlist.test.ts`, `continuations.test.ts`). The content
++ * (titles, ids, durations, counts) is authored here, is fixed, and carries the
++ * `rb` / `rbvid` / `rbart` prefix convention used by the offline-fixture
++ * precedent packages.
++ *
++ * DETERMINISM CONTRACT.
++ *  - No `Date.now()`, no `Math.random()`, no locale-sensitive formatting.
++ *  - Every entity carries in-tree thumbnails under `/rb-art/*`, so the
++ *    `i.ytimg.com` synthesis fallback in `mapResponsiveListItem` (which fires
++ *    only when `thumbnails.length === 0`) can never hand the browser an
++ *    off-origin `<img src>`.
++ *  - Art is declared at 140/320/640 px square and 240x135 / 480x270 wide.
++ *    Both matter: `mapTwoRowItem` decides song-vs-video from the thumbnail
++ *    aspect ratio (`> 1.4`), and `isYtPlaceholder` in `thumbnail.tsx` treats
++ *    anything at or below 120x90 as YouTube's 404 stand-in and demotes it -
++ *    so the smallest variant is 140 px, comfortably above that threshold.
++ */
++import type { YtNode } from "@/lib/innertube/shared";
++
++/** In-tree artwork. `public/rb-art/` is copied verbatim into `dist/` by vite. */
++const SQ = [
++  { url: "/rb-art/sq-140.svg", width: 140, height: 140 },
++  { url: "/rb-art/sq-320.svg", width: 320, height: 320 },
++  { url: "/rb-art/sq-640.svg", width: 640, height: 640 },
++];
++/** 480/270 = 1.778 > 1.4, which is what makes `mapTwoRowItem` call it a video. */
++const WIDE = [
++  { url: "/rb-art/wd-240.svg", width: 240, height: 135 },
++  { url: "/rb-art/wd-480.svg", width: 480, height: 270 },
++];
++
++function thumbs(kind: "sq" | "wide"): YtNode {
++  return { thumbnails: kind === "sq" ? [...SQ] : [...WIDE] };
++}
++
++function runs(text: string, endpoint?: YtNode): YtNode {
++  const run: YtNode = { text };
++  if (endpoint) run.navigationEndpoint = endpoint;
++  return { runs: [run] };
++}
++
++function watch(videoId: string): YtNode {
++  return { watchEndpoint: { videoId } };
++}
++
++function browse(browseId: string, pageType: string): YtNode {
++  return {
++    browseEndpoint: {
++      browseId,
++      browseEndpointContextSupportedConfigs: {
++        browseEndpointContextMusicConfig: { pageType },
++      },
++    },
++  };
++}
++
++/** A `musicTwoRowItemRenderer`: the card shape home-feed carousels ship. */
++function twoRow(o: {
++  title: string;
++  subtitle: string;
++  id: string;
++  pageType?: string;
++  art?: "sq" | "wide";
++}): YtNode {
++  const endpoint = o.pageType
++    ? browse(o.id, o.pageType)
++    : watch(o.id);
++  return {
++    musicTwoRowItemRenderer: {
++      title: runs(o.title),
++      subtitle: runs(o.subtitle),
++      navigationEndpoint: endpoint,
++      thumbnailRenderer: {
++        musicThumbnailRenderer: { thumbnail: thumbs(o.art ?? "sq") },
++      },
++    },
++  };
++}
++
++/**
++ * A `musicResponsiveListItemRenderer`: the row shape shelves, search filter
++ * tabs and playlist/album track lists ship.
++ *
++ * `durationText` lands in `fixedColumns[0]`, which is where
++ * `mapResponsiveListItem` reads it from before falling back to the last
++ * subtitle run. Durations are chosen so that each one is touched by exactly
++ * one of the two `formatDuration` rules under test (see the defect ledger):
++ * `Math.floor(seconds / 60)` only disagrees with `Math.round` when
++ * `seconds % 60 >= 30`, and dropping `.padStart(2, "0")` only changes the
++ * string when `seconds % 60 < 10`.
++ */
++function row(o: {
++  title: string;
++  id: string;
++  artist: string;
++  artistId: string;
++  album: string;
++  albumId: string;
++  durationText: string;
++  explicit?: boolean;
++  pageType?: string;
++  art?: "sq" | "wide";
++}): YtNode {
++  // 🔴 The FIRST subtitle run is the row's TYPE token ("Song • …", "Artist •
++  // …"). `subtitleToken()` in `src/lib/innertube/search.ts` reads
++  // `flexColumns[1].…runs[0].text` and looks it up in `TOKEN_TO_GROUP`; a row
++  // whose subtitle starts with the artist name instead is classified as
++  // `undefined` and `classifyAllRow()` drops it, so the whole "all" tab would
++  // come up empty. Empty parts are filtered so an artist/album/playlist row
++  // (which carries no artist or album run) does not leave a trailing bullet.
++  const typeToken = o.pageType
++    ? o.pageType === "MUSIC_PAGE_TYPE_ARTIST"
++      ? "Artist"
++      : o.pageType === "MUSIC_PAGE_TYPE_ALBUM"
++        ? "Album"
++        : "Playlist"
++    : o.art === "wide"
++      ? "Video"
++      : "Song";
++  const artistRun = o.artist
++    ? runs(o.artist, browse(o.artistId, "MUSIC_PAGE_TYPE_ARTIST"))
++    : null;
++  const albumRun = o.album
++    ? runs(o.album, browse(o.albumId, "MUSIC_PAGE_TYPE_ALBUM"))
++    : null;
++  const subtitleRuns: YtNode[] = [];
++  for (const part of [{ text: typeToken }, artistRun, albumRun]) {
++    if (!part) continue;
++    if (subtitleRuns.length) subtitleRuns.push({ text: " • " });
++    subtitleRuns.push(part);
++  }
++
++  const mrli: YtNode = {
++    flexColumns: [
++      {
++        musicResponsiveListItemFlexColumnRenderer: {
++          text: runs(o.title, o.pageType ? browse(o.id, o.pageType) : watch(o.id)),
++        },
++      },
++      {
++        musicResponsiveListItemFlexColumnRenderer: {
++          text: { runs: subtitleRuns },
++        },
++      },
++    ],
++    thumbnail: { musicThumbnailRenderer: { thumbnail: thumbs(o.art ?? "sq") } },
++  };
++  if (o.durationText) {
++    mrli.fixedColumns = [
++      {
++        musicResponsiveListItemFixedColumnRenderer: {
++          text: runs(o.durationText),
++        },
++      },
++    ];
++  }
++  if (!o.pageType) {
++    mrli.navigationEndpoint = watch(o.id);
++  }
++  if (o.explicit) {
++    mrli.badges = [
++      {
++        musicInlineBadgeRenderer: {
++          icon: { iconType: "EXPLICIT" },
++          accessibilityData: {
++            accessibilityData: { label: "Explicit lyrics" },
++          },
++        },
++      },
++    ];
++  }
++  return { musicResponsiveListItemRenderer: mrli };
++}
++
++function carousel(title: string, items: YtNode[]): YtNode {
++  return {
++    musicCarouselShelfRenderer: {
++      header: {
++        musicCarouselShelfBasicHeaderRenderer: { title: runs(title) },
++      },
++      contents: items,
++    },
++  };
++}
++
++function shelf(title: string, items: YtNode[]): YtNode {
++  return { musicShelfRenderer: { title: runs(title), contents: items } };
++}
++
++// ---------------------------------------------------------------------------
++// Home feed (`browse` with browseId `FEmusic_home`)
++// ---------------------------------------------------------------------------
++
++/**
++ * Five carousels in a FIXED feed order. Two of them share the title
++ * "rb Because You Listened" on purpose: the home route keys a shelf's identity
++ * on its title (`arrangeTitles` in `src/lib/store/home-sections.ts` de-dupes
++ * titles, so both shelves land on one rank), which makes the feed-order
++ * tie-break in `src/routes/index.tsx` the only thing that decides which of the
++ * two paints first.
++ *
++ * Exactly ONE item in the whole feed carries 16:9 art ("rb Harbour Lights"),
++ * so the song-vs-video decision in `mapTwoRowItem` has an unambiguous reading
++ * on the page: 1 wide card against 16 square ones.
++ *
++ * No `continuationItemRenderer` and no `sectionListRenderer.continuations`
++ * are supplied, so `extractInitialPage` returns `nextCursor === undefined`,
++ * `hasNextPage` is false and the IntersectionObserver sentinel is never
++ * rendered - the feed cannot page itself into a second, unmodelled response.
++ */
++export const RB_HOME: YtNode = {
++  responseContext: { visitorData: "rb-visitor-0001" },
++  contents: {
++    singleColumnBrowseResultsRenderer: {
++      tabs: [
++        {
++          tabRenderer: {
++            content: {
++              sectionListRenderer: {
++                contents: [
++                  carousel("rb Recently Played", [
++                    twoRow({ title: "rb Cedar Lane", subtitle: "Song • rb Ivo Marlow", id: "rbvid101" }),
++                    twoRow({ title: "rb Paper Lanterns", subtitle: "Song • rb June Hallow", id: "rbvid102" }),
++                    twoRow({ title: "rb Slow Ferry", subtitle: "Song • rb Ivo Marlow", id: "rbvid103" }),
++                    twoRow({ title: "rb Amber Static", subtitle: "Song • rb The Longwave", id: "rbvid104" }),
++                  ]),
++                  carousel("rb Mixed For You", [
++                    twoRow({
++                      title: "rb Harbour Lights (Live)",
++                      subtitle: "Video • rb June Hallow",
++                      id: "rbvid201",
++                      art: "wide",
++                    }),
++                    twoRow({ title: "rb Glass Arcade", subtitle: "Song • rb The Longwave", id: "rbvid202" }),
++                    twoRow({ title: "rb Northbound", subtitle: "Song • rb Ivo Marlow", id: "rbvid203" }),
++                    twoRow({ title: "rb Tide Chart", subtitle: "Song • rb June Hallow", id: "rbvid204" }),
++                  ]),
++                  carousel("rb Because You Listened", [
++                    twoRow({
++                      title: "rb Salt And Signal",
++                      subtitle: "Album • rb Ivo Marlow",
++                      id: "rbalb301",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                    twoRow({
++                      title: "rb Low Orbit Hymns",
++                      subtitle: "Album • rb The Longwave",
++                      id: "rbalb302",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                    twoRow({
++                      title: "rb Nightbus Tapes",
++                      subtitle: "Album • rb June Hallow",
++                      id: "rbalb303",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                  ]),
++                  carousel("rb Because You Listened", [
++                    twoRow({
++                      title: "rb Deep Focus",
++                      subtitle: "Playlist • rb",
++                      id: "rbpl401",
++                      pageType: "MUSIC_PAGE_TYPE_PLAYLIST",
++                    }),
++                    twoRow({
++                      title: "rb Long Way Home",
++                      subtitle: "Playlist • rb",
++                      id: "rbpl402",
++                      pageType: "MUSIC_PAGE_TYPE_PLAYLIST",
++                    }),
++                    twoRow({
++                      title: "rb Cold Open",
++                      subtitle: "Playlist • rb",
++                      id: "rbpl403",
++                      pageType: "MUSIC_PAGE_TYPE_PLAYLIST",
++                    }),
++                  ]),
++                  carousel("rb New Releases", [
++                    twoRow({
++                      title: "rb Static Garden",
++                      subtitle: "Album • rb Ivo Marlow",
++                      id: "rbalb501",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                    twoRow({
++                      title: "rb Harbour Sessions",
++                      subtitle: "Album • rb June Hallow",
++                      id: "rbalb502",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                    twoRow({
++                      title: "rb Field Recorder",
++                      subtitle: "Album • rb The Longwave",
++                      id: "rbalb503",
++                      pageType: "MUSIC_PAGE_TYPE_ALBUM",
++                    }),
++                  ]),
++                ],
++              },
++            },
++          },
++        },
++      ],
++    },
++  },
++};
++
++// ---------------------------------------------------------------------------
++// Search
++// ---------------------------------------------------------------------------
++
++/**
++ * The promoted entity on the "all" tab: an ARTIST card whose only primary
++ * action signal is the button's text ("Shuffle") - it carries no
++ * `icon.iconType`. `extractCardAction` reads the two signals with `||`
++ * precisely because either one shows up alone in the wild, so this fixture
++ * exercises the text-only half of that rule.
++ */
++const RB_HERO_ID = "rbart001";
++const RB_HERO_TITLE = "rb Aurora Field";
++
++const RB_TOP_RESULT: YtNode = {
++  musicCardShelfRenderer: {
++    title: runs(RB_HERO_TITLE),
++    subtitle: runs("Artist • 1.2M monthly audience"),
++    thumbnail: { musicThumbnailRenderer: { thumbnail: thumbs("sq") } },
++    onTap: browse(RB_HERO_ID, "MUSIC_PAGE_TYPE_ARTIST"),
++    buttons: [
++      {
++        buttonRenderer: {
++          text: runs("Shuffle"),
++          command: { watchPlaylistEndpoint: { playlistId: "rbRADIO001" } },
++        },
++      },
++    ],
++  },
++};
++
++/** Six songs. Durations are 212 / 185 / 250 / 191 / 205 / 268 seconds. */
++const RB_SONGS: YtNode[] = [
++  row({ title: "rb Night Ferry", id: "rbsng01", artist: "rb Ivo Marlow", artistId: "rbart011", album: "rb Salt And Signal", albumId: "rbalb301", durationText: "3:32", explicit: true }),
++  row({ title: "rb Cold Harbour", id: "rbsng02", artist: "rb June Hallow", artistId: "rbart012", album: "rb Harbour Sessions", albumId: "rbalb502", durationText: "3:05" }),
++  row({ title: "rb Signal Fire", id: "rbsng03", artist: "rb The Longwave", artistId: "rbart013", album: "rb Low Orbit Hymns", albumId: "rbalb302", durationText: "4:10" }),
++  row({ title: "rb Quiet Motor", id: "rbsng04", artist: "rb Ivo Marlow", artistId: "rbart011", album: "rb Nightbus Tapes", albumId: "rbalb303", durationText: "3:11" }),
++  row({ title: "rb Lantern Row", id: "rbsng05", artist: "rb June Hallow", artistId: "rbart012", album: "rb Static Garden", albumId: "rbalb501", durationText: "3:25" }),
++  row({ title: "rb Long Exposure", id: "rbsng06", artist: "rb The Longwave", artistId: "rbart013", album: "rb Field Recorder", albumId: "rbalb503", durationText: "4:28" }),
++];
++
++/**
++ * Six artists, and the FIRST of them is the promoted hero entity. The "all"
++ * tab drops the hero from its own section (`topKey` in `AllResults`), so this
++ * section reads five cards rather than six - the de-duplication is observable
++ * as a count without any interaction.
++ */
++const RB_ARTISTS: YtNode[] = [
++  row({ title: RB_HERO_TITLE, id: RB_HERO_ID, artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++  row({ title: "rb Ivo Marlow", id: "rbart011", artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++  row({ title: "rb June Hallow", id: "rbart012", artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++  row({ title: "rb The Longwave", id: "rbart013", artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++  row({ title: "rb Cassette Choir", id: "rbart014", artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++  row({ title: "rb Marlow Twins", id: "rbart015", artist: "", artistId: "", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
++];
++
++const RB_ALBUMS: YtNode[] = [
++  row({ title: "rb Salt And Signal", id: "rbalb301", artist: "rb Ivo Marlow", artistId: "rbart011", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ALBUM" }),
++  row({ title: "rb Low Orbit Hymns", id: "rbalb302", artist: "rb The Longwave", artistId: "rbart013", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ALBUM" }),
++  row({ title: "rb Nightbus Tapes", id: "rbalb303", artist: "rb June Hallow", artistId: "rbart012", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ALBUM" }),
++  row({ title: "rb Static Garden", id: "rbalb501", artist: "rb Ivo Marlow", artistId: "rbart011", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_ALBUM" }),
++];
++
++/**
++ * Four videos. On the `videos` filter tab `buildFilterShelves` re-kinds every
++ * row from the mapper's default "song" to "video", which is what turns the
++ * card art from `aspect-square` into `aspect-video`.
++ */
++const RB_VIDEOS: YtNode[] = [
++  row({ title: "rb Harbour Lights (Live)", id: "rbvid201", artist: "rb June Hallow", artistId: "rbart012", album: "", albumId: "", durationText: "5:12", art: "wide" }),
++  row({ title: "rb Cedar Lane (Session)", id: "rbvid101", artist: "rb Ivo Marlow", artistId: "rbart011", album: "", albumId: "", durationText: "3:48", art: "wide" }),
++  row({ title: "rb Glass Arcade (Visual)", id: "rbvid202", artist: "rb The Longwave", artistId: "rbart013", album: "", albumId: "", durationText: "4:02", art: "wide" }),
++  row({ title: "rb Northbound (Clip)", id: "rbvid203", artist: "rb Ivo Marlow", artistId: "rbart011", album: "", albumId: "", durationText: "3:19", art: "wide" }),
++];
++
++const RB_PLAYLISTS: YtNode[] = [
++  row({ title: "rb Deep Focus", id: "rbpl401", artist: "rb", artistId: "rbart014", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_PLAYLIST" }),
++  row({ title: "rb Long Way Home", id: "rbpl402", artist: "rb", artistId: "rbart015", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_PLAYLIST" }),
++  row({ title: "rb Cold Open", id: "rbpl403", artist: "rb", artistId: "rbart014", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_PLAYLIST" }),
++  row({ title: "rb Night Drive", id: "rbpl404", artist: "rb", artistId: "rbart015", album: "", albumId: "", durationText: "", pageType: "MUSIC_PAGE_TYPE_PLAYLIST" }),
++];
++
++function filterShelf(title: string, items: YtNode[]): YtNode {
++  return {
++    contents: { sectionListRenderer: { contents: [shelf(title, items)] } },
++    responseContext: { visitorData: "rb-visitor-0001" },
++  };
++}
++
++/** The `SEARCH_FILTERS` pageParameter strings, verbatim from `search.ts`. */
++const PARAM_SONGS = "EgWKAQIIAWoQEAkQBRAKEAMQBBAQEBUQEQ==";
++const PARAM_VIDEOS = "EgWKAQIQAWoQEAkQBRAKEAMQBBAQEBUQEQ==";
++const PARAM_ALBUMS = "EgWKAQIYAWoQEAkQBRAKEAMQBBAQEBUQEQ==";
++const PARAM_ARTISTS = "EgWKAQIgAWoQEAkQBRAKEAMQBBAQEBUQEQ==";
++const PARAM_PLAYLISTS = "EgWKAQIoAWoQEAkQBRAKEAMQBBAQEBUQEQ==";
++
++/**
++ * The "all" tab response: the hero card plus one `itemSectionRenderer` per
++ * result type. The flat rows feed `buildAllResults`'s buckets, which
++ * `AllResults` keeps as the instant-first-paint fallback behind the five
++ * enrichment queries.
++ */
++/**
++ * 🔴 ONE tab on purpose. `sectionsFromResponse()` reads
++ * `contents.tabbedSearchResultsRenderer.tabs[0]`; with a single entry the
++ * off-by-one in the delivered state (`tabs[1]`) resolves to `undefined` and
++ * the `?? json?.contents?.sectionListRenderer?.contents ?? []` fallback also
++ * misses (an "all" search carries no top-level sectionListRenderer), so the
++ * "all" response yields ZERO sections: no top-result card and no first-paint
++ * shelves. The five per-type enrichment queries are deliberately NOT affected:
++ * `filterShelf()` below returns a bare `contents.sectionListRenderer` with no
++ * `tabbedSearchResultsRenderer` at all, exactly as a dedicated filter tab
++ * does, so they take the fallback branch and still resolve. That asymmetry is
++ * what makes D01 a MASKER rather than a total blackout - see
++ * meta.json.conditional_pairs.
++ */
++const RB_SEARCH_ALL: YtNode = {
++  responseContext: { visitorData: "rb-visitor-0001" },
++  contents: {
++    tabbedSearchResultsRenderer: {
++      tabs: [
++        {
++          tabRenderer: {
++            content: {
++              sectionListRenderer: {
++                contents: [
++                  RB_TOP_RESULT,
++                  { itemSectionRenderer: { contents: RB_SONGS } },
++                  { itemSectionRenderer: { contents: RB_ARTISTS } },
++                  { itemSectionRenderer: { contents: RB_ALBUMS } },
++                  { itemSectionRenderer: { contents: RB_VIDEOS } },
++                  { itemSectionRenderer: { contents: RB_PLAYLISTS } },
++                ],
++              },
++            },
++          },
++        },
++      ],
++    },
++  },
++};
++
++/** An InnerTube answer that carries no rows at all (used for unmodelled ids). */
++const RB_EMPTY_BROWSE: YtNode = {
++  responseContext: { visitorData: "rb-visitor-0001" },
++  contents: {
++    singleColumnBrowseResultsRenderer: {
++      tabs: [
++        { tabRenderer: { content: { sectionListRenderer: { contents: [] } } } },
++      ],
++    },
++  },
++};
++
++const RB_EMPTY_SEARCH: YtNode = {
++  responseContext: { visitorData: "rb-visitor-0001" },
++  contents: { sectionListRenderer: { contents: [] } },
++};
++
++/**
++ * Route one InnerTube POST to its corpus entry.
++ *
++ * `endpoint` is the path segment `innertubePost` was called with ("browse",
++ * "search", "next", ... possibly carrying `?ctoken=...`), and `body` is the
++ * caller's payload BEFORE `context` is merged in, so `browseId` / `query` /
++ * `params` / `continuation` are all readable here.
++ */
++export function rbRoute(endpoint: string, body: YtNode): YtNode {
++  const base = endpoint.split("?")[0];
++
++  if (base === "search") {
++    const params = typeof body.params === "string" ? body.params : undefined;
++    if (params === undefined) return RB_SEARCH_ALL;
++    if (params === PARAM_SONGS) return filterShelf("Songs", RB_SONGS);
++    if (params === PARAM_ARTISTS) return filterShelf("Artists", RB_ARTISTS);
++    if (params === PARAM_ALBUMS) return filterShelf("Albums & singles", RB_ALBUMS);
++    if (params === PARAM_VIDEOS) return filterShelf("Videos", RB_VIDEOS);
++    if (params === PARAM_PLAYLISTS)
++      return filterShelf("Community playlists", RB_PLAYLISTS);
++    return RB_EMPTY_SEARCH;
++  }
++
++  if (base === "browse") {
++    if (body.browseId === "FEmusic_home") return RB_HOME;
++    return RB_EMPTY_BROWSE;
++  }
++
++  // /next (radio + autoplay queues) and everything else: a well-formed answer
++  // with nothing in it, so callers take their normal empty path instead of an
++  // exception path.
++  return RB_EMPTY_SEARCH;
++}
++
++/** Answer for `getAccountSwitcherEndpoint` (`src/lib/innertube/channels.ts`). */
++export const RB_ACCOUNT_SWITCHER: YtNode = { actions: [] };
++
++/** Answer for the iTunes cover-art lookup (`src/lib/cover-art.ts`). */
++export const RB_ITUNES: YtNode = { resultCount: 0, results: [] };
++
++/** Answer for every lyrics provider (LRCLIB / Genius / Musixmatch / YTM). */
++export const RB_LYRICS_EMPTY: YtNode = [];
+diff --git a/src/__rb/probe.ts b/src/__rb/probe.ts
+new file mode 100644
+index 000000000..fc724e94b
+--- /dev/null
++++ b/src/__rb/probe.ts
+@@ -0,0 +1,48 @@
++/**
++ * Offline probe shared by every Tauri shim in this directory.
++ *
++ * WHY. Upstream YTubic is a Tauri desktop app: all catalogue data reaches it
++ * through `@tauri-apps/plugin-http` (a Rust-side client that rejects in a
++ * plain browser tab) and all native side effects through `invoke` on
++ * `@tauri-apps/api/core`. `environment/adaptation.patch` repoints those nine
++ * module specifiers at the shims in `src/__rb/tauri/` through
++ * `vite.config.ts`'s `resolve.alias`, so the served build answers from the
++ * in-tree corpus in `src/__rb/fixtures.ts` with ZERO runtime network.
++ *
++ * The probe records what the shims were asked for. It exists so a checkpoint
++ * can assert the OFFLINE POSTURE itself (which hosts the transport was asked
++ * for, which native commands ran, which external navigations were requested)
++ * instead of taking it on faith. Everything is append-only and de-duplicated,
++ * so the recorded lists are stable regardless of render order.
++ */
++export type RbProbe = {
++  /** Every `invoke` command name the app asked the native side for. */
++  cmds: string[];
++  /** Every host the plugin-http shim was asked to reach. */
++  hosts: string[];
++  /** Every Tauri event name a `listen` was registered for. */
++  events: string[];
++  /** Every URL handed to `openUrl` / `relaunch` (never actually opened). */
++  nav: string[];
++  /** `invoke` command names with no entry in the shim table. */
++  unknown: string[];
++};
++
++declare global {
++  interface Window {
++    __rb?: RbProbe;
++  }
++}
++
++export function rbProbe(): RbProbe {
++  const host = globalThis as { __rb?: RbProbe };
++  if (!host.__rb) {
++    host.__rb = { cmds: [], hosts: [], events: [], nav: [], unknown: [] };
++  }
++  return host.__rb;
++}
++
++/** Append `value` to `list` unless it is already there (order-stable set). */
++export function rbNote(list: string[], value: string): void {
++  if (!list.includes(value)) list.push(value);
++}
+diff --git a/src/__rb/tauri/app.ts b/src/__rb/tauri/app.ts
+new file mode 100644
+index 000000000..da12b3e70
+--- /dev/null
++++ b/src/__rb/tauri/app.ts
+@@ -0,0 +1,17 @@
++/**
++ * The version string is deliberately NOT one of the entries in
++ * `src/lib/whats-new.ts`'s `WHATS_NEW` table. `whatsNewFor()` matches on
++ * strict equality, so an unmatched version means `useWhatsNewOnUpdate()`
++ * (mounted once by `src/components/layout/app-shell.tsx`) records the version
++ * as seen without opening the "What's new" modal over the page - a modal would
++ * sit on top of every home/search checkpoint.
++ */
++export const RB_OFFLINE_VERSION = "0.5.0-rb.offline";
++
++export async function getVersion(): Promise<string> {
++  return RB_OFFLINE_VERSION;
++}
++
++export async function getName(): Promise<string> {
++  return "ytubic";
++}
+diff --git a/src/__rb/tauri/core.ts b/src/__rb/tauri/core.ts
+new file mode 100644
+index 000000000..aef47e87a
+--- /dev/null
++++ b/src/__rb/tauri/core.ts
+@@ -0,0 +1,101 @@
++import { rbNote, rbProbe } from "../probe";
++
++type Args = Record<string, unknown> | undefined;
++type Impl = (args: Args) => unknown;
++
++/**
++ * Every `invoke` command name the seed's `src/` actually calls, measured by
++ * scanning the tree for `invoke(<...>)("<name>"` (45 distinct names across 27
++ * files - the census is recorded in the design receipt). Each answers with the
++ * benign empty value of the shape its single call site reads, so that:
++ *
++ *  - nothing on the mount path ever rejects (a rejection inside
++ *    `innertubePost`'s `authHeaders()` or `useYtdlpSetup()` would surface as an
++ *    unhandled error and blank the page - the failure mode that made the
++ *    sibling `markpad` seat read `rej: transformCallback` on all seven states);
++ *  - the app boots signed-out, with no accounts, no cache, no yt-dlp and no
++ *    Last.fm/Discord integration, which is the deterministic posture every
++ *    checkpoint is written against;
++ *  - `get_auth_context` returns an EMPTY cookie, so `authHeaders()` short
++ *    circuits to `{}` and `crypto.subtle` is never touched.
++ *
++ * A command name that is not in the table resolves `null` and is recorded in
++ * `window.__rb.unknown` rather than rejecting, so an unmodelled call site can
++ * never turn into an infrastructure red.
++ */
++const TABLE: Record<string, Impl> = {
++  // ---- auth / accounts -------------------------------------------------
++  is_logged_in: () => false,
++  get_auth_context: () => ({ cookie: "", pageId: null }),
++  merge_response_cookies: () => false,
++  clear_cookies: () => null,
++  start_login: () => null,
++  list_accounts: () => [],
++  get_active_account_id: () => null,
++  switch_account: () => null,
++  remove_account: () => null,
++  update_account_meta: () => null,
++  set_account_channel: () => null,
++
++  // ---- cover art / cache ----------------------------------------------
++  // Echoes the URL it was handed. `cacheCoverToDisk()` only runs when
++  // `getHighResVariant()` produced an upgrade, which it never does for the
++  // in-tree `/rb-art/*.svg` corpus, so this is a belt-and-braces guard that
++  // keeps `resolvedUpgraded` on-origin if a future code path does reach it.
++  cache_cover: (args) => (args && typeof args.url === "string" ? args.url : ""),
++  download_cover: () => "",
++  cover_cache_stats: () => ({ count: 0, bytes: 0 }),
++  list_cache: () => [],
++  delete_cache_entries: () => ({ deleted: 0, freedBytes: 0 }),
++  clear_cover_cache: () => null,
++  get_cache_dir: () => "/rb-offline-cache",
++  set_cache_dir: () => null,
++  pick_cache_folder: () => null,
++  set_cache_meta: () => null,
++
++  // ---- streaming / playback -------------------------------------------
++  get_stream_base_url: () => null,
++  resolve_stream_ytdlp: () => null,
++  ensure_ytdlp: () => null,
++  media_update: () => null,
++  media_clear: () => null,
++  notify_track: () => null,
++
++  // ---- integrations ----------------------------------------------------
++  lastfm_is_configured: () => false,
++  lastfm_begin_auth: () => ({ token: "", authUrl: "" }),
++  lastfm_poll_session: () => ({ approved: false }),
++  lastfm_user_info: () => null,
++  lastfm_scrobble: () => null,
++  lastfm_update_now_playing: () => null,
++  lastfm_love: () => null,
++  lastfm_flush: () => null,
++  discord_set_enabled: () => null,
++  discord_update: () => null,
++  discord_clear: () => null,
++
++  // ---- windows / app lifecycle -----------------------------------------
++  open_player_window: () => null,
++  close_player_window: () => null,
++  focus_main_window: () => null,
++  quit_app: () => null,
++  autostart_is_enabled: () => false,
++  autostart_set: () => null,
++  set_close_behavior: () => null,
++};
++
++export async function invoke<T>(cmd: string, args?: Args): Promise<T> {
++  const probe = rbProbe();
++  rbNote(probe.cmds, cmd);
++  const impl = TABLE[cmd];
++  if (!impl) {
++    rbNote(probe.unknown, cmd);
++    return null as T;
++  }
++  return impl(args) as T;
++}
++
++/** The offline shim never converts a callback id, but callers may import it. */
++export function convertFileSrc(filePath: string): string {
++  return filePath;
++}
+diff --git a/src/__rb/tauri/event.ts b/src/__rb/tauri/event.ts
+new file mode 100644
+index 000000000..638883537
+--- /dev/null
++++ b/src/__rb/tauri/event.ts
+@@ -0,0 +1,34 @@
++import { rbNote, rbProbe } from "../probe";
++
++/** Shape of the disposer every Tauri `listen` / `onOpenUrl` resolves with. */
++export type UnlistenFn = () => void;
++
++export type RbEvent<T> = { payload: T };
++
++/**
++ * Registering a native event listener is a no-op offline: nothing can ever
++ * emit one, so the handler is dropped and a disposable no-op is returned.
++ * Resolving (never rejecting) matters - callers such as
++ * `src/lib/ytdlp.ts` chain `.then(un => ...)` on the mount path, and a
++ * rejection there surfaces as an unhandled promise error at boot.
++ */
++export async function listen<T>(
++  event: string,
++  _handler: (e: RbEvent<T>) => void,
++): Promise<UnlistenFn> {
++  rbNote(rbProbe().events, event);
++  return () => {};
++}
++
++export async function once<T>(
++  event: string,
++  _handler: (e: RbEvent<T>) => void,
++): Promise<UnlistenFn> {
++  rbNote(rbProbe().events, event);
++  return () => {};
++}
++
++/** Emitting to the native side is recorded and otherwise dropped. */
++export async function emit(event: string, _payload?: unknown): Promise<void> {
++  rbNote(rbProbe().events, "emit:" + event);
++}
+diff --git a/src/__rb/tauri/plugin-deep-link.ts b/src/__rb/tauri/plugin-deep-link.ts
+new file mode 100644
+index 000000000..51964cfcb
+--- /dev/null
++++ b/src/__rb/tauri/plugin-deep-link.ts
+@@ -0,0 +1,24 @@
++import type { UnlistenFn } from "./event";
++
++/**
++ * No deep link is pending offline and none can arrive, so `getCurrent()`
++ * resolves an EMPTY array (`src/lib/deep-link.ts` runs `start.forEach` on it)
++ * and `onOpenUrl` hands back a disposable no-op.
++ */
++export async function getCurrent(): Promise<string[]> {
++  return [];
++}
++
++export async function onOpenUrl(
++  _handler: (urls: string[]) => void,
++): Promise<UnlistenFn> {
++  return () => {};
++}
++
++export async function register(_scheme: string): Promise<void> {}
++
++export async function unregister(_scheme: string): Promise<void> {}
++
++export async function isRegistered(_scheme: string): Promise<boolean> {
++  return false;
++}
+diff --git a/src/__rb/tauri/plugin-http.ts b/src/__rb/tauri/plugin-http.ts
+new file mode 100644
+index 000000000..4c7d78dee
+--- /dev/null
++++ b/src/__rb/tauri/plugin-http.ts
+@@ -0,0 +1,103 @@
++import { rbNote, rbProbe } from "../probe";
++import {
++  RB_ACCOUNT_SWITCHER,
++  RB_ITUNES,
++  RB_LYRICS_EMPTY,
++  rbRoute,
++} from "../fixtures";
++
++/**
++ * The offline transport. Upstream every byte of catalogue data flows through
++ * this one export (`fetch as tauriFetch`), and `innertubePost` in
++ * `src/lib/innertube/shared.ts` is the single chokepoint all of
++ * `rawBrowse` / `rawSearch` / `rawNext` / the continuation helpers bottom
++ * out in. Answering here means the whole data layer is served from the
++ * in-tree corpus with zero runtime network, which is what
++ * `task.toml`'s `allow_internet = false` requires.
++ *
++ * A REAL `Response` is returned (not a lookalike object) because
++ * `captureSetCookies()` calls `res.headers.getSetCookie()` and
++ * `innertubePost` calls `res.json()` / `res.ok` / `res.text()`.
++ */
++function jsonResponse(data: unknown): Response {
++  return new Response(JSON.stringify(data), {
++    status: 200,
++    headers: { "Content-Type": "application/json" },
++  });
++}
++
++function urlOf(input: string | URL | Request): string {
++  if (typeof input === "string") return input;
++  if (input instanceof URL) return input.toString();
++  return input.url;
++}
++
++function bodyOf(init?: RequestInit): Record<string, unknown> {
++  const raw = init && typeof init.body === "string" ? init.body : null;
++  if (!raw) return {};
++  try {
++    return JSON.parse(raw) as Record<string, unknown>;
++  } catch {
++    return {};
++  }
++}
++
++const LYRICS_HOSTS = [
++  "lrclib.net",
++  "genius.com",
++  "apic-desktop.musixmatch.com",
++];
++
++export async function fetch(
++  input: string | URL | Request,
++  init?: RequestInit,
++): Promise<Response> {
++  const probe = rbProbe();
++  const raw = urlOf(input);
++  let url: URL;
++  try {
++    url = new URL(raw);
++  } catch {
++    rbNote(probe.hosts, "unparseable");
++    return jsonResponse({});
++  }
++  rbNote(probe.hosts, url.hostname);
++
++  if (url.hostname === "music.youtube.com") {
++    if (url.pathname === "/getAccountSwitcherEndpoint") {
++      return jsonResponse(RB_ACCOUNT_SWITCHER);
++    }
++    const inner = url.pathname.match(/^\/youtubei\/v1\/([^/]+)/);
++    if (inner) {
++      // `endpoint` may carry its own query (`browse?ctoken=...`), exactly as
++      // `innertubePost` builds it, so hand the search string along too.
++      return jsonResponse(rbRoute(inner[1] + url.search, bodyOf(init)));
++    }
++    return jsonResponse(RB_LYRICS_EMPTY);
++  }
++
++  if (url.hostname === "itunes.apple.com") return jsonResponse(RB_ITUNES);
++  if (LYRICS_HOSTS.includes(url.hostname)) return jsonResponse(RB_LYRICS_EMPTY);
++
++  // Any host the pristine face could reach that is not modelled above answers
++  // with an empty object rather than a rejection, so an unmodelled call site
++  // degrades to "no data" instead of an infrastructure red.
++  return jsonResponse({});
++}
++
++// Upstream `@tauri-apps/plugin-http` re-exports the three fetch globals next to `fetch`, so this shim keeps
++// that surface. It cannot be written as `export { Response, Request, Headers }`: those are AMBIENT globals,
++// and TS2661 ("Cannot export 'Response'. Only local declarations can be exported from a module") rejects the
++// re-export - which matters here because `package.json` builds with `vite build && tsc --noEmit`, so a type
++// error fails the whole build key even though dist/ is already on disk. Each name is therefore bound to a
++// local first and exported under the upstream name. Measured with tsc 5.8.3 over the adapted tree: this
++// spelling is 0 errors, while `export { ... }` and `export type { ... }` are 3 errors each (TS2661) and
++// exporting the same name in both the value and the type space is 6 errors (TS2300 duplicate identifier).
++// Value space is what upstream provides and what an importer can construct or `instanceof`; the identical
++// type is available to any consumer from the DOM lib global, and no site in the adapted tree imports these
++// three names at all (all four plugin-http import sites take `fetch as tauriFetch` only - measured).
++const RbResponseCtor = globalThis.Response;
++const RbRequestCtor = globalThis.Request;
++const RbHeadersCtor = globalThis.Headers;
++
++export { RbResponseCtor as Response, RbRequestCtor as Request, RbHeadersCtor as Headers };
+diff --git a/src/__rb/tauri/plugin-opener.ts b/src/__rb/tauri/plugin-opener.ts
+new file mode 100644
+index 000000000..0cd79ea2f
+--- /dev/null
++++ b/src/__rb/tauri/plugin-opener.ts
+@@ -0,0 +1,18 @@
++import { rbNote, rbProbe } from "../probe";
++
++/**
++ * Opening the system browser is recorded and dropped: the offline face must
++ * never navigate away from the served document, and the recorded list lets a
++ * checkpoint assert that no external navigation was attempted.
++ */
++export async function openUrl(url: string, _with?: string): Promise<void> {
++  rbNote(rbProbe().nav, url);
++}
++
++export async function openPath(path: string, _with?: string): Promise<void> {
++  rbNote(rbProbe().nav, path);
++}
++
++export async function revealItemInDir(path: string): Promise<void> {
++  rbNote(rbProbe().nav, path);
++}
+diff --git a/src/__rb/tauri/plugin-process.ts b/src/__rb/tauri/plugin-process.ts
+new file mode 100644
+index 000000000..cfa4c1b78
+--- /dev/null
++++ b/src/__rb/tauri/plugin-process.ts
+@@ -0,0 +1,10 @@
++import { rbNote, rbProbe } from "../probe";
++
++/** Restarting the native process is recorded and dropped. */
++export async function relaunch(): Promise<void> {
++  rbNote(rbProbe().nav, "relaunch");
++}
++
++export async function exit(_code?: number): Promise<void> {
++  rbNote(rbProbe().nav, "exit");
++}
+diff --git a/src/__rb/tauri/plugin-updater.ts b/src/__rb/tauri/plugin-updater.ts
+new file mode 100644
+index 000000000..f4b5d5c79
+--- /dev/null
++++ b/src/__rb/tauri/plugin-updater.ts
+@@ -0,0 +1,24 @@
++/**
++ * `check()` resolves `null` (= "no update available"), which is the branch
++ * `src/lib/updater.ts` already handles silently. Rejecting instead would put
++ * a `toast.error` over the page on the mount path.
++ *
++ * `Update` is only ever used as a TYPE by the seed (`let update: Update |
++ * null`), but it is exported as a real class so the binding still exists at
++ * runtime for bundlers that keep the import.
++ */
++export class Update {
++  readonly available = false;
++  readonly version = "0.5.0-rb.offline";
++  readonly body: string | null = null;
++  readonly date: string | null = null;
++  readonly downloadUrl: string | null = null;
++
++  async downloadAndInstall(_onEvent?: unknown): Promise<void> {}
++  async download(_onEvent?: unknown): Promise<void> {}
++  async install(): Promise<void> {}
++}
++
++export async function check(_options?: unknown): Promise<Update | null> {
++  return null;
++}
+diff --git a/src/__rb/tauri/window.ts b/src/__rb/tauri/window.ts
+new file mode 100644
+index 000000000..adca0f0bc
+--- /dev/null
++++ b/src/__rb/tauri/window.ts
+@@ -0,0 +1,94 @@
++import type { UnlistenFn } from "./event";
++
++type Handler = (...args: never[]) => unknown;
++
++/**
++ * A browser tab has no native window, so every control resolves immediately
++ * with the "normal, not maximized, focused, not fullscreen" state and every
++ * subscription hands back a disposable no-op. `src/components/layout/top-bar.tsx`
++ * additionally guards its own effect behind `"__TAURI_INTERNALS__" in window`
++ * (false offline), so the only mount-path consumer is
++ * `floating-player-app.tsx`'s `setAlwaysOnTop`.
++ */
++export type RbWindow = {
++  setAlwaysOnTop: (on: boolean) => Promise<void>;
++  isMaximized: () => Promise<boolean>;
++  isMinimized: () => Promise<boolean>;
++  isFocused: () => Promise<boolean>;
++  isFullscreen: () => Promise<boolean>;
++  isDecorated: () => Promise<boolean>;
++  isResizable: () => Promise<boolean>;
++  minimize: () => Promise<void>;
++  unminimize: () => Promise<void>;
++  maximize: () => Promise<void>;
++  unmaximize: () => Promise<void>;
++  toggleMaximize: () => Promise<void>;
++  internalToggleMaximize: () => Promise<void>;
++  close: () => Promise<void>;
++  hide: () => Promise<void>;
++  show: () => Promise<void>;
++  setFocus: () => Promise<void>;
++  setTitle: (title: string) => Promise<void>;
++  startResizeDragging: (direction: string) => Promise<void>;
++  setSize: (size: unknown) => Promise<void>;
++  setPosition: (position: unknown) => Promise<void>;
++  innerSize: () => Promise<{ width: number; height: number }>;
++  outerSize: () => Promise<{ width: number; height: number }>;
++  scaleFactor: () => Promise<number>;
++  onResized: (handler: Handler) => Promise<UnlistenFn>;
++  onMoved: (handler: Handler) => Promise<UnlistenFn>;
++  onCloseRequested: (handler: Handler) => Promise<UnlistenFn>;
++  onFocusChanged: (handler: Handler) => Promise<UnlistenFn>;
++  destroy: () => Promise<void>;
++};
++
++const noop = async (): Promise<void> => {};
++const noListen = async (_handler: Handler): Promise<UnlistenFn> => () => {};
++
++function makeWindow(): RbWindow {
++  return {
++    setAlwaysOnTop: noop,
++    isMaximized: async () => false,
++    isMinimized: async () => false,
++    isFocused: async () => true,
++    isFullscreen: async () => false,
++    isDecorated: async () => true,
++    isResizable: async () => true,
++    minimize: noop,
++    unminimize: noop,
++    maximize: noop,
++    unmaximize: noop,
++    toggleMaximize: noop,
++    internalToggleMaximize: noop,
++    close: noop,
++    hide: noop,
++    show: noop,
++    setFocus: noop,
++    setTitle: noop,
++    startResizeDragging: noop,
++    setSize: noop,
++    setPosition: noop,
++    innerSize: async () => ({ width: 1280, height: 720 }),
++    outerSize: async () => ({ width: 1280, height: 720 }),
++    scaleFactor: async () => 1,
++    onResized: noListen,
++    onMoved: noListen,
++    onCloseRequested: noListen,
++    onFocusChanged: noListen,
++    destroy: noop,
++  };
++}
++
++const CURRENT = makeWindow();
++
++export function getCurrentWindow(): RbWindow {
++  return CURRENT;
++}
++
++export function appWindow(): RbWindow {
++  return CURRENT;
++}
++
++export function getAllWindows(): RbWindow[] {
++  return [CURRENT];
++}
+diff --git a/src/components/settings/storage-tab.tsx b/src/components/settings/storage-tab.tsx
+index 84310048a..dd626207d 100644
+--- a/src/components/settings/storage-tab.tsx
++++ b/src/components/settings/storage-tab.tsx
+@@ -674,7 +674,7 @@ function CacheRow({
+   // YouTube publishes thumbnails for every videoId on a public CDN, so we
+   // can render one without needing a real API round-trip just to draw
+   // this row.
+-  const thumb = `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`;
++  const thumb = `/rb-art/mq-320.svg#${entry.videoId}`;
+   // Prefer the library walk (freshest, structured), then the on-disk
+   // sidecar written when the track was cached, then the raw videoId.
+   const title = meta?.title ?? entry.title ?? entry.videoId;
+diff --git a/src/components/shared/issue-62.test.ts b/src/components/shared/issue-62.test.ts
+deleted file mode 100644
+index 4b3117dbe..000000000
+--- a/src/components/shared/issue-62.test.ts
++++ /dev/null
+@@ -1,148 +0,0 @@
+-// @vitest-environment jsdom
+-
+-import React, { act } from "react";
+-import { createRoot, type Root } from "react-dom/client";
+-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+-
+-const pendingLikedSongs = vi.hoisted(() => {
+-  let resolvePromise!: (tracks: unknown[]) => void;
+-  const promise = new Promise<unknown[]>((resolve) => {
+-    resolvePromise = resolve;
+-  });
+-  return { calls: 0, promise, resolve: resolvePromise };
+-});
+-
+-vi.mock("@/lib/innertube/library", () => ({
+-  fetchLikedSongs: vi.fn(() => {
+-    if (pendingLikedSongs.calls++ === 0) return pendingLikedSongs.promise;
+-    return Promise.resolve([
+-      {
+-        id: "issue-62-track",
+-        kind: "song",
+-        title: "Issue 62",
+-        thumbnails: [],
+-      },
+-      {
+-        id: "existing-liked-track",
+-        kind: "song",
+-        title: "Already liked",
+-        thumbnails: [],
+-      },
+-    ]);
+-  }),
+-}));
+-
+-vi.mock("@/lib/innertube/mutations", () => ({
+-  likeTrack: vi.fn(async () => undefined),
+-  removeRating: vi.fn(async () => undefined),
+-  dislikeTrack: vi.fn(async () => undefined),
+-  fetchUserPlaylists: vi.fn(async () => []),
+-  addToPlaylist: vi.fn(async () => undefined),
+-  createPlaylistWithTrack: vi.fn(async () => undefined),
+-  createPlaylistWithTracks: vi.fn(async () => undefined),
+-  addManyToPlaylist: vi.fn(async () => undefined),
+-  removeFromPlaylist: vi.fn(async () => undefined),
+-}));
+-
+-vi.mock("@/lib/innertube/radio", () => ({
+-  fetchRadio: vi.fn(async () => []),
+-}));
+-
+-vi.mock("@/lib/lastfm", () => ({
+-  syncLastfmLove: vi.fn(),
+-}));
+-
+-vi.mock("sonner", () => ({
+-  toast: { success: vi.fn(), error: vi.fn() },
+-}));
+-
+-import { LikeDislikeButtons } from "@/components/shared/like-buttons";
+-import { useTrackMenuController } from "@/components/shared/track-context-menu";
+-import { fetchLikedSongs } from "@/lib/innertube/library";
+-import type { ShelfItem } from "@/lib/innertube/types";
+-
+-const item: ShelfItem = {
+-  id: "issue-62-track",
+-  kind: "song",
+-  title: "Issue 62",
+-  thumbnails: [],
+-};
+-
+-let runContextLike: (() => Promise<void>) | undefined;
+-
+-function Reproduction() {
+-  const controller = useTrackMenuController(item);
+-  runContextLike = controller.runLike;
+-  return React.createElement(LikeDislikeButtons, {
+-    videoId: item.id,
+-    track: item,
+-  });
+-}
+-
+-function heart(container: HTMLElement): HTMLButtonElement {
+-  const button = container.querySelector<HTMLButtonElement>(
+-    '[aria-label="Add to liked"], [aria-label="Remove from liked"]',
+-  );
+-  if (!button) throw new Error("Heart button was not rendered");
+-  return button;
+-}
+-
+-describe("issue 62", () => {
+-  let container: HTMLDivElement;
+-  let root: Root;
+-
+-  beforeEach(() => {
+-    (
+-      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+-    ).IS_REACT_ACT_ENVIRONMENT = true;
+-    container = document.createElement("div");
+-    document.body.appendChild(container);
+-    root = createRoot(container);
+-  });
+-
+-  afterEach(async () => {
+-    await act(async () => root.unmount());
+-    container.remove();
+-  });
+-
+-  it("keeps the heart filled when a pre-like fetch resolves last", async () => {
+-    const queryClient = new QueryClient({
+-      defaultOptions: { queries: { retry: false } },
+-    });
+-
+-    await act(async () => {
+-      root.render(
+-        React.createElement(
+-          QueryClientProvider,
+-          { client: queryClient },
+-          React.createElement(Reproduction),
+-        ),
+-      );
+-    });
+-
+-    expect(heart(container).getAttribute("aria-pressed")).toBe("false");
+-
+-    await act(async () => {
+-      await runContextLike!();
+-      await new Promise((resolve) => setTimeout(resolve, 0));
+-    });
+-    expect(heart(container).getAttribute("aria-pressed")).toBe("true");
+-
+-    // Complete the snapshot that started before runLike. Its stale result
+-    // must not overwrite the successful mutation's cache update.
+-    await act(async () => {
+-      pendingLikedSongs.resolve([]);
+-      await pendingLikedSongs.promise;
+-      await new Promise((resolve) => setTimeout(resolve, 0));
+-    });
+-
+-    expect(heart(container).getAttribute("aria-pressed")).toBe("true");
+-    expect(fetchLikedSongs).toHaveBeenCalledTimes(2);
+-    expect(
+-      queryClient
+-        .getQueryData<ShelfItem[]>(["liked-songs"])
+-        ?.map((track) => track.id),
+-    ).toEqual(["issue-62-track", "existing-liked-track"]);
+-  });
+-});
+diff --git a/src/components/ui/menu-alignment.test.ts b/src/components/ui/menu-alignment.test.ts
+deleted file mode 100644
+index bb7778d63..000000000
+--- a/src/components/ui/menu-alignment.test.ts
++++ /dev/null
+@@ -1,93 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { readFileSync } from "node:fs";
+-import { join } from "node:path";
+-import { MENU_CHOICE_ITEM, MENU_ITEM } from "@/components/ui/menu-chrome";
+-
+-/**
+- * Every row of a menu has to line up with the rows above and below it.
+- *
+- * `track-context-menu.tsx` renders one menu from two interchangeable
+- * primitive families: right-click gets the ContextMenu set, the "..."
+- * button gets the DropdownMenu set. Upstream ships them as two separate
+- * files with two separate copies of the row styling, which is how
+- * `context-menu-sub-trigger` once ended up without the icon-to-label gap
+- * that every other row carried: "Add to playlist" had its icon jammed
+- * against its label on right-click and looked correct from the button.
+- *
+- * Both families now take their rows from `menu-chrome.ts`, so the way to
+- * keep them aligned is to keep them on the shared constants rather than
+- * to compare two hand-written class lists. Worth a test rather than just
+- * a fix: these files are generated, and re-running the shadcn CLI to add
+- * or update a component rewrites them wholesale, putting the local class
+- * strings back. A one-row spacing difference inside a submenu is exactly
+- * what nobody re-checks.
+- */
+-
+-const UI = join(process.cwd(), "src/components/ui");
+-
+-/** Icon-to-label spacing and padding, shared by every row. */
+-const LAYOUT = ["flex", "items-center", "gap-[11px]", "px-2.5", "py-1.5"];
+-
+-/**
+- * Which shared constant each row is expected to be built from. Checkbox
+- * and radio rows get their own because they also have to hold a trailing
+- * tick without wrapping, but they carry the same layout tokens.
+- */
+-const ROWS: [string, string, string][] = [
+-  ["context-menu.tsx", "context-menu-item", "MENU_ITEM"],
+-  ["context-menu.tsx", "context-menu-checkbox-item", "MENU_CHOICE_ITEM"],
+-  ["context-menu.tsx", "context-menu-radio-item", "MENU_CHOICE_ITEM"],
+-  ["context-menu.tsx", "context-menu-sub-trigger", "MENU_ITEM"],
+-  ["dropdown-menu.tsx", "dropdown-menu-item", "MENU_ITEM"],
+-  ["dropdown-menu.tsx", "dropdown-menu-checkbox-item", "MENU_CHOICE_ITEM"],
+-  ["dropdown-menu.tsx", "dropdown-menu-radio-item", "MENU_CHOICE_ITEM"],
+-  ["dropdown-menu.tsx", "dropdown-menu-sub-trigger", "MENU_ITEM"],
+-];
+-
+-/** The first thing the row's `cn()` is handed, which should be a constant. */
+-function baseOfSlot(file: string, slot: string): string {
+-  const src = readFileSync(join(UI, file), "utf8");
+-  const m = src.match(
+-    new RegExp(
+-      `data-slot="${slot}"[\\s\\S]{0,1200}?className=\\{cn\\(\\s*(?://[^\\n]*\\n\\s*)*([A-Za-z_$][\\w$]*|")`,
+-    ),
+-  );
+-  if (!m)
+-    throw new Error(`no className found for data-slot="${slot}" in ${file}`);
+-  return m[1];
+-}
+-
+-describe("menu rows align with each other", () => {
+-  it.each(ROWS)("%s / %s is built from the shared row", (file, slot, base) => {
+-    expect(
+-      baseOfSlot(file, slot),
+-      `${slot} spells its own layout instead of taking ${base}, so it can drift from the rows around it`,
+-    ).toBe(base);
+-  });
+-
+-  it.each([
+-    ["MENU_ITEM", MENU_ITEM],
+-    ["MENU_CHOICE_ITEM", MENU_CHOICE_ITEM],
+-  ])("%s carries the shared layout", (name, value) => {
+-    const cls = value.split(/\s+/).filter(Boolean);
+-    for (const token of LAYOUT) {
+-      expect(cls, `${name} is missing "${token}"`).toContain(token);
+-    }
+-  });
+-
+-  it("keeps the two families interchangeable, since one menu uses both", () => {
+-    // Any divergence shows up as the same menu looking different depending
+-    // on whether it was opened by right-click or by the "..." button.
+-    for (const [ctx, dd] of [
+-      ["context-menu-item", "dropdown-menu-item"],
+-      ["context-menu-checkbox-item", "dropdown-menu-checkbox-item"],
+-      ["context-menu-radio-item", "dropdown-menu-radio-item"],
+-      ["context-menu-sub-trigger", "dropdown-menu-sub-trigger"],
+-    ]) {
+-      expect(
+-        baseOfSlot("context-menu.tsx", ctx),
+-        `${ctx} and ${dd} are built from different rows`,
+-      ).toBe(baseOfSlot("dropdown-menu.tsx", dd));
+-    }
+-  });
+-});
+diff --git a/src/lib/auth-presence.test.ts b/src/lib/auth-presence.test.ts
+deleted file mode 100644
+index 00bf98c82..000000000
+--- a/src/lib/auth-presence.test.ts
++++ /dev/null
+@@ -1,69 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { accountSlot, type AccountSlotInput } from "./auth-presence";
+-
+-/** A healthy signed-in session; each test overrides what it cares about. */
+-const healthy: AccountSlotInput = {
+-  loggedIn: true,
+-  accountsPending: false,
+-  storedCount: 1,
+-  hasLiveAccount: true,
+-  accountLoading: false,
+-  accountErrored: false,
+-};
+-
+-const slot = (over: Partial<AccountSlotInput>) =>
+-  accountSlot({ ...healthy, ...over });
+-
+-describe("accountSlot", () => {
+-  it("renders the profile for a live session", () => {
+-    expect(slot({})).toBe("profile");
+-  });
+-
+-  it("waits while the login check is unresolved", () => {
+-    // The PersistQueryClientProvider restore window: isLoading is false
+-    // but data is still undefined.
+-    expect(slot({ loggedIn: undefined, hasLiveAccount: false })).toBe("wait");
+-  });
+-
+-  it("waits while the stored-account list is still loading", () => {
+-    expect(
+-      slot({ accountsPending: true, storedCount: 0, hasLiveAccount: false }),
+-    ).toBe("wait");
+-  });
+-
+-  it("offers sign-in when nothing is stored and nobody is signed in", () => {
+-    expect(
+-      slot({ loggedIn: false, storedCount: 0, hasLiveAccount: false }),
+-    ).toBe("sign-in");
+-  });
+-
+-  it("offers sign-in when Google answers anonymous for the only account", () => {
+-    expect(slot({ hasLiveAccount: false })).toBe("sign-in");
+-  });
+-
+-  it("keeps the menu when Google answers anonymous but several accounts are stored", () => {
+-    expect(slot({ hasLiveAccount: false, storedCount: 3 })).toBe("profile");
+-  });
+-
+-  // The regression this whole fix exists for: a cold boot or a resume
+-  // from standby where /account_menu threw because the network wasn't
+-  // usable yet. A failure is not a logout.
+-  it("does NOT offer sign-in while the account check is still retrying", () => {
+-    expect(slot({ hasLiveAccount: false, accountLoading: true })).toBe(
+-      "profile",
+-    );
+-  });
+-
+-  it("does NOT offer sign-in when the account check errored out", () => {
+-    expect(slot({ hasLiveAccount: false, accountErrored: true })).toBe(
+-      "profile",
+-    );
+-  });
+-
+-  it("still offers sign-in on an errored check when nothing is stored", () => {
+-    // Nothing to fall back to, so the button is the only honest render.
+-    expect(
+-      slot({ hasLiveAccount: false, accountErrored: true, storedCount: 0 }),
+-    ).toBe("sign-in");
+-  });
+-});
+diff --git a/src/lib/innertube/channels.test.ts b/src/lib/innertube/channels.test.ts
+deleted file mode 100644
+index 146ee3492..000000000
+--- a/src/lib/innertube/channels.test.ts
++++ /dev/null
+@@ -1,142 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { parseAccountSwitcher, stripXssiPrefix } from "./channels";
+-
+-/**
+- * Trimmed-down shape of a real getAccountSwitcherEndpoint response:
+- * one personal channel (no pageIdToken), one brand channel (with
+- * pageIdToken), and one non-identity row that must be skipped.
+- */
+-const SWITCHER_FIXTURE = {
+-  data: {
+-    actions: [
+-      {
+-        getMultiPageMenuAction: {
+-          menu: {
+-            multiPageMenuRenderer: {
+-              sections: [
+-                {
+-                  accountSectionListRenderer: {
+-                    contents: [
+-                      {
+-                        accountItemSectionRenderer: {
+-                          contents: [
+-                            {
+-                              accountItem: {
+-                                accountName: { simpleText: "George" },
+-                                accountPhoto: {
+-                                  thumbnails: [
+-                                    { url: "https://p/a=s48", width: 48 },
+-                                    { url: "https://p/a=s88", width: 88 },
+-                                  ],
+-                                },
+-                                isSelected: true,
+-                                accountByline: {
+-                                  simpleText: "george@gmail.com",
+-                                },
+-                                serviceEndpoint: {
+-                                  selectActiveIdentityEndpoint: {
+-                                    supportedTokens: [
+-                                      { accountStateToken: { hasChannel: true } },
+-                                      {
+-                                        offlineCacheKeyToken: {
+-                                          clientCacheKey: "k1",
+-                                        },
+-                                      },
+-                                    ],
+-                                  },
+-                                },
+-                              },
+-                            },
+-                            {
+-                              accountItem: {
+-                                accountName: {
+-                                  runs: [{ text: "Band Channel" }],
+-                                },
+-                                accountPhoto: {
+-                                  thumbnails: [{ url: "https://p/b=s88" }],
+-                                },
+-                                isSelected: false,
+-                                accountByline: { simpleText: "Brand Account" },
+-                                serviceEndpoint: {
+-                                  selectActiveIdentityEndpoint: {
+-                                    supportedTokens: [
+-                                      {
+-                                        pageIdToken: {
+-                                          pageId: "108031863270526872265",
+-                                        },
+-                                      },
+-                                      {
+-                                        offlineCacheKeyToken: {
+-                                          clientCacheKey: "k2",
+-                                        },
+-                                      },
+-                                    ],
+-                                  },
+-                                },
+-                              },
+-                            },
+-                            {
+-                              // "Add account" style row: no select endpoint.
+-                              accountItem: {
+-                                accountName: { simpleText: "Add account" },
+-                              },
+-                            },
+-                          ],
+-                        },
+-                      },
+-                    ],
+-                  },
+-                },
+-              ],
+-            },
+-          },
+-        },
+-      },
+-    ],
+-  },
+-};
+-
+-describe("stripXssiPrefix", () => {
+-  it("removes the )]}' guard", () => {
+-    expect(stripXssiPrefix(")]}'\n{\"a\":1}")).toBe('{"a":1}');
+-  });
+-
+-  it("leaves plain JSON untouched", () => {
+-    expect(stripXssiPrefix('{"a":1}')).toBe('{"a":1}');
+-    expect(stripXssiPrefix("[1,2]")).toBe("[1,2]");
+-  });
+-});
+-
+-describe("parseAccountSwitcher", () => {
+-  const channels = parseAccountSwitcher(SWITCHER_FIXTURE);
+-
+-  it("finds both identities and skips non-identity rows", () => {
+-    expect(channels).toHaveLength(2);
+-  });
+-
+-  it("maps the personal channel with a null pageId", () => {
+-    expect(channels[0]).toEqual({
+-      pageId: null,
+-      name: "George",
+-      photoUrl: "https://p/a=s88",
+-      byline: "george@gmail.com",
+-      selected: true,
+-    });
+-  });
+-
+-  it("maps the brand channel with its pageId", () => {
+-    expect(channels[1]).toEqual({
+-      pageId: "108031863270526872265",
+-      name: "Band Channel",
+-      photoUrl: "https://p/b=s88",
+-      byline: "Brand Account",
+-      selected: false,
+-    });
+-  });
+-
+-  it("returns [] for garbage input", () => {
+-    expect(parseAccountSwitcher(null)).toEqual([]);
+-    expect(parseAccountSwitcher({ data: {} })).toEqual([]);
+-    expect(parseAccountSwitcher("nope")).toEqual([]);
+-  });
+-});
+diff --git a/src/lib/innertube/continuations.test.ts b/src/lib/innertube/continuations.test.ts
+deleted file mode 100644
+index 14f631f99..000000000
+--- a/src/lib/innertube/continuations.test.ts
++++ /dev/null
+@@ -1,203 +0,0 @@
+-import { beforeEach, describe, expect, it, vi } from "vitest";
+-
+-// `collectContinuationItems` goes through innertubePost, so the two Tauri
+-// modules it reaches for are stubbed: the HTTP plugin per test, and
+-// `invoke` as a rejection so `authHeaders` falls back to anonymous.
+-const fetchMock = vi.fn();
+-vi.mock("@tauri-apps/plugin-http", () => ({
+-  fetch: (...args: unknown[]) => fetchMock(...args),
+-}));
+-vi.mock("@tauri-apps/api/core", () => ({
+-  invoke: () => Promise.reject(new Error("no tauri in tests")),
+-}));
+-
+-const {
+-  collectContinuationItems,
+-  collectShelfNodes,
+-  parseContinuationPage,
+-  readPagingToken,
+-} = await import("./shared");
+-
+-type Json = Record<string, unknown>;
+-
+-/** Minimal stand-in for the Response `innertubePost` expects back. */
+-function jsonResponse(body: Json) {
+-  return {
+-    ok: true,
+-    status: 200,
+-    url: "https://music.youtube.com/youtubei/v1/browse",
+-    headers: { get: () => null, getSetCookie: () => [] },
+-    json: () => Promise.resolve(body),
+-    text: () => Promise.resolve(""),
+-  };
+-}
+-
+-/** A grid page carrying `count` playlist rows and, optionally, a next token. */
+-function gridPage(count: number, nextToken?: string): Json {
+-  const items: Json[] = Array.from({ length: count }, (_, i) => ({
+-    musicTwoRowItemRenderer: { title: { runs: [{ text: `p${i}` }] } },
+-  }));
+-  return {
+-    continuationContents: {
+-      gridContinuation: {
+-        items,
+-        continuations: nextToken
+-          ? [{ nextContinuationData: { continuation: nextToken } }]
+-          : undefined,
+-      },
+-    },
+-  };
+-}
+-
+-beforeEach(() => {
+-  fetchMock.mockReset();
+-});
+-
+-// The library grid hands back ~25 rows plus a token for the rest. Reading
+-// that token off the grid itself (rather than the first one anywhere in the
+-// response) is what keeps a 30+ playlist library from rendering as 25.
+-describe("readPagingToken", () => {
+-  it("reads the legacy continuations[].nextContinuationData token", () => {
+-    const grid = {
+-      items: [],
+-      continuations: [{ nextContinuationData: { continuation: "tok-legacy" } }],
+-    };
+-    expect(readPagingToken(grid)).toBe("tok-legacy");
+-  });
+-
+-  it("reads a continuationCommand token off continuations[]", () => {
+-    const shelf = {
+-      contents: [],
+-      continuations: [
+-        { continuationEndpoint: { continuationCommand: { token: "tok-cmd" } } },
+-      ],
+-    };
+-    expect(readPagingToken(shelf)).toBe("tok-cmd");
+-  });
+-
+-  it("reads the trailing continuationItemRenderer of an item list", () => {
+-    const grid = {
+-      items: [
+-        { musicTwoRowItemRenderer: {} },
+-        {
+-          continuationItemRenderer: {
+-            continuationEndpoint: { continuationCommand: { token: "tok-tail" } },
+-          },
+-        },
+-      ],
+-    };
+-    expect(readPagingToken(grid)).toBe("tok-tail");
+-  });
+-
+-  it("returns undefined for a shelf that fits on one page", () => {
+-    expect(readPagingToken({ items: [{ musicTwoRowItemRenderer: {} }] })).toBe(
+-      undefined,
+-    );
+-    expect(readPagingToken(undefined)).toBe(undefined);
+-  });
+-});
+-
+-describe("parseContinuationPage", () => {
+-  it("unwraps a gridContinuation with its next token", () => {
+-    const { items, token } = parseContinuationPage(gridPage(2, "tok-2"));
+-    expect(items).toHaveLength(2);
+-    expect(token).toBe("tok-2");
+-  });
+-
+-  it("unwraps a musicShelfContinuation", () => {
+-    const { items, token } = parseContinuationPage({
+-      continuationContents: {
+-        musicShelfContinuation: {
+-          contents: [{ musicResponsiveListItemRenderer: {} }],
+-        },
+-      },
+-    });
+-    expect(items).toHaveLength(1);
+-    expect(token).toBe(undefined);
+-  });
+-
+-  it("unwraps an appendContinuationItemsAction response", () => {
+-    const { items, token } = parseContinuationPage({
+-      onResponseReceivedActions: [
+-        {
+-          appendContinuationItemsAction: {
+-            continuationItems: [
+-              { musicTwoRowItemRenderer: {} },
+-              {
+-                continuationItemRenderer: {
+-                  continuationEndpoint: {
+-                    continuationCommand: { token: "tok-next" },
+-                  },
+-                },
+-              },
+-            ],
+-          },
+-        },
+-      ],
+-    });
+-    expect(items).toHaveLength(2);
+-    expect(token).toBe("tok-next");
+-  });
+-
+-  it("yields nothing for a shape it doesn't know, ending the walk", () => {
+-    expect(parseContinuationPage({ somethingElse: {} })).toEqual({ items: [] });
+-    expect(parseContinuationPage(undefined)).toEqual({ items: [] });
+-  });
+-});
+-
+-// The grid is what owns the paging token, so the shelf-like node synthesized
+-// for it has to carry `continuations` through.
+-describe("collectShelfNodes", () => {
+-  it("keeps a gridRenderer's continuations on the synthesized shelf", () => {
+-    const [wrapper] = collectShelfNodes([
+-      {
+-        gridRenderer: {
+-          items: [{ musicTwoRowItemRenderer: {} }],
+-          continuations: [{ nextContinuationData: { continuation: "tok" } }],
+-        },
+-      },
+-    ]);
+-    expect(readPagingToken(wrapper.musicShelfRenderer)).toBe("tok");
+-  });
+-});
+-
+-describe("collectContinuationItems", () => {
+-  it("returns nothing when there is no token to follow", async () => {
+-    expect(await collectContinuationItems(undefined)).toEqual([]);
+-    expect(fetchMock).not.toHaveBeenCalled();
+-  });
+-
+-  it("walks every page and concatenates the rows in order", async () => {
+-    fetchMock
+-      .mockResolvedValueOnce(jsonResponse(gridPage(25, "tok-2")))
+-      .mockResolvedValueOnce(jsonResponse(gridPage(25, "tok-3")))
+-      .mockResolvedValueOnce(jsonResponse(gridPage(7)));
+-    const items = await collectContinuationItems("tok-1");
+-    expect(items).toHaveLength(57);
+-    expect(fetchMock).toHaveBeenCalledTimes(3);
+-  });
+-
+-  it("keeps the pages it already has when one request fails", async () => {
+-    fetchMock
+-      .mockResolvedValueOnce(jsonResponse(gridPage(25, "tok-2")))
+-      .mockRejectedValueOnce(new Error("network down"));
+-    expect(await collectContinuationItems("tok-1")).toHaveLength(25);
+-  });
+-
+-  it("stops when a page hands back a token it was already given", async () => {
+-    fetchMock.mockResolvedValue(jsonResponse(gridPage(25, "tok-loop")));
+-    const items = await collectContinuationItems("tok-loop");
+-    expect(items).toHaveLength(25);
+-    expect(fetchMock).toHaveBeenCalledTimes(1);
+-  });
+-
+-  it("caps a server that keeps issuing fresh tokens forever", async () => {
+-    let page = 0;
+-    fetchMock.mockImplementation(() =>
+-      Promise.resolve(jsonResponse(gridPage(1, `tok-${++page}`))),
+-    );
+-    const items = await collectContinuationItems("tok-0");
+-    expect(items).toHaveLength(40);
+-    expect(fetchMock).toHaveBeenCalledTimes(40);
+-  });
+-});
+diff --git a/src/lib/innertube/parse-count.test.ts b/src/lib/innertube/parse-count.test.ts
+deleted file mode 100644
+index 48b042b86..000000000
+--- a/src/lib/innertube/parse-count.test.ts
++++ /dev/null
+@@ -1,26 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { parseTrackCount } from "@/lib/innertube/parse-count";
+-
+-describe("parseTrackCount", () => {
+-  it("parses a plain count", () => {
+-    expect(parseTrackCount("12 songs • 45 minutes")).toBe(12);
+-  });
+-
+-  it("handles a thousands separator (the regression)", () => {
+-    expect(parseTrackCount("5,000 songs")).toBe(5000);
+-    expect(parseTrackCount("1,234 songs")).toBe(1234);
+-  });
+-
+-  it("matches the singular 'song'", () => {
+-    expect(parseTrackCount("1 song")).toBe(1);
+-  });
+-
+-  it("is case-insensitive", () => {
+-    expect(parseTrackCount("42 Songs")).toBe(42);
+-  });
+-
+-  it("returns undefined when there is no count", () => {
+-    expect(parseTrackCount("Playlist • Various artists")).toBeUndefined();
+-    expect(parseTrackCount("")).toBeUndefined();
+-  });
+-});
+diff --git a/src/lib/innertube/playlist.test.ts b/src/lib/innertube/playlist.test.ts
+deleted file mode 100644
+index e23f39f49..000000000
+--- a/src/lib/innertube/playlist.test.ts
++++ /dev/null
+@@ -1,209 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  detectEditable,
+-  extractShuffleEndpoint,
+-  extractSuggestions,
+-} from "./playlist";
+-import type { YtNode } from "./shared";
+-
+-// Shapes lifted from a real playlist browse header: the Shuffle button's
+-// watchPlaylistEndpoint params carry the "8gECKAE" shuffle marker, while
+-// the mix button is a watchPlaylistEndpoint too but with plain "wAEB"
+-// params and an RDAMPL-prefixed id.
+-function header(): YtNode {
+-  return {
+-    buttons: [
+-      {
+-        musicPlayButtonRenderer: {
+-          playNavigationEndpoint: {
+-            watchEndpoint: {
+-              videoId: "abc123",
+-              playlistId: "PLxyz",
+-              params: "wAEB",
+-            },
+-          },
+-        },
+-      },
+-      {
+-        menuRenderer: {
+-          items: [
+-            {
+-              menuNavigationItemRenderer: {
+-                navigationEndpoint: {
+-                  watchPlaylistEndpoint: {
+-                    playlistId: "RDAMPLPLxyz",
+-                    params: "wAEB",
+-                  },
+-                },
+-              },
+-            },
+-          ],
+-          topLevelButtons: [
+-            {
+-              buttonRenderer: {
+-                navigationEndpoint: {
+-                  watchPlaylistEndpoint: {
+-                    playlistId: "PLxyz",
+-                    params: "wAEB8gECKAE%3D",
+-                  },
+-                },
+-              },
+-            },
+-          ],
+-        },
+-      },
+-    ],
+-  };
+-}
+-
+-describe("extractShuffleEndpoint", () => {
+-  it("finds the shuffle watchPlaylistEndpoint by its params marker", () => {
+-    expect(extractShuffleEndpoint(header())).toEqual({
+-      playlistId: "PLxyz",
+-      params: "wAEB8gECKAE%3D",
+-    });
+-  });
+-
+-  it("ignores the mix button and plain watchEndpoints", () => {
+-    const h = header();
+-    // Drop the shuffle button, leaving only play + mix endpoints.
+-    (h.buttons[1].menuRenderer as YtNode).topLevelButtons = [];
+-    expect(extractShuffleEndpoint(h)).toBeUndefined();
+-  });
+-
+-  it("restricts matches to the given playlist id when requireId is set", () => {
+-    expect(extractShuffleEndpoint(header(), "PLother")).toBeUndefined();
+-    expect(extractShuffleEndpoint(header(), "PLxyz")).toEqual({
+-      playlistId: "PLxyz",
+-      params: "wAEB8gECKAE%3D",
+-    });
+-  });
+-
+-  it("accepts already-decoded params too", () => {
+-    const h: YtNode = {
+-      watchPlaylistEndpoint: { playlistId: "LM", params: "wAEB8gECKAE=" },
+-    };
+-    expect(extractShuffleEndpoint(h)).toEqual({
+-      playlistId: "LM",
+-      params: "wAEB8gECKAE=",
+-    });
+-  });
+-});
+-
+-describe("detectEditable", () => {
+-  it("detects the legacy editable-header wrapper", () => {
+-    expect(
+-      detectEditable({
+-        header: {
+-          musicEditablePlaylistDetailHeaderRenderer: {
+-            header: { musicResponsiveHeaderRenderer: {} },
+-          },
+-        },
+-      }),
+-    ).toBe(true);
+-  });
+-
+-  it("detects the responsive layout's Edit playlist menu endpoint", () => {
+-    expect(
+-      detectEditable({
+-        contents: {
+-          menu: {
+-            menuRenderer: {
+-              items: [
+-                {
+-                  menuNavigationItemRenderer: {
+-                    navigationEndpoint: {
+-                      editPlaylistEndpoint: { playlistId: "PLxyz" },
+-                    },
+-                  },
+-                },
+-              ],
+-            },
+-          },
+-        },
+-      }),
+-    ).toBe(true);
+-  });
+-
+-  it("reports community/system playlists as not editable", () => {
+-    expect(
+-      detectEditable({
+-        header: { musicDetailHeaderRenderer: { title: {} } },
+-        contents: { rows: [{ watchEndpoint: { videoId: "abc" } }] },
+-      }),
+-    ).toBe(false);
+-  });
+-});
+-
+-// A minimal song row the responsive-list parser accepts: title + watch
+-// endpoint in the first flex column, optional playlistItemData.
+-function songRow(videoId: string, title: string, setVideoId?: string): YtNode {
+-  return {
+-    musicResponsiveListItemRenderer: {
+-      flexColumns: [
+-        {
+-          musicResponsiveListItemFlexColumnRenderer: {
+-            text: {
+-              runs: [
+-                {
+-                  text: title,
+-                  navigationEndpoint: { watchEndpoint: { videoId } },
+-                },
+-              ],
+-            },
+-          },
+-        },
+-      ],
+-      ...(setVideoId
+-        ? { playlistItemData: { videoId, playlistSetVideoId: setVideoId } }
+-        : {}),
+-    },
+-  };
+-}
+-
+-describe("extractSuggestions", () => {
+-  const response = (): YtNode => ({
+-    contents: {
+-      sectionListRenderer: {
+-        contents: [
+-          {
+-            musicPlaylistShelfRenderer: {
+-              contents: [songRow("own1", "In the playlist", "SET1")],
+-              continuations: [
+-                { nextContinuationData: { continuation: "next-token" } },
+-              ],
+-            },
+-          },
+-          {
+-            musicShelfRenderer: {
+-              contents: [
+-                songRow("sug1", "Suggested one"),
+-                songRow("sug2", "Suggested two"),
+-              ],
+-              continuations: [
+-                { reloadContinuationData: { continuation: "reload-token" } },
+-              ],
+-            },
+-          },
+-        ],
+-      },
+-    },
+-  });
+-
+-  it("returns only the reload-continuation shelf's rows plus its token", () => {
+-    const s = extractSuggestions(response());
+-    expect(s).toBeDefined();
+-    expect(s!.tracks.map((t) => t.id)).toEqual(["sug1", "sug2"]);
+-    expect(s!.refreshToken).toBe("reload-token");
+-  });
+-
+-  it("ignores plain shelves without a reload continuation", () => {
+-    const r = response();
+-    const shelf = (r.contents.sectionListRenderer.contents[1] as YtNode)
+-      .musicShelfRenderer as YtNode;
+-    shelf.continuations = [
+-      { nextContinuationData: { continuation: "next-token" } },
+-    ];
+-    expect(extractSuggestions(r)).toBeUndefined();
+-  });
+-});
+diff --git a/src/lib/innertube/search.test.ts b/src/lib/innertube/search.test.ts
+deleted file mode 100644
+index a4c4a3916..000000000
+--- a/src/lib/innertube/search.test.ts
++++ /dev/null
+@@ -1,266 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { classifyAllRow, extractCardAction, mapTopResultCard } from "./search";
+-import type { YtNode } from "./shared";
+-
+-// Minimal builders mirroring the real InnerTube shapes observed on the "all"
+-// search tab (top-result musicCardShelfRenderer + flat
+-// musicResponsiveListItemRenderer rows).
+-
+-function row(
+-  token: string,
+-  opts: {
+-    videoId?: string;
+-    browseId?: string;
+-    pageType?: string;
+-    title?: string;
+-  },
+-): YtNode {
+-  const titleRun: YtNode = { text: opts.title ?? "Title" };
+-  if (opts.videoId) {
+-    titleRun.navigationEndpoint = { watchEndpoint: { videoId: opts.videoId } };
+-  }
+-  const mrli: YtNode = {
+-    flexColumns: [
+-      {
+-        musicResponsiveListItemFlexColumnRenderer: {
+-          text: { runs: [titleRun] },
+-        },
+-      },
+-      {
+-        musicResponsiveListItemFlexColumnRenderer: {
+-          text: { runs: [{ text: token }, { text: " • detail" }] },
+-        },
+-      },
+-    ],
+-  };
+-  if (opts.browseId) {
+-    mrli.navigationEndpoint = {
+-      browseEndpoint: {
+-        browseId: opts.browseId,
+-        browseEndpointContextSupportedConfigs: {
+-          browseEndpointContextMusicConfig: { pageType: opts.pageType },
+-        },
+-      },
+-    };
+-  }
+-  return mrli;
+-}
+-
+-describe("classifyAllRow", () => {
+-  it("buckets a song by its subtitle token", () => {
+-    const r = classifyAllRow(row("Song", { videoId: "vid123" }));
+-    expect(r).not.toBeNull();
+-    expect(r?.group).toBe("song");
+-    expect(r?.item.kind).toBe("song");
+-    expect(r?.item.id).toBe("vid123");
+-  });
+-
+-  it("re-kinds a video row (mapper defaults watch rows to song)", () => {
+-    const r = classifyAllRow(row("Video", { videoId: "vidABC" }));
+-    expect(r?.group).toBe("video");
+-    expect(r?.item.kind).toBe("video");
+-    expect(r?.item.id).toBe("vidABC");
+-  });
+-
+-  it("maps albums and treats Single / EP as albums", () => {
+-    for (const token of ["Album", "Single", "EP"]) {
+-      const r = classifyAllRow(
+-        row(token, { browseId: "MPREb_x", pageType: "MUSIC_PAGE_TYPE_ALBUM" }),
+-      );
+-      expect(r?.group).toBe("album");
+-      expect(r?.item.kind).toBe("album");
+-      expect(r?.item.id).toBe("MPREb_x");
+-    }
+-  });
+-
+-  it("maps artist rows as round artist items", () => {
+-    const r = classifyAllRow(
+-      row("Artist", { browseId: "UC_x", pageType: "MUSIC_PAGE_TYPE_ARTIST" }),
+-    );
+-    expect(r?.group).toBe("artist");
+-    expect(r?.item.kind).toBe("artist");
+-    expect(r?.item.round).toBe(true);
+-  });
+-
+-  it("maps community playlists", () => {
+-    const r = classifyAllRow(
+-      row("Playlist", {
+-        browseId: "VLPL_x",
+-        pageType: "MUSIC_PAGE_TYPE_PLAYLIST",
+-      }),
+-    );
+-    expect(r?.group).toBe("playlist");
+-    expect(r?.item.kind).toBe("playlist");
+-  });
+-
+-  it("skips types the app has no destination for", () => {
+-    expect(
+-      classifyAllRow(
+-        row("Profile", {
+-          browseId: "UC_p",
+-          pageType: "MUSIC_PAGE_TYPE_USER_CHANNEL",
+-        }),
+-      ),
+-    ).toBeNull();
+-    expect(
+-      classifyAllRow(
+-        row("Episode", {
+-          videoId: "ep1",
+-          browseId: "MPED1",
+-          pageType: "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE",
+-        }),
+-      ),
+-    ).toBeNull();
+-    expect(
+-      classifyAllRow(
+-        row("Podcast", {
+-          browseId: "MPSP1",
+-          pageType: "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE",
+-        }),
+-      ),
+-    ).toBeNull();
+-  });
+-});
+-
+-function card(opts: {
+-  title: string;
+-  subtitle: string;
+-  onTap: YtNode;
+-}): YtNode {
+-  return {
+-    title: { runs: [{ text: opts.title, navigationEndpoint: opts.onTap }] },
+-    subtitle: { runs: [{ text: opts.subtitle }] },
+-    onTap: opts.onTap,
+-    thumbnail: {
+-      musicThumbnailRenderer: {
+-        thumbnail: {
+-          thumbnails: [{ url: "http://x/y.jpg", width: 60, height: 60 }],
+-        },
+-      },
+-    },
+-  };
+-}
+-
+-describe("mapTopResultCard", () => {
+-  it("extracts an artist entity from a browse onTap (was lost → 'Section 1')", () => {
+-    const item = mapTopResultCard(
+-      card({
+-        title: "The Weeknd",
+-        subtitle: "Artist • 224M monthly audience",
+-        onTap: {
+-          browseEndpoint: {
+-            browseId: "UClYV6hHlupm",
+-            browseEndpointContextSupportedConfigs: {
+-              browseEndpointContextMusicConfig: {
+-                pageType: "MUSIC_PAGE_TYPE_ARTIST",
+-              },
+-            },
+-          },
+-        },
+-      }),
+-    );
+-    expect(item).not.toBeNull();
+-    expect(item?.kind).toBe("artist");
+-    expect(item?.id).toBe("UClYV6hHlupm");
+-    expect(item?.title).toBe("The Weeknd");
+-    expect(item?.round).toBe(true);
+-    expect(item?.thumbnails.length).toBe(1);
+-  });
+-
+-  it("extracts an album entity from a browse onTap", () => {
+-    const item = mapTopResultCard(
+-      card({
+-        title: "Trilogy",
+-        subtitle: "Album • The Weeknd",
+-        onTap: {
+-          browseEndpoint: {
+-            browseId: "MPREb_DbmffDiBz16",
+-            browseEndpointContextSupportedConfigs: {
+-              browseEndpointContextMusicConfig: {
+-                pageType: "MUSIC_PAGE_TYPE_ALBUM",
+-              },
+-            },
+-          },
+-        },
+-      }),
+-    );
+-    expect(item?.kind).toBe("album");
+-    expect(item?.id).toBe("MPREb_DbmffDiBz16");
+-  });
+-
+-  it("extracts a song entity from a watch onTap", () => {
+-    const item = mapTopResultCard(
+-      card({
+-        title: "Blinding Lights",
+-        subtitle: "Song • The Weeknd",
+-        onTap: { watchEndpoint: { videoId: "4NRXx6U8ABQ" } },
+-      }),
+-    );
+-    expect(item?.kind).toBe("song");
+-    expect(item?.id).toBe("4NRXx6U8ABQ");
+-  });
+-
+-  it("distinguishes a music-video top result via its subtitle token", () => {
+-    const item = mapTopResultCard(
+-      card({
+-        title: "Blinding Lights (Official Video)",
+-        subtitle: "Video • The Weeknd • 1B views",
+-        onTap: { watchEndpoint: { videoId: "4NRXx6U8ABQ" } },
+-      }),
+-    );
+-    expect(item?.kind).toBe("video");
+-  });
+-});
+-
+-describe("extractCardAction", () => {
+-  it("reads an artist Shuffle button (watch-playlist radio)", () => {
+-    const action = extractCardAction({
+-      buttons: [
+-        {
+-          buttonRenderer: {
+-            text: { runs: [{ text: "Shuffle" }] },
+-            icon: { iconType: "MUSIC_SHUFFLE" },
+-            command: { watchPlaylistEndpoint: { playlistId: "RDAO_xyz" } },
+-          },
+-        },
+-        {
+-          buttonRenderer: {
+-            text: { runs: [{ text: "Mix" }] },
+-            command: { watchPlaylistEndpoint: { playlistId: "RDEM_xyz" } },
+-          },
+-        },
+-      ],
+-    });
+-    expect(action).toEqual({
+-      label: "Shuffle",
+-      kind: "shuffle",
+-      videoId: undefined,
+-      playlistId: "RDAO_xyz",
+-    });
+-  });
+-
+-  it("reads a song Play button (direct watch)", () => {
+-    const action = extractCardAction({
+-      buttons: [
+-        {
+-          buttonRenderer: {
+-            text: { runs: [{ text: "Play" }] },
+-            command: { watchEndpoint: { videoId: "vid123" } },
+-          },
+-        },
+-      ],
+-    });
+-    expect(action?.kind).toBe("play");
+-    expect(action?.videoId).toBe("vid123");
+-    expect(action?.playlistId).toBeUndefined();
+-  });
+-
+-  it("returns undefined when the card has no actionable button", () => {
+-    expect(extractCardAction({})).toBeUndefined();
+-    expect(
+-      extractCardAction({
+-        buttons: [{ buttonRenderer: { text: { runs: [] } } }],
+-      }),
+-    ).toBeUndefined();
+-  });
+-});
+diff --git a/src/lib/innertube/shared.test.ts b/src/lib/innertube/shared.test.ts
+deleted file mode 100644
+index cc2baafb8..000000000
+--- a/src/lib/innertube/shared.test.ts
++++ /dev/null
+@@ -1,126 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { mapShelfWrapper, splitSetCookieHeader, type YtNode } from "./shared";
+-
+-// Fallback splitter for runtimes without Headers.getSetCookie. The
+-// tricky part is NOT splitting on the comma inside an Expires date.
+-describe("splitSetCookieHeader", () => {
+-  it("returns [] for an empty header", () => {
+-    expect(splitSetCookieHeader("")).toEqual([]);
+-  });
+-
+-  it("keeps a single cookie with an Expires date intact", () => {
+-    const raw =
+-      "SIDCC=AKEy_abc123; Expires=Tue, 07 Jul 2027 18:24:08 GMT; Path=/; Domain=.youtube.com; Secure";
+-    expect(splitSetCookieHeader(raw)).toEqual([raw]);
+-  });
+-
+-  it("splits two cookies joined with a comma", () => {
+-    const a =
+-      "SIDCC=AKEy_abc; Expires=Tue, 07 Jul 2027 18:24:08 GMT; Domain=.youtube.com; Path=/";
+-    const b =
+-      "LOGIN_INFO=AFmmF2s:QUQ3; Expires=Thu, 06 Jul 2028 18:24:08 GMT; Domain=.youtube.com; Path=/; Secure; HttpOnly";
+-    expect(splitSetCookieHeader(`${a}, ${b}`)).toEqual([a, b]);
+-  });
+-
+-  it("handles __Secure- prefixed names after the comma", () => {
+-    const a = "SIDCC=v1; Domain=.youtube.com; Path=/";
+-    const b = "__Secure-3PSIDCC=v2; Domain=.youtube.com; Path=/; Secure";
+-    expect(splitSetCookieHeader(`${a}, ${b}`)).toEqual([a, b]);
+-  });
+-});
+-
+-// Shelf "More" endpoint extraction — shapes observed live on artist
+-// pages 2026-07-12: carousels carry it in the header's moreContentButton,
+-// the Top-songs musicShelfRenderer in bottomEndpoint / the title run.
+-describe("mapShelfWrapper more endpoint", () => {
+-  const browse = (browseId: string, params?: string, pageType?: string) => ({
+-    browseEndpoint: {
+-      browseId,
+-      params,
+-      browseEndpointContextSupportedConfigs: {
+-        browseEndpointContextMusicConfig: { pageType },
+-      },
+-    },
+-  });
+-
+-  const twoRowItem: YtNode = {
+-    musicTwoRowItemRenderer: {
+-      title: { runs: [{ text: "Album X" }] },
+-      navigationEndpoint: {
+-        browseEndpoint: {
+-          browseId: "MPREb_x",
+-          browseEndpointContextSupportedConfigs: {
+-            browseEndpointContextMusicConfig: {
+-              pageType: "MUSIC_PAGE_TYPE_ALBUM",
+-            },
+-          },
+-        },
+-      },
+-    },
+-  };
+-
+-  it("reads moreContentButton off a carousel header", () => {
+-    const wrapper: YtNode = {
+-      musicCarouselShelfRenderer: {
+-        header: {
+-          musicCarouselShelfBasicHeaderRenderer: {
+-            title: { runs: [{ text: "Albums" }] },
+-            moreContentButton: {
+-              buttonRenderer: {
+-                navigationEndpoint: browse(
+-                  "MPADUC_a",
+-                  "ggMI",
+-                  "MUSIC_PAGE_TYPE_ARTIST_DISCOGRAPHY",
+-                ),
+-              },
+-            },
+-          },
+-        },
+-        contents: [twoRowItem],
+-      },
+-    };
+-    const { more } = mapShelfWrapper(wrapper, 0);
+-    expect(more).toEqual({
+-      browseId: "MPADUC_a",
+-      params: "ggMI",
+-      pageType: "MUSIC_PAGE_TYPE_ARTIST_DISCOGRAPHY",
+-    });
+-  });
+-
+-  it("falls back to the title run's navigationEndpoint on a musicShelfRenderer", () => {
+-    const wrapper: YtNode = {
+-      musicShelfRenderer: {
+-        title: {
+-          runs: [
+-            {
+-              text: "Top songs",
+-              navigationEndpoint: browse(
+-                "VLOLAK_top",
+-                "ggMCCAI%3D",
+-                "MUSIC_PAGE_TYPE_PLAYLIST",
+-              ),
+-            },
+-          ],
+-        },
+-        contents: [twoRowItem],
+-      },
+-    };
+-    const { more } = mapShelfWrapper(wrapper, 0);
+-    expect(more?.browseId).toBe("VLOLAK_top");
+-    expect(more?.pageType).toBe("MUSIC_PAGE_TYPE_PLAYLIST");
+-  });
+-
+-  it("returns undefined when the shelf has no more endpoint", () => {
+-    const wrapper: YtNode = {
+-      musicCarouselShelfRenderer: {
+-        header: {
+-          musicCarouselShelfBasicHeaderRenderer: {
+-            title: { runs: [{ text: "Fans might also like" }] },
+-          },
+-        },
+-        contents: [twoRowItem],
+-      },
+-    };
+-    expect(mapShelfWrapper(wrapper, 0).more).toBeUndefined();
+-  });
+-});
+diff --git a/src/lib/innertube/shared.ts b/src/lib/innertube/shared.ts
+index 9a3df6bd1..ec8505a01 100644
+--- a/src/lib/innertube/shared.ts
++++ b/src/lib/innertube/shared.ts
+@@ -897,14 +897,21 @@ export function mapResponsiveListItem(raw: YtNode): ShelfItem | null {
+   // video has a generated `i.ytimg.com/vi/{id}/...jpg` set, so we
+   // synthesize one from the videoId when the row came up empty.
+   if (thumbnails.length === 0 && videoId) {
++    // 🔴 adaptation: the synthesized set pointed at `https://i.ytimg.com/vi/…`,
++    // which is off-origin and unreachable under allow_internet=false. It now
++    // points at the in-tree `public/rb-art/` stand-ins, which vite copies
++    // verbatim into `dist/`. The `${videoId}` fragment keeps one distinct URL
++    // per row (as upstream had) so no two rows share a cache entry. Widths and
++    // heights are unchanged, and both stay above `isYtPlaceholder`'s 120x90
++    // threshold, so no downstream branch sees a different shape.
+     thumbnails = [
+       {
+-        url: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
++        url: `/rb-art/mq-320.svg#${videoId}`,
+         width: 320,
+         height: 180,
+       },
+       {
+-        url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
++        url: `/rb-art/hq-480.svg#${videoId}`,
+         width: 480,
+         height: 360,
+       },
+diff --git a/src/lib/lyrics/failure-semantics.test.ts b/src/lib/lyrics/failure-semantics.test.ts
+deleted file mode 100644
+index 23294ae17..000000000
+--- a/src/lib/lyrics/failure-semantics.test.ts
++++ /dev/null
+@@ -1,465 +0,0 @@
+-import { beforeEach, describe, expect, it, vi } from "vitest";
+-
+-/**
+- * The invariant every lyrics provider now upholds: return a value only for
+- * a real answer, throw for anything a retry might fix.
+- *
+- * Before this, all three collapsed failures into `null` with a bare
+- * `catch { return null }`. React Query stores `null` as a success,
+- * `App.tsx:49` dehydrates successes to IndexedDB and `query-client.ts:9`
+- * keeps them a day, so one dropped packet became a persistent, unretryable
+- * "No lyrics found." Each `throws` case below is a line that used to
+- * resolve to `null`.
+- *
+- * These tests reach further than the rest of the suite, which the vitest
+- * config describes as covering pure logic only: the Tauri HTTP plugin is
+- * mocked so the providers' branching can be exercised without a runtime.
+- */
+-
+-vi.mock("@tauri-apps/plugin-http", () => ({ fetch: vi.fn() }));
+-vi.mock("@tauri-apps/api/app", () => ({
+-  getVersion: vi.fn().mockResolvedValue("0.0.0-test"),
+-}));
+-
+-type Route = (url: string) => Response | Promise<Response> | never;
+-
+-function json(body: unknown, status = 200): Response {
+-  return new Response(JSON.stringify(body), {
+-    status,
+-    headers: { "content-type": "application/json" },
+-  });
+-}
+-
+-function html(body: string, status = 200): Response {
+-  return new Response(body, {
+-    status,
+-    headers: { "content-type": "text/html" },
+-  });
+-}
+-
+-/**
+- * Fresh module graph per test. Musixmatch caches its user token in a
+- * module-level variable for nine minutes, so without this a token saved by
+- * one test silently satisfies the next one and the assertions drift.
+- */
+-async function setup(route: Route) {
+-  vi.resetModules();
+-  const http = await import("@tauri-apps/plugin-http");
+-  const fetchMock = vi.mocked(http.fetch);
+-  fetchMock.mockReset();
+-  fetchMock.mockImplementation((input: unknown) =>
+-    Promise.resolve(route(String(input))),
+-  );
+-  return {
+-    fetchMock,
+-    lrclib: (await import("./lrclib")).fetchLrclibLyrics,
+-    genius: (await import("./genius")).fetchGeniusLyrics,
+-    musixmatch: (await import("./musixmatch")).fetchMusixmatchLyrics,
+-  };
+-}
+-
+-const TRACK = { title: "Blinding Lights", artist: "The Weeknd" };
+-
+-beforeEach(() => {
+-  vi.clearAllMocks();
+-});
+-
+-describe("LRCLIB failure semantics", () => {
+-  it("returns null when the track is genuinely absent", async () => {
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json({}, 404) : json([]),
+-    );
+-    await expect(lrclib(TRACK)).resolves.toBeNull();
+-  });
+-
+-  it("throws when the search endpoint is broken", async () => {
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json({}, 404) : json({}, 500),
+-    );
+-    await expect(lrclib(TRACK)).rejects.toThrow(/LRCLIB \/search 500/);
+-  });
+-
+-  it("throws when the transport fails outright", async () => {
+-    vi.resetModules();
+-    const http = await import("@tauri-apps/plugin-http");
+-    vi.mocked(http.fetch).mockReset();
+-    vi.mocked(http.fetch).mockRejectedValue(new Error("ECONNRESET"));
+-    const { fetchLrclibLyrics } = await import("./lrclib");
+-    const { LyricsTransportError } = await import("./http");
+-    await expect(fetchLrclibLyrics(TRACK)).rejects.toBeInstanceOf(
+-      LyricsTransportError,
+-    );
+-  });
+-});
+-
+-describe("Genius failure semantics", () => {
+-  const noHits = { response: { hits: [] } };
+-
+-  it("returns null when no hit passes the title/artist check", async () => {
+-    const { genius } = await setup(() => json(noHits));
+-    await expect(genius(TRACK)).resolves.toBeNull();
+-  });
+-
+-  it("throws on a broken search instead of reporting no lyrics", async () => {
+-    const { genius } = await setup(() => json({}, 500));
+-    await expect(genius(TRACK)).rejects.toThrow(/Genius search 500/);
+-  });
+-
+-  it("throws when the song page itself fails", async () => {
+-    const hit = {
+-      response: {
+-        hits: [
+-          {
+-            type: "song",
+-            result: {
+-              url: "https://genius.com/the-weeknd-blinding-lights-lyrics",
+-              title: "Blinding Lights",
+-              primary_artist: { name: "The Weeknd" },
+-              lyrics_state: "complete",
+-            },
+-          },
+-        ],
+-      },
+-    };
+-    const { genius } = await setup((url) =>
+-      url.includes("/api/search") ? json(hit) : html("nope", 403),
+-    );
+-    await expect(genius(TRACK)).rejects.toThrow(/Genius page 403/);
+-  });
+-});
+-
+-describe("Musixmatch failure semantics", () => {
+-  // A factory, not a value: a Response body can only be read once, and
+-  // these routes are hit repeatedly within a single test.
+-  const goodToken = () =>
+-    json({ message: { body: { user_token: "tok123" } } });
+-
+-  it("throws when the token endpoint hands back the rate-limit sentinel", async () => {
+-    const { musixmatch } = await setup(() =>
+-      json({ message: { body: { user_token: "UpgradeOnlyUpgradeOnly" } } }),
+-    );
+-    const { LyricsRateLimitError } = await import("./http");
+-    await expect(musixmatch(TRACK)).rejects.toBeInstanceOf(
+-      LyricsRateLimitError,
+-    );
+-  });
+-
+-  it("returns null when the search genuinely finds nothing", async () => {
+-    const { musixmatch } = await setup((url) =>
+-      url.includes("token.get")
+-        ? goodToken()
+-        : json({ message: { header: { status_code: 404 }, body: {} } }),
+-    );
+-    await expect(musixmatch(TRACK)).resolves.toBeNull();
+-  });
+-
+-  it("throws when the search endpoint is failing", async () => {
+-    const { musixmatch } = await setup((url) =>
+-      url.includes("token.get") ? goodToken() : json({}, 503),
+-    );
+-    await expect(musixmatch(TRACK)).rejects.toThrow(/track\.search 503/);
+-  });
+-
+-  it("throws when the token is rejected even after being reissued", async () => {
+-    const { musixmatch, fetchMock } = await setup((url) =>
+-      url.includes("token.get") ? goodToken() : json({}, 401),
+-    );
+-    const { LyricsRateLimitError } = await import("./http");
+-    await expect(musixmatch(TRACK)).rejects.toBeInstanceOf(
+-      LyricsRateLimitError,
+-    );
+-    // Proves the invalidate-and-retry path ran rather than giving up: two
+-    // token fetches, two searches.
+-    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+-    expect(urls.filter((u) => u.includes("token.get"))).toHaveLength(2);
+-  });
+-
+-  it("surfaces an envelope-level 500 rather than treating it as no lyrics", async () => {
+-    const { musixmatch } = await setup((url) =>
+-      url.includes("token.get")
+-        ? goodToken()
+-        : json({ message: { header: { status_code: 500 } } }),
+-    );
+-    await expect(musixmatch(TRACK)).rejects.toThrow(/envelope 500/);
+-  });
+-});
+-
+-describe("deadlines", () => {
+-  /** A fetch that never settles on its own, only when aborted, which is what
+-   *  a stalled socket looks like from JS. */
+-  function hangUntilAborted() {
+-    return (_url: unknown, init: { signal?: AbortSignal }) =>
+-      new Promise<Response>((_resolve, reject) => {
+-        init.signal?.addEventListener("abort", () =>
+-          reject(new Error("aborted")),
+-        );
+-      });
+-  }
+-
+-  it("gives up on a stalled request instead of hanging forever", async () => {
+-    vi.resetModules();
+-    const http = await import("@tauri-apps/plugin-http");
+-    vi.mocked(http.fetch).mockReset();
+-    vi.mocked(http.fetch).mockImplementation(
+-      hangUntilAborted() as unknown as typeof http.fetch,
+-    );
+-    const { createDeadline, lyricsFetch, LyricsTimeoutError } =
+-      await import("./http");
+-
+-    const deadline = createDeadline(undefined, 20);
+-    await expect(
+-      lyricsFetch("https://lrclib.net/api/search", deadline, {}),
+-    ).rejects.toBeInstanceOf(LyricsTimeoutError);
+-    deadline.done();
+-  });
+-
+-  it("bounds a whole provider lookup, not just one request", async () => {
+-    vi.useFakeTimers();
+-    try {
+-      vi.resetModules();
+-      const http = await import("@tauri-apps/plugin-http");
+-      vi.mocked(http.fetch).mockReset();
+-      vi.mocked(http.fetch).mockImplementation(
+-        hangUntilAborted() as unknown as typeof http.fetch,
+-      );
+-      const { fetchLrclibLyrics } = await import("./lrclib");
+-      const { LyricsTimeoutError, PROVIDER_TIMEOUT_MS } = await import(
+-        "./http"
+-      );
+-
+-      const pending = fetchLrclibLyrics(TRACK);
+-      const assertion = expect(pending).rejects.toBeInstanceOf(
+-        LyricsTimeoutError,
+-      );
+-      await vi.advanceTimersByTimeAsync(PROVIDER_TIMEOUT_MS + 1);
+-      await assertion;
+-    } finally {
+-      vi.useRealTimers();
+-    }
+-  });
+-
+-  it("passes an upstream cancellation through untouched", async () => {
+-    vi.resetModules();
+-    const http = await import("@tauri-apps/plugin-http");
+-    vi.mocked(http.fetch).mockReset();
+-    vi.mocked(http.fetch).mockImplementation(
+-      hangUntilAborted() as unknown as typeof http.fetch,
+-    );
+-    const { createDeadline, lyricsFetch, LyricsTransportError } =
+-      await import("./http");
+-
+-    // React Query aborts its signal when the track changes. That is a
+-    // cancellation, not a provider failure, so it must not be rewrapped
+-    // into an error that marks the query as failed.
+-    const upstream = new AbortController();
+-    const deadline = createDeadline(upstream.signal, 10_000);
+-    const pending = lyricsFetch("https://lrclib.net/api/get", deadline, {});
+-    upstream.abort();
+-    await expect(pending).rejects.not.toBeInstanceOf(LyricsTransportError);
+-    deadline.done();
+-  });
+-});
+-
+-describe("retry policy", () => {
+-  it("retries a transport failure once, then stops", async () => {
+-    const { shouldRetryLyricsQuery, LyricsTransportError } =
+-      await import("./http");
+-    const err = new LyricsTransportError("boom");
+-    expect(shouldRetryLyricsQuery(0, err)).toBe(true);
+-    expect(shouldRetryLyricsQuery(1, err)).toBe(false);
+-  });
+-
+-  it("never retries a rate-limit refusal", async () => {
+-    const { shouldRetryLyricsQuery, LyricsRateLimitError } =
+-      await import("./http");
+-    // Retrying here is what turns a two-minute Musixmatch gate into a
+-    // self-sustaining one, since the panel already fires on every track.
+-    expect(
+-      shouldRetryLyricsQuery(0, new LyricsRateLimitError("gated")),
+-    ).toBe(false);
+-  });
+-
+-  it("retries a timeout, which may just be a slow network", async () => {
+-    const { shouldRetryLyricsQuery, LyricsTimeoutError } =
+-      await import("./http");
+-    expect(shouldRetryLyricsQuery(0, new LyricsTimeoutError(8000))).toBe(true);
+-  });
+-});
+-
+-describe("429 classification", () => {
+-  // Regression guard: 429 originally sat inside `isTransientStatus`
+-  // alongside 5xx, so being told "too many requests" earned an immediate
+-  // retry. Every provider must classify it as a refusal instead.
+-  it("treats an LRCLIB 429 as a refusal, not a retryable fault", async () => {
+-    const { lrclib } = await setup(() => json({}, 429));
+-    const { LyricsRateLimitError, shouldRetryLyricsQuery } =
+-      await import("./http");
+-    const err = await lrclib(TRACK).catch((e: unknown) => e);
+-    expect(err).toBeInstanceOf(LyricsRateLimitError);
+-    expect(shouldRetryLyricsQuery(0, err as Error)).toBe(false);
+-  });
+-
+-  it("treats a Genius 429 the same way", async () => {
+-    const { genius } = await setup(() => json({}, 429));
+-    const { LyricsRateLimitError } = await import("./http");
+-    await expect(genius(TRACK)).rejects.toBeInstanceOf(LyricsRateLimitError);
+-  });
+-
+-  it("still retries a 503, which is the provider breaking rather than refusing", async () => {
+-    const { genius } = await setup(() => json({}, 503));
+-    const { LyricsRateLimitError, shouldRetryLyricsQuery } =
+-      await import("./http");
+-    const err = await genius(TRACK).catch((e: unknown) => e);
+-    expect(err).not.toBeInstanceOf(LyricsRateLimitError);
+-    expect(shouldRetryLyricsQuery(0, err as Error)).toBe(true);
+-  });
+-});
+-
+-describe("LRCLIB record selection", () => {
+-  // These fixtures name the track the query asks for. They did not before,
+-  // and passed anyway, because nothing verified that the record returned was
+-  // the song requested. The scorer rejects a mismatch outright now, which is
+-  // the whole point of it.
+-  const LRC = "[00:01.00]I have been tryna call";
+-
+-  const plainGet = {
+-    trackName: "Blinding Lights",
+-    artistName: "The Weeknd",
+-    duration: 200,
+-    plainLyrics: "just the words",
+-  };
+-  const syncedTwin = [
+-    {
+-      trackName: "Blinding Lights",
+-      artistName: "The Weeknd",
+-      duration: 201,
+-      syncedLyrics: LRC,
+-    },
+-  ];
+-
+-  it("uses /search when /get is broken, instead of losing both", async () => {
+-    // The old Promise.all rejected the pair, discarding a good record.
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json({}, 500) : json(syncedTwin),
+-    );
+-    await expect(lrclib({ ...TRACK, duration: 201 })).resolves.toMatchObject({
+-      kind: "timed",
+-    });
+-  });
+-
+-  it("prefers a synced record over a plain one for the same recording", async () => {
+-    // LRCLIB stores one song under several rows, and often only one of them
+-    // carries the timings.
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json(plainGet) : json(syncedTwin),
+-    );
+-    await expect(lrclib({ ...TRACK, duration: 200 })).resolves.toMatchObject({
+-      kind: "timed",
+-    });
+-  });
+-
+-  it("keeps the right song's plain text over another song's synced text", async () => {
+-    // /get no longer wins by precedence; it wins because the scorer rejects
+-    // the stranger. Having timings is never a reason to accept a wrong song.
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get")
+-        ? json(plainGet)
+-        : json([
+-            {
+-              trackName: "Something Else Entirely",
+-              artistName: "A Different Band",
+-              duration: 200,
+-              syncedLyrics: LRC,
+-            },
+-          ]),
+-    );
+-    await expect(lrclib({ ...TRACK, duration: 200 })).resolves.toMatchObject({
+-      kind: "plain",
+-      text: "just the words",
+-    });
+-  });
+-
+-  it("throws when /get merely missed and /search is the one that broke", async () => {
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json({}, 404) : json({}, 500),
+-    );
+-    await expect(lrclib(TRACK)).rejects.toThrow(/LRCLIB .search 500/);
+-  });
+-
+-  it("still reports a genuine absence as an answer", async () => {
+-    const { lrclib } = await setup((url) =>
+-      url.includes("/api/get") ? json({}, 404) : json([]),
+-    );
+-    await expect(lrclib(TRACK)).resolves.toBeNull();
+-  });
+-});
+-
+-describe("retrieval widening for romanized names", () => {
+-  const SYNC = "[00:01.00]М, м";
+-
+-  it("asks by title alone as well when the artist is Cyrillic", async () => {
+-    // Providers filter by artist server-side, by containment. Asking for
+-    // "Скриптонит" returns only the Cyrillic-credited rows, which for this
+-    // track are all unsynced; the synced ones are filed as "Skryptonite"
+-    // and surface only without an artist filter. No amount of scoring fixes
+-    // that, because those rows never reach the scorer.
+-    const calls: string[] = [];
+-    vi.resetModules();
+-    const http = await import("@tauri-apps/plugin-http");
+-    vi.mocked(http.fetch).mockReset();
+-    vi.mocked(http.fetch).mockImplementation((input: unknown) => {
+-      const url = String(input);
+-      calls.push(url);
+-      if (url.includes("/api/get")) return Promise.resolve(json({}, 404));
+-      const hasArtist = url.includes("artist_name=");
+-      return Promise.resolve(
+-        json(
+-          hasArtist
+-            ? [{ trackName: "Жить как я живу", artistName: "Скриптонит", duration: 218, plainLyrics: "М, м" }]
+-            : [
+-                { trackName: "Жить как я живу", artistName: "Скриптонит", duration: 218, plainLyrics: "М, м" },
+-                { trackName: "Жить как я живу", artistName: "Skryptonite", duration: 218, syncedLyrics: SYNC },
+-              ],
+-        ),
+-      );
+-    });
+-    const { fetchLrclibLyrics } = await import("./lrclib");
+-
+-    const res = await fetchLrclibLyrics({
+-      title: "Жить как я живу",
+-      artist: "Скриптонит",
+-      duration: 218,
+-    });
+-    // The romanized row wins, so the user gets timings instead of prose.
+-    expect(res).toMatchObject({ kind: "timed" });
+-    expect(calls.some((u) => u.includes("/api/search") && !u.includes("artist_name="))).toBe(true);
+-  });
+-
+-  it("does not widen for a Latin artist, so most tracks cost nothing extra", async () => {
+-    const calls: string[] = [];
+-    vi.resetModules();
+-    const http = await import("@tauri-apps/plugin-http");
+-    vi.mocked(http.fetch).mockReset();
+-    vi.mocked(http.fetch).mockImplementation((input: unknown) => {
+-      calls.push(String(input));
+-      return Promise.resolve(json([]));
+-    });
+-    const { fetchLrclibLyrics } = await import("./lrclib");
+-    await fetchLrclibLyrics({ title: "Blinding Lights", artist: "The Weeknd", duration: 200 });
+-    expect(calls.filter((u) => u.includes("/api/search"))).toHaveLength(1);
+-  });
+-
+-  it("still refuses the strangers a title-only search drags in", async () => {
+-    // The reason widening looked forbidden. It is safe because the artist
+-    // is still verified: only the retrieval broadened, not the check.
+-    const { selectBest } = await import("./score");
+-    const best = selectBest(
+-      { title: "Alone", artist: "Marshmello", durationSec: 264 },
+-      [
+-        { trackName: "Alone", artistName: "Parkway Drive", duration: 271, syncedLyrics: SYNC },
+-        { trackName: "Alone", artistName: "Heart", duration: 263, syncedLyrics: SYNC },
+-      ],
+-    );
+-    expect(best).toBeNull();
+-  });
+-});
+diff --git a/src/lib/lyrics/hosts.test.ts b/src/lib/lyrics/hosts.test.ts
+deleted file mode 100644
+index db1d49482..000000000
+--- a/src/lib/lyrics/hosts.test.ts
++++ /dev/null
+@@ -1,123 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { readFileSync, readdirSync } from "node:fs";
+-import { join } from "node:path";
+-
+-/**
+- * Guards the failure mode that shipped in v0.4.1: `lrclib.ts` used the
+- * webview's plain `fetch()`, and `lrclib.net` was in neither the CSP's
+- * `connect-src` nor the Tauri HTTP capability allowlist. Both doors were
+- * shut, so LRCLIB, the only duration-aware provider, returned nothing in
+- * every packaged build.
+- *
+- * It went unnoticed for the same reason it is worth a test: Tauri injects
+- * `app.security.csp` only when serving `build.frontendDist`, never against
+- * `build.devUrl`. The provider therefore works perfectly in `tauri dev` and
+- * fails only once installed, which is the one configuration nobody
+- * exercises while writing lyrics code.
+- *
+- * Two invariants, checked against the real config files:
+- *   1. Every provider reaches the network through `tauriFetch`, so the
+- *      webview CSP never applies.
+- *   2. Every host they build request URLs from is in the capability
+- *      allowlist, which `tauri-plugin-http` enforces at the Rust boundary
+- *      before any socket is opened.
+- */
+-
+-const LYRICS_DIR = join(process.cwd(), "src/lib/lyrics");
+-const CAPABILITIES = join(process.cwd(), "src-tauri/capabilities/default.json");
+-
+-/** Source with comments removed, so hosts named only in prose don't count. */
+-function sourceWithoutComments(file: string): string {
+-  return readFileSync(join(LYRICS_DIR, file), "utf8")
+-    .replace(/\/\*[\s\S]*?\*\//g, "")
+-    .replace(/^\s*\/\/.*$/gm, "");
+-}
+-
+-function providerFiles(): string[] {
+-  return readdirSync(LYRICS_DIR).filter(
+-    (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
+-  );
+-}
+-
+-function allowedHosts(): Set<string> {
+-  const cap = JSON.parse(readFileSync(CAPABILITIES, "utf8")) as {
+-    permissions: Array<
+-      string | { identifier: string; allow?: { url: string }[] }
+-    >;
+-  };
+-  const http = cap.permissions.find(
+-    (p): p is { identifier: string; allow?: { url: string }[] } =>
+-      typeof p === "object" && p.identifier === "http:default",
+-  );
+-  const hosts = new Set<string>();
+-  for (const entry of http?.allow ?? []) {
+-    hosts.add(new URL(entry.url.replace(/\*$/, "")).host);
+-  }
+-  return hosts;
+-}
+-
+-/**
+- * Hosts a file actually builds requests against, as opposed to hosts merely
+- * named in a string (`Lrclib-Client` carries a github.com URL that is never
+- * fetched). Only three shapes count: a `new URL(...)`, a direct
+- * `tauriFetch(...)`, and a `const …URL/BASE/ENDPOINT` declaration.
+- */
+-function requestedHosts(src: string): Set<string> {
+-  const patterns = [
+-    /new URL\(\s*[`"']https:\/\/([a-z0-9.-]+)/gi,
+-    /tauriFetch\(\s*[`"']https:\/\/([a-z0-9.-]+)/gi,
+-    /const\s+\w*(?:URL|BASE|ENDPOINT|API)\w*\s*=\s*[`"']https:\/\/([a-z0-9.-]+)/gi,
+-  ];
+-  const hosts = new Set<string>();
+-  for (const re of patterns) {
+-    for (const m of src.matchAll(re)) hosts.add(m[1]);
+-  }
+-  return hosts;
+-}
+-
+-describe("lyrics provider network access", () => {
+-  it("routes every provider through tauriFetch, never the webview's fetch", () => {
+-    for (const file of providerFiles()) {
+-      const src = sourceWithoutComments(file);
+-      // `fetch(` not preceded by an identifier character, so `tauriFetch(`
+-      // and `window.fetch(` are distinguishable from a bare global `fetch(`.
+-      const bare = src.match(/(?<![\w.])fetch\s*\(/g) ?? [];
+-      expect(
+-        bare,
+-        `${file} calls the webview's fetch(); the packaged build's CSP will block it`,
+-      ).toEqual([]);
+-    }
+-  });
+-
+-  it("declares every host it requests in the Tauri HTTP capability", () => {
+-    const allowed = allowedHosts();
+-    for (const file of providerFiles()) {
+-      for (const host of requestedHosts(sourceWithoutComments(file))) {
+-        expect(
+-          allowed,
+-          `${file} requests ${host}, which is absent from capabilities/default.json, so tauri-plugin-http will reject it at the Rust boundary`,
+-        ).toContain(host);
+-      }
+-    }
+-  });
+-
+-  // `requestedHosts` recognises three call shapes. A provider written in a
+-  // fourth would yield an empty set and sail through the check above, so
+-  // pin the expected host per file: adding a provider fails here until its
+-  // host is listed, which is the prompt to add the capability entry too.
+-  it("resolves the expected host for every provider that makes requests", () => {
+-    const expected: Record<string, string> = {
+-      "lrclib.ts": "lrclib.net",
+-      "musixmatch.ts": "apic-desktop.musixmatch.com",
+-      "genius.ts": "genius.com",
+-      "ytmusic.ts": "music.youtube.com",
+-    };
+-    const withRequests = providerFiles().filter(
+-      (f) => requestedHosts(sourceWithoutComments(f)).size > 0,
+-    );
+-    expect(withRequests.sort()).toEqual(Object.keys(expected).sort());
+-    for (const [file, host] of Object.entries(expected)) {
+-      expect([...requestedHosts(sourceWithoutComments(file))]).toContain(host);
+-    }
+-  });
+-});
+diff --git a/src/lib/lyrics/match.test.ts b/src/lib/lyrics/match.test.ts
+deleted file mode 100644
+index 91e5db17c..000000000
+--- a/src/lib/lyrics/match.test.ts
++++ /dev/null
+@@ -1,300 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  artistScore,
+-  collapseSelfJoin,
+-  dice,
+-  durationScore,
+-  foldSpecialLatin,
+-  lastTimestamp,
+-  normalizeForScore,
+-  parseTitle,
+-  qualifierFactor,
+-  titleIdentity,
+-  tokenOverlap,
+-} from "@/lib/lyrics/match";
+-
+-/**
+- * Three assertions in the previous version of this file pinned behaviour
+- * that the live probes then showed to be wrong. They are inverted below and
+- * labelled, because a test that encodes a bug quietly becomes the bug's
+- * defence during a rewrite.
+- */
+-
+-describe("parseTitle", () => {
+-  it("INVERTED: keeps a version qualifier instead of deleting it", () => {
+-    // Was: normalizeForMatch("Track [Live]") === "track", i.e. the
+-    // qualifier vanished and a live take became an acceptable answer for a
+-    // studio request. "Die For You" and its remix are 27s apart and were
+-    // indistinguishable under that rule.
+-    const t = parseTitle("Track [Live]");
+-    expect(t.base).toBe("Track");
+-    expect(t.qualifiers).toEqual([{ text: "Live", cls: "hard" }]);
+-  });
+-
+-  it("RE-EXPRESSED: a remaster is recognised, then ignored, not deleted", () => {
+-    // Was: normalizeForMatch("Song (Remastered) feat. Someone") === "song".
+-    // The outcome is the same but the qualifier now has to be classified,
+-    // so a future change cannot silently start deleting the hard ones too.
+-    const t = parseTitle("Song (Remastered)");
+-    expect(t.base).toBe("Song");
+-    expect(t.qualifiers).toEqual([{ text: "Remastered", cls: "soft" }]);
+-  });
+-
+-  it("keeps a cross-script bracket as an alternative title", () => {
+-    // The only LRCLIB record for IU's 밤편지 is titled
+-    // "Through the Night (밤편지)". Deleting the parenthetical left
+-    // "through the night", sharing zero characters with the request.
+-    const t = parseTitle("Through the Night (밤편지)");
+-    expect(t.alts).toContain("밤편지");
+-  });
+-
+-  it("drops a same-script echo bracket as noise", () => {
+-    expect(parseTitle("Numb (Numb)").alts).toEqual([]);
+-  });
+-
+-  it("treats an unbalanced bracket as a qualifier body", () => {
+-    // "Sticky (feat. GloRilla, Sexyy Red" is a real, correct row.
+-    expect(parseTitle("Sticky (feat. GloRilla, Sexyy Red").base).toBe("Sticky");
+-  });
+-
+-  it("reads the dash form of a qualifier", () => {
+-    const t = parseTitle("Hotel California - 2013 Remaster");
+-    expect(t.base).toBe("Hotel California");
+-    expect(t.qualifiers[0].cls).toBe("soft");
+-  });
+-
+-  it("strips an upload id and a baked-in artist name", () => {
+-    expect(parseTitle("Alone_264023874", "Marshmello").base).toBe("Alone");
+-    expect(parseTitle("Marshmello - Alone", "Marshmello").base).toBe("Alone");
+-    expect(parseTitle("Levels - Avicii - Levels", "Avicii").base).toBe("Levels");
+-  });
+-});
+-
+-describe("collapseSelfJoin", () => {
+-  it("collapses the separators providers actually use", () => {
+-    expect(collapseSelfJoin("HurtHurt")).toBe("Hurt");
+-    expect(collapseSelfJoin("One Kiss;One Kiss")).toBe("One Kiss");
+-  });
+-
+-  it("leaves a genuinely repetitive title alone", () => {
+-    // Collapsing repeated words in general merges these into the titles
+-    // they must stay distinct from.
+-    for (const t of ["Stay Stay Stay", "Go Go Go Go", "ALONE ALONE ALONE"]) {
+-      expect(collapseSelfJoin(t)).toBe(t);
+-    }
+-  });
+-});
+-
+-describe("dice", () => {
+-  it("separates a different song from a casing variant", () => {
+-    // Token overlap returns 1.000 for both of these.
+-    expect(dice("Звезда по имени Солнце", "Звезда")).toBeCloseTo(0.385, 2);
+-    expect(dice("Звезда по имени Солнце", "Звезда По Имени Солнце")).toBe(1);
+-  });
+-
+-  it("is length-sensitive, which token overlap is not", () => {
+-    expect(dice("Stay", "Stay Stay Stay")).toBeCloseTo(0.375, 2);
+-    expect(tokenOverlap("stay", "stay stay stay")).toBe(1);
+-  });
+-
+-  it("gives simplified and traditional Han a usable middle score", () => {
+-    expect(dice("周杰伦", "周杰倫")).toBeCloseTo(0.5, 2);
+-    expect(dice("周杰伦", "林俊杰")).toBe(0);
+-  });
+-
+-  it("matches a romanized Cyrillic name instead of scoring it 0", () => {
+-    // The databases store Cyrillic acts romanized about as often as not,
+-    // and for Скриптонит the romanized rows are the ones carrying timings.
+-    // A raw comparison reads 0 here, which looks like a different artist.
+-    expect(dice("Группа крови", "Gruppa Krovi")).toBeGreaterThan(0.9);
+-    expect(dice("Скриптонит", "Skryptonite")).toBeGreaterThan(0.7);
+-    expect(dice("Земфира", "Zemfira")).toBe(1);
+-  });
+-
+-  it("does not let romanization introduce false matches", () => {
+-    expect(dice("Скриптонит", "Oxxxymiron")).toBeLessThan(0.45);
+-    expect(dice("Кино", "Nirvana")).toBe(0);
+-    // The uploader channel name for the reported track. Must stay rejected,
+-    // or the re-attribution fallback would validate the wrong reading.
+-    expect(dice("Скриптонит", "Skrypto gramma")).toBeLessThan(0.45);
+-  });
+-
+-  it("still returns 0 where no romanization applies", () => {
+-    // Japanese against an English title shares nothing, and callers must
+-    // read that as uninformative rather than as a mismatch.
+-    expect(dice("アイドル", "Idol")).toBe(0);
+-  });
+-});
+-
+-describe("foldSpecialLatin", () => {
+-  it("handles the letters NFD does not decompose", () => {
+-    // "Høld On" is a real correctly timed row; without the fold it scores
+-    // 0.857 and loses to worse candidates.
+-    expect(normalizeForScore("Høld On")).toBe("hold on");
+-    expect(dice("Hold On", "Høld On")).toBe(1);
+-    // foldSpecialLatin handles only the letters NFD cannot; the a-ring
+-    // is left for normalizeForScore's NFD pass.
+-    expect(foldSpecialLatin("Blåhaj ß")).toBe("Blåhaj ss");
+-    expect(normalizeForScore("Blåhaj ß")).toBe("blahaj ss");
+-  });
+-});
+-
+-describe("titleIdentity", () => {
+-  it("matches a cross-script alternative title", () => {
+-    expect(
+-      titleIdentity(parseTitle("밤편지"), parseTitle("Through the Night (밤편지)")),
+-    ).toBe(1);
+-  });
+-
+-  it("does NOT let a same-script bracket rescue a stranger", () => {
+-    // Unguarded variant matching lifts this to 1.000 and would accept a
+-    // completely different song.
+-    expect(
+-      titleIdentity(parseTitle("Hurt"), parseTitle("Hurt Niggas (Hurt)")),
+-    ).toBeLessThan(0.85);
+-  });
+-});
+-
+-describe("qualifierFactor", () => {
+-  it("INVERTED: a remix is no longer an acceptable match for the original", () => {
+-    // Was: hitMatches("blinding lights", ..., "blinding lights remix", ...)
+-    // === true. Refuted by "Die For You", where the original is 260s and
+-    // the remix 233s, and by a live take outranking the studio cut by
+-    // seven tenths of a second.
+-    const f = qualifierFactor(
+-      parseTitle("Die For You"),
+-      parseTitle("Die For You (Remix)"),
+-    );
+-    expect(f).toBeLessThan(0.6);
+-  });
+-
+-  it("ignores a remaster, because the correct rows are unqualified", () => {
+-    // Every correct "Hotel California (2013 Remaster)" is 391s, identical
+-    // to the bare studio rows, and a plain search returns zero
+-    // remaster-tagged titles. Penalizing this rejects the whole set.
+-    expect(
+-      qualifierFactor(
+-        parseTitle("Hotel California (2013 Remaster)"),
+-        parseTitle("Hotel California"),
+-      ),
+-    ).toBe(1);
+-  });
+-
+-  it("downranks rather than vetoes a missing qualifier", () => {
+-    // Every Metallica live take has a completely bare title.
+-    const f = qualifierFactor(
+-      parseTitle("Nothing Else Matters (Live)"),
+-      parseTitle("Nothing Else Matters"),
+-    );
+-    expect(f).toBeGreaterThan(0.6);
+-    expect(f).toBeLessThan(1);
+-  });
+-});
+-
+-describe("artistScore", () => {
+-  it("RE-SCOPED: subset credits are free, which is the artist semantic", () => {
+-    // tokenOverlap's smaller-set denominator is correct HERE and wrong for
+-    // titles. The databases store the surviving credit as the first, the
+-    // last, or a middle name with no pattern.
+-    expect(artistScore("Drake, 21 Savage", "Drake", 0)).toBe(1);
+-    expect(artistScore("DJ Khaled, Rihanna, Bryson Tiller", "Rihanna", 0)).toBe(1);
+-    expect(artistScore("Tyler, The Creator", "The Creator", 0)).toBe(1);
+-  });
+-
+-  it("survives every separator encoding one credit appears in", () => {
+-    for (const hit of [
+-      "Drake & 21 Savage",
+-      "Drake, 21 Savage",
+-      "Drake;21 Savage",
+-      "Drake／21 Savage",
+-      "Drake\\, 21 Savage",
+-    ]) {
+-      expect(artistScore("Drake, 21 Savage", hit, 0)).toBeGreaterThan(0.9);
+-    }
+-  });
+-
+-  it("does not split a name that contains a separator", () => {
+-    expect(artistScore("Earth, Wind & Fire", "Earth, Wind", 0)).toBe(1);
+-    expect(
+-      artistScore(
+-        "Dimitri Vegas & Like Mike, Martin Garrix",
+-        "Dimitri Vegas & Like Mike & Martin Garrix",
+-        0,
+-      ),
+-    ).toBe(1);
+-  });
+-
+-  it("is order-insensitive", () => {
+-    expect(artistScore("Dean Martin", "Martin, Dean", 0)).toBe(1);
+-  });
+-
+-  it("rejects a stranger", () => {
+-    expect(artistScore("Marshmello", "Parkway Drive", 0)).toBe(0);
+-    expect(artistScore("The Weeknd", "Teddy Swims", 0)).toBe(0);
+-  });
+-
+-  it("demotes an unrequested extra credit", () => {
+-    expect(artistScore("Dua Lipa", "Dua Lipa, DaBaby", 0)).toBeLessThan(0.8);
+-  });
+-
+-  it("demotes a truncated credit below the untruncated rows", () => {
+-    // "Linkin" is a distinct artist that LRCLIB returns at rank 0 for a
+-    // Linkin Park query. It cannot be rejected outright, only outranked.
+-    const truncated = artistScore("Linkin Park", "Linkin", 2);
+-    expect(truncated).toBeLessThan(artistScore("Linkin Park", "Linkin Park", 2));
+-    expect(truncated).toBeGreaterThan(0.45);
+-  });
+-});
+-
+-describe("durationScore", () => {
+-  it("decays smoothly rather than cutting off", () => {
+-    // No hard window works: the same recording spreads over 386-395s while
+-    // genuinely different versions sit 4s apart.
+-    expect(durationScore(0)).toBe(1);
+-    expect(durationScore(2)).toBeCloseTo(0.973, 2);
+-    expect(durationScore(12)).toBeCloseTo(0.5, 2);
+-    expect(durationScore(30)).toBeCloseTo(0.138, 2);
+-  });
+-
+-  it("treats an unknown delta as weak evidence, not as zero or NaN", () => {
+-    expect(durationScore(null)).toBe(0.3);
+-    expect(durationScore(undefined)).toBe(0.3);
+-    expect(durationScore(NaN)).toBe(0.3);
+-  });
+-});
+-
+-describe("lastTimestamp", () => {
+-  it("reports where the final timed line falls", () => {
+-    expect(lastTimestamp("[00:01.00]a\n[01:05.50]b")).toBeCloseTo(65.5, 2);
+-    expect(lastTimestamp("")).toBeNull();
+-    expect(lastTimestamp(null)).toBeNull();
+-  });
+-});
+-
+-describe("romanization skeleton", () => {
+-  it("scores a spelling variant of one name as the same name", () => {
+-    // Reported track: the synced records are filed under "Skryptonite" and
+-    // "Scriptonite" while the plain ones spell it exactly. At 0.737 the
+-    // exact plain rows win and the timings are lost, which is not a doubt
+-    // about who the artist is, only about how it is transcribed.
+-    expect(dice("Скриптонит", "Skryptonite")).toBe(1);
+-    expect(dice("Скриптонит", "Scriptonite")).toBe(1);
+-    expect(dice("Океан Ельзи", "Okean Elzy")).toBe(1);
+-    expect(dice("Пошлая Молли", "Poshlaya Molly")).toBe(1);
+-  });
+-
+-  it("promotes only on a near-exact skeleton, so near-misses stay near-misses", () => {
+-    // Both of these skeleton above 0.5 and would pass the artist gate if
+-    // the skeleton were trusted outright. They keep their lower score.
+-    expect(dice("Скриптонит", "Skrypto gramma")).toBeLessThan(0.45);
+-    expect(dice("Каста", "Kasta Nova")).toBeLessThan(0.7);
+-  });
+-
+-  it("leaves pure Latin comparisons untouched", () => {
+-    // The skeleton folds c/k and y/i, so "Cindy" and "Kindi" would come out
+-    // identical if it ran here. Neither side is Cyrillic, so it does not:
+-    // these keep their ordinary bigram score well below a match.
+-    expect(dice("Cindy", "Kindi")).toBeLessThan(0.6);
+-    expect(dice("Nicky", "Nikki")).toBeLessThan(0.6);
+-  });
+-});
+diff --git a/src/lib/lyrics/parse-lrc.test.ts b/src/lib/lyrics/parse-lrc.test.ts
+deleted file mode 100644
+index 4f4c7bad4..000000000
+--- a/src/lib/lyrics/parse-lrc.test.ts
++++ /dev/null
+@@ -1,50 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { parseLRC } from "@/lib/lyrics/parse-lrc";
+-
+-describe("parseLRC", () => {
+-  it("parses timestamped lines and fills end from the next start", () => {
+-    const lines = parseLRC("[00:10.00]first\n[00:12.50]second");
+-    expect(lines).toEqual([
+-      { start: 10, end: 12.5, text: "first" },
+-      { start: 12.5, text: "second" },
+-    ]);
+-  });
+-
+-  it("handles 1/2/3-digit fractions", () => {
+-    const lines = parseLRC("[00:01.5]a\n[00:02.05]b\n[00:03.005]c");
+-    expect(lines.map((l) => l.start)).toEqual([1.5, 2.05, 3.005]);
+-  });
+-
+-  it("expands multi-timestamp (chorus) lines", () => {
+-    const lines = parseLRC("[00:05.00][00:20.00]chorus");
+-    expect(lines.map((l) => [l.start, l.text])).toEqual([
+-      [5, "chorus"],
+-      [20, "chorus"],
+-    ]);
+-  });
+-
+-  it("skips metadata-only lines", () => {
+-    const lines = parseLRC("[ar:Artist]\n[ti:Title]\n[00:01.00]real");
+-    expect(lines).toEqual([{ start: 1, text: "real" }]);
+-  });
+-
+-  it("applies a positive [offset] by shifting lines earlier", () => {
+-    const lines = parseLRC("[offset:+500]\n[00:10.00]hi");
+-    expect(lines[0].start).toBeCloseTo(9.5, 5);
+-  });
+-
+-  it("applies a negative [offset] by shifting lines later", () => {
+-    const lines = parseLRC("[offset:-500]\n[00:10.00]hi");
+-    expect(lines[0].start).toBeCloseTo(10.5, 5);
+-  });
+-
+-  it("never produces a negative start", () => {
+-    const lines = parseLRC("[offset:+5000]\n[00:01.00]hi");
+-    expect(lines[0].start).toBe(0);
+-  });
+-
+-  it("returns [] for empty / untimed input", () => {
+-    expect(parseLRC("")).toEqual([]);
+-    expect(parseLRC("no timestamps here")).toEqual([]);
+-  });
+-});
+diff --git a/src/lib/lyrics/score.test.ts b/src/lib/lyrics/score.test.ts
+deleted file mode 100644
+index 14e219ea2..000000000
+--- a/src/lib/lyrics/score.test.ts
++++ /dev/null
+@@ -1,339 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  scoreCandidate,
+-  selectBest,
+-  type ScoreCandidate,
+-  type ScoreQuery,
+-} from "@/lib/lyrics/score";
+-
+-/**
+- * The cases here are the ones live probing showed the old selector getting
+- * wrong. Fixtures mirror real LRCLIB rows: the junk durations, the empty
+- * string bodies and the duplicate rows are all shapes the API returns.
+- *
+- * The old rule was "keep records that have synced lyrics, then take the one
+- * whose duration is closest". Every failure below is a way that loses.
+- */
+-
+-const SYNCED = "[00:01.00]la\n[03:00.00]la";
+-const PLAIN = "la la la";
+-
+-function row(o: Partial<ScoreCandidate>): ScoreCandidate {
+-  return { plainLyrics: PLAIN, ...o };
+-}
+-
+-describe("the remix that used to win", () => {
+-  // LRCLIB's top hit for this query is the Ariana Grande remix at 233s. The
+-  // original is 260s. Closest-duration alone gets it right only if the
+-  // duration is known and exact; the qualifier is what makes it robust.
+-  const candidates = [
+-    row({ trackName: "Die For You (Remix)", artistName: "The Weeknd & Ariana Grande", duration: 233, syncedLyrics: SYNCED }),
+-    row({ trackName: "Die For You", artistName: "The Weeknd", duration: 260, syncedLyrics: SYNCED }),
+-  ];
+-
+-  it("picks the original for an unqualified request", () => {
+-    const q: ScoreQuery = { title: "Die For You", artist: "The Weeknd", durationSec: 260 };
+-    expect(selectBest(q, candidates)?.record.duration).toBe(260);
+-  });
+-
+-  it("picks the remix when the remix was asked for", () => {
+-    const q: ScoreQuery = { title: "Die For You (Remix)", artist: "The Weeknd", durationSec: 233 };
+-    expect(selectBest(q, candidates)?.record.duration).toBe(233);
+-  });
+-
+-  it("still prefers the original when the duration is unknown", () => {
+-    // The qualifier has to carry it alone here.
+-    const q: ScoreQuery = { title: "Die For You", artist: "The Weeknd" };
+-    expect(selectBest(q, candidates)?.record.duration).toBe(260);
+-  });
+-});
+-
+-describe("qualifiers that must be ignored", () => {
+-  it("accepts a bare row for a remastered request", () => {
+-    // Every correct "Hotel California (2013 Remaster)" is 391s and bare in
+-    // LRCLIB. Treating the remaster tag as a version rejects the whole set.
+-    const q: ScoreQuery = { title: "Hotel California (2013 Remaster)", artist: "Eagles", durationSec: 391 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Hotel California", artistName: "Eagles", duration: 206, syncedLyrics: SYNCED }),
+-      row({ trackName: "Hotel California", artistName: "Eagles", duration: 391, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best?.record.duration).toBe(391);
+-  });
+-});
+-
+-describe("artist verification", () => {
+-  it("rejects a stranger with a perfect duration", () => {
+-    // Two unrelated songs called Sticky, sixteen seconds apart. Duration
+-    // must never outvote the artist.
+-    const q: ScoreQuery = { title: "Sticky", artist: "Tyler, The Creator", durationSec: 256 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Sticky", artistName: "Drake", duration: 256, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best).toBeNull();
+-  });
+-
+-  it("accepts a subset credit, which is the common correct form", () => {
+-    const q: ScoreQuery = { title: "Rich Flex", artist: "Drake, 21 Savage", durationSec: 239 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Rich Flex", artistName: "Drake", duration: 239, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best).not.toBeNull();
+-  });
+-
+-  it("outranks a truncated credit rather than rejecting it", () => {
+-    // "Linkin" is a distinct artist LRCLIB returns at rank 0.
+-    const q: ScoreQuery = { title: "Numb", artist: "Linkin Park", durationSec: 187 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Numb", artistName: "Linkin", duration: 185, syncedLyrics: SYNCED }),
+-      row({ trackName: "Numb (Numb)", artistName: "Linkin Park", duration: 187, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best?.record.artistName).toBe("Linkin Park");
+-  });
+-});
+-
+-describe("refusing rather than guessing", () => {
+-  it("refuses a generic title with no artist", () => {
+-    // Bare "Stay" returns twelve rows, all Taylor Swift's "Stay Stay Stay".
+-    const q: ScoreQuery = { title: "Stay", durationSec: 240 };
+-    expect(
+-      selectBest(q, [row({ trackName: "Stay Stay Stay", artistName: "Taylor Swift", duration: 238, syncedLyrics: SYNCED })]),
+-    ).toBeNull();
+-  });
+-
+-  it("refuses when artist-less candidates disagree about who performed it", () => {
+-    // A one-second margin between a cover and the original is inside
+-    // LRCLIB's own variance for a single recording.
+-    const q: ScoreQuery = { title: "Blinding Lights", durationSec: 200 };
+-    expect(
+-      selectBest(q, [
+-        row({ trackName: "Blinding Lights", artistName: "The Weeknd", duration: 200, syncedLyrics: SYNCED }),
+-        row({ trackName: "Blinding Lights", artistName: "Teddy Swims", duration: 199, syncedLyrics: SYNCED }),
+-      ]),
+-    ).toBeNull();
+-  });
+-
+-  it("refuses everything from an artist-less retry", () => {
+-    const q: ScoreQuery = { title: "Alone", artist: undefined, durationSec: 274, artistWasDropped: true };
+-    expect(
+-      selectBest(q, [row({ trackName: "Alone", artistName: "Parkway Drive", duration: 271, syncedLyrics: SYNCED })]),
+-    ).toBeNull();
+-  });
+-
+-  it("still answers when the title and artist are right but every duration is far off", () => {
+-    // Twenty EARFQUAKE rows credited to Tyler, none near the real 190s.
+-    //
+-    // The design this was built from wanted the confidence floor to reject
+-    // this set. It cannot, and the two constants are in direct tension: the
+-    // `0.55 + 0.45 x duration` envelope means a perfect title and artist
+-    // floors the score at exactly 0.55, which is the floor itself. Rather
+-    // than tune one to make the other bite, note that rejecting here would
+-    // be the wrong call anyway: a duration mismatch on the right song
+-    // affects the timings, not the words, and R7 already suppresses an LRC
+-    // that overruns. Showing the right words beats showing nothing.
+-    //
+-    // Wrong *songs* are rejected on their own axes (artist, identity, the
+-    // artist-less disagreement rule), not by this floor.
+-    const q: ScoreQuery = { title: "EARFQUAKE", artist: "Tyler, The Creator", durationSec: 190 };
+-    const best = selectBest(
+-      q,
+-      [225, 240, 255, 271].map((d) =>
+-        row({ trackName: "EARFQUAKE", artistName: "Tyler, The Creator", duration: d, syncedLyrics: SYNCED }),
+-      ),
+-    );
+-    expect(best).not.toBeNull();
+-    // The nearest one, and the score sits just above the floor.
+-    expect(best?.record.duration).toBe(225);
+-    expect(best?.verdict.score).toBeLessThan(0.65);
+-  });
+-
+-  it("does reject once the artist itself is degraded", () => {
+-    // Where the floor genuinely bites: an unrequested extra credit drops
+-    // the artist factor, and a poor duration then takes it under.
+-    const q: ScoreQuery = { title: "Levitating", artist: "Dua Lipa", durationSec: 203 };
+-    expect(
+-      selectBest(q, [
+-        row({ trackName: "Levitating", artistName: "Dua Lipa, DaBaby", duration: 240, syncedLyrics: SYNCED }),
+-      ]),
+-    ).toBeNull();
+-  });
+-});
+-
+-describe("the gates, exercised where nothing else masks them", () => {
+-  // Both of these were written after mutation testing showed the existing
+-  // cases never reached these two rules: an obviously-wrong candidate fails
+-  // several checks at once, so no single one of them was actually pinned.
+-
+-  it("rejects a near-miss title by the same artist at the same duration", () => {
+-    // IU has both of these. Identity is 0.750, which is the measured
+-    // ceiling for a stranger and the reason the floor sits at 0.85. Every
+-    // other signal here is perfect, so nothing else can reject it.
+-    const q: ScoreQuery = { title: "좋은 날", artist: "아이유", durationSec: 219 };
+-    const v = scoreCandidate(
+-      q,
+-      row({ trackName: "운수 좋은 날", artistName: "아이유", duration: 219, syncedLyrics: SYNCED }),
+-    );
+-    expect(v.reject).toBe(true);
+-    expect(v.reason).toMatch(/identity/);
+-  });
+-
+-  it("rejects on the artist gate specifically, not merely on the total", () => {
+-    // A collaboration we did not ask for scores 0.30. The product would
+-    // fail the confidence floor anyway, so assert the reason: that is what
+-    // distinguishes the gate from the floor, and what a mutation removing
+-    // the gate would change.
+-    const q: ScoreQuery = { title: "Levitating", artist: "Dua Lipa", durationSec: 203 };
+-    const v = scoreCandidate(
+-      q,
+-      row({
+-        trackName: "Levitating",
+-        artistName: "Dua Lipa, DaBaby, Migos, Someone Else",
+-        duration: 203,
+-        syncedLyrics: SYNCED,
+-      }),
+-    );
+-    expect(v.reject).toBe(true);
+-    expect(v.reason).toMatch(/artist score/);
+-  });
+-});
+-
+-describe("bodies", () => {
+-  it("skips a record whose fields are empty strings", () => {
+-    // Three 밤편지 rows carry syncedLyrics: "" and plainLyrics: "".
+-    const q: ScoreQuery = { title: "밤편지", artist: "아이유", durationSec: 253 };
+-    const best = selectBest(q, [
+-      row({ trackName: "밤편지 (Through the Night)", artistName: "아이유", duration: 253, syncedLyrics: "", plainLyrics: "" }),
+-      row({ trackName: "밤편지", artistName: "아이유", duration: 253, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best?.record.syncedLyrics).toBe(SYNCED);
+-  });
+-
+-  it("accepts a plain-only set instead of returning empty", () => {
+-    // Postmodern Jukebox's Creep: eight correct rows, none synced. The old
+-    // synced pre-filter returned nothing here.
+-    const q: ScoreQuery = { title: "Creep", artist: "Postmodern Jukebox", durationSec: 247 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Creep", artistName: "Postmodern Jukebox", duration: 247, syncedLyrics: null }),
+-    ]);
+-    expect(best).not.toBeNull();
+-    expect(best?.verdict.suppressSynced).toBe(false);
+-  });
+-
+-  it("suppresses an LRC that runs past the end of the audio", () => {
+-    // A radio edit's row carries the full-length body: zero duration delta,
+-    // 68 seconds of lyrics after the song stops.
+-    const q: ScoreQuery = { title: "Get Lucky", artist: "Daft Punk", durationSec: 248 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Get Lucky", artistName: "Daft Punk", duration: 248, syncedLyrics: "[00:01.00]a\n[05:15.71]b" }),
+-    ]);
+-    expect(best?.verdict.suppressSynced).toBe(true);
+-  });
+-
+-  it("rejects an overrunning LRC when there is no plain text to fall back on", () => {
+-    const q: ScoreQuery = { title: "Get Lucky", artist: "Daft Punk", durationSec: 248 };
+-    expect(
+-      selectBest(q, [
+-        { trackName: "Get Lucky", artistName: "Daft Punk", duration: 248, syncedLyrics: "[05:15.71]b", plainLyrics: null },
+-      ]),
+-    ).toBeNull();
+-  });
+-});
+-
+-describe("durations that lie", () => {
+-  it("keeps a record with a junk duration rather than dropping the record", () => {
+-    // A 3s row can still carry a complete correct body.
+-    const q: ScoreQuery = { title: "bad guy", artist: "Billie Eilish", durationSec: 194 };
+-    const best = selectBest(q, [row({ trackName: "bad guy", artistName: "Billie Eilish", duration: 3, syncedLyrics: SYNCED })]);
+-    expect(best).not.toBeNull();
+-  });
+-
+-  it("rejects a candidate far longer than the audio", () => {
+-    const q: ScoreQuery = { title: "Sweater Weather", artist: "The Neighbourhood", durationSec: 240 };
+-    expect(
+-      selectBest(q, [row({ trackName: "Sweater Weather", artistName: "The Neighbourhood", duration: 694, syncedLyrics: SYNCED })]),
+-    ).toBeNull();
+-  });
+-
+-  it("does not produce NaN when a duration is missing", () => {
+-    const q: ScoreQuery = { title: "Sweater Weather", artist: "The Neighbourhood", durationSec: 240 };
+-    const v = scoreCandidate(q, row({ trackName: "Sweater Weather", artistName: "The Neighbourhood", duration: null }));
+-    expect(Number.isFinite(v.score)).toBe(true);
+-  });
+-});
+-
+-describe("titles the provider mangled", () => {
+-  it("matches a row with the artist and furniture baked into the title", () => {
+-    const q: ScoreQuery = { title: "Alone", artist: "Marshmello", durationSec: 264 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Marshmello - Alone (Official Music Video)", artistName: "Marshmello", duration: 264, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best).not.toBeNull();
+-  });
+-
+-  it("matches a self-joined title", () => {
+-    const q: ScoreQuery = { title: "One Kiss", artist: "Calvin Harris, Dua Lipa", durationSec: 214 };
+-    const best = selectBest(q, [
+-      row({ trackName: "One Kiss;One Kiss", artistName: "Calvin Harris & Dua Lipa", duration: 214, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best).not.toBeNull();
+-  });
+-});
+-
+-describe("cross-script", () => {
+-  it("accepts a transliterated title when the artist carries it", () => {
+-    const q: ScoreQuery = { title: "Группа крови", artist: "Кино", durationSec: 286 };
+-    const best = selectBest(q, [
+-      row({ trackName: "Gruppa Krovi", artistName: "Кино", duration: 286, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best).not.toBeNull();
+-  });
+-
+-  it("refuses a transliterated title when the artist does not agree", () => {
+-    const q: ScoreQuery = { title: "Группа крови", artist: "Кино", durationSec: 286 };
+-    expect(
+-      selectBest(q, [row({ trackName: "Gruppa Krovi", artistName: "Some Cover Band", duration: 286, syncedLyrics: SYNCED })]),
+-    ).toBeNull();
+-  });
+-});
+-
+-describe("providers with fewer signals", () => {
+-  it("scores on title and artist alone when the body is not fetched yet", () => {
+-    // Musixmatch and Genius decide which track to fetch from search
+-    // metadata; only LRCLIB returns bodies inline.
+-    const q: ScoreQuery = { title: "Blinding Lights", artist: "The Weeknd" };
+-    const best = selectBest(
+-      q,
+-      [
+-        { trackName: "Blinding Lights", artistName: "Teddy Swims" },
+-        { trackName: "Blinding Lights", artistName: "The Weeknd" },
+-      ],
+-      { durationBlind: true, bodyUnknown: true },
+-    );
+-    expect(best?.record.artistName).toBe("The Weeknd");
+-  });
+-
+-  it("applies a higher floor when duration is unavailable", () => {
+-    const q: ScoreQuery = { title: "Numb", artist: "Linkin Park" };
+-    // A truncated credit alone, with no duration to corroborate it, does
+-    // not clear the raised floor.
+-    expect(
+-      selectBest(q, [{ trackName: "Numb", artistName: "Linkin" }], {
+-        durationBlind: true,
+-        bodyUnknown: true,
+-      }),
+-    ).toBeNull();
+-  });
+-});
+-
+-describe("grouping", () => {
+-  it("collapses duplicate rows of one body and picks the modal duration", () => {
+-    // Twenty rows routinely carry one or two distinct bodies; choosing
+-    // among clones by duration is theatre, so the crowd's modal value wins.
+-    const q: ScoreQuery = { title: "bad guy", artist: "Billie Eilish", durationSec: 194 };
+-    const best = selectBest(q, [
+-      row({ trackName: "bad guy", artistName: "Billie Eilish", duration: 190, syncedLyrics: SYNCED }),
+-      row({ trackName: "bad guy", artistName: "Billie Eilish", duration: 194, syncedLyrics: SYNCED }),
+-      row({ trackName: "bad guy", artistName: "Billie Eilish", duration: 194, syncedLyrics: SYNCED }),
+-    ]);
+-    expect(best?.record.duration).toBe(194);
+-  });
+-});
+diff --git a/src/lib/lyrics/ytmusic.test.ts b/src/lib/lyrics/ytmusic.test.ts
+deleted file mode 100644
+index 4342f4451..000000000
+--- a/src/lib/lyrics/ytmusic.test.ts
++++ /dev/null
+@@ -1,252 +0,0 @@
+-import { beforeEach, describe, expect, it, vi } from "vitest";
+-
+-/**
+- * Fixtures mirror responses captured from the live InnerTube API, not
+- * invented shapes: the timed rows, the string-typed millisecond fields and
+- * the bare-note interlude are all as YTM actually sends them.
+- */
+-
+-vi.mock("@tauri-apps/plugin-http", () => ({ fetch: vi.fn() }));
+-
+-const LYRICS_BROWSE_ID = "MPLYt_4U7yfKKFZLv-1";
+-
+-function tab(opts: {
+-  pageType?: string;
+-  title?: string;
+-  browseId?: string;
+-  unselectable?: boolean;
+-}) {
+-  return {
+-    tabRenderer: {
+-      title: opts.title ?? "Lyrics",
+-      ...(opts.unselectable === undefined
+-        ? {}
+-        : { unselectable: opts.unselectable }),
+-      endpoint: {
+-        browseEndpoint: {
+-          browseId: opts.browseId ?? LYRICS_BROWSE_ID,
+-          browseEndpointContextSupportedConfigs: {
+-            browseEndpointContextMusicConfig: {
+-              pageType: opts.pageType ?? "MUSIC_PAGE_TYPE_TRACK_LYRICS",
+-            },
+-          },
+-        },
+-      },
+-    },
+-  };
+-}
+-
+-function nextResponse(tabs: unknown[]) {
+-  return {
+-    contents: {
+-      singleColumnMusicWatchNextResultsRenderer: {
+-        tabbedRenderer: { watchNextTabbedResultsRenderer: { tabs } },
+-      },
+-    },
+-  };
+-}
+-
+-const TIMED_ROWS = [
+-  {
+-    lyricLine: "♪",
+-    cueRange: {
+-      startTimeMilliseconds: "0",
+-      endTimeMilliseconds: "13570",
+-      metadata: { id: "0" },
+-    },
+-  },
+-  {
+-    lyricLine: "I've been tryna call",
+-    cueRange: {
+-      startTimeMilliseconds: "13570",
+-      endTimeMilliseconds: "16110",
+-      metadata: { id: "1" },
+-    },
+-  },
+-  {
+-    lyricLine: "I've been on my own for long enough",
+-    cueRange: {
+-      startTimeMilliseconds: "16110",
+-      endTimeMilliseconds: "19200",
+-      metadata: { id: "2" },
+-    },
+-  },
+-  // Attribution rides along with no cueRange.
+-  { lyricLine: "Source: Musixmatch" },
+-];
+-
+-const timedBrowse = {
+-  contents: {
+-    elementRenderer: {
+-      newElement: {
+-        type: {
+-          componentType: {
+-            model: { timedLyricsModel: { lyricsData: { timedLyricsData: TIMED_ROWS } } },
+-          },
+-        },
+-      },
+-    },
+-  },
+-};
+-
+-const plainBrowse = {
+-  contents: {
+-    sectionListRenderer: {
+-      contents: [
+-        {
+-          musicDescriptionShelfRenderer: {
+-            description: { runs: [{ text: "Yeah\n\nI've been tryna call" }] },
+-            footer: { runs: [{ text: "Source: Musixmatch" }] },
+-          },
+-        },
+-      ],
+-    },
+-  },
+-};
+-
+-const noLyricsBrowse = {
+-  contents: {
+-    messageRenderer: { text: { runs: [{ text: "Lyrics not available" }] } },
+-  },
+-};
+-
+-type Call = { url: string; body: Record<string, unknown> };
+-
+-async function setup(route: (url: string) => unknown, status = 200) {
+-  vi.resetModules();
+-  const http = await import("@tauri-apps/plugin-http");
+-  const fetchMock = vi.mocked(http.fetch);
+-  fetchMock.mockReset();
+-  const calls: Call[] = [];
+-  fetchMock.mockImplementation((input: unknown, init?: unknown) => {
+-    const url = String(input);
+-    const raw = (init as { body?: string } | undefined)?.body;
+-    calls.push({ url, body: raw ? JSON.parse(raw) : {} });
+-    return Promise.resolve(
+-      new Response(JSON.stringify(route(url)), {
+-        status,
+-        headers: { "content-type": "application/json" },
+-      }),
+-    );
+-  });
+-  const { fetchYtMusicLyrics } = await import("./ytmusic");
+-  return { fetchYtMusicLyrics, calls };
+-}
+-
+-const bothHops = (next: unknown, browse: unknown) => (url: string) =>
+-  url.includes("/next") ? next : browse;
+-
+-beforeEach(() => vi.clearAllMocks());
+-
+-describe("YouTube Music lyrics", () => {
+-  it("returns line-synced lyrics with seconds, not milliseconds", async () => {
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(nextResponse([tab({})]), timedBrowse),
+-    );
+-    const res = await fetchYtMusicLyrics("J7p4bzqLvCw");
+-    expect(res).toMatchObject({ kind: "timed", source: "YouTube Music" });
+-    const lines = (res as { lines: { start: number; text: string }[] }).lines;
+-    // The attribution row has no cueRange and must not become a line at t=0.
+-    expect(lines).toHaveLength(3);
+-    expect(lines[1]).toMatchObject({
+-      start: 13.57,
+-      end: 16.11,
+-      text: "I've been tryna call",
+-    });
+-  });
+-
+-  it("blanks the bare-note interlude rather than printing it twice", async () => {
+-    // The view already draws its own marker for an empty line.
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(nextResponse([tab({})]), timedBrowse),
+-    );
+-    const res = await fetchYtMusicLyrics("J7p4bzqLvCw");
+-    const lines = (res as { lines: { text: string }[] }).lines;
+-    expect(lines[0].text).toBe("");
+-  });
+-
+-  it("sends the mobile client, which is what unlocks timed lyrics", async () => {
+-    // Load-bearing: on WEB_REMIX the very same browseId returns plain text.
+-    // Anyone "tidying" this back to the app's default client would silently
+-    // lose the timings, so pin it.
+-    const { fetchYtMusicLyrics, calls } = await setup(
+-      bothHops(nextResponse([tab({})]), timedBrowse),
+-    );
+-    await fetchYtMusicLyrics("J7p4bzqLvCw");
+-    for (const c of calls) {
+-      const client = (c.body.context as { client: { clientName: string } })
+-        .client;
+-      expect(client.clientName).toBe("ANDROID_MUSIC");
+-    }
+-  });
+-
+-  it("stops after one request when YTM marks the tab unselectable", async () => {
+-    // That flag means "no lyrics for this track", so the browse hop is waste.
+-    const { fetchYtMusicLyrics, calls } = await setup(
+-      bothHops(nextResponse([tab({ unselectable: true })]), timedBrowse),
+-    );
+-    await expect(fetchYtMusicLyrics("4NRXx6U8ABQ")).resolves.toBeNull();
+-    expect(calls).toHaveLength(1);
+-    expect(calls[0].url).toContain("/next");
+-  });
+-
+-  it("finds the tab by page type, not by position or title", async () => {
+-    // Tab order and titles are layout- and locale-dependent.
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(
+-        nextResponse([
+-          tab({ pageType: "MUSIC_PAGE_TYPE_TRACK_RELATED", title: "Up next" }),
+-          tab({ pageType: "MUSIC_PAGE_TYPE_TRACK_RELATED", title: "Related" }),
+-          tab({ title: "歌詞" }),
+-        ]),
+-        timedBrowse,
+-      ),
+-    );
+-    await expect(fetchYtMusicLyrics("J7p4bzqLvCw")).resolves.toMatchObject({
+-      kind: "timed",
+-    });
+-  });
+-
+-  it("falls back to plain text when there are no timings", async () => {
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(nextResponse([tab({})]), plainBrowse),
+-    );
+-    await expect(fetchYtMusicLyrics("J7p4bzqLvCw")).resolves.toMatchObject({
+-      kind: "plain",
+-      text: "Yeah\n\nI've been tryna call",
+-      source: "YouTube Music",
+-    });
+-  });
+-
+-  it("treats an explicit 'not available' as an answer", async () => {
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(nextResponse([tab({})]), noLyricsBrowse),
+-    );
+-    await expect(fetchYtMusicLyrics("J7p4bzqLvCw")).resolves.toBeNull();
+-  });
+-
+-  it("returns null when the watch page has no lyrics tab at all", async () => {
+-    const { fetchYtMusicLyrics } = await setup(
+-      bothHops(
+-        nextResponse([tab({ pageType: "MUSIC_PAGE_TYPE_TRACK_RELATED" })]),
+-        timedBrowse,
+-      ),
+-    );
+-    await expect(fetchYtMusicLyrics("J7p4bzqLvCw")).resolves.toBeNull();
+-  });
+-
+-  it("asks nothing when there is no videoId", async () => {
+-    const { fetchYtMusicLyrics, calls } = await setup(() => ({}));
+-    await expect(fetchYtMusicLyrics(undefined)).resolves.toBeNull();
+-    expect(calls).toHaveLength(0);
+-  });
+-
+-  it("throws on a server error rather than reporting no lyrics", async () => {
+-    // Same contract as the other three providers: a failure to look up is
+-    // not evidence of absence, and must not be cached as one.
+-    const { fetchYtMusicLyrics } = await setup(() => ({}), 503);
+-    await expect(fetchYtMusicLyrics("J7p4bzqLvCw")).rejects.toThrow(
+-      /YouTube Music next 503/,
+-    );
+-  });
+-});
+diff --git a/src/lib/store/playback.test.ts b/src/lib/store/playback.test.ts
+deleted file mode 100644
+index e01219c85..000000000
+--- a/src/lib/store/playback.test.ts
++++ /dev/null
+@@ -1,232 +0,0 @@
+-import { beforeEach, describe, expect, it } from "vitest";
+-import type { PlaybackState, QueueTrack } from "@/lib/store/playback";
+-
+-// The store decides at import time whether to wrap itself in
+-// zustand/persist (main window) or stay plain (floating mirror).
+-// Present ourselves as the floating window so construction skips
+-// persist + localStorage (which isn't available under the node test
+-// env). `next()` — the reducer under test — is identical in both
+-// variants, so this only sidesteps the storage plumbing.
+-// The Playback settings store (read by prev()) persists through
+-// localStorage regardless, so give it an in-memory one.
+-const mem = new Map<string, string>();
+-(globalThis as unknown as { window: unknown }).window = {
+-  location: { search: "?floating-player" },
+-  localStorage: {
+-    getItem: (k: string) => mem.get(k) ?? null,
+-    setItem: (k: string, v: string) => void mem.set(k, v),
+-    removeItem: (k: string) => void mem.delete(k),
+-  },
+-};
+-
+-const { usePlaybackStore } = await import("@/lib/store/playback");
+-const { usePlaybackSettings } = await import("@/lib/store/playback-settings");
+-
+-function track(videoId: string): QueueTrack {
+-  return { videoId, title: videoId, thumbnails: [] };
+-}
+-
+-/** Reset to a known "mid-playback" baseline, then apply the overrides. */
+-function setup(partial: Partial<PlaybackState>): void {
+-  usePlaybackStore.setState({
+-    queue: [],
+-    index: -1,
+-    repeat: "off",
+-    shuffle: false,
+-    playing: true,
+-    status: "ready",
+-    streamUrl: "blob:prev",
+-    position: 42,
+-    pendingSeek: undefined,
+-    ...partial,
+-  });
+-}
+-
+-describe("playback next()", () => {
+-  beforeEach(() => setup({}));
+-
+-  it("replays the current track in place for repeat-one", () => {
+-    setup({ queue: [track("a"), track("b")], index: 0, repeat: "one" });
+-    usePlaybackStore.getState().next();
+-    const s = usePlaybackStore.getState();
+-    expect(s.index).toBe(0);
+-    expect(s.pendingSeek).toBe(0);
+-    expect(s.position).toBe(0);
+-    expect(s.playing).toBe(true);
+-  });
+-
+-  it("replays in place for repeat-all on a single-track queue", () => {
+-    // Regression: wrapping a length-1 queue lands on the same index, so
+-    // the "loading" path never restarts the (already-ended) element and
+-    // playback used to stall on the loader — the "first click does
+-    // nothing" bug. It must route through pendingSeek like repeat-one.
+-    setup({
+-      queue: [track("a")],
+-      index: 0,
+-      repeat: "all",
+-      status: "ready",
+-      streamUrl: "blob:a",
+-    });
+-    usePlaybackStore.getState().next();
+-    const s = usePlaybackStore.getState();
+-    expect(s.index).toBe(0);
+-    expect(s.pendingSeek).toBe(0);
+-    expect(s.playing).toBe(true);
+-    // Must NOT take the load path (which would stall on a same-index track).
+-    expect(s.status).not.toBe("loading");
+-    expect(s.streamUrl).toBe("blob:a");
+-  });
+-
+-  it("wraps a multi-track queue back to the first track for repeat-all", () => {
+-    setup({ queue: [track("a"), track("b")], index: 1, repeat: "all" });
+-    usePlaybackStore.getState().next();
+-    const s = usePlaybackStore.getState();
+-    expect(s.index).toBe(0);
+-    expect(s.status).toBe("loading");
+-    expect(s.streamUrl).toBeUndefined();
+-    expect(s.pendingSeek).toBeUndefined();
+-    expect(s.playing).toBe(true);
+-  });
+-
+-  it("stops at the end of the queue when repeat is off", () => {
+-    setup({ queue: [track("a"), track("b")], index: 1, repeat: "off" });
+-    usePlaybackStore.getState().next();
+-    const s = usePlaybackStore.getState();
+-    expect(s.index).toBe(1);
+-    expect(s.playing).toBe(false);
+-    expect(s.position).toBe(0);
+-  });
+-
+-  it("advances to the next track mid-queue", () => {
+-    setup({
+-      queue: [track("a"), track("b"), track("c")],
+-      index: 0,
+-      repeat: "off",
+-    });
+-    usePlaybackStore.getState().next();
+-    const s = usePlaybackStore.getState();
+-    expect(s.index).toBe(1);
+-    expect(s.status).toBe("loading");
+-    expect(s.playing).toBe(true);
+-  });
+-
+-  it("is a no-op on an empty queue", () => {
+-    setup({ queue: [], index: -1, repeat: "all", playing: false });
+-    usePlaybackStore.getState().next();
+-    expect(usePlaybackStore.getState().index).toBe(-1);
+-  });
+-});
+-
+-// A pending server-side shuffle continuation belongs to the queue it was
+-// created with — any action that replaces the queue must drop it, or the
+-// audio engine would append the OLD playlist's shuffle tail onto whatever
+-// the user played next.
+-describe("queueContinuation lifecycle", () => {
+-  beforeEach(() => setup({}));
+-
+-  it("survives appends but is cleared when the queue is replaced", () => {
+-    setup({ queue: [track("a")], index: 0, queueContinuation: "tok1" });
+-    const s = usePlaybackStore.getState();
+-    s.appendToQueue([track("b")]);
+-    expect(usePlaybackStore.getState().queueContinuation).toBe("tok1");
+-    s.setQueue([track("c")], 0);
+-    expect(usePlaybackStore.getState().queueContinuation).toBeUndefined();
+-  });
+-
+-  it("is cleared by playNow", () => {
+-    setup({ queue: [track("a")], index: 0, queueContinuation: "tok1" });
+-    usePlaybackStore.getState().playNow(track("b"));
+-    expect(usePlaybackStore.getState().queueContinuation).toBeUndefined();
+-  });
+-
+-  it("is cleared by clearQueue", () => {
+-    setup({ queue: [track("a")], index: 0, queueContinuation: "tok1" });
+-    usePlaybackStore.getState().clearQueue();
+-    expect(usePlaybackStore.getState().queueContinuation).toBeUndefined();
+-  });
+-
+-  it("setQueueContinuation sets and clears the token", () => {
+-    usePlaybackStore.getState().setQueueContinuation("tok2");
+-    expect(usePlaybackStore.getState().queueContinuation).toBe("tok2");
+-    usePlaybackStore.getState().setQueueContinuation(undefined);
+-    expect(usePlaybackStore.getState().queueContinuation).toBeUndefined();
+-  });
+-});
+-
+-// The album menu's "Play next" queues a whole album by calling
+-// enqueueNext once per track in reverse — each insert lands directly
+-// after the current track, so reversing is what restores album order.
+-// If enqueueNext's insertion point ever changes, this breaks loudly
+-// instead of silently shuffling every album.
+-describe("album 'Play next' ordering", () => {
+-  beforeEach(() => setup({}));
+-
+-  it("keeps album order when enqueued back-to-front", () => {
+-    setup({ queue: [track("cur"), track("later")], index: 0 });
+-    for (const t of [track("a1"), track("a2"), track("a3")].reverse()) {
+-      usePlaybackStore.getState().enqueueNext(t);
+-    }
+-    expect(usePlaybackStore.getState().queue.map((t) => t.videoId)).toEqual([
+-      "cur",
+-      "a1",
+-      "a2",
+-      "a3",
+-      "later",
+-    ]);
+-  });
+-});
+-
+-describe("playback prev()", () => {
+-  const rule = (
+-    backButton: "previous" | "restart" | "smart",
+-    smartBackSeconds = 3,
+-  ) => usePlaybackSettings.setState({ backButton, smartBackSeconds });
+-
+-  const mid = (position: number, index = 1) =>
+-    setup({ queue: [track("a"), track("b"), track("c")], index, position });
+-
+-  it("smart: rewinds once more than the threshold has played", () => {
+-    rule("smart", 3);
+-    mid(10);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(1);
+-    expect(usePlaybackStore.getState().pendingSeek).toBe(0);
+-  });
+-
+-  it("smart: steps back early in the track", () => {
+-    rule("smart", 3);
+-    mid(2);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(0);
+-  });
+-
+-  it("smart: honours the chosen threshold", () => {
+-    rule("smart", 5);
+-    mid(4);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(0);
+-  });
+-
+-  it("previous: always steps back, however far in", () => {
+-    rule("previous");
+-    mid(120);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(0);
+-  });
+-
+-  it("restart: always rewinds, even at the very start", () => {
+-    rule("restart");
+-    mid(0.5);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(1);
+-    expect(usePlaybackStore.getState().pendingSeek).toBe(0);
+-  });
+-
+-  it("the first track can only rewind", () => {
+-    rule("previous");
+-    mid(1, 0);
+-    usePlaybackStore.getState().prev();
+-    expect(usePlaybackStore.getState().index).toBe(0);
+-    expect(usePlaybackStore.getState().pendingSeek).toBe(0);
+-  });
+-});
+diff --git a/src/lib/track-meta.test.ts b/src/lib/track-meta.test.ts
+deleted file mode 100644
+index da04e0571..000000000
+--- a/src/lib/track-meta.test.ts
++++ /dev/null
+@@ -1,206 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  artistFromSubtitle,
+-  artistsFromList,
+-  cleanTrackTitle,
+-  lyricsArtist,
+-  reattributedFromTitle,
+-  stripTopicSuffix,
+-} from "./track-meta";
+-
+-describe("cleanTrackTitle", () => {
+-  it("drops upload furniture that costs the whole result set", () => {
+-    // Measured: this exact title returns 0 LRCLIB hits, the bare one 20.
+-    expect(cleanTrackTitle("Blinding Lights (Official Music Video)")).toBe(
+-      "Blinding Lights",
+-    );
+-    expect(cleanTrackTitle("Blinding Lights [Official Video]")).toBe(
+-      "Blinding Lights",
+-    );
+-    expect(cleanTrackTitle("Levitating (Official Audio)")).toBe("Levitating");
+-    expect(cleanTrackTitle("Something (Visualizer)")).toBe("Something");
+-    expect(cleanTrackTitle("Something (Lyrics)")).toBe("Something");
+-    expect(cleanTrackTitle("Something (4K)")).toBe("Something");
+-  });
+-
+-  it("handles the CJK bracket families NFKC leaves alone", () => {
+-    // Measured: 【MV】 takes YOASOBI's アイドル from 20 hits to 0.
+-    expect(cleanTrackTitle("アイドル【MV】")).toBe("アイドル");
+-    expect(cleanTrackTitle("アイドル（Official Music Video）")).toBe("アイドル");
+-    expect(cleanTrackTitle("좋은 날「가사」")).toBe("좋은 날");
+-  });
+-
+-  it("drops featuring credits, which the artist field already carries", () => {
+-    expect(cleanTrackTitle("Die For You (feat. Ariana Grande)")).toBe(
+-      "Die For You",
+-    );
+-    expect(cleanTrackTitle("Industry Baby (ft. Jack Harlow)")).toBe(
+-      "Industry Baby",
+-    );
+-    expect(cleanTrackTitle("Track (prod. by Metro Boomin)")).toBe("Track");
+-  });
+-
+-  it("keeps version qualifiers, which identify the recording", () => {
+-    // Stripping these would make a remix indistinguishable from its
+-    // original, and they cost nothing at search time (20 hits either way).
+-    for (const t of [
+-      "Die For You (Remix)",
+-      "Faded (Restrung)",
+-      "Hotel California (Remastered 2013)",
+-      "Creep (Acoustic Version)",
+-      "Bohemian Rhapsody (Live at Wembley)",
+-      "Song (Sped Up)",
+-    ]) {
+-      expect(cleanTrackTitle(t)).toBe(t);
+-    }
+-  });
+-
+-  it("does not mistake a parenthetical title for a credit", () => {
+-    // "with" reads as a credit in "(with Ariana Grande)" and as part of the
+-    // name here, and losing a real title is the worse error.
+-    expect(cleanTrackTitle("Stay (With Me)")).toBe("Stay (With Me)");
+-    expect(cleanTrackTitle("Dancing With A Stranger")).toBe(
+-      "Dancing With A Stranger",
+-    );
+-  });
+-
+-  it("removes only the noisy bracket when several are present", () => {
+-    expect(cleanTrackTitle("Song (Official Video) (Remix)")).toBe(
+-      "Song (Remix)",
+-    );
+-    expect(cleanTrackTitle("Song (feat. X) (Live)")).toBe("Song (Live)");
+-  });
+-
+-  it("strips trailing hyphen-separated furniture", () => {
+-    expect(cleanTrackTitle("Blinding Lights - Official Video")).toBe(
+-      "Blinding Lights",
+-    );
+-    expect(cleanTrackTitle("Blinding Lights | Official Audio")).toBe(
+-      "Blinding Lights",
+-    );
+-  });
+-
+-  it("never returns an empty title", () => {
+-    // A track genuinely called "Audio" must still be looked up.
+-    expect(cleanTrackTitle("Audio")).toBe("Audio");
+-    expect(cleanTrackTitle("(Official Video)")).toBe("(Official Video)");
+-    expect(cleanTrackTitle("")).toBe("");
+-  });
+-
+-  it("leaves an unbalanced bracket alone rather than eating the title", () => {
+-    expect(cleanTrackTitle("Song (Official Video")).toBe(
+-      "Song (Official Video",
+-    );
+-  });
+-
+-  it("folds fullwidth latin so the query matches", () => {
+-    expect(cleanTrackTitle("Ｂｌｉｎｄｉｎｇ　Ｌｉｇｈｔｓ")).toBe(
+-      "Blinding Lights",
+-    );
+-  });
+-});
+-
+-describe("stripTopicSuffix", () => {
+-  it("removes the auto-generated channel suffix", () => {
+-    // Measured: "The Weeknd - Topic" takes 20 LRCLIB hits down to 1.
+-    expect(stripTopicSuffix("The Weeknd - Topic")).toBe("The Weeknd");
+-    expect(stripTopicSuffix("YOASOBI - Topic")).toBe("YOASOBI");
+-  });
+-
+-  it("leaves a real name containing a hyphen intact", () => {
+-    expect(stripTopicSuffix("Jay-Z")).toBe("Jay-Z");
+-    expect(stripTopicSuffix("Anne-Marie")).toBe("Anne-Marie");
+-  });
+-});
+-
+-describe("artistFromSubtitle", () => {
+-  it("pulls the name out of the breadcrumb", () => {
+-    // Measured: the raw breadcrumb scores 1 hit, or 0 with a view count.
+-    expect(artistFromSubtitle("Song • The Weeknd")).toBe("The Weeknd");
+-    expect(artistFromSubtitle("Video • The Weeknd • 1B views")).toBe(
+-      "The Weeknd",
+-    );
+-    expect(artistFromSubtitle("Song • Don Toliver • 3:47")).toBe("Don Toliver");
+-    expect(artistFromSubtitle("Album • The Weeknd")).toBe("The Weeknd");
+-  });
+-
+-  it("returns undefined when the line holds no name at all", () => {
+-    // Better no artist than a decorated string no provider can match.
+-    expect(artistFromSubtitle("Artist • 224M monthly audience")).toBeUndefined();
+-    expect(artistFromSubtitle("Song • 3:47")).toBeUndefined();
+-    expect(artistFromSubtitle(undefined)).toBeUndefined();
+-    expect(artistFromSubtitle("")).toBeUndefined();
+-  });
+-
+-  it("only treats a type word as furniture in the leading position", () => {
+-    // "Song" is also a band name.
+-    expect(artistFromSubtitle("Song • Song")).toBe("Song");
+-  });
+-
+-  it("strips the Topic suffix it finds in the breadcrumb", () => {
+-    expect(artistFromSubtitle("Song • The Weeknd - Topic")).toBe("The Weeknd");
+-  });
+-});
+-
+-describe("lyricsArtist", () => {
+-  it("prefers the structured list and joins it", () => {
+-    // Measured: joining costs nothing (20 hits either way), so keeping
+-    // every credited name is free insurance against the database crediting
+-    // the one we would have dropped.
+-    expect(
+-      lyricsArtist({
+-        artists: [{ name: "The Weeknd" }, { name: "Ariana Grande" }],
+-        subtitle: "Song • Whatever",
+-      }),
+-    ).toBe("The Weeknd, Ariana Grande");
+-  });
+-
+-  it("falls back to the subtitle when there is no list", () => {
+-    expect(lyricsArtist({ subtitle: "Video • Don Toliver • 12M views" })).toBe(
+-      "Don Toliver",
+-    );
+-  });
+-
+-  it("is undefined when neither source yields a name", () => {
+-    expect(lyricsArtist({ subtitle: "Artist • 3M subscribers" })).toBeUndefined();
+-    expect(lyricsArtist({})).toBeUndefined();
+-    expect(lyricsArtist(undefined)).toBeUndefined();
+-  });
+-
+-  it("de-Topics the structured list too", () => {
+-    expect(artistsFromList([{ name: "YOASOBI - Topic" }])).toBe("YOASOBI");
+-  });
+-});
+-
+-describe("reattributedFromTitle", () => {
+-  it("recovers a re-upload that hid the artist in the title", () => {
+-    // Reported case: "Скриптонит - Жить как я живу (flac)" uploaded by a
+-    // channel called "Skrypto gramma". As sent, zero results anywhere; as
+-    // re-attributed, an ordinary track with six records.
+-    expect(
+-      reattributedFromTitle("Скриптонит - Жить как я живу", "Skrypto gramma"),
+-    ).toEqual({ title: "Жить как я живу", artist: "Скриптонит" });
+-  });
+-
+-  it("declines when the credited artist is already in the title", () => {
+-    // Then the ordinary reading was right and there is nothing to recover.
+-    expect(
+-      reattributedFromTitle("Marshmello - Alone", "Marshmello"),
+-    ).toBeNull();
+-  });
+-
+-  it("declines on anything that is not a two-part split", () => {
+-    expect(reattributedFromTitle("Blinding Lights", "The Weeknd")).toBeNull();
+-    expect(
+-      reattributedFromTitle("Levels - Avicii - Levels", "Avicii"),
+-    ).toBeNull();
+-  });
+-});
+-
+-describe("cleanTrackTitle audio-quality tags", () => {
+-  it("drops the format tags re-uploads carry", () => {
+-    expect(cleanTrackTitle("Жить как я живу (flac)")).toBe("Жить как я живу");
+-    expect(cleanTrackTitle("Song (320kbps)")).toBe("Song");
+-    expect(cleanTrackTitle("Song [Lossless]")).toBe("Song");
+-  });
+-});
+diff --git a/src/lib/whats-new.test.ts b/src/lib/whats-new.test.ts
+deleted file mode 100644
+index 9d64a826c..000000000
+--- a/src/lib/whats-new.test.ts
++++ /dev/null
+@@ -1,92 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { readFileSync } from "node:fs";
+-import { join } from "node:path";
+-import { WHATS_NEW } from "./whats-new";
+-
+-/**
+- * Release-time guards for the changelog the app shows itself.
+- *
+- * The version lives in four files and the notes in a fifth, and the two
+- * are only connected by remembering. A release that bumps one without the
+- * other either shows the previous release's notes to everyone who updates,
+- * or shows nothing at all.
+- */
+-
+-function appVersion(): string {
+-  const pkg = JSON.parse(
+-    readFileSync(join(process.cwd(), "package.json"), "utf8"),
+-  ) as { version: string };
+-  return pkg.version;
+-}
+-
+-describe("What's New", () => {
+-  it("leads with an entry for the version being shipped", () => {
+-    expect(
+-      WHATS_NEW[0]?.version,
+-      "package.json was bumped without adding the matching What's New entry, so the dialog will show the previous release's notes",
+-    ).toBe(appVersion());
+-  });
+-
+-  it("keeps every version file in step with package.json", () => {
+-    const root = process.cwd();
+-    const version = appVersion();
+-    const tauri = JSON.parse(
+-      readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"),
+-    ) as { version: string };
+-    expect(tauri.version, "src-tauri/tauri.conf.json").toBe(version);
+-
+-    const cargo = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
+-    expect(
+-      cargo.match(/^version = "(.+?)"/m)?.[1],
+-      "src-tauri/Cargo.toml",
+-    ).toBe(version);
+-
+-    const lock = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8");
+-    expect(
+-      lock.match(/name = "ytubic"\nversion = "(.+?)"/)?.[1],
+-      "src-tauri/Cargo.lock, which needs `cargo update -w` after a bump",
+-    ).toBe(version);
+-  });
+-
+-  it("is ordered newest first, since the dialog renders it as a timeline", () => {
+-    const rank = (v: string) =>
+-      v.split(".").map(Number).reduce((a, n) => a * 1000 + n, 0);
+-    for (let i = 1; i < WHATS_NEW.length; i++) {
+-      expect(
+-        rank(WHATS_NEW[i - 1].version),
+-        `${WHATS_NEW[i - 1].version} should sort above ${WHATS_NEW[i].version}`,
+-      ).toBeGreaterThan(rank(WHATS_NEW[i].version));
+-    }
+-  });
+-
+-  it("has no duplicate versions", () => {
+-    const seen = WHATS_NEW.map((e) => e.version);
+-    expect(new Set(seen).size).toBe(seen.length);
+-  });
+-
+-  it("carries no em or en dashes, which read as machine-written", () => {
+-    for (const entry of WHATS_NEW) {
+-      const prose = [
+-        entry.summary,
+-        entry.note ?? "",
+-        entry.alert ?? "",
+-        ...entry.changes.flatMap((c) => [c.title, c.text]),
+-      ].join(" ");
+-      expect(prose, `${entry.version} contains a dash character`).not.toMatch(
+-        /[–—]/,
+-      );
+-    }
+-  });
+-
+-  it("gives every change a type, a title and some detail", () => {
+-    for (const entry of WHATS_NEW) {
+-      expect(entry.changes.length, `${entry.version} has no changes`).toBeGreaterThan(0);
+-      for (const c of entry.changes) {
+-        expect(["new", "improved", "fixed"]).toContain(c.type);
+-        expect(c.title.trim().length, `${entry.version}: empty title`).toBeGreaterThan(0);
+-        expect(c.text.trim().length, `${entry.version}: "${c.title}" has no detail`).toBeGreaterThan(20);
+-        expect(c.title.trim().endsWith("."), `${entry.version}: "${c.title}" ends with a period`).toBe(false);
+-      }
+-    }
+-  });
+-});
+diff --git a/vite.config.ts b/vite.config.ts
+index 3b355f457..278a710da 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -22,6 +22,55 @@ export default defineConfig(async () => ({
+ 
+   resolve: {
+     alias: {
++      // 🔴 OFFLINE SHIMS (adaptation only; no defect lives here). Upstream this
++      // is a Tauri desktop app: catalogue data reaches it through
++      // `@tauri-apps/plugin-http` (a Rust-side client that REJECTS in a plain
++      // browser tab) and every native side effect through `invoke`. The graded
++      // artifact is served as a static browser build with allow_internet=false,
++      // so all nine specifiers `src/` actually imports are aliased onto the
++      // in-tree shims under `src/__rb/tauri/`, which answer from the fixed
++      // corpus in `src/__rb/fixtures.ts` and record what they were asked for on
++      // `window.__rb`. Order matters: rollup's alias matcher accepts an exact
++      // id OR `id + "/"` as a prefix, so the four deep `@tauri-apps/api/*`
++      // keys are listed before anything that could prefix-match them, and the
++      // project's own `"@"` key stays LAST so it never shadows a package name.
++      // 🔴 These are BUNDLE-time aliases only: `tsc --noEmit` (the second half
++      // of `pnpm run build`) resolves through tsconfig, NOT through vite, so
++      // the sources still type-check against the real @tauri-apps typings in
++      // node_modules and no `paths` mapping is added or needed.
++      "@tauri-apps/api/core": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/core.ts",
++      ),
++      "@tauri-apps/api/event": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/event.ts",
++      ),
++      "@tauri-apps/api/app": path.resolve(__dirname, "./src/__rb/tauri/app.ts"),
++      "@tauri-apps/api/window": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/window.ts",
++      ),
++      "@tauri-apps/plugin-http": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/plugin-http.ts",
++      ),
++      "@tauri-apps/plugin-opener": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/plugin-opener.ts",
++      ),
++      "@tauri-apps/plugin-process": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/plugin-process.ts",
++      ),
++      "@tauri-apps/plugin-updater": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/plugin-updater.ts",
++      ),
++      "@tauri-apps/plugin-deep-link": path.resolve(
++        __dirname,
++        "./src/__rb/tauri/plugin-deep-link.ts",
++      ),
+       "@": path.resolve(__dirname, "./src"),
+     },
+   },
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index e3939d097..000000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,18 +0,0 @@
+-import { defineConfig } from "vitest/config";
+-import path from "node:path";
+-
+-// Standalone vitest config (kept separate from vite.config.ts so the heavy
+-// router/react/tailwind plugins don't run for unit tests). Tests target the
+-// pure logic modules — parsers, matchers, small utilities — that don't touch
+-// the Tauri runtime, so a plain node environment is enough.
+-export default defineConfig({
+-  resolve: {
+-    alias: {
+-      "@": path.resolve(__dirname, "./src"),
+-    },
+-  },
+-  test: {
+-    environment: "node",
+-    include: ["src/**/*.test.ts"],
+-  },
+-});

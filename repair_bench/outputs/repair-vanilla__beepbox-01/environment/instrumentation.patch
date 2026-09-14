@@ -1,0 +1,148 @@
+diff --git a/editor/MuteEditor.ts b/editor/MuteEditor.ts
+index 3e0a3d9..7233748 100644
+--- a/editor/MuteEditor.ts
++++ b/editor/MuteEditor.ts
+@@ -28,7 +28,7 @@ export class MuteEditor {
+ 		
+ 		if (this._buttons.length != this._doc.song.getChannelCount()) {
+ 			for (let y: number = this._buttons.length; y < this._doc.song.getChannelCount(); y++) {
+-				const muteButton: HTMLButtonElement = HTML.button({class: "mute-button", title: "Mute (M), Mute All (⇧M), Solo (S), Exclude (⇧S)", style: `height: ${ChannelRow.patternHeight - 4}px; margin: 2px;`});
++				const muteButton: HTMLButtonElement = HTML.button({class: "mute-button", title: "Mute (M), Mute All (⇧M), Solo (S), Exclude (⇧S)", style: `height: ${ChannelRow.patternHeight - 4}px; margin: 2px;`, "data-testid": "bb-mute-" + y});
+ 				this.container.appendChild(muteButton);
+ 				this._buttons[y] = muteButton;
+ 			}
+diff --git a/editor/PatternEditor.ts b/editor/PatternEditor.ts
+index af52172..abf9e06 100644
+--- a/editor/PatternEditor.ts
++++ b/editor/PatternEditor.ts
+@@ -42,7 +42,7 @@ export class PatternEditor {
+ 	private readonly _svgPlayhead: SVGRectElement = SVG.rect({x: "0", y: "0", width: "4", fill: ColorConfig.playhead, "pointer-events": "none"});
+ 	private readonly _selectionRect: SVGRectElement = SVG.rect({fill: ColorConfig.boxSelectionFill, stroke: ColorConfig.hoverPreview, "stroke-width": 2, "stroke-dasharray": "5, 3", "pointer-events": "none", display: "none"});
+ 	private readonly _svgPreview: SVGPathElement = SVG.path({fill: "none", stroke: ColorConfig.hoverPreview, "stroke-width": "2", "pointer-events": "none"});
+-	private readonly _svg: SVGSVGElement = SVG.svg({style: `background-color: ${ColorConfig.editorBackground}; touch-action: pan-y; position: absolute;`, width: "100%", height: "100%"},
++	private readonly _svg: SVGSVGElement = SVG.svg({style: `background-color: ${ColorConfig.editorBackground}; touch-action: pan-y; position: absolute;`, width: "100%", height: "100%", "data-testid": "bb-pattern-editor"},
+ 		SVG.defs(
+ 			this._svgNoteBackground,
+ 			this._svgDrumBackground,
+diff --git a/editor/SongEditor.ts b/editor/SongEditor.ts
+index e7ec79c..7d3e3dc 100644
+--- a/editor/SongEditor.ts
++++ b/editor/SongEditor.ts
+@@ -188,14 +188,14 @@ export class SongEditor {
+ 	private readonly _loopEditor: LoopEditor = new LoopEditor(this.doc);
+ 	private readonly _octaveScrollBar: OctaveScrollBar = new OctaveScrollBar(this.doc);
+ 	private readonly _piano: Piano = new Piano(this.doc);
+-	private readonly _playButton: HTMLButtonElement = button({class: "playButton", type: "button", title: "Play (Space)"}, span("Play"));
+-	private readonly _pauseButton: HTMLButtonElement = button({class: "pauseButton", style: "display: none;", type: "button", title: "Pause (Space)"}, "Pause");
++	private readonly _playButton: HTMLButtonElement = button({class: "playButton", type: "button", title: "Play (Space)", "data-testid": "bb-play-btn"}, span("Play"));
++	private readonly _pauseButton: HTMLButtonElement = button({class: "pauseButton", style: "display: none;", type: "button", title: "Pause (Space)", "data-testid": "bb-pause-btn"}, "Pause");
+ 	private readonly _recordButton: HTMLButtonElement = button({class: "recordButton", style: "display: none;", type: "button", title: "Record (Ctrl+Space)"}, span("Record"));
+ 	private readonly _stopButton: HTMLButtonElement = button({class: "stopButton", style: "display: none;", type: "button", title: "Stop Recording (Space)"}, "Stop Recording");
+-	private readonly _prevBarButton: HTMLButtonElement = button({class: "prevBarButton", type: "button", title: "Previous Bar (left bracket)"});
+-	private readonly _nextBarButton: HTMLButtonElement = button({class: "nextBarButton", type: "button", title: "Next Bar (right bracket)"});
++	private readonly _prevBarButton: HTMLButtonElement = button({class: "prevBarButton", type: "button", title: "Previous Bar (left bracket)", "data-testid": "bb-prev-bar-btn"});
++	private readonly _nextBarButton: HTMLButtonElement = button({class: "nextBarButton", type: "button", title: "Next Bar (right bracket)", "data-testid": "bb-next-bar-btn"});
+ 	private readonly _volumeSlider: Slider = new Slider(input({title: "main volume", style: "flex-grow: 1; margin: 0;", type: "range", min: "0", max: "75", value: "50", step: "1"}), this.doc, (oldValue: number, newValue: number) => { this._setVolumeSlider(); return null; });
+-	private readonly _fileMenu: HTMLSelectElement = select({style: "width: 100%;"},
++	private readonly _fileMenu: HTMLSelectElement = select({style: "width: 100%;", "data-testid": "bb-file-menu"},
+ 		option({selected: true, disabled: true, hidden: hideSelectMenuTitlesInOptions}, "File"),
+ 		option({value: "new"}, "+ New Blank Song"),
+ 		option({value: "import"}, "↑ Import Song... (" + ctrlSymbol + "O)"),
+@@ -207,7 +207,7 @@ export class SongEditor {
+ 		option({value: "copyEmbed"}, "⎘ Copy HTML Embed Code"),
+ 		option({value: "songRecovery"}, "⚠ Recover Recent Song..."),
+ 	);
+-	private readonly _editMenu: HTMLSelectElement = select({style: "width: 100%;"},
++	private readonly _editMenu: HTMLSelectElement = select({style: "width: 100%;", "data-testid": "bb-edit-menu"},
+ 		option({selected: true, disabled: true, hidden: hideSelectMenuTitlesInOptions}, "Edit"),
+ 		option({value: "undo"}, "Undo (Z)"),
+ 		option({value: "redo"}, "Redo (Y)"),
+@@ -247,10 +247,10 @@ export class SongEditor {
+ 		option({value: "colorTheme"}, "Light Theme"),
+ 		option({value: "recordingSetup"}, "Set Up Note Recording..."),
+ 	);
+-	private readonly _scaleSelect: HTMLSelectElement = buildOptions(select(), Config.scales.map(scale=>scale.name));
+-	private readonly _keySelect: HTMLSelectElement = buildOptions(select(), Config.keys.map(key=>key.name).reverse());
+-	private readonly _tempoSlider: Slider = new Slider(input({style: "margin: 0; width: 4em; flex-grow: 1; vertical-align: middle;", type: "range", min: "0", max: "14", value: "7", step: "1"}), this.doc, (oldValue: number, newValue: number) => new ChangeTempo(this.doc, oldValue, Math.round(120.0 * Math.pow(2.0, (-4.0 + newValue) / 9.0))));
+-	private readonly _tempoStepper: HTMLInputElement = input({style: "width: 3em; margin-left: 0.4em; vertical-align: middle;", type: "number", step: "1"});
++	private readonly _scaleSelect: HTMLSelectElement = buildOptions(select({"data-testid": "bb-scale-select"}), Config.scales.map(scale=>scale.name));
++	private readonly _keySelect: HTMLSelectElement = buildOptions(select({"data-testid": "bb-key-select"}), Config.keys.map(key=>key.name).reverse());
++	private readonly _tempoSlider: Slider = new Slider(input({style: "margin: 0; width: 4em; flex-grow: 1; vertical-align: middle;", type: "range", min: "0", max: "14", value: "7", step: "1", "data-testid": "bb-tempo-slider"}), this.doc, (oldValue: number, newValue: number) => new ChangeTempo(this.doc, oldValue, Math.round(120.0 * Math.pow(2.0, (-4.0 + newValue) / 9.0))));
++	private readonly _tempoStepper: HTMLInputElement = input({style: "width: 3em; margin-left: 0.4em; vertical-align: middle;", type: "number", step: "1", "data-testid": "bb-tempo-stepper"});
+ 	private readonly _chorusSlider: Slider = new Slider(input({style: "margin: 0;", type: "range", min: "0", max: Config.chorusRange - 1, value: "0", step: "1"}), this.doc, (oldValue: number, newValue: number) => new ChangeChorus(this.doc, oldValue, newValue));
+ 	private readonly _chorusRow: HTMLDivElement = div({class: "selectRow"}, span({class: "tip", onclick: ()=>this._openPrompt("chorus")}, "Chorus:"), this._chorusSlider.container);
+ 	private readonly _reverbSlider: Slider = new Slider(input({style: "margin: 0;", type: "range", min: "0", max: Config.reverbRange - 1, value: "0", step: "1"}), this.doc, (oldValue: number, newValue: number) => new ChangeReverb(this.doc, oldValue, newValue));
+@@ -541,8 +541,8 @@ export class SongEditor {
+ 		for (let i: number = 0; i < Config.operatorCount; i++) {
+ 			const operatorIndex: number = i;
+ 			const operatorNumber: HTMLDivElement = div({style: `margin-right: .1em; color: ${ColorConfig.secondaryText};`}, i + 1 + ".");
+-			const frequencySelect: HTMLSelectElement = buildOptions(select({style: "width: 100%;", title: "Frequency"}), Config.operatorFrequencies.map(freq=>freq.name));
+-			const amplitudeSlider: Slider = new Slider(input({type: "range", min: "0", max: Config.operatorAmplitudeMax, value: "0", step: "1", title: "Volume"}), this.doc, (oldValue: number, newValue: number) => new ChangeOperatorAmplitude(this.doc, operatorIndex, oldValue, newValue));
++			const frequencySelect: HTMLSelectElement = buildOptions(select({style: "width: 100%;", title: "Frequency", "data-testid": "bb-op-freq-" + i}), Config.operatorFrequencies.map(freq=>freq.name));
++			const amplitudeSlider: Slider = new Slider(input({type: "range", min: "0", max: Config.operatorAmplitudeMax, value: "0", step: "1", title: "Volume", "data-testid": "bb-op-amp-" + i}), this.doc, (oldValue: number, newValue: number) => new ChangeOperatorAmplitude(this.doc, operatorIndex, oldValue, newValue));
+ 			const row: HTMLDivElement = div({class: "selectRow"},
+ 				operatorNumber,
+ 				div({class: "selectContainer", style: "width: 3em; margin-right: .3em;"}, frequencySelect),
+diff --git a/editor/TrackEditor.ts b/editor/TrackEditor.ts
+index f4c297e..7b8a820 100644
+--- a/editor/TrackEditor.ts
++++ b/editor/TrackEditor.ts
+@@ -20,8 +20,8 @@ export class TrackEditor {
+ 		this._downHighlight,
+ 		this._playhead,
+ 	);
+-	private readonly _select: HTMLSelectElement = HTML.select({class: "trackSelectBox", style: "background: none; border: none; appearance: none; border-radius: initial; box-shadow: none; color: transparent; position: absolute; touch-action: none;"});
+-	public readonly container: HTMLElement = HTML.div({class: "noSelection", style: "position: relative; overflow: hidden;"},
++	private readonly _select: HTMLSelectElement = HTML.select({class: "trackSelectBox", style: "background: none; border: none; appearance: none; border-radius: initial; box-shadow: none; color: transparent; position: absolute; touch-action: none;", "data-testid": "bb-track-select"});
++	public readonly container: HTMLElement = HTML.div({class: "noSelection", style: "position: relative; overflow: hidden;", "data-testid": "bb-track-editor"},
+ 		this._channelRowContainer,
+ 		this._svg,
+ 		this._select,
+diff --git a/website/beepbox_offline_template.html b/website/beepbox_offline_template.html
+index 384d1b5..bd880b9 100644
+--- a/website/beepbox_offline_template.html
++++ b/website/beepbox_offline_template.html
+@@ -250,5 +250,43 @@ if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|android|ipad|
+ 
+ const editor = new beepbox.SongEditor(document.getElementById("beepboxEditorContainer"));
+ 
++// INSTRUMENTATION: read-only state bridge for repair checkpoints.
++// Always call window.__BB__() fresh for every read; never cache a snapshot
++// or the bridge function's result object across interactions.
++window.__BB__ = function () {
++	try {
++		const d = editor.doc, s = d.song;
++		return {
++			v: 1,
++			tempo: s.tempo, beatsPerBar: s.beatsPerBar, barCount: s.barCount,
++			scale: s.scale, key: s.key, rhythm: s.rhythm,
++			loopStart: s.loopStart, loopLength: s.loopLength,
++			pitchChannelCount: s.pitchChannelCount, noiseChannelCount: s.noiseChannelCount,
++			bar: d.bar, channel: d.channel,
++			playing: d.synth.playing, recording: d.synth.recording,
++			hash: window.location.hash, songString: s.toBase64String(),
++			historyLength: window.history.length,
++			channels: s.channels.map(function (c) {
++				return {
++					octave: c.octave, muted: c.muted, bars: c.bars.slice(),
++					patterns: c.patterns.map(function (p) {
++						return p.notes.map(function (n) {
++							return { start: n.start, end: n.end, pitches: n.pitches.slice(), pins: n.pins.map(function (pin) { return [pin.time, pin.size, pin.interval]; }) };
++						});
++					})
++				};
++			}),
++			instruments: s.channels.map(function (c) {
++				return c.instruments.map(function (i) {
++					return { type: i.type, preset: i.preset, volume: i.volume, operators: i.operators.map(function (o) { return { frequency: o.frequency, amplitude: o.amplitude }; }) };
++				});
++			}),
++			prefs: { volume: d.prefs.volume, autoPlay: d.prefs.autoPlay, enableChannelMuting: d.prefs.enableChannelMuting, displayBrowserUrl: d.prefs.displayBrowserUrl, enableNotePreview: d.prefs.enableNotePreview }
++		};
++	} catch (e) {
++		return { v: 1, error: String(e) };
++	}
++};
++
+ 	</script>
+ </body></html>

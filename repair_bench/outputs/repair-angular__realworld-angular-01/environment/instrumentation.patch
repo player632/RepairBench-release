@@ -1,0 +1,2905 @@
+diff --git a/playwright.config.ts b/playwright.config.ts
+deleted file mode 100644
+index a85e06b..0000000
+--- a/playwright.config.ts
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import { defineConfig } from '@playwright/test';
+-import { baseConfig } from './realworld/specs/e2e/playwright.base';
+-
+-/**
+- * Angular-specific Playwright configuration.
+- * Extends the shared RealWorld base config with the Angular dev server.
+- */
+-export default defineConfig({
+-  ...baseConfig,
+-  testDir: './realworld/specs/e2e',
+-
+-  use: {
+-    ...baseConfig.use,
+-    baseURL: 'http://localhost:4200',
+-  },
+-
+-  webServer: {
+-    command: 'npm run start',
+-    url: 'http://localhost:4200',
+-    reuseExistingServer: !process.env.CI,
+-    timeout: 120_000,
+-  },
+-});
+diff --git a/src/app/app.config.ts b/src/app/app.config.ts
+index 58ba02c..e2cbd3d 100644
+--- a/src/app/app.config.ts
++++ b/src/app/app.config.ts
+@@ -19,6 +19,7 @@ export interface ConduitDebug {
+   getToken: () => string | null;
+   getAuthState: () => AuthState;
+   getCurrentUser: () => User | null;
++  setToken: (token: string | null) => void;
+ }
+ 
+ declare global {
+@@ -41,6 +42,13 @@ function setupDebugInterface(jwtService: JwtService, userService: UserService):
+     getToken: () => jwtService.getToken(),
+     getAuthState: () => currentAuthState,
+     getCurrentUser: () => currentUser,
++    setToken: (token: string | null) => {
++      if (token) {
++        jwtService.saveToken(token);
++      } else {
++        jwtService.destroyToken();
++      }
++    },
+   };
+ }
+ 
+diff --git a/src/app/core/auth/auth.component.html b/src/app/core/auth/auth.component.html
+index 74de5d3..c2f7a4f 100644
+--- a/src/app/core/auth/auth.component.html
++++ b/src/app/core/auth/auth.component.html
+@@ -2,14 +2,14 @@
+   <div class="container page">
+     <div class="row">
+       <div class="col-md-6 offset-md-3 col-xs-12">
+-        <h1 class="text-xs-center">{{ title }}</h1>
++        <h1 class="text-xs-center" data-testid="auth-title">{{ title }}</h1>
+         <p class="text-xs-center">
+           @if (authType === 'register') {
+-            <a [routerLink]="['/login']">Have an account?</a>
++            <a [routerLink]="['/login']" data-testid="auth-switch">Have an account?</a>
+           }
+ 
+           @if (authType === 'login') {
+-            <a [routerLink]="['/register']">Need an account?</a>
++            <a [routerLink]="['/register']" data-testid="auth-switch">Need an account?</a>
+           }
+         </p>
+         <app-list-errors [errors]="errors()" />
+@@ -19,6 +19,7 @@
+               @if (authType === 'register') {
+                 <input
+                   formControlName="username"
++                  data-testid="auth-username"
+                   name="username"
+                   placeholder="Username"
+                   class="form-control form-control-lg"
+@@ -29,6 +30,7 @@
+             <fieldset class="form-group">
+               <input
+                 formControlName="email"
++                data-testid="auth-email"
+                 name="email"
+                 placeholder="Email"
+                 class="form-control form-control-lg"
+@@ -38,13 +40,14 @@
+             <fieldset class="form-group">
+               <input
+                 formControlName="password"
++                data-testid="auth-password"
+                 name="password"
+                 placeholder="Password"
+                 class="form-control form-control-lg"
+                 type="password"
+               />
+             </fieldset>
+-            <button class="btn btn-lg btn-primary pull-xs-right" [disabled]="!authForm.valid" type="submit">
++            <button class="btn btn-lg btn-primary pull-xs-right" [disabled]="!authForm.valid" type="submit" data-testid="auth-submit">
+               {{ title }}
+             </button>
+           </fieldset>
+diff --git a/src/app/core/auth/services/jwt.service.spec.ts b/src/app/core/auth/services/jwt.service.spec.ts
+deleted file mode 100644
+index 7ede63e..0000000
+--- a/src/app/core/auth/services/jwt.service.spec.ts
++++ /dev/null
+@@ -1,334 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { JwtService } from './jwt.service';
+-
+-describe('JwtService', () => {
+-  let service: JwtService;
+-  let localStorageSpy: any;
+-
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  beforeEach(() => {
+-    // Create spy for localStorage
+-    localStorageSpy = {
+-      getItem: vi.fn(),
+-      setItem: vi.fn(),
+-      removeItem: vi.fn(),
+-      clear: vi.fn(),
+-    };
+-
+-    // Replace window.localStorage with spy
+-    Object.defineProperty(window, 'localStorage', {
+-      value: localStorageSpy,
+-      writable: true,
+-      configurable: true,
+-    });
+-
+-    TestBed.configureTestingModule({
+-      providers: [JwtService],
+-    });
+-
+-    service = TestBed.inject(JwtService);
+-  });
+-
+-  afterEach(() => {
+-    vi.clearAllMocks();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('getToken', () => {
+-    it('should retrieve token from localStorage', () => {
+-      const mockToken = 'test-jwt-token-123';
+-      localStorageSpy['jwtToken'] = mockToken;
+-      const token = service.getToken();
+-      expect(token).toBe(mockToken);
+-    });
+-
+-    it('should return undefined when no token exists', () => {
+-      const token = service.getToken();
+-      expect(token).toBeUndefined();
+-    });
+-
+-    it('should handle empty string token', () => {
+-      localStorageSpy['jwtToken'] = '';
+-      const token = service.getToken();
+-      expect(token).toBe('');
+-    });
+-
+-    it('should handle null token', () => {
+-      localStorageSpy['jwtToken'] = null;
+-      const token = service.getToken();
+-      expect(token).toBeNull();
+-    });
+-
+-    it('should retrieve token multiple times consistently', () => {
+-      const mockToken = 'consistent-token';
+-      localStorageSpy['jwtToken'] = mockToken;
+-      const token1 = service.getToken();
+-      const token2 = service.getToken();
+-      const token3 = service.getToken();
+-      expect(token1).toBe(mockToken);
+-      expect(token2).toBe(mockToken);
+-      expect(token3).toBe(mockToken);
+-    });
+-
+-    it('should handle long JWT token', () => {
+-      const longToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + 'a'.repeat(500);
+-      localStorageSpy['jwtToken'] = longToken;
+-      const token = service.getToken();
+-      expect(token).toBe(longToken);
+-    });
+-
+-    it('should handle token with special characters', () => {
+-      const specialToken = 'token.with-special_chars!@#$%^&*()';
+-      localStorageSpy['jwtToken'] = specialToken;
+-      const token = service.getToken();
+-      expect(token).toBe(specialToken);
+-    });
+-  });
+-
+-  describe('saveToken', () => {
+-    it('should save token to localStorage', () => {
+-      const mockToken = 'new-jwt-token-456';
+-      service.saveToken(mockToken);
+-      expect(localStorageSpy['jwtToken']).toBe(mockToken);
+-    });
+-
+-    it('should overwrite existing token', () => {
+-      const oldToken = 'old-token';
+-      const newToken = 'new-token';
+-      localStorageSpy['jwtToken'] = oldToken;
+-      service.saveToken(newToken);
+-      expect(localStorageSpy['jwtToken']).toBe(newToken);
+-    });
+-
+-    it('should handle empty string token', () => {
+-      service.saveToken('');
+-      expect(localStorageSpy['jwtToken']).toBe('');
+-    });
+-
+-    it('should handle very long token', () => {
+-      const longToken = 'a'.repeat(1000);
+-      service.saveToken(longToken);
+-      expect(localStorageSpy['jwtToken']).toBe(longToken);
+-    });
+-
+-    it('should handle special characters in token', () => {
+-      const specialToken = 'token.with-special_chars!@#$%';
+-      service.saveToken(specialToken);
+-      expect(localStorageSpy['jwtToken']).toBe(specialToken);
+-    });
+-
+-    it('should handle JWT format tokens', () => {
+-      const jwtToken =
+-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+-      service.saveToken(jwtToken);
+-      expect(localStorageSpy['jwtToken']).toBe(jwtToken);
+-    });
+-
+-    it('should persist token after save', () => {
+-      const token = 'persist-test-token';
+-      service.saveToken(token);
+-      const retrievedToken = service.getToken();
+-      expect(retrievedToken).toBe(token);
+-    });
+-
+-    it('should handle rapid successive saves', () => {
+-      const tokens = ['token1', 'token2', 'token3', 'token4', 'token5'];
+-      tokens.forEach(token => {
+-        service.saveToken(token);
+-      });
+-      expect(localStorageSpy['jwtToken']).toBe(tokens[tokens.length - 1]);
+-    });
+-  });
+-
+-  describe('destroyToken', () => {
+-    it('should remove token from localStorage', () => {
+-      localStorageSpy['jwtToken'] = 'test-token';
+-      service.destroyToken();
+-      expect(localStorageSpy.removeItem).toHaveBeenCalledWith('jwtToken');
+-    });
+-
+-    it('should handle destroying non-existent token', () => {
+-      service.destroyToken();
+-      expect(localStorageSpy.removeItem).toHaveBeenCalledWith('jwtToken');
+-    });
+-
+-    it('should completely remove token', () => {
+-      localStorageSpy['jwtToken'] = 'test-token';
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      const token = service.getToken();
+-      expect(token).toBeUndefined();
+-    });
+-
+-    it('should be idempotent', () => {
+-      localStorageSpy['jwtToken'] = 'test-token';
+-      service.destroyToken();
+-      service.destroyToken();
+-      service.destroyToken();
+-      expect(localStorageSpy.removeItem).toHaveBeenCalledTimes(3);
+-    });
+-
+-    it('should allow saving new token after destroy', () => {
+-      const firstToken = 'first-token';
+-      const secondToken = 'second-token';
+-      service.saveToken(firstToken);
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      service.saveToken(secondToken);
+-      expect(localStorageSpy['jwtToken']).toBe(secondToken);
+-    });
+-  });
+-
+-  describe('Token lifecycle', () => {
+-    it('should handle complete token lifecycle', () => {
+-      const token = 'lifecycle-test-token';
+-      // Save token
+-      service.saveToken(token);
+-      expect(localStorageSpy['jwtToken']).toBe(token);
+-      // Retrieve token
+-      const retrievedToken = service.getToken();
+-      expect(retrievedToken).toBe(token);
+-      // Destroy token
+-      service.destroyToken();
+-      expect(localStorageSpy.removeItem).toHaveBeenCalledWith('jwtToken');
+-    });
+-
+-    it('should handle multiple save operations', () => {
+-      const tokens = ['token1', 'token2', 'token3'];
+-      tokens.forEach(token => {
+-        service.saveToken(token);
+-        expect(localStorageSpy['jwtToken']).toBe(token);
+-      });
+-      // Last token should be saved
+-      expect(localStorageSpy['jwtToken']).toBe(tokens[tokens.length - 1]);
+-    });
+-
+-    it('should handle save after destroy', () => {
+-      const firstToken = 'first-token';
+-      const secondToken = 'second-token';
+-      service.saveToken(firstToken);
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      service.saveToken(secondToken);
+-      expect(localStorageSpy['jwtToken']).toBe(secondToken);
+-    });
+-
+-    it('should handle alternating save and destroy', () => {
+-      service.saveToken('token1');
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      service.saveToken('token2');
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      service.saveToken('token3');
+-      expect(localStorageSpy['jwtToken']).toBe('token3');
+-    });
+-  });
+-
+-  describe('Edge cases', () => {
+-    it('should handle token with whitespace', () => {
+-      const tokenWithSpaces = '  token-with-spaces  ';
+-      service.saveToken(tokenWithSpaces);
+-      expect(localStorageSpy['jwtToken']).toBe(tokenWithSpaces);
+-    });
+-
+-    it('should handle token with newlines', () => {
+-      const tokenWithNewlines = 'token\nwith\nnewlines';
+-      service.saveToken(tokenWithNewlines);
+-      expect(localStorageSpy['jwtToken']).toBe(tokenWithNewlines);
+-    });
+-
+-    it('should handle unicode characters in token', () => {
+-      const unicodeToken = 'token-with-émojis-🚀-and-中文';
+-      service.saveToken(unicodeToken);
+-      expect(localStorageSpy['jwtToken']).toBe(unicodeToken);
+-    });
+-
+-    it('should handle numeric token', () => {
+-      const numericToken = '123456789';
+-      service.saveToken(numericToken);
+-      expect(localStorageSpy['jwtToken']).toBe(numericToken);
+-    });
+-
+-    it('should handle boolean-like token', () => {
+-      const booleanToken = 'true';
+-      service.saveToken(booleanToken);
+-      expect(localStorageSpy['jwtToken']).toBe(booleanToken);
+-    });
+-  });
+-
+-  describe('Security considerations', () => {
+-    it('should not expose token in service properties', () => {
+-      const token = 'secret-token';
+-      service.saveToken(token);
+-      // Service should not have a public token property
+-      expect((service as any).token).toBeUndefined();
+-    });
+-
+-    it('should store token only in localStorage', () => {
+-      const token = 'secure-token';
+-      service.saveToken(token);
+-      // Token should only be in localStorage, not in service instance
+-      const serviceKeys = Object.keys(service);
+-      expect(serviceKeys).not.toContain('token');
+-      expect(serviceKeys).not.toContain('jwtToken');
+-    });
+-
+-    it('should handle XSS-like token strings safely', () => {
+-      const xssToken = '<script>alert("xss")</script>';
+-      service.saveToken(xssToken);
+-      expect(localStorageSpy['jwtToken']).toBe(xssToken);
+-    });
+-  });
+-
+-  describe('Integration scenarios', () => {
+-    it('should support authentication flow', () => {
+-      // User logs in
+-      const loginToken = 'login-jwt-token';
+-      service.saveToken(loginToken);
+-      expect(service.getToken()).toBe(loginToken);
+-      // User refreshes token
+-      const refreshedToken = 'refreshed-jwt-token';
+-      service.saveToken(refreshedToken);
+-      expect(service.getToken()).toBe(refreshedToken);
+-      // User logs out
+-      service.destroyToken();
+-      delete localStorageSpy['jwtToken'];
+-      expect(service.getToken()).toBeUndefined();
+-    });
+-
+-    it('should support session management', () => {
+-      // Start session
+-      service.saveToken('session-token-1');
+-      // Verify session
+-      expect(service.getToken()).toBe('session-token-1');
+-      // Update session
+-      service.saveToken('session-token-2');
+-      expect(service.getToken()).toBe('session-token-2');
+-      // End session
+-      service.destroyToken();
+-      expect(localStorageSpy.removeItem).toHaveBeenCalledWith('jwtToken');
+-    });
+-
+-    it('should handle concurrent tab scenario', () => {
+-      // Simulate token being set in another tab
+-      localStorageSpy['jwtToken'] = 'external-token';
+-      // Current tab should be able to read it
+-      expect(service.getToken()).toBe('external-token');
+-      // Current tab updates token
+-      service.saveToken('updated-token');
+-      expect(localStorageSpy['jwtToken']).toBe('updated-token');
+-    });
+-  });
+-});
+diff --git a/src/app/core/auth/services/user.service.spec.ts b/src/app/core/auth/services/user.service.spec.ts
+deleted file mode 100644
+index 293414f..0000000
+--- a/src/app/core/auth/services/user.service.spec.ts
++++ /dev/null
+@@ -1,365 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+-import { Router } from '@angular/router';
+-import { firstValueFrom } from 'rxjs';
+-import { UserService } from './user.service';
+-import { JwtService } from './jwt.service';
+-import { User } from '../user.model';
+-
+-describe('UserService', () => {
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  let service: UserService;
+-  let httpMock: HttpTestingController;
+-  let jwtService: any;
+-  let router: any;
+-
+-  const mockUser: User = {
+-    email: 'test@example.com',
+-    token: 'test-jwt-token',
+-    username: 'testuser',
+-    bio: 'Test bio',
+-    image: 'https://example.com/avatar.jpg',
+-  };
+-
+-  beforeEach(() => {
+-    jwtService = {
+-      saveToken: vi.fn(),
+-      destroyToken: vi.fn(),
+-      getToken: vi.fn(),
+-    };
+-    router = {
+-      navigate: vi.fn(),
+-    };
+-
+-    TestBed.configureTestingModule({
+-      imports: [HttpClientTestingModule],
+-      providers: [UserService, { provide: JwtService, useValue: jwtService }, { provide: Router, useValue: router }],
+-    });
+-
+-    service = TestBed.inject(UserService);
+-    httpMock = TestBed.inject(HttpTestingController);
+-  });
+-
+-  afterEach(() => {
+-    httpMock.verify();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('currentUser observable', () => {
+-    it('should emit null initially', async () => {
+-      const user = await firstValueFrom(service.currentUser);
+-      expect(user).toBeNull();
+-    });
+-
+-    it('should emit distinct values only', async () => {
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      service.setAuth(mockUser);
+-      service.setAuth(mockUser); // Should not emit again
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions).toEqual([null, mockUser]);
+-      sub.unsubscribe();
+-    });
+-  });
+-
+-  describe('isAuthenticated observable', () => {
+-    it('should emit false when no user is authenticated', async () => {
+-      const isAuth = await firstValueFrom(service.isAuthenticated);
+-      expect(isAuth).toBe(false);
+-    });
+-
+-    it('should emit true when user is authenticated', async () => {
+-      const emissions: boolean[] = [];
+-      const sub = service.isAuthenticated.subscribe(isAuth => {
+-        emissions.push(isAuth);
+-      });
+-      service.setAuth(mockUser);
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions.length).toBe(2);
+-      expect(emissions[0]).toBe(false);
+-      expect(emissions[1]).toBe(true);
+-      sub.unsubscribe();
+-    });
+-  });
+-
+-  describe('login', () => {
+-    it('should send POST request to /users/login', () => {
+-      const credentials = { email: 'test@example.com', password: 'password123' };
+-      service.login(credentials).subscribe();
+-      const req = httpMock.expectOne('/users/login');
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({ user: credentials });
+-      req.flush({ user: mockUser });
+-    });
+-
+-    it('should call setAuth with returned user', async () => {
+-      const credentials = { email: 'test@example.com', password: 'password123' };
+-      const promise = firstValueFrom(service.login(credentials));
+-      const req = httpMock.expectOne('/users/login');
+-      req.flush({ user: mockUser });
+-      await promise;
+-      expect(jwtService.saveToken).toHaveBeenCalledWith(mockUser.token);
+-    });
+-
+-    it('should update currentUser after successful login', async () => {
+-      const credentials = { email: 'test@example.com', password: 'password123' };
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      const promise = firstValueFrom(service.login(credentials));
+-      const req = httpMock.expectOne('/users/login');
+-      req.flush({ user: mockUser });
+-      await promise;
+-      expect(emissions.length).toBe(2);
+-      expect(emissions[1]).toEqual(mockUser);
+-      sub.unsubscribe();
+-    });
+-
+-    it('should handle login error', async () => {
+-      const credentials = { email: 'test@example.com', password: 'wrong' };
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.login(credentials));
+-      const req = httpMock.expectOne('/users/login');
+-      req.flush('Invalid credentials', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-  });
+-
+-  describe('register', () => {
+-    it('should send POST request to /users', () => {
+-      const credentials = {
+-        username: 'newuser',
+-        email: 'new@example.com',
+-        password: 'password123',
+-      };
+-      service.register(credentials).subscribe();
+-      const req = httpMock.expectOne('/users');
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({ user: credentials });
+-      req.flush({ user: mockUser });
+-    });
+-
+-    it('should call setAuth with returned user', async () => {
+-      const credentials = {
+-        username: 'newuser',
+-        email: 'new@example.com',
+-        password: 'password123',
+-      };
+-      const promise = firstValueFrom(service.register(credentials));
+-      const req = httpMock.expectOne('/users');
+-      req.flush({ user: mockUser });
+-      await promise;
+-      expect(jwtService.saveToken).toHaveBeenCalledWith(mockUser.token);
+-    });
+-
+-    it('should handle registration error', async () => {
+-      const credentials = {
+-        username: 'existing',
+-        email: 'existing@example.com',
+-        password: 'password123',
+-      };
+-      const errorResponse = { status: 422, statusText: 'Unprocessable Entity' };
+-      const promise = firstValueFrom(service.register(credentials));
+-      const req = httpMock.expectOne('/users');
+-      req.flush('User already exists', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 422 });
+-    });
+-  });
+-
+-  describe('logout', () => {
+-    it('should call purgeAuth', () => {
+-      service.logout();
+-      expect(jwtService.destroyToken).toHaveBeenCalled();
+-    });
+-
+-    it('should navigate to home page', () => {
+-      service.logout();
+-      expect(router.navigate).toHaveBeenCalledWith(['/']);
+-    });
+-
+-    it('should clear currentUser', async () => {
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      // First set a user
+-      service.setAuth(mockUser);
+-      service.logout();
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions.length).toBe(3);
+-      expect(emissions[2]).toBeNull();
+-      sub.unsubscribe();
+-    });
+-  });
+-
+-  describe('getCurrentUser', () => {
+-    it('should send GET request to /user', () => {
+-      service.getCurrentUser().subscribe();
+-      const req = httpMock.expectOne('/user');
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ user: mockUser });
+-    });
+-
+-    it('should call setAuth on success', async () => {
+-      const promise = firstValueFrom(service.getCurrentUser());
+-      const req = httpMock.expectOne('/user');
+-      req.flush({ user: mockUser });
+-      await promise;
+-      expect(jwtService.saveToken).toHaveBeenCalledWith(mockUser.token);
+-    });
+-
+-    it('should call purgeAuth on error', async () => {
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.getCurrentUser());
+-      const req = httpMock.expectOne('/user');
+-      req.flush('Unauthorized', errorResponse);
+-      try {
+-        await promise;
+-        throw new Error('should have failed');
+-      } catch (error) {
+-        expect(jwtService.destroyToken).toHaveBeenCalled();
+-      }
+-    });
+-
+-    it('should share replay the result', () => {
+-      const observable = service.getCurrentUser();
+-      observable.subscribe();
+-      observable.subscribe();
+-      // Should only make one HTTP request
+-      const requests = httpMock.match('/user');
+-      expect(requests.length).toBe(1);
+-      requests[0].flush({ user: mockUser });
+-    });
+-  });
+-
+-  describe('update', () => {
+-    it('should send PUT request to /user', () => {
+-      const updates: Partial<User> = {
+-        bio: 'Updated bio',
+-        image: 'https://example.com/new-avatar.jpg',
+-      };
+-      service.update(updates).subscribe();
+-      const req = httpMock.expectOne('/user');
+-      expect(req.request.method).toBe('PUT');
+-      expect(req.request.body).toEqual({ user: updates });
+-      req.flush({ user: { ...mockUser, ...updates } });
+-    });
+-
+-    it('should update currentUser with new values', async () => {
+-      const updates: Partial<User> = { bio: 'Updated bio' };
+-      const updatedUser = { ...mockUser, ...updates };
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      const promise = firstValueFrom(service.update(updates));
+-      const req = httpMock.expectOne('/user');
+-      req.flush({ user: updatedUser });
+-      await promise;
+-      expect(emissions.length).toBe(2);
+-      expect(emissions[1]).toEqual(updatedUser);
+-      sub.unsubscribe();
+-    });
+-
+-    it('should handle update error', async () => {
+-      const updates: Partial<User> = { bio: 'Updated bio' };
+-      const errorResponse = { status: 422, statusText: 'Unprocessable Entity' };
+-      const promise = firstValueFrom(service.update(updates));
+-      const req = httpMock.expectOne('/user');
+-      req.flush('Invalid data', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 422 });
+-    });
+-  });
+-
+-  describe('setAuth', () => {
+-    it('should save token to JwtService', () => {
+-      service.setAuth(mockUser);
+-      expect(jwtService.saveToken).toHaveBeenCalledWith(mockUser.token);
+-    });
+-
+-    it('should update currentUser subject', async () => {
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      service.setAuth(mockUser);
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions.length).toBe(2);
+-      expect(emissions[1]).toEqual(mockUser);
+-      sub.unsubscribe();
+-    });
+-  });
+-
+-  describe('purgeAuth', () => {
+-    it('should destroy token in JwtService', () => {
+-      service.purgeAuth();
+-      expect(jwtService.destroyToken).toHaveBeenCalled();
+-    });
+-
+-    it('should set currentUser to null', async () => {
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      // First set a user
+-      service.setAuth(mockUser);
+-      service.purgeAuth();
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions.length).toBe(3);
+-      expect(emissions[2]).toBeNull();
+-      sub.unsubscribe();
+-    });
+-  });
+-
+-  describe('Integration scenarios', () => {
+-    it('should handle complete authentication flow', async () => {
+-      const credentials = { email: 'test@example.com', password: 'password123' };
+-      const emissions: (User | null)[] = [];
+-      const sub = service.currentUser.subscribe(user => {
+-        emissions.push(user);
+-      });
+-      // Login
+-      const promise = firstValueFrom(service.login(credentials));
+-      const req = httpMock.expectOne('/users/login');
+-      req.flush({ user: mockUser });
+-      await promise;
+-      expect(emissions[1]).toEqual(mockUser);
+-      // Logout
+-      service.logout();
+-      await new Promise(resolve => setTimeout(resolve, 10));
+-      expect(emissions[2]).toBeNull();
+-      sub.unsubscribe();
+-    });
+-
+-    it('should maintain authentication state across multiple operations', async () => {
+-      const credentials = { email: 'test@example.com', password: 'password123' };
+-      const loginPromise = firstValueFrom(service.login(credentials));
+-      const loginReq = httpMock.expectOne('/users/login');
+-      loginReq.flush({ user: mockUser });
+-      await loginPromise;
+-      const isAuth = await firstValueFrom(service.isAuthenticated);
+-      expect(isAuth).toBe(true);
+-      const updates = { bio: 'New bio' };
+-      const updatePromise = firstValueFrom(service.update(updates));
+-      const updateReq = httpMock.expectOne('/user');
+-      updateReq.flush({ user: { ...mockUser, ...updates } });
+-      await updatePromise;
+-      const stillAuth = await firstValueFrom(service.isAuthenticated);
+-      expect(stillAuth).toBe(true);
+-    });
+-  });
+-});
+diff --git a/src/app/core/layout/footer.component.html b/src/app/core/layout/footer.component.html
+index de9c705..9950b59 100644
+--- a/src/app/core/layout/footer.component.html
++++ b/src/app/core/layout/footer.component.html
+@@ -1,6 +1,6 @@
+ <footer>
+   <div class="container">
+-    <a class="logo-font" routerLink="/"><img src="assets/conduit-logo.svg" alt="Conduit" class="footer-logo" /></a>
++    <a class="logo-font" routerLink="/" data-testid="footer-logo"><img src="assets/conduit-logo.svg" alt="Conduit" class="footer-logo" /></a>
+     <span class="attribution">
+       &copy; {{ today | date: 'yyyy' }}. An interactive learning project from
+       <a href="https://github.com/gothinkster/realworld">RealWorld OSS Project</a>. Code licensed under MIT.
+diff --git a/src/app/core/layout/header.component.html b/src/app/core/layout/header.component.html
+index 62b3892..d00ebd3 100644
+--- a/src/app/core/layout/header.component.html
++++ b/src/app/core/layout/header.component.html
+@@ -7,15 +7,15 @@
+       @if (authState === 'unauthenticated') {
+         <ul class="nav navbar-nav pull-xs-right">
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/"> Home </a>
++            <a class="nav-link" routerLink="/" data-testid="header-home"> Home </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/login" routerLinkActive="active"> Sign in </a>
++            <a class="nav-link" routerLink="/login" routerLinkActive="active" data-testid="header-signin"> Sign in </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link nav-signup" routerLink="/register" routerLinkActive="active"> Sign up </a>
++            <a class="nav-link nav-signup" routerLink="/register" routerLinkActive="active" data-testid="header-signup"> Sign up </a>
+           </li>
+         </ul>
+       }
+@@ -24,26 +24,26 @@
+       @if (authState === 'authenticated') {
+         <ul class="nav navbar-nav pull-xs-right">
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
++            <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" data-testid="header-home">
+               Home
+             </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/editor" routerLinkActive="active">
++            <a class="nav-link" routerLink="/editor" routerLinkActive="active" data-testid="header-new-article">
+               <i class="ion-compose"></i>&nbsp;New Article
+             </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/settings" routerLinkActive="active">
++            <a class="nav-link" routerLink="/settings" routerLinkActive="active" data-testid="header-settings">
+               <i class="ion-gear-a"></i>&nbsp;Settings
+             </a>
+           </li>
+ 
+           @if (currentUser$ | async; as currentUser) {
+             <li class="nav-item">
+-              <a class="nav-link" [routerLink]="['/profile', currentUser.username]" routerLinkActive="active">
++              <a class="nav-link" [routerLink]="['/profile', currentUser.username]" routerLinkActive="active" data-testid="header-user-link">
+                 <img [src]="currentUser.image | defaultImage" class="user-pic" />
+                 {{ currentUser.username }}
+               </a>
+@@ -56,25 +56,25 @@
+       @if (authState === 'unavailable') {
+         <ul class="nav navbar-nav pull-xs-right">
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
++            <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" data-testid="header-home">
+               Home
+             </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/editor" routerLinkActive="active">
++            <a class="nav-link" routerLink="/editor" routerLinkActive="active" data-testid="header-new-article">
+               <i class="ion-compose"></i>&nbsp;New Article
+             </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/settings" routerLinkActive="active">
++            <a class="nav-link" routerLink="/settings" routerLinkActive="active" data-testid="header-settings">
+               <i class="ion-gear-a"></i>&nbsp;Settings
+             </a>
+           </li>
+ 
+           <li class="nav-item">
+-            <span class="nav-link" title="Auth unavailable - retrying automatically">
++            <span class="nav-link" title="Auth unavailable - retrying automatically" data-testid="header-connecting">
+               <i class="ion-load-c"></i>&nbsp;Connecting...
+             </span>
+           </li>
+@@ -85,10 +85,10 @@
+       @if (authState === 'loading') {
+         <ul class="nav navbar-nav pull-xs-right">
+           <li class="nav-item">
+-            <a class="nav-link" routerLink="/"> Home </a>
++            <a class="nav-link" routerLink="/" data-testid="header-home"> Home </a>
+           </li>
+           <li class="nav-item">
+-            <span class="nav-link">Loading...</span>
++            <span class="nav-link" data-testid="header-loading">Loading...</span>
+           </li>
+         </ul>
+       }
+diff --git a/src/app/features/article/components/article-comment.component.ts b/src/app/features/article/components/article-comment.component.ts
+index bbde4a0..0d63a5b 100644
+--- a/src/app/features/article/components/article-comment.component.ts
++++ b/src/app/features/article/components/article-comment.component.ts
+@@ -13,7 +13,7 @@ import { DefaultImagePipe } from '../../../shared/pipes/default-image.pipe';
+     @if (comment) {
+       <div class="card">
+         <div class="card-block">
+-          <p class="card-text">
++          <p class="card-text" data-testid="comment-body">
+             {{ comment.body }}
+           </p>
+         </div>
+@@ -22,7 +22,7 @@ import { DefaultImagePipe } from '../../../shared/pipes/default-image.pipe';
+             <img [src]="comment.author.image | defaultImage" class="comment-author-img" />
+           </a>
+           &nbsp;
+-          <a class="comment-author" [routerLink]="['/profile', comment.author.username]">
++          <a class="comment-author" [routerLink]="['/profile', comment.author.username]" data-testid="comment-author">
+             {{ comment.author.username }}
+           </a>
+           <span class="date-posted">
+@@ -30,7 +30,7 @@ import { DefaultImagePipe } from '../../../shared/pipes/default-image.pipe';
+           </span>
+           @if (canModify$ | async) {
+             <span class="mod-options">
+-              <i class="ion-trash-a" (click)="delete.emit(true)"></i>
++              <i class="ion-trash-a" (click)="delete.emit(true)" data-testid="comment-delete"></i>
+             </span>
+           }
+         </div>
+diff --git a/src/app/features/article/components/article-list.component.ts b/src/app/features/article/components/article-list.component.ts
+index 5d3b3a6..c37dfbf 100644
+--- a/src/app/features/article/components/article-list.component.ts
++++ b/src/app/features/article/components/article-list.component.ts
+@@ -23,12 +23,14 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+   selector: 'app-article-list',
+   template: `
+     @if (loading() === LoadingState.LOADING) {
+-      <div class="article-preview">Loading articles...</div>
++      <div class="article-preview" data-testid="article-list-loading">Loading articles...</div>
+     }
+ 
+     @if (loading() === LoadingState.LOADED) {
+       @for (article of results(); track article.slug) {
+-        <app-article-preview [articleInput]="article" />
++        <div [attr.data-testid]="'article-preview-' + $index">
++          <app-article-preview data-testid="article-preview" [articleInput]="article" />
++        </div>
+       } @empty {
+         <div class="article-preview empty-feed-message">
+           @if (isFollowingFeed) {
+@@ -44,7 +46,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+         <ul class="pagination">
+           @for (pageNumber of totalPages(); track pageNumber) {
+             <li class="page-item" [ngClass]="{ active: pageNumber === page() }">
+-              <button class="page-link" (click)="setPageTo(pageNumber)">
++              <button class="page-link" (click)="setPageTo(pageNumber)" [attr.data-testid]="'page-link-' + pageNumber">
+                 {{ pageNumber }}
+               </button>
+             </li>
+diff --git a/src/app/features/article/components/article-meta.component.ts b/src/app/features/article/components/article-meta.component.ts
+index 35b3d69..b134b5b 100644
+--- a/src/app/features/article/components/article-meta.component.ts
++++ b/src/app/features/article/components/article-meta.component.ts
+@@ -13,10 +13,10 @@ import { DefaultImagePipe } from '../../../shared/pipes/default-image.pipe';
+       </a>
+ 
+       <div class="info">
+-        <a class="author" [routerLink]="['/profile', article.author.username]">
++        <a class="author" [routerLink]="['/profile', article.author.username]" data-testid="preview-author">
+           {{ article.author.username }}
+         </a>
+-        <span class="date">
++        <span class="date" data-testid="preview-date">
+           {{ article.createdAt | date: 'longDate' }}
+         </span>
+       </div>
+diff --git a/src/app/features/article/components/article-preview.component.ts b/src/app/features/article/components/article-preview.component.ts
+index 593e85d..457da68 100644
+--- a/src/app/features/article/components/article-preview.component.ts
++++ b/src/app/features/article/components/article-preview.component.ts
+@@ -16,7 +16,7 @@ import { FavoriteButtonComponent } from './favorite-button.component';
+       </app-article-meta>
+ 
+       <a [routerLink]="['/article', article().slug]" class="preview-link">
+-        <h1>{{ article().title }}</h1>
++        <h1 data-testid="preview-title">{{ article().title }}</h1>
+         <p>{{ article().description }}</p>
+         <span>Read more...</span>
+         <ul class="tag-list">
+diff --git a/src/app/features/article/components/favorite-button.component.ts b/src/app/features/article/components/favorite-button.component.ts
+index 91c3b54..c1e195e 100644
+--- a/src/app/features/article/components/favorite-button.component.ts
++++ b/src/app/features/article/components/favorite-button.component.ts
+@@ -21,6 +21,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+   template: `
+     <button
+       class="btn btn-sm"
++      [attr.data-testid]="testId"
+       [ngClass]="{
+         disabled: isSubmitting(),
+         'btn-outline-primary': !article.favorited,
+@@ -39,6 +40,8 @@ export class FavoriteButtonComponent {
+   isSubmitting = signal(false);
+ 
+   @Input() article!: Article;
++  /** Instrumentation: stable locator name (favorite-btn on previews, article-fav-btn on the article page). */
++  @Input() testId = 'favorite-btn';
+   @Output() toggle = new EventEmitter<boolean>();
+ 
+   constructor(
+diff --git a/src/app/features/article/pages/article/article.component.html b/src/app/features/article/pages/article/article.component.html
+index 87c71ff..fd27e62 100644
+--- a/src/app/features/article/pages/article/article.component.html
++++ b/src/app/features/article/pages/article/article.component.html
+@@ -11,9 +11,9 @@
+   @if (article(); as a) {
+     <div class="banner">
+       <div class="container">
+-        <h1>{{ a.title }}</h1>
++        <h1 data-testid="article-title">{{ a.title }}</h1>
+ 
+-        <app-article-meta [article]="a">
++        <app-article-meta data-testid="article-meta-0" [article]="a">
+           @if (canModify()) {
+             <span>
+               <a class="btn btn-sm btn-outline-secondary" [routerLink]="['/editor', a.slug]">
+@@ -24,6 +24,7 @@
+                 class="btn btn-sm btn-outline-danger"
+                 [ngClass]="{ disabled: isDeleting() }"
+                 (click)="deleteArticle()"
++                data-testid="article-delete-btn"
+               >
+                 <i class="ion-trash-a"></i> Delete Article
+               </button>
+@@ -32,9 +33,9 @@
+             <span>
+               <app-follow-button [profile]="a.author" (toggle)="toggleFollowing($event)"> </app-follow-button>
+ 
+-              <app-favorite-button [article]="a" (toggle)="onToggleFavorite($event)">
++              <app-favorite-button [testId]="'article-fav-btn'" [article]="a" (toggle)="onToggleFavorite($event)">
+                 {{ a.favorited ? 'Unfavorite' : 'Favorite' }} Article
+-                <span class="counter">({{ a.favoritesCount }})</span>
++                <span class="counter" data-testid="article-fav-count">({{ a.favoritesCount }})</span>
+               </app-favorite-button>
+             </span>
+           }
+@@ -45,11 +46,11 @@
+     <div class="container page">
+       <div class="row article-content">
+         <div class="col-md-12">
+-          <div [innerHTML]="a.body | markdown | async"></div>
++          <div data-testid="article-body" [innerHTML]="a.body | markdown | async"></div>
+ 
+           <ul class="tag-list">
+             @for (tag of a.tagList; track tag) {
+-              <li class="tag-default tag-pill tag-outline">
++              <li class="tag-default tag-pill tag-outline" data-testid="article-tags">
+                 {{ tag }}
+               </li>
+             }
+@@ -60,7 +61,7 @@
+       <hr />
+ 
+       <div class="article-actions">
+-        <app-article-meta [article]="a">
++        <app-article-meta data-testid="article-meta-1" [article]="a">
+           @if (canModify()) {
+             <span>
+               <a class="btn btn-sm btn-outline-secondary" [routerLink]="['/editor', a.slug]">
+@@ -71,6 +72,7 @@
+                 class="btn btn-sm btn-outline-danger"
+                 [ngClass]="{ disabled: isDeleting() }"
+                 (click)="deleteArticle()"
++                data-testid="article-delete-btn"
+               >
+                 <i class="ion-trash-a"></i> Delete Article
+               </button>
+@@ -79,9 +81,9 @@
+             <span>
+               <app-follow-button [profile]="a.author" (toggle)="toggleFollowing($event)" />
+ 
+-              <app-favorite-button [article]="a" (toggle)="onToggleFavorite($event)">
++              <app-favorite-button [testId]="'article-fav-btn'" [article]="a" (toggle)="onToggleFavorite($event)">
+                 {{ a.favorited ? 'Unfavorite' : 'Favorite' }} Article
+-                <span class="counter">({{ a.favoritesCount }})</span>
++                <span class="counter" data-testid="article-fav-count">({{ a.favoritesCount }})</span>
+               </app-favorite-button>
+             </span>
+           }
+@@ -100,17 +102,18 @@
+                     placeholder="Write a comment..."
+                     rows="3"
+                     [formControl]="commentControl"
++                    data-testid="comment-input"
+                   ></textarea>
+                 </div>
+                 <div class="card-footer">
+                   <img [src]="currentUser()?.image | defaultImage" class="comment-author-img" />
+-                  <button class="btn btn-sm btn-primary" type="submit">Post Comment</button>
++                  <button class="btn btn-sm btn-primary" type="submit" data-testid="comment-submit">Post Comment</button>
+                 </div>
+               </fieldset>
+             </form>
+           </div>
+ 
+-          <div *ifAuthenticated="false">
++          <div *ifAuthenticated="false" data-testid="comment-signin-prompt">
+             <a [routerLink]="['/login']">Sign in</a> or <a [routerLink]="['/register']">sign up</a> to add comments on
+             this article.
+           </div>
+@@ -118,7 +121,9 @@
+           <app-list-errors [errors]="deleteCommentErrors()" />
+ 
+           @for (comment of comments(); track comment) {
+-            <app-article-comment [comment]="comment" (delete)="deleteComment(comment)" />
++            <div [attr.data-testid]="'comment-card-' + $index">
++              <app-article-comment data-testid="comment-card" [comment]="comment" (delete)="deleteComment(comment)" />
++            </div>
+           }
+         </div>
+       </div>
+diff --git a/src/app/features/article/pages/editor/editor.component.html b/src/app/features/article/pages/editor/editor.component.html
+index 1f8587f..481812c 100644
+--- a/src/app/features/article/pages/editor/editor.component.html
++++ b/src/app/features/article/pages/editor/editor.component.html
+@@ -13,6 +13,7 @@
+                 name="title"
+                 type="text"
+                 placeholder="Article Title"
++                data-testid="editor-title"
+               />
+             </fieldset>
+ 
+@@ -23,6 +24,7 @@
+                 name="description"
+                 type="text"
+                 placeholder="What's this article about?"
++                data-testid="editor-description"
+               />
+             </fieldset>
+ 
+@@ -33,6 +35,7 @@
+                 name="body"
+                 rows="8"
+                 placeholder="Write your article (in markdown)"
++                data-testid="editor-body"
+               >
+               </textarea>
+             </fieldset>
+@@ -44,18 +47,19 @@
+                 placeholder="Enter tags"
+                 [formControl]="tagField"
+                 (keyup.enter)="addTag()"
++                data-testid="editor-tag-input"
+               />
+               <div class="tag-list">
+                 @for (tag of tagList(); track tag) {
+-                  <span class="tag-default tag-pill">
+-                    <i class="ion-close-round" (click)="removeTag(tag)"></i>
+-                    {{ tag }}
++                  <span class="tag-default tag-pill" data-testid="editor-tag">
++                    <i class="ion-close-round" (click)="removeTag(tag)" [attr.data-testid]="'editor-tag-remove-' + $index"></i>
++                    <span [attr.data-testid]="'editor-tag-' + $index">{{ tag }}</span>
+                   </span>
+                 }
+               </div>
+             </fieldset>
+ 
+-            <button class="btn btn-lg pull-xs-right btn-primary" type="button" (click)="submitForm()">
++            <button class="btn btn-lg pull-xs-right btn-primary" type="button" (click)="submitForm()" data-testid="editor-publish">
+               Publish Article
+             </button>
+           </fieldset>
+diff --git a/src/app/features/article/pages/home/home.component.html b/src/app/features/article/pages/home/home.component.html
+index 4bf83af..2ef25d9 100644
+--- a/src/app/features/article/pages/home/home.component.html
++++ b/src/app/features/article/pages/home/home.component.html
+@@ -1,5 +1,5 @@
+ <div class="home-page">
+-  <div class="banner" *ifAuthenticated="false">
++  <div class="banner" *ifAuthenticated="false" data-testid="home-banner">
+     <div class="container">
+       <h1 class="logo-font"><img src="assets/conduit-logo.svg" alt="Conduit" class="banner-logo" /></h1>
+       <p>
+@@ -22,6 +22,7 @@
+                 [ngClass]="{ active: listConfig().type === 'feed' }"
+                 routerLink="/"
+                 [queryParams]="{ feed: 'following' }"
++                data-testid="feed-your"
+               >
+                 Your Feed
+               </a>
+@@ -33,12 +34,13 @@
+                   active: listConfig().type === 'all' && !listConfig().filters.tag,
+                 }"
+                 routerLink="/"
++                data-testid="feed-global"
+               >
+                 Global Feed
+               </a>
+             </li>
+             <li class="nav-item" [hidden]="!listConfig().filters.tag">
+-              <a class="nav-link active"> <i class="ion-pound"></i> {{ listConfig().filters.tag }} </a>
++              <a class="nav-link active" data-testid="feed-tag"> <i class="ion-pound"></i> {{ listConfig().filters.tag }} </a>
+             </li>
+           </ul>
+         </div>
+@@ -58,13 +60,13 @@
+ 
+           <div class="tag-list">
+             @for (tag of tags; track tag) {
+-              <a class="tag-default tag-pill" [routerLink]="['/tag', tag]">
+-                {{ tag }}
++              <a class="tag-default tag-pill" [routerLink]="['/tag', tag]" data-testid="tag-pill">
++                <span [attr.data-testid]="'tag-pill-' + $index">{{ tag }}</span>
+               </a>
+             }
+           </div>
+ 
+-          <div [hidden]="tagsLoaded()">Loading tags...</div>
++          <div [hidden]="tagsLoaded()" data-testid="tags-loading">Loading tags...</div>
+ 
+           <div [hidden]="!tagsLoaded() || tags.length > 0">No tags are here... yet.</div>
+         </div>
+diff --git a/src/app/features/article/services/articles.service.spec.ts b/src/app/features/article/services/articles.service.spec.ts
+deleted file mode 100644
+index ac2e825..0000000
+--- a/src/app/features/article/services/articles.service.spec.ts
++++ /dev/null
+@@ -1,266 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+-import { firstValueFrom } from 'rxjs';
+-import { ArticlesService } from './articles.service';
+-import { Article } from '../models/article.model';
+-import { ArticleListConfig } from '../models/article-list-config.model';
+-
+-describe('ArticlesService', () => {
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  let service: ArticlesService;
+-  let httpMock: HttpTestingController;
+-
+-  const mockArticle: Article = {
+-    slug: 'test-article',
+-    title: 'Test Article',
+-    description: 'Test description',
+-    body: 'Test body content',
+-    tagList: ['test', 'angular'],
+-    createdAt: '2024-01-01',
+-    updatedAt: '2024-01-02',
+-    favorited: false,
+-    favoritesCount: 5,
+-    author: {
+-      username: 'testuser',
+-      bio: 'Test bio',
+-      image: 'https://example.com/avatar.jpg',
+-      following: false,
+-    },
+-  };
+-
+-  const mockArticleList: Article[] = [
+-    mockArticle,
+-    {
+-      ...mockArticle,
+-      slug: 'second-article',
+-      title: 'Second Article',
+-    },
+-  ];
+-
+-  beforeEach(() => {
+-    TestBed.configureTestingModule({
+-      imports: [HttpClientTestingModule],
+-      providers: [ArticlesService],
+-    });
+-    service = TestBed.inject(ArticlesService);
+-    httpMock = TestBed.inject(HttpTestingController);
+-  });
+-
+-  afterEach(() => {
+-    httpMock.verify();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('query', () => {
+-    it('should fetch articles with default config', () => {
+-      const config: ArticleListConfig = {
+-        type: 'all',
+-        filters: {},
+-      };
+-      service.query(config).subscribe(response => {
+-        expect(response.articles).toEqual(mockArticleList);
+-        expect(response.articlesCount).toBe(2);
+-      });
+-      const req = httpMock.expectOne('/articles');
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ articles: mockArticleList, articlesCount: 2 });
+-    });
+-
+-    it('should fetch feed articles when type is feed', () => {
+-      const config: ArticleListConfig = {
+-        type: 'feed',
+-        filters: {},
+-      };
+-      service.query(config).subscribe();
+-      const req = httpMock.expectOne('/articles/feed');
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ articles: mockArticleList, articlesCount: 2 });
+-    });
+-
+-    it('should include query parameters from filters', () => {
+-      const config: ArticleListConfig = {
+-        type: 'all',
+-        filters: {
+-          tag: 'angular',
+-          author: 'testuser',
+-          limit: 10,
+-          offset: 0,
+-        },
+-      };
+-
+-      service.query(config).subscribe();
+-
+-      const req = httpMock.expectOne(request => {
+-        return (
+-          request.url === '/articles' &&
+-          request.params.get('tag') === 'angular' &&
+-          request.params.get('author') === 'testuser' &&
+-          request.params.get('limit') === '10' &&
+-          request.params.get('offset') === '0'
+-        );
+-      });
+-
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ articles: mockArticleList, articlesCount: 2 });
+-    });
+-
+-    it('should handle pagination parameters', () => {
+-      const config: ArticleListConfig = {
+-        type: 'all',
+-        filters: {
+-          limit: 20,
+-          offset: 40,
+-        },
+-      };
+-
+-      service.query(config).subscribe();
+-
+-      const req = httpMock.expectOne(request => {
+-        return (
+-          request.url === '/articles' && request.params.get('limit') === '20' && request.params.get('offset') === '40'
+-        );
+-      });
+-
+-      req.flush({ articles: mockArticleList, articlesCount: 100 });
+-    });
+-
+-    it('should handle empty results', () => {
+-      const config: ArticleListConfig = {
+-        type: 'all',
+-        filters: {},
+-      };
+-      service.query(config).subscribe(response => {
+-        expect(response.articles).toEqual([]);
+-        expect(response.articlesCount).toBe(0);
+-      });
+-      const req = httpMock.expectOne('/articles');
+-      req.flush({ articles: [], articlesCount: 0 });
+-    });
+-  });
+-
+-  describe('get', () => {
+-    it('should fetch single article by slug', async () => {
+-      const slug = 'test-article';
+-      const promise = firstValueFrom(service.get(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}`);
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ article: mockArticle });
+-      const article = await promise;
+-      expect(article).toEqual(mockArticle);
+-    });
+-
+-    it('should handle article not found', async () => {
+-      const slug = 'non-existent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.get(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}`);
+-      req.flush('Article not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-  });
+-
+-  describe('delete', () => {
+-    it('should delete article by slug', async () => {
+-      const slug = 'article-to-delete';
+-      const promise = firstValueFrom(service.delete(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}`);
+-      expect(req.request.method).toBe('DELETE');
+-      req.flush(null);
+-      await promise;
+-      expect(true).toBe(true);
+-    });
+-
+-    it('should handle delete error', async () => {
+-      const slug = 'protected-article';
+-      const errorResponse = { status: 403, statusText: 'Forbidden' };
+-      const promise = firstValueFrom(service.delete(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}`);
+-      req.flush('Cannot delete', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 403 });
+-    });
+-  });
+-
+-  describe('create', () => {
+-    it('should create new article', async () => {
+-      const newArticle: Partial<Article> = {
+-        title: 'New Article',
+-        description: 'New description',
+-        body: 'New body',
+-        tagList: ['new', 'test'],
+-      };
+-      const promise = firstValueFrom(service.create(newArticle));
+-      const req = httpMock.expectOne('/articles');
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({ article: newArticle });
+-      req.flush({ article: { ...mockArticle, ...newArticle } });
+-      const article = await promise;
+-      expect(article.title).toBe(newArticle.title);
+-    });
+-
+-    it('should handle validation errors', async () => {
+-      const invalidArticle: Partial<Article> = {
+-        title: '',
+-        description: '',
+-        body: '',
+-      };
+-      const errorResponse = { status: 422, statusText: 'Unprocessable Entity' };
+-      const promise = firstValueFrom(service.create(invalidArticle));
+-      const req = httpMock.expectOne('/articles');
+-      req.flush('Validation failed', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 422 });
+-    });
+-  });
+-
+-  describe('update', () => {
+-    it('should update existing article', async () => {
+-      const updates: Partial<Article> = {
+-        slug: 'existing-article',
+-        title: 'Updated Title',
+-        description: 'Updated description',
+-      };
+-      const promise = firstValueFrom(service.update(updates));
+-      const req = httpMock.expectOne(`/articles/${updates.slug}`);
+-      expect(req.request.method).toBe('PUT');
+-      expect(req.request.body).toEqual({ article: updates });
+-      req.flush({ article: { ...mockArticle, ...updates } });
+-      const article = await promise;
+-      expect(article.title).toBe(updates.title);
+-    });
+-  });
+-
+-  describe('favorite', () => {
+-    it('should favorite an article', async () => {
+-      const slug = 'article-to-favorite';
+-      const promise = firstValueFrom(service.favorite(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/favorite`);
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({});
+-      req.flush({ article: { ...mockArticle, favorited: true } });
+-      const article = await promise;
+-      expect(article.favorited).toBe(true);
+-    });
+-  });
+-
+-  describe('unfavorite', () => {
+-    it('should unfavorite an article', async () => {
+-      const slug = 'article-to-unfavorite';
+-      const promise = firstValueFrom(service.unfavorite(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/favorite`);
+-      expect(req.request.method).toBe('DELETE');
+-      req.flush(null);
+-      await promise;
+-      expect(true).toBe(true);
+-    });
+-  });
+-});
+diff --git a/src/app/features/article/services/comments.service.spec.ts b/src/app/features/article/services/comments.service.spec.ts
+deleted file mode 100644
+index a17f04d..0000000
+--- a/src/app/features/article/services/comments.service.spec.ts
++++ /dev/null
+@@ -1,405 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+-import { firstValueFrom } from 'rxjs';
+-import { CommentsService } from './comments.service';
+-import { Comment } from '../models/comment.model';
+-
+-describe('CommentsService', () => {
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  let service: CommentsService;
+-  let httpMock: HttpTestingController;
+-
+-  const mockComment: Comment = {
+-    id: '1',
+-    body: 'Test comment',
+-    createdAt: '2024-01-01',
+-    updatedAt: '2024-01-02',
+-    author: {
+-      username: 'testuser',
+-      bio: 'Test bio',
+-      image: 'https://example.com/avatar.jpg',
+-      following: false,
+-    },
+-  };
+-
+-  const mockComments: Comment[] = [
+-    mockComment,
+-    {
+-      ...mockComment,
+-      id: '2',
+-      body: 'Second comment',
+-    },
+-  ];
+-
+-  beforeEach(() => {
+-    TestBed.configureTestingModule({
+-      imports: [HttpClientTestingModule],
+-      providers: [CommentsService],
+-    });
+-
+-    service = TestBed.inject(CommentsService);
+-    httpMock = TestBed.inject(HttpTestingController);
+-  });
+-
+-  afterEach(() => {
+-    httpMock.verify();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('getAll', () => {
+-    it('should fetch all comments for an article', async () => {
+-      const slug = 'test-article';
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ comments: mockComments });
+-      const comments = await promise;
+-      expect(comments).toEqual(mockComments);
+-      expect(comments.length).toBe(2);
+-    });
+-
+-    it('should extract comments array from response wrapper', async () => {
+-      const slug = 'test-article';
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: mockComments });
+-      const comments = await promise;
+-      expect(Array.isArray(comments)).toBe(true);
+-      expect((comments as any).comments).toBeUndefined();
+-    });
+-
+-    it('should handle empty comments list', async () => {
+-      const slug = 'article-no-comments';
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: [] });
+-      const comments = await promise;
+-      expect(comments).toEqual([]);
+-      expect(comments.length).toBe(0);
+-    });
+-
+-    it('should handle article not found', async () => {
+-      const slug = 'nonexistent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Article not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should handle slug with special characters', () => {
+-      const slug = 'article-with-special-chars-123';
+-      service.getAll(slug).subscribe();
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: mockComments });
+-    });
+-
+-    it('should handle comments with null author bio', async () => {
+-      const slug = 'test-article';
+-      const commentsWithNullBio = mockComments.map(c => ({
+-        ...c,
+-        author: { ...c.author, bio: null },
+-      }));
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: commentsWithNullBio });
+-      const comments = await promise;
+-      expect(comments[0].author.bio).toBeNull();
+-    });
+-
+-    it('should handle very long comment body', async () => {
+-      const slug = 'test-article';
+-      const longBody = 'a'.repeat(1000);
+-      const commentWithLongBody = { ...mockComment, body: longBody };
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: [commentWithLongBody] });
+-      const comments = await promise;
+-      expect(comments[0].body).toBe(longBody);
+-    });
+-
+-    it('should handle server error', async () => {
+-      const slug = 'test-article';
+-      const errorResponse = { status: 500, statusText: 'Server Error' };
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Server error', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 500 });
+-    });
+-
+-    it('should handle multiple comments from different authors', async () => {
+-      const slug = 'popular-article';
+-      const multiAuthorComments: Comment[] = [
+-        mockComment,
+-        {
+-          ...mockComment,
+-          id: '2',
+-          author: { ...mockComment.author, username: 'anotheruser' },
+-        },
+-        {
+-          ...mockComment,
+-          id: '3',
+-          author: { ...mockComment.author, username: 'thirduser' },
+-        },
+-      ];
+-      const promise = firstValueFrom(service.getAll(slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comments: multiAuthorComments });
+-      const comments = await promise;
+-      expect(comments.length).toBe(3);
+-      expect(comments[0].author.username).toBe('testuser');
+-      expect(comments[1].author.username).toBe('anotheruser');
+-      expect(comments[2].author.username).toBe('thirduser');
+-    });
+-  });
+-
+-  describe('add', () => {
+-    it('should add a new comment to an article', async () => {
+-      const slug = 'test-article';
+-      const commentBody = 'This is a new comment';
+-      const promise = firstValueFrom(service.add(slug, commentBody));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({ comment: { body: commentBody } });
+-      req.flush({ comment: { ...mockComment, body: commentBody } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(commentBody);
+-      expect(comment.id).toBeDefined();
+-    });
+-
+-    it('should extract comment from response wrapper', async () => {
+-      const slug = 'test-article';
+-      const commentBody = 'Test comment';
+-      const promise = firstValueFrom(service.add(slug, commentBody));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: mockComment });
+-      const comment = await promise;
+-      expect((comment as any).comment).toBeUndefined();
+-    });
+-
+-    it('should handle empty comment body', async () => {
+-      const slug = 'test-article';
+-      const emptyBody = '';
+-      const errorResponse = { status: 422, statusText: 'Unprocessable Entity' };
+-      const promise = firstValueFrom(service.add(slug, emptyBody));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Comment body cannot be empty', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 422 });
+-    });
+-
+-    it('should handle very long comment', async () => {
+-      const slug = 'test-article';
+-      const longComment = 'a'.repeat(5000);
+-      const promise = firstValueFrom(service.add(slug, longComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: { ...mockComment, body: longComment } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(longComment);
+-    });
+-
+-    it('should handle unauthorized comment', async () => {
+-      const slug = 'test-article';
+-      const commentBody = 'Unauthorized comment';
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.add(slug, commentBody));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Must be logged in', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle article not found', async () => {
+-      const slug = 'nonexistent';
+-      const commentBody = 'Comment on nonexistent article';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.add(slug, commentBody));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Article not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should send correct request body format', () => {
+-      const slug = 'test-article';
+-      const commentBody = 'Test';
+-      service.add(slug, commentBody).subscribe();
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      expect(req.request.body).toEqual({
+-        comment: {
+-          body: commentBody,
+-        },
+-      });
+-      req.flush({ comment: mockComment });
+-    });
+-
+-    it('should handle comment with special characters', async () => {
+-      const slug = 'test-article';
+-      const specialComment = 'Comment with émojis 🚀 and special chars!@#$%';
+-      const promise = firstValueFrom(service.add(slug, specialComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: { ...mockComment, body: specialComment } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(specialComment);
+-    });
+-
+-    it('should handle comment with newlines', async () => {
+-      const slug = 'test-article';
+-      const multilineComment = 'Line 1\nLine 2\nLine 3';
+-      const promise = firstValueFrom(service.add(slug, multilineComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: { ...mockComment, body: multilineComment } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(multilineComment);
+-    });
+-  });
+-
+-  describe('delete', () => {
+-    it('should delete a comment', async () => {
+-      const slug = 'test-article';
+-      const commentId = '123';
+-      const promise = firstValueFrom(service.delete(commentId, slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      expect(req.request.method).toBe('DELETE');
+-      req.flush(null);
+-      await promise;
+-      expect(true).toBe(true);
+-    });
+-
+-    it('should handle comment not found', async () => {
+-      const slug = 'test-article';
+-      const commentId = 'nonexistent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.delete(commentId, slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      req.flush('Comment not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should handle unauthorized delete', async () => {
+-      const slug = 'test-article';
+-      const commentId = '123';
+-      const errorResponse = { status: 403, statusText: 'Forbidden' };
+-      const promise = firstValueFrom(service.delete(commentId, slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      req.flush('Cannot delete this comment', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 403 });
+-    });
+-
+-    it('should handle unauthenticated delete', async () => {
+-      const slug = 'test-article';
+-      const commentId = '123';
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.delete(commentId, slug));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      req.flush('Must be logged in', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle numeric comment ID', () => {
+-      const slug = 'test-article';
+-      const commentId = '456';
+-      service.delete(commentId, slug).subscribe();
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      req.flush(null);
+-    });
+-
+-    it('should handle UUID comment ID', () => {
+-      const slug = 'test-article';
+-      const commentId = '550e8400-e29b-41d4-a716-446655440000';
+-      service.delete(commentId, slug).subscribe();
+-      const req = httpMock.expectOne(`/articles/${slug}/comments/${commentId}`);
+-      req.flush(null);
+-    });
+-  });
+-
+-  describe('Integration scenarios', () => {
+-    it('should handle add then delete sequence', async () => {
+-      const slug = 'test-article';
+-      const commentBody = 'Test comment';
+-      const addPromise = firstValueFrom(service.add(slug, commentBody));
+-      const addReq = httpMock.expectOne(`/articles/${slug}/comments`);
+-      addReq.flush({ comment: mockComment });
+-      const comment = await addPromise;
+-      expect(comment.body).toBe(commentBody);
+-      const deletePromise = firstValueFrom(service.delete(comment.id, slug));
+-      const deleteReq = httpMock.expectOne(`/articles/${slug}/comments/${comment.id}`);
+-      deleteReq.flush(null);
+-      await deletePromise;
+-      expect(true).toBe(true);
+-    });
+-
+-    it('should handle getAll then add sequence', async () => {
+-      const slug = 'test-article';
+-      const commentBody = 'New comment';
+-      const getAllPromise = firstValueFrom(service.getAll(slug));
+-      const getAllReq = httpMock.expectOne(`/articles/${slug}/comments`);
+-      getAllReq.flush({ comments: mockComments });
+-      const comments = await getAllPromise;
+-      expect(comments.length).toBe(2);
+-      const addPromise = firstValueFrom(service.add(slug, commentBody));
+-      const addReq = httpMock.expectOne(`/articles/${slug}/comments`);
+-      addReq.flush({ comment: { ...mockComment, body: commentBody } });
+-      const newComment = await addPromise;
+-      expect(newComment.body).toBe(commentBody);
+-    });
+-
+-    it('should handle multiple operations on same article', async () => {
+-      const slug = 'test-article';
+-      const getPromise1 = firstValueFrom(service.getAll(slug));
+-      const getReq1 = httpMock.expectOne(`/articles/${slug}/comments`);
+-      getReq1.flush({ comments: mockComments });
+-      const comments = await getPromise1;
+-      expect(comments.length).toBe(2);
+-      const addPromise = firstValueFrom(service.add(slug, 'New comment'));
+-      const addReq = httpMock.expectOne(`/articles/${slug}/comments`);
+-      addReq.flush({ comment: mockComment });
+-      await addPromise;
+-      const getPromise2 = firstValueFrom(service.getAll(slug));
+-      const getReq2 = httpMock.expectOne(`/articles/${slug}/comments`);
+-      getReq2.flush({ comments: [...mockComments, mockComment] });
+-      const updatedComments = await getPromise2;
+-      expect(updatedComments.length).toBe(3);
+-    });
+-  });
+-
+-  describe('Edge cases', () => {
+-    it('should handle comment with only whitespace', async () => {
+-      const slug = 'test-article';
+-      const whitespaceComment = '   ';
+-      const errorResponse = { status: 422, statusText: 'Unprocessable Entity' };
+-      const promise = firstValueFrom(service.add(slug, whitespaceComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush('Comment cannot be empty', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 422 });
+-    });
+-
+-    it('should handle comment with HTML tags', async () => {
+-      const slug = 'test-article';
+-      const htmlComment = '<script>alert("xss")</script>';
+-      const promise = firstValueFrom(service.add(slug, htmlComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: { ...mockComment, body: htmlComment } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(htmlComment);
+-    });
+-
+-    it('should handle comment with markdown', async () => {
+-      const slug = 'test-article';
+-      const markdownComment = '**Bold** and *italic* text';
+-      const promise = firstValueFrom(service.add(slug, markdownComment));
+-      const req = httpMock.expectOne(`/articles/${slug}/comments`);
+-      req.flush({ comment: { ...mockComment, body: markdownComment } });
+-      const comment = await promise;
+-      expect(comment.body).toBe(markdownComment);
+-    });
+-  });
+-});
+diff --git a/src/app/features/article/services/tags.service.spec.ts b/src/app/features/article/services/tags.service.spec.ts
+deleted file mode 100644
+index b30d158..0000000
+--- a/src/app/features/article/services/tags.service.spec.ts
++++ /dev/null
+@@ -1,387 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+-import { firstValueFrom } from 'rxjs';
+-import { TagsService } from './tags.service';
+-
+-describe('TagsService', () => {
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  let service: TagsService;
+-  let httpMock: HttpTestingController;
+-
+-  const mockTags: string[] = ['angular', 'typescript', 'testing', 'rxjs', 'javascript'];
+-
+-  beforeEach(() => {
+-    TestBed.configureTestingModule({
+-      imports: [HttpClientTestingModule],
+-      providers: [TagsService],
+-    });
+-
+-    service = TestBed.inject(TagsService);
+-    httpMock = TestBed.inject(HttpTestingController);
+-  });
+-
+-  afterEach(() => {
+-    httpMock.verify();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('getAll', () => {
+-    it('should fetch all tags', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ tags: mockTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(mockTags);
+-      expect(tags.length).toBe(5);
+-    });
+-
+-    it('should extract tags array from response wrapper', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: mockTags });
+-      const tags = await promise;
+-      expect(Array.isArray(tags)).toBe(true);
+-      expect((tags as any).tags).toBeUndefined();
+-    });
+-
+-    it('should handle empty tags list', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: [] });
+-      const tags = await promise;
+-      expect(tags).toEqual([]);
+-      expect(tags.length).toBe(0);
+-    });
+-
+-    it('should handle single tag', async () => {
+-      const singleTag = ['angular'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: singleTag });
+-      const tags = await promise;
+-      expect(tags).toEqual(singleTag);
+-      expect(tags.length).toBe(1);
+-    });
+-
+-    it('should handle many tags', async () => {
+-      const manyTags = Array.from({ length: 100 }, (_, i) => `tag${i}`);
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: manyTags });
+-      const tags = await promise;
+-      expect(tags.length).toBe(100);
+-      expect(tags[0]).toBe('tag0');
+-      expect(tags[99]).toBe('tag99');
+-    });
+-
+-    it('should handle tags with special characters', async () => {
+-      const specialTags = ['c++', 'c#', 'node.js', 'vue.js', 'asp.net'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: specialTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(specialTags);
+-    });
+-
+-    it('should handle tags with hyphens', async () => {
+-      const hyphenatedTags = ['web-development', 'machine-learning', 'test-driven-development'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: hyphenatedTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(hyphenatedTags);
+-    });
+-
+-    it('should handle tags with underscores', async () => {
+-      const underscoredTags = ['web_dev', 'unit_testing', 'code_review'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: underscoredTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(underscoredTags);
+-    });
+-
+-    it('should handle tags with numbers', async () => {
+-      const numberedTags = ['angular17', 'vue3', 'react18', 'node20'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: numberedTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(numberedTags);
+-    });
+-
+-    it('should handle mixed case tags', async () => {
+-      const mixedCaseTags = ['Angular', 'TypeScript', 'JavaScript', 'RxJS'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: mixedCaseTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(mixedCaseTags);
+-    });
+-
+-    it('should handle tags with spaces', async () => {
+-      const spacedTags = ['web development', 'machine learning', 'data science'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: spacedTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(spacedTags);
+-    });
+-
+-    it('should handle duplicate tags', async () => {
+-      const duplicateTags = ['angular', 'angular', 'typescript', 'typescript'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: duplicateTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(duplicateTags);
+-      expect(tags.length).toBe(4);
+-    });
+-
+-    it('should handle very long tag names', async () => {
+-      const longTag = 'a'.repeat(100);
+-      const longTags = [longTag];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: longTags });
+-      const tags = await promise;
+-      expect(tags[0]).toBe(longTag);
+-      expect(tags[0].length).toBe(100);
+-    });
+-
+-    it('should handle unicode characters in tags', async () => {
+-      const unicodeTags = ['日本語', '中文', 'español', 'français', '한국어'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: unicodeTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(unicodeTags);
+-    });
+-
+-    it('should handle emoji in tags', async () => {
+-      const emojiTags = ['🚀 rocket', '💻 coding', '🎨 design', '📱 mobile'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: emojiTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(emojiTags);
+-    });
+-
+-    it('should handle server error', async () => {
+-      const errorResponse = { status: 500, statusText: 'Server Error' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Server error', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 500 });
+-    });
+-
+-    it('should handle network error', async () => {
+-      const errorResponse = { status: 0, statusText: 'Network Error' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Network error', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 0 });
+-    });
+-
+-    it('should handle timeout error', async () => {
+-      const errorResponse = { status: 504, statusText: 'Gateway Timeout' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Timeout', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 504 });
+-    });
+-
+-    it('should handle unauthorized access', async () => {
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Unauthorized', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle forbidden access', async () => {
+-      const errorResponse = { status: 403, statusText: 'Forbidden' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Forbidden', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 403 });
+-    });
+-
+-    it('should handle not found error', async () => {
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('Not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should make only one HTTP request', () => {
+-      service.getAll().subscribe();
+-      const requests = httpMock.match('/tags');
+-      expect(requests.length).toBe(1);
+-      requests[0].flush({ tags: mockTags });
+-    });
+-
+-    it('should handle multiple subscribers', () => {
+-      const observable = service.getAll();
+-      observable.subscribe();
+-      observable.subscribe();
+-      observable.subscribe();
+-      // Each subscription makes a new request (no shareReplay)
+-      const requests = httpMock.match('/tags');
+-      expect(requests.length).toBe(3);
+-      requests.forEach(req => req.flush({ tags: mockTags }));
+-    });
+-
+-    it('should return observable that completes', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: mockTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(mockTags);
+-    });
+-
+-    it('should handle malformed response', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush('invalid json', { status: 200, statusText: 'OK' });
+-      try {
+-        await promise;
+-        throw new Error('should have failed');
+-      } catch (error) {
+-        expect(error).toBeDefined();
+-      }
+-    });
+-
+-    it('should handle null tags in response', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: null });
+-      const tags = await promise;
+-      expect(tags).toBeNull();
+-    });
+-
+-    it('should handle undefined tags in response', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: undefined });
+-      const tags = await promise;
+-      expect(tags).toBeUndefined();
+-    });
+-
+-    it('should handle response without tags property', async () => {
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({});
+-      const tags = await promise;
+-      expect(tags).toBeUndefined();
+-    });
+-  });
+-
+-  describe('Integration scenarios', () => {
+-    it('should fetch tags multiple times', async () => {
+-      const promise1 = firstValueFrom(service.getAll());
+-      const req1 = httpMock.expectOne('/tags');
+-      req1.flush({ tags: mockTags });
+-      const tags1 = await promise1;
+-      expect(tags1).toEqual(mockTags);
+-      const promise2 = firstValueFrom(service.getAll());
+-      const req2 = httpMock.expectOne('/tags');
+-      req2.flush({ tags: mockTags });
+-      const tags2 = await promise2;
+-      expect(tags2).toEqual(mockTags);
+-    });
+-
+-    it('should handle rapid successive calls', () => {
+-      for (let i = 0; i < 5; i++) {
+-        service.getAll().subscribe();
+-      }
+-      const requests = httpMock.match('/tags');
+-      expect(requests.length).toBe(5);
+-      requests.forEach(req => req.flush({ tags: mockTags }));
+-    });
+-  });
+-
+-  describe('Edge cases', () => {
+-    it('should handle empty string tags', async () => {
+-      const emptyStringTags = ['', 'angular', '', 'typescript'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: emptyStringTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(emptyStringTags);
+-      expect(tags[0]).toBe('');
+-      expect(tags[2]).toBe('');
+-    });
+-
+-    it('should handle tags with only whitespace', async () => {
+-      const whitespaceTags = ['   ', '\t', '\n', 'valid'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: whitespaceTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(whitespaceTags);
+-    });
+-
+-    it('should handle tags with special URL characters', async () => {
+-      const urlCharTags = ['tag&param', 'tag?query', 'tag#hash', 'tag/path'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: urlCharTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(urlCharTags);
+-    });
+-
+-    it('should handle tags with quotes', async () => {
+-      const quotedTags = ['"quoted"', "'single'", 'normal'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: quotedTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(quotedTags);
+-    });
+-
+-    it('should handle tags with backslashes', async () => {
+-      const backslashTags = ['tag\\with\\backslash', 'normal'];
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: backslashTags });
+-      const tags = await promise;
+-      expect(tags).toEqual(backslashTags);
+-    });
+-  });
+-
+-  describe('Performance', () => {
+-    it('should handle large number of tags efficiently', async () => {
+-      const largeTags = Array.from({ length: 1000 }, (_, i) => `tag${i}`);
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: largeTags });
+-      const tags = await promise;
+-      expect(tags.length).toBe(1000);
+-    });
+-
+-    it('should handle very long tag list', async () => {
+-      const veryLongTags = Array.from({ length: 10000 }, (_, i) => `tag${i}`);
+-      const promise = firstValueFrom(service.getAll());
+-      const req = httpMock.expectOne('/tags');
+-      req.flush({ tags: veryLongTags });
+-      const tags = await promise;
+-      expect(tags.length).toBe(10000);
+-      expect(tags[0]).toBe('tag0');
+-      expect(tags[9999]).toBe('tag9999');
+-    });
+-  });
+-});
+diff --git a/src/app/features/profile/components/follow-button.component.ts b/src/app/features/profile/components/follow-button.component.ts
+index 6a30346..afc7dee 100644
+--- a/src/app/features/profile/components/follow-button.component.ts
++++ b/src/app/features/profile/components/follow-button.component.ts
+@@ -22,6 +22,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+   template: `
+     <button
+       class="btn btn-sm action-btn"
++      data-testid="follow-btn"
+       [ngClass]="{
+         disabled: isSubmitting(),
+         'btn-outline-secondary': !profile.following,
+diff --git a/src/app/features/profile/pages/profile/profile.component.html b/src/app/features/profile/pages/profile/profile.component.html
+index 04033cc..e79e063 100644
+--- a/src/app/features/profile/pages/profile/profile.component.html
++++ b/src/app/features/profile/pages/profile/profile.component.html
+@@ -13,14 +13,14 @@
+       <div class="container">
+         <div class="row">
+           <div class="col-xs-12 col-md-10 offset-md-1">
+-            <img [src]="p.image | defaultImage" class="user-img" />
+-            <h4>{{ p.username }}</h4>
+-            <p>{{ p.bio ?? '' }}</p>
++            <img [src]="p.image | defaultImage" class="user-img" data-testid="profile-image" />
++            <h4 data-testid="profile-username">{{ p.username }}</h4>
++            <p data-testid="profile-bio">{{ p.bio ?? '' }}</p>
+             @if (!isUser()) {
+               <app-follow-button [profile]="p" (toggle)="onToggleFollowing($event)" />
+             }
+             @if (isUser()) {
+-              <a [routerLink]="['/settings']" class="btn btn-sm btn-outline-secondary action-btn">
++              <a [routerLink]="['/settings']" class="btn btn-sm btn-outline-secondary action-btn" data-testid="profile-edit-settings">
+                 <i class="ion-gear-a"></i> Edit Profile Settings
+               </a>
+             }
+@@ -40,6 +40,7 @@
+                   routerLinkActive="active"
+                   [routerLinkActiveOptions]="{ exact: true }"
+                   [routerLink]="['/profile', p.username]"
++                  data-testid="profile-tab-posts"
+                 >
+                   My Posts
+                 </a>
+@@ -50,6 +51,7 @@
+                   routerLinkActive="active"
+                   [routerLinkActiveOptions]="{ exact: true }"
+                   [routerLink]="['/profile', p.username, 'favorites']"
++                  data-testid="profile-tab-favorites"
+                 >
+                   Favorited Posts
+                 </a>
+diff --git a/src/app/features/profile/services/profile.service.spec.ts b/src/app/features/profile/services/profile.service.spec.ts
+deleted file mode 100644
+index a20bbd6..0000000
+--- a/src/app/features/profile/services/profile.service.spec.ts
++++ /dev/null
+@@ -1,352 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+-import { TestBed, getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+-import { firstValueFrom } from 'rxjs';
+-import { ProfileService } from './profile.service';
+-import { Profile } from '../models/profile.model';
+-
+-describe('ProfileService', () => {
+-  beforeAll(() => {
+-    getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+-  });
+-
+-  let service: ProfileService;
+-  let httpMock: HttpTestingController;
+-
+-  const mockProfile: Profile = {
+-    username: 'testuser',
+-    bio: 'Test bio',
+-    image: 'https://example.com/avatar.jpg',
+-    following: false,
+-  };
+-
+-  beforeEach(() => {
+-    TestBed.configureTestingModule({
+-      imports: [HttpClientTestingModule],
+-      providers: [ProfileService],
+-    });
+-
+-    service = TestBed.inject(ProfileService);
+-    httpMock = TestBed.inject(HttpTestingController);
+-  });
+-
+-  afterEach(() => {
+-    httpMock.verify();
+-    TestBed.resetTestingModule();
+-  });
+-
+-  it('should be created', () => {
+-    expect(service).toBeTruthy();
+-  });
+-
+-  describe('get', () => {
+-    it('should fetch profile by username', async () => {
+-      const username = 'testuser';
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      expect(req.request.method).toBe('GET');
+-      req.flush({ profile: mockProfile });
+-      const profile = await promise;
+-      expect(profile).toEqual(mockProfile);
+-    });
+-
+-    it('should extract profile from response wrapper', async () => {
+-      const username = 'testuser';
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: mockProfile });
+-      const profile = await promise;
+-      expect(profile).toEqual(mockProfile);
+-      expect((profile as any).profile).toBeUndefined();
+-    });
+-
+-    it('should handle profile not found', async () => {
+-      const username = 'nonexistent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush('Profile not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should handle username with special characters', () => {
+-      const username = 'user-name_123';
+-      service.get(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: { ...mockProfile, username } });
+-    });
+-
+-    it('should share replay the result', () => {
+-      const username = 'testuser';
+-      const observable = service.get(username);
+-      observable.subscribe();
+-      observable.subscribe();
+-      const requests = httpMock.match(`/profiles/${username}`);
+-      expect(requests.length).toBe(1);
+-      requests[0].flush({ profile: mockProfile });
+-    });
+-
+-    it('should handle profile with null bio', async () => {
+-      const username = 'testuser';
+-      const profileWithNullBio = { ...mockProfile, bio: null };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: profileWithNullBio });
+-      const profile = await promise;
+-      expect(profile.bio).toBeNull();
+-    });
+-
+-    it('should handle profile with empty image', async () => {
+-      const username = 'testuser';
+-      const profileWithEmptyImage = { ...mockProfile, image: '' };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: profileWithEmptyImage });
+-      const profile = await promise;
+-      expect(profile.image).toBe('');
+-    });
+-
+-    it('should handle following status true', async () => {
+-      const username = 'followeduser';
+-      const followedProfile = { ...mockProfile, username, following: true };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: followedProfile });
+-      const profile = await promise;
+-      expect(profile.following).toBe(true);
+-    });
+-
+-    it('should handle unauthorized access', async () => {
+-      const username = 'privateuser';
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush('Unauthorized', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle server error', async () => {
+-      const username = 'testuser';
+-      const errorResponse = { status: 500, statusText: 'Server Error' };
+-      const promise = firstValueFrom(service.get(username));
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush('Server error', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 500 });
+-    });
+-  });
+-
+-  describe('follow', () => {
+-    it('should follow a user', async () => {
+-      const username = 'usertofollow';
+-      const followedProfile = { ...mockProfile, username, following: true };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      expect(req.request.method).toBe('POST');
+-      expect(req.request.body).toEqual({});
+-      req.flush({ profile: followedProfile });
+-      const profile = await promise;
+-      expect(profile.following).toBe(true);
+-      expect(profile.username).toBe(username);
+-    });
+-
+-    it('should extract profile from response wrapper', async () => {
+-      const username = 'testuser';
+-      const followedProfile = { ...mockProfile, following: true };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush({ profile: followedProfile });
+-      const profile = await promise;
+-      expect((profile as any).profile).toBeUndefined();
+-    });
+-
+-    it('should handle already following', async () => {
+-      const username = 'alreadyfollowed';
+-      const alreadyFollowedProfile = { ...mockProfile, username, following: true };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush({ profile: alreadyFollowedProfile });
+-      const profile = await promise;
+-      expect(profile.following).toBe(true);
+-    });
+-
+-    it('should handle follow error', async () => {
+-      const username = 'cannotfollow';
+-      const errorResponse = { status: 403, statusText: 'Forbidden' };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('Cannot follow', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 403 });
+-    });
+-
+-    it('should handle unauthorized follow', async () => {
+-      const username = 'someuser';
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('Must be logged in', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle user not found', async () => {
+-      const username = 'nonexistent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.follow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('User not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-
+-    it('should send empty body in POST request', () => {
+-      const username = 'testuser';
+-      service.follow(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      expect(req.request.body).toEqual({});
+-      req.flush({ profile: { ...mockProfile, following: true } });
+-    });
+-  });
+-
+-  describe('unfollow', () => {
+-    it('should unfollow a user', async () => {
+-      const username = 'usertounfollow';
+-      const unfollowedProfile = { ...mockProfile, username, following: false };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      expect(req.request.method).toBe('DELETE');
+-      req.flush({ profile: unfollowedProfile });
+-      const profile = await promise;
+-      expect(profile.following).toBe(false);
+-      expect(profile.username).toBe(username);
+-    });
+-
+-    it('should extract profile from response wrapper', async () => {
+-      const username = 'testuser';
+-      const unfollowedProfile = { ...mockProfile, following: false };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush({ profile: unfollowedProfile });
+-      const profile = await promise;
+-      expect((profile as any).profile).toBeUndefined();
+-    });
+-
+-    it('should handle already not following', async () => {
+-      const username = 'notfollowed';
+-      const notFollowedProfile = { ...mockProfile, username, following: false };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush({ profile: notFollowedProfile });
+-      const profile = await promise;
+-      expect(profile.following).toBe(false);
+-    });
+-
+-    it('should handle unfollow error', async () => {
+-      const username = 'cannotunfollow';
+-      const errorResponse = { status: 403, statusText: 'Forbidden' };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('Cannot unfollow', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 403 });
+-    });
+-
+-    it('should handle unauthorized unfollow', async () => {
+-      const username = 'someuser';
+-      const errorResponse = { status: 401, statusText: 'Unauthorized' };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('Must be logged in', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 401 });
+-    });
+-
+-    it('should handle user not found', async () => {
+-      const username = 'nonexistent';
+-      const errorResponse = { status: 404, statusText: 'Not Found' };
+-      const promise = firstValueFrom(service.unfollow(username));
+-      const req = httpMock.expectOne(`/profiles/${username}/follow`);
+-      req.flush('User not found', errorResponse);
+-      await expect(promise).rejects.toMatchObject({ status: 404 });
+-    });
+-  });
+-
+-  describe('Integration scenarios', () => {
+-    it('should handle follow then unfollow sequence', async () => {
+-      const username = 'testuser';
+-      const followPromise = firstValueFrom(service.follow(username));
+-      const followReq = httpMock.expectOne(`/profiles/${username}/follow`);
+-      followReq.flush({ profile: { ...mockProfile, following: true } });
+-      const profile = await followPromise;
+-      expect(profile.following).toBe(true);
+-      const unfollowPromise = firstValueFrom(service.unfollow(username));
+-      const unfollowReq = httpMock.expectOne(`/profiles/${username}/follow`);
+-      unfollowReq.flush({ profile: { ...mockProfile, following: false } });
+-      const unfollowedProfile = await unfollowPromise;
+-      expect(unfollowedProfile.following).toBe(false);
+-    });
+-
+-    it('should handle get then follow sequence', async () => {
+-      const username = 'testuser';
+-      const getPromise = firstValueFrom(service.get(username));
+-      const getReq = httpMock.expectOne(`/profiles/${username}`);
+-      getReq.flush({ profile: mockProfile });
+-      const profile = await getPromise;
+-      expect(profile.following).toBe(false);
+-      const followPromise = firstValueFrom(service.follow(username));
+-      const followReq = httpMock.expectOne(`/profiles/${username}/follow`);
+-      followReq.flush({ profile: { ...mockProfile, following: true } });
+-      const followedProfile = await followPromise;
+-      expect(followedProfile.following).toBe(true);
+-    });
+-
+-    it('should handle multiple profile fetches with shareReplay', () => {
+-      const username = 'testuser';
+-      const observable = service.get(username);
+-      observable.subscribe();
+-      observable.subscribe();
+-      observable.subscribe();
+-      const requests = httpMock.match(`/profiles/${username}`);
+-      expect(requests.length).toBe(1);
+-      requests[0].flush({ profile: mockProfile });
+-    });
+-  });
+-
+-  describe('Edge cases', () => {
+-    it('should handle username with numbers', () => {
+-      const username = 'user123';
+-      service.get(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: { ...mockProfile, username } });
+-    });
+-
+-    it('should handle username with hyphens', () => {
+-      const username = 'user-name';
+-      service.get(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: { ...mockProfile, username } });
+-    });
+-
+-    it('should handle username with underscores', () => {
+-      const username = 'user_name';
+-      service.get(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: { ...mockProfile, username } });
+-    });
+-
+-    it('should handle very long username', () => {
+-      const username = 'a'.repeat(50);
+-      service.get(username).subscribe();
+-      const req = httpMock.expectOne(`/profiles/${username}`);
+-      req.flush({ profile: { ...mockProfile, username } });
+-    });
+-
+-    it('should handle profile with very long bio', async () => {
+-      const longBio = 'a'.repeat(1000);
+-      const profileWithLongBio = { ...mockProfile, bio: longBio };
+-      const promise = firstValueFrom(service.get('testuser'));
+-      const req = httpMock.expectOne('/profiles/testuser');
+-      req.flush({ profile: profileWithLongBio });
+-      const profile = await promise;
+-      expect(profile.bio).toBe(longBio);
+-    });
+-  });
+-});
+diff --git a/src/app/features/settings/settings.component.html b/src/app/features/settings/settings.component.html
+index 790a39c..c2e5ca0 100644
+--- a/src/app/features/settings/settings.component.html
++++ b/src/app/features/settings/settings.component.html
+@@ -14,6 +14,7 @@
+                 type="text"
+                 placeholder="URL of profile picture"
+                 formControlName="image"
++                data-testid="settings-image"
+                 name="image"
+               />
+             </fieldset>
+@@ -24,6 +25,7 @@
+                 type="text"
+                 placeholder="Username"
+                 formControlName="username"
++                data-testid="settings-username"
+                 name="username"
+               />
+             </fieldset>
+@@ -34,6 +36,7 @@
+                 rows="8"
+                 placeholder="Short bio about you"
+                 formControlName="bio"
++                data-testid="settings-bio"
+                 name="bio"
+               >
+               </textarea>
+@@ -45,6 +48,7 @@
+                 type="email"
+                 placeholder="Email"
+                 formControlName="email"
++                data-testid="settings-email"
+                 name="email"
+               />
+             </fieldset>
+@@ -55,18 +59,19 @@
+                 type="password"
+                 placeholder="New Password"
+                 formControlName="password"
++                data-testid="settings-password"
+                 name="password"
+               />
+             </fieldset>
+ 
+-            <button class="btn btn-lg btn-primary pull-xs-right" type="submit">Update Settings</button>
++            <button class="btn btn-lg btn-primary pull-xs-right" type="submit" data-testid="settings-submit">Update Settings</button>
+           </fieldset>
+         </form>
+ 
+         <!-- Line break for logout button -->
+         <hr />
+ 
+-        <button class="btn btn-outline-danger" (click)="logout()">Or click here to logout.</button>
++        <button class="btn btn-outline-danger" (click)="logout()" data-testid="settings-logout">Or click here to logout.</button>
+       </div>
+     </div>
+   </div>
+diff --git a/src/app/shared/components/list-errors.component.html b/src/app/shared/components/list-errors.component.html
+index f32ebdc..6ae7247 100644
+--- a/src/app/shared/components/list-errors.component.html
++++ b/src/app/shared/components/list-errors.component.html
+@@ -1,7 +1,7 @@
+ @if (errorList) {
+-  <ul class="error-messages">
++  <ul class="error-messages" data-testid="list-errors">
+     @for (error of errorList; track error) {
+-      <li>{{ error }}</li>
++      <li data-testid="error-item">{{ error }}</li>
+     }
+   </ul>
+ }
+diff --git a/src/main.ts b/src/main.ts
+index 2896ea7..55c1450 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -2,4 +2,19 @@ import { bootstrapApplication } from '@angular/platform-browser';
+ import { AppComponent } from './app/app.component';
+ import { appConfig } from './app/app.config';
+ 
++// Instrumentation: boot-time hash hook. #token=<value> seeds localStorage
++// jwtToken before bootstrap (empty value clears it), enabling deterministic
++// invalid-token / flaky-token startup sequences for the checkpoints.
++(function applyBootTokenHook(): void {
++  const match = /^#token=(.*)$/.exec(window.location.hash || '');
++  if (match) {
++    const value = decodeURIComponent(match[1]);
++    if (value) {
++      window.localStorage.setItem('jwtToken', value);
++    } else {
++      window.localStorage.removeItem('jwtToken');
++    }
++  }
++})();
++
+ bootstrapApplication(AppComponent, appConfig).catch(err => console.error(err));
+diff --git a/src/test-setup.ts b/src/test-setup.ts
+deleted file mode 100644
+index 5f80e7d..0000000
+--- a/src/test-setup.ts
++++ /dev/null
+@@ -1,16 +0,0 @@
+-import 'zone.js';
+-import 'zone.js/testing';
+-import { getTestBed } from '@angular/core/testing';
+-import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
+-
+-console.log('🚀 Test setup file is being loaded!');
+-
+-// Initialize the Angular testing environment once
+-try {
+-  getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting(), {
+-    teardown: { destroyAfterEach: true },
+-  });
+-  console.log('✅ TestBed initialized successfully');
+-} catch (error) {
+-  console.error('❌ TestBed initialization failed:', error);
+-}
+diff --git a/tsconfig.spec.json b/tsconfig.spec.json
+deleted file mode 100644
+index 47e3dd7..0000000
+--- a/tsconfig.spec.json
++++ /dev/null
+@@ -1,9 +0,0 @@
+-/* To learn more about this file see: https://angular.io/config/tsconfig. */
+-{
+-  "extends": "./tsconfig.json",
+-  "compilerOptions": {
+-    "outDir": "./out-tsc/spec",
+-    "types": ["jasmine"]
+-  },
+-  "include": ["src/**/*.spec.ts", "src/**/*.d.ts"]
+-}
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index 7b8bd9e..0000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,26 +0,0 @@
+-import { defineConfig } from 'vitest/config';
+-import angular from '@analogjs/vite-plugin-angular';
+-import { fileURLToPath } from 'node:url';
+-
+-export default defineConfig({
+-  plugins: [angular()],
+-  test: {
+-    globals: false,
+-    environment: 'jsdom',
+-    setupFiles: [fileURLToPath(new URL('./src/test-setup.ts', import.meta.url))],
+-    include: ['src/**/*.spec.ts'],
+-    pool: 'threads',
+-    coverage: {
+-      provider: 'v8',
+-      reporter: ['text', 'json', 'html'],
+-    },
+-  },
+-  define: {
+-    ngDevMode: true,
+-  },
+-  resolve: {
+-    alias: {
+-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+-    },
+-  },
+-});

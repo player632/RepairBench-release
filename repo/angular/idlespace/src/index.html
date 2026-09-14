@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>IdleSpace</title>
+    <base href="/" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+
+    <!-- OFFLINE ADAPTATION (RepairBench). The three remote <script> tags that used to sit
+         here are gone, each for a different reason:
+         1. download.playfab.com/PlayFabClientApi.js - DELETED. src/app/main.service.ts:320-327
+            opens playFabLogin() with `if (!this.kongregate) { this.toastr.error(...); return; }`
+            and kongregate is only ever assigned inside the Kongregate branch below, so with the
+            Kongregate tag gone the whole PlayFab path is unreachable and the global is never
+            dereferenced (loadPlayFab() additionally guards on `typeof PlayFab === "undefined"`).
+         2. cdn1.kongregate.com/javascripts/kongregate_api.js - DELETED. src/app/main.service.ts:135
+            guards the only call site with
+            `if (url.includes("kongregate") && typeof kongregateAPI !== "undefined")`, and this
+            verifier never serves the app from a kongregate URL, so the branch is dead either way.
+         3. code.jquery.com/jquery-3.3.1.slim.min.js - VENDORED byte-exact into
+            src/assets/vendor/ and re-pointed at the local copy. It cannot be deleted: the
+            preventScroll() helper immediately below calls `$('.drag-list, .nav-content, ...')`
+            and `$('body')[0]`, and three component ngAfterViewInit hooks
+            (dark-matter, resource-overview, lab) call it, so a missing `$` is a hard pageError
+            on the very pages this task measures. The downloaded bytes were verified against the
+            SRI hash this tag carried (sha256-3edrmyuQ0w65f8gfBsqowzjJe2iM6n0nKciPUp8y+7E=,
+            69917 bytes, LF only). The integrity and crossorigin attributes are deliberately
+            dropped: a same-origin local file served without the CORS response headers the hash
+            was minted against is refused by the SRI check, which would be worse than the CDN.
+         src/assets is already an angular.json asset entry, so the vendored file lands in
+         dist/IdleSpace/assets/vendor/ with no build-config change. -->
+    <script src="assets/vendor/jquery-3.3.1.slim.min.js"></script>
+
+        <script>
+          preventScroll = function () {
+            setTimeout(function () {
+              $('.drag-list, .nav-content, .content-area, .app-header').on('DOMMouseScroll mousewheel', function (ev) {
+                body = $('body')[0]
+                var $this = $(this),
+                  scrollTop = this.scrollTop,
+                  scrollHeight = this.scrollHeight,
+                  height = $this.innerHeight(),
+                  delta = (ev.type == 'DOMMouseScroll' ?
+                    ev.originalEvent.detail * -40 :
+                    ev.originalEvent.wheelDelta),
+                  up = delta > 0;
+
+                var prevent = function () {
+                  ev.stopPropagation();
+                  ev.preventDefault();
+                  ev.returnValue = false;
+                  return false;
+                }
+
+                if($this.hasClass("drag-list")){
+                  //console.log(delta)
+                  $this.scrollTop(scrollTop -delta );
+                  return false;
+                }else{
+                if (!up && -delta > scrollHeight - height - scrollTop) {
+                  // Scrolling down, but this will take us past the bottom.
+                  $this.scrollTop(scrollHeight);
+                  return prevent();
+                } else if (up && delta > scrollTop) {
+                  // Scrolling up, but this will take us past the top.
+                  $this.scrollTop(0);
+                  return prevent();
+                }
+              }
+              }
+              )
+            }
+              , 0)
+          };
+        </script>
+
+    <style>
+      body {
+        margin: 0;
+      }
+      .flexCont {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      .loaderC {
+        text-align: center;
+        max-width: 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <app-root>
+      <div id="preload" class="flexCont">
+        <div class="loaderC">
+          <h1>
+            Idle Space
+          </h1>
+          <p>Loading<br />Optimized for latest Chromium and Firefox</p>
+        </div>
+      </div>
+    </app-root>
+
+    <!-- I just want to see if someone is playing my game -->
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <!-- OFFLINE ADAPTATION (RepairBench): the remote googletagmanager.com/gtag/js loader is
+         DELETED (pure analytics, zero functional loss). The inline window.dataLayer / gtag()
+         shim below is kept verbatim so the two gtag() calls that follow still resolve and no
+         ReferenceError is raised; analytics is a silent no-op in the verification environment. -->
+    <script>
+      window.dataLayer = window.dataLayer || []
+      function gtag() {
+        dataLayer.push(arguments)
+      }
+      gtag("js", new Date())
+
+      gtag("config", "UA-108006360-3")
+    </script>
+
+
+  </body>
+</html>

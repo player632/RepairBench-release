@@ -1,0 +1,47 @@
+name: Build and release web version for GitHub Pages
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22.4.x]
+
+    steps:
+    - name: Github checkout
+      uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - run: npm ci
+
+    - name: Running npm run build-github-pages..
+      run: npm run build-github-pages -- --base-href="https://ltres.github.io/trep-tracker/browser/"
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: 'dist/trep-tracker'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2
+      if: github.ref == 'refs/heads/master'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+

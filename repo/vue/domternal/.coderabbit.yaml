@@ -1,0 +1,146 @@
+early_access: false
+
+# CodeRabbit auto-activity is currently disabled. To turn it back on, flip
+# high_level_summary, review_status, commit_status and auto_review.enabled
+# to true and re-enable the finishing_touches blocks; the rest of the config
+# stays valid. Manual reviews keep working via `@coderabbitai review` on a PR.
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: false
+  poem: false
+  review_status: false
+  commit_status: false
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  abort_on_close: true
+  disable_cache: false
+
+  path_filters:
+    - '!**/dist/**'
+    - '!**/node_modules/**'
+    - '!**/.angular/**'
+    - '!**/coverage/**'
+    - '!**/playwright-report/**'
+    - '!**/test-results/**'
+    - '!pnpm-lock.yaml'
+    - '!**/*.min.js'
+    - '!**/*.map'
+
+  path_instructions:
+    - path: 'packages/core/**'
+      instructions: >-
+        ProseMirror-based editor core. Flag changes to the public API surface
+        (CI checks the tests/api-surface snapshot, so intentional API changes
+        must regenerate it), anything that breaks tree-shaking
+        (sideEffects: false), and changes to StarterKit composition.
+    - path: 'packages/{react,vue,angular,vanilla}/**'
+      instructions: >-
+        Framework wrappers. When logic changes in one wrapper, verify parity
+        across all four. Preserve framework idioms: React hook stability,
+        Vue computed() cast as ShallowRef for watch() compatibility, Angular
+        inject() DI with NgZone.run() around signal updates driven by
+        ProseMirror events, and dependency-free DOM code in vanilla.
+    - path: 'packages/extension-*/**'
+      instructions: >-
+        Standalone editor extensions built on the @domternal/core extension
+        API. Check command, keymap and input-rule registration, the
+        addToolbarItems() hook, the isFormatting flag on marks, bubble and
+        floating menu wiring through positionFloating, and that new public
+        exports come with a regenerated api-surface snapshot.
+    - path: 'packages/pm/**'
+      instructions: >-
+        Umbrella package re-exporting prosemirror-* modules through subpath
+        exports. Keep it re-export only: flag any added logic and any change
+        to the package.json exports map.
+    - path: 'packages/theme/**'
+      instructions: >-
+        Shared CSS theme. Watch --dm-* custom property naming, light and dark
+        variant parity, and WCAG AA contrast for text tokens.
+    - path: 'apps/demo-*/**'
+      instructions: >-
+        Demo apps showcasing editor features; keep behavior parity across all
+        four. The Angular demo runs zoneless, so demo code must stay
+        signal-driven. Don't flag test-only window globals.
+    - path: 'apps/demo-*/e2e/**'
+      instructions: >-
+        Playwright E2E. Don't flag long selectors, hardcoded timeouts, retries,
+        or test-only hooks like window.__DEMO_EDITOR__.
+    - path: 'tests/**'
+      instructions: >-
+        Root CI gates: api-surface snapshot, bundle-size budgets,
+        consumer-types, css-vars. Snapshot and budget updates should accompany
+        the change that motivates them; flag unexplained ones.
+    - path: '**/*.{test,spec}.ts'
+      instructions: >-
+        Test files. Don't flag non-null assertions or unsafe type patterns that
+        are explicitly allowed via eslint.config.mjs test-file overrides.
+    - path: '.github/workflows/**'
+      instructions: >-
+        GitHub Actions CI. Check for secret leaks, permission bloat, and
+        pinned action versions.
+
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+    drafts: false
+    base_branches:
+      - main
+
+  tools:
+    markdownlint:
+      enabled: true
+    actionlint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    github-checks:
+      enabled: true
+      timeout_ms: 180000
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+
+chat:
+  auto_reply: false
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
+
+code_generation:
+  docstrings:
+    language: en-US
+    path_instructions:
+      - path: 'packages/core/**'
+        instructions: >-
+          JSDoc for public API. Include @example blocks for commands and
+          extensions.
+      - path: 'packages/{react,vue,angular,vanilla}/**'
+        instructions: >-
+          JSDoc for hooks, composables and components. Document props, events,
+          and framework-specific caveats.
+  unit_tests:
+    path_instructions:
+      - path: 'packages/**/*.ts'
+        instructions: >-
+          Use Vitest. Mock ProseMirror state only when testing commands; prefer
+          a real Editor instance via DOMParser/new Editor() for integration
+          tests.

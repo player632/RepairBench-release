@@ -1,0 +1,620 @@
+diff --git a/src/app/@theme/components/header/header.component.html b/src/app/@theme/components/header/header.component.html
+index 6fdc5d3..cb9a739 100644
+--- a/src/app/@theme/components/header/header.component.html
++++ b/src/app/@theme/components/header/header.component.html
+@@ -5,8 +5,8 @@
+     </a>
+     <a class="logo" href="#" (click)="navigateHome()">ngx-<span>admin</span></a>
+   </div>
+-  <nb-select [selected]="currentTheme" (selectedChange)="changeTheme($event)" status="primary">
+-    <nb-option *ngFor="let theme of themes" [value]="theme.value"> {{ theme.name }}</nb-option>
++  <nb-select data-testid="header-theme-select" [selected]="currentTheme" (selectedChange)="changeTheme($event)" status="primary">
++    <nb-option [attr.data-testid]="'theme-opt-' + theme.value" *ngFor="let theme of themes" [value]="theme.value"> {{ theme.name }}</nb-option>
+   </nb-select>
+ </div>
+ 
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index 2962b9a..5541034 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -4,16 +4,19 @@
+  * Licensed under the MIT License. See License.txt in the project root for license information.
+  */
+ import { Component, OnInit } from '@angular/core';
++import { NbAuthService } from '@nebular/auth';
+ import { AnalyticsService } from './@core/utils/analytics.service';
+ import { SeoService } from './@core/utils/seo.service';
+ 
+ @Component({
+   selector: 'ngx-app',
+-  template: '<router-outlet></router-outlet>',
++  template: '<router-outlet></router-outlet><div data-testid=\"authed-indicator\" *ngIf=\"authed | async\"></div>',
+ })
+ export class AppComponent implements OnInit {
+ 
+-  constructor(private analytics: AnalyticsService, private seoService: SeoService) {
++  authed = this.authService.onAuthenticationChange();
++
++  constructor(private analytics: AnalyticsService, private seoService: SeoService, private authService: NbAuthService) {
+   }
+ 
+   ngOnInit(): void {
+diff --git a/src/app/pages/dashboard/contacts/contacts.component.html b/src/app/pages/dashboard/contacts/contacts.component.html
+index 0aac40b..2a656fe 100644
+--- a/src/app/pages/dashboard/contacts/contacts.component.html
++++ b/src/app/pages/dashboard/contacts/contacts.component.html
+@@ -1,4 +1,4 @@
+-<nb-card size="giant">
++<nb-card size="giant" data-testid="contacts-card">
+   <nb-tabset fullWidth>
+ 
+     <nb-tab tabTitle="Contacts">
+diff --git a/src/app/pages/dashboard/rooms/player/player.component.html b/src/app/pages/dashboard/rooms/player/player.component.html
+index 75323a8..69495d1 100644
+--- a/src/app/pages/dashboard/rooms/player/player.component.html
++++ b/src/app/pages/dashboard/rooms/player/player.component.html
+@@ -1,4 +1,4 @@
+-<nb-card>
++<nb-card data-testid="player-root" [attr.data-advanced]="getProgress() > 0 ? 'true' : null">
+   <nb-card-header class="header">My Playlist</nb-card-header>
+ 
+   <nb-card-body class="body">
+@@ -11,7 +11,7 @@
+     </div>
+ 
+     <div class="progress-wrap">
+-      <input dir="ltr" type="range" class="progress" [value]="getProgress()" min="0" max="100" step="0.01"
++      <input dir="ltr" type="range" class="progress" data-testid="player-progress" [value]="getProgress()" min="0" max="100" step="0.01"
+              (input)="setProgress(duration.value)" #duration>
+       <div class="progress-foreground" [style.width.%]="getProgress()"></div>
+     </div>
+@@ -28,11 +28,11 @@
+       <button class="control-button" nbButton ghost size="medium" (click)="prev()">
+         <nb-icon class="skip" icon="skip-back-outline" pack="eva"></nb-icon>
+       </button>
+-      <button class="control-button play-button" nbButton ghost size="medium" (click)="playPause()">
++      <button class="control-button play-button" nbButton ghost size="medium" data-testid="player-play" (click)="playPause()">
+         <nb-icon class="play" [icon]="player.paused ? 'play-circle-outline' : 'pause-circle-outline'" pack="eva">
+         </nb-icon>
+       </button>
+-      <button class="control-button skip-forward-button" nbButton ghost size="medium" (click)="next()">
++      <button class="control-button skip-forward-button" nbButton ghost size="medium" data-testid="player-next" (click)="next()">
+         <nb-icon class="skip" icon="skip-forward-outline" pack="eva"></nb-icon>
+       </button>
+       <button class="control-button" nbButton ghost size="tiny" (click)="toggleLoop()" [class.on]="player.loop">
+@@ -51,7 +51,7 @@
+                (input)="setVolume(volume.value)" #volume>
+         <div class="progress-foreground" [style.width.%]="getVolume()"></div>
+       </div>
+-      <button nbButton ghost size="small" (click)="setVolume(100)">
++      <button nbButton ghost size="small" data-testid="player-volume-up" (click)="setVolume(100)">
+         <nb-icon class="volume-icon" icon="volume-up-outline" pack="eva"></nb-icon>
+       </button>
+     </div>
+diff --git a/src/app/pages/dashboard/temperature/temperature-dragger/temperature-dragger.component.html b/src/app/pages/dashboard/temperature/temperature-dragger/temperature-dragger.component.html
+index 7f46e33..783a925 100644
+--- a/src/app/pages/dashboard/temperature/temperature-dragger/temperature-dragger.component.html
++++ b/src/app/pages/dashboard/temperature/temperature-dragger/temperature-dragger.component.html
+@@ -27,7 +27,7 @@
+         <path [attr.d]="styles.nonSelectedArc.d" [attr.fill]="styles.nonSelectedArc.color" *ngFor="let number of [0,1,2,3,4,5]"></path>
+       </g>
+ 
+-      <circle [attr.cx]="styles.thumbPosition.x"
++      <circle data-testid="temp-thumb" [attr.cx]="styles.thumbPosition.x"
+               [attr.cy]="styles.thumbPosition.y"
+               [attr.r]="pinRadius"
+               [attr.stroke-width]="thumbBorder / scaleFactor"
+diff --git a/src/app/pages/dashboard/temperature/temperature.component.html b/src/app/pages/dashboard/temperature/temperature.component.html
+index 8f6c0e4..201228d 100644
+--- a/src/app/pages/dashboard/temperature/temperature.component.html
++++ b/src/app/pages/dashboard/temperature/temperature.component.html
+@@ -4,12 +4,17 @@
+     <nb-tab tabTitle="Temperature">
+ 
+       <div class="slider-container">
+-        <ngx-temperature-dragger [(value)]="temperature" (power)="temperatureOff = !$event"
++        <div class="wlb-drag-probe" data-testid="temp-drag-target-a" style="left:70%;top:15%"></div>
++        <div class="wlb-drag-probe" data-testid="temp-drag-target-b" style="left:82%;top:30%"></div>
++        <div class="wlb-drag-probe" data-testid="temp-drag-target-c" style="left:85%;top:52%"></div>
++        <div class="wlb-drag-probe" data-testid="temp-drag-target-d" style="left:50%;top:6%"></div>
++        <div class="wlb-drag-probe" data-testid="temp-drag-target-e" style="left:16%;top:30%"></div>
++        <ngx-temperature-dragger data-testid="temp-dragger" [(value)]="temperature" (power)="temperatureOff = !$event"
+                                  [min]="temperatureData.min" [max]="temperatureData.max" [disableArcColor]="theme.arcEmpty"
+                                  [fillColors]="theme.arcFill" [thumbBg]="theme.thumbBg" [thumbBorderColor]="theme.thumbBorder">
+ 
+           <div class="slider-value-container"  [ngClass]="{ 'off': temperatureOff }">
+-            <div class="value temperature h1">
++            <div class="value temperature h1" data-testid="temp-value">
+               {{ temperatureOff ? '--' : (temperature | ngxRound) }}
+             </div>
+             <div class="desc">
+diff --git a/src/app/pages/dashboard/temperature/temperature.component.scss b/src/app/pages/dashboard/temperature/temperature.component.scss
+index eb26cd6..a8e0d2d 100644
+--- a/src/app/pages/dashboard/temperature/temperature.component.scss
++++ b/src/app/pages/dashboard/temperature/temperature.component.scss
+@@ -28,6 +28,7 @@
+   }
+ 
+   .slider-container {
++    position: relative;
+     display: flex;
+     flex: 1;
+     -ms-flex: 1 1 auto;
+@@ -35,6 +36,13 @@
+     align-items: center;
+   }
+ 
++  .wlb-drag-probe {
++    position: absolute;
++    width: 2px;
++    height: 2px;
++    z-index: 5;
++  }
++
+   ngx-temperature-dragger {
+     margin-top: -1.5rem;
+     width: 100%;
+diff --git a/src/app/pages/e-commerce/earning-card/front-side/earning-card-front.component.html b/src/app/pages/e-commerce/earning-card/front-side/earning-card-front.component.html
+index 0f93231..5992915 100644
+--- a/src/app/pages/e-commerce/earning-card/front-side/earning-card-front.component.html
++++ b/src/app/pages/e-commerce/earning-card/front-side/earning-card-front.component.html
+@@ -1,12 +1,12 @@
+ <nb-card-header>
+-  <nb-select [selected]="selectedCurrency" (selectedChange)="changeCurrency($event)">
+-    <nb-option *ngFor="let currency of currencies" [value]="currency">{{ currency }}</nb-option>
++  <nb-select data-testid="earn-currency" [selected]="selectedCurrency" (selectedChange)="changeCurrency($event)">
++    <nb-option [attr.data-testid]="'earn-cur-opt-' + currency" *ngFor="let currency of currencies" [value]="currency">{{ currency }}</nb-option>
+   </nb-select>
+ </nb-card-header>
+ <nb-card-body>
+-  <div class="chart-info">
++  <div class="chart-info" data-testid="earn-card">
+     <div>Daily Income</div>
+-    <div class="h6">{{ earningLiveUpdateCardData.dailyIncome | ngxNumberWithCommas }}</div>
++    <div class="h6" data-testid="earn-daily-income">{{ earningLiveUpdateCardData.dailyIncome | ngxNumberWithCommas }}</div>
+     <div class="delta"
+          [class.up]="earningLiveUpdateCardData.delta.up"
+          [class.down]="!earningLiveUpdateCardData.delta.up">
+diff --git a/src/app/pages/extra-components/calendar/calendar.component.html b/src/app/pages/extra-components/calendar/calendar.component.html
+index 6a75f62..254ed33 100644
+--- a/src/app/pages/extra-components/calendar/calendar.component.html
++++ b/src/app/pages/extra-components/calendar/calendar.component.html
+@@ -1,5 +1,5 @@
+ <div class="calendars">
+-  <div class="calendar-container">
++  <div class="calendar-container" data-testid="cal-wrap">
+     <span class="subtitle">
+       Selected date: {{ date | date }}
+     </span>
+diff --git a/src/app/pages/extra-components/chat/chat.component.html b/src/app/pages/extra-components/chat/chat.component.html
+index 67c732e..da1032c 100644
+--- a/src/app/pages/extra-components/chat/chat.component.html
++++ b/src/app/pages/extra-components/chat/chat.component.html
+@@ -7,7 +7,7 @@
+     <div class="row">
+       <div class="chat-container col-md-12 col-lg-6 col-xxxl-6">
+         <nb-chat title="Nebular Conversational UI" size="large" status="primary">
+-          <nb-chat-message *ngFor="let msg of messages"
++          <nb-chat-message [attr.data-testid]="msg.user.name === 'Jonh Doe' ? 'chat-msg-user' : 'chat-msg-reply'" *ngFor="let msg of messages"
+                            [type]="msg.type"
+                            [message]="msg.text"
+                            [reply]="msg.reply"
+diff --git a/src/app/pages/forms/datepicker/datepicker.component.html b/src/app/pages/forms/datepicker/datepicker.component.html
+index f785425..477c04b 100644
+--- a/src/app/pages/forms/datepicker/datepicker.component.html
++++ b/src/app/pages/forms/datepicker/datepicker.component.html
+@@ -3,7 +3,7 @@
+     <nb-card>
+       <nb-card-header>Common Datepicker</nb-card-header>
+       <nb-card-body>
+-        <input nbInput
++        <input nbInput data-testid="dp-form"
+                placeholder="Form Picker"
+                [nbDatepicker]="formpicker">
+         <nb-datepicker #formpicker></nb-datepicker>
+diff --git a/src/app/pages/forms/form-inputs/form-inputs.component.html b/src/app/pages/forms/form-inputs/form-inputs.component.html
+index 962904a..9b3e174 100644
+--- a/src/app/pages/forms/form-inputs/form-inputs.component.html
++++ b/src/app/pages/forms/form-inputs/form-inputs.component.html
+@@ -1,4 +1,4 @@
+-<div class="row">
++<div class="row" data-testid="fi-page-root">
+   <div class="col-lg-6">
+     <nb-card>
+       <nb-card-header>Default Inputs</nb-card-header>
+@@ -53,16 +53,16 @@
+       <nb-card-header>Checkboxes & Radios</nb-card-header>
+       <nb-card-body class="checkbox-radio">
+         <div class="demo-items">
+-          <nb-checkbox>Checkbox 1</nb-checkbox>
++          <nb-checkbox data-testid="fi-checkbox-1">Checkbox 1</nb-checkbox>
+           <nb-checkbox checked>Checkbox 2</nb-checkbox>
+         </div>
+         <div class="demo-items">
+           <nb-radio-group [(value)]="radioGroupValue">
+-            <nb-radio
++            <nb-radio data-testid="fi-radio-opt1" [attr.data-checked]="radioGroupValue === 'This is value 1' ? 'true' : 'false'"
+               [value]="'This is value 1'">
+               Radio 1
+             </nb-radio>
+-            <nb-radio
++            <nb-radio data-testid="fi-radio-opt2" [attr.data-checked]="radioGroupValue === 'This is value 2' ? 'true' : 'false'"
+               [value]="'This is value 2'">
+               Radio 2
+             </nb-radio>
+diff --git a/src/app/pages/layout/infinite-list/infinite-list.component.html b/src/app/pages/layout/infinite-list/infinite-list.component.html
+index 340275d..510b805 100644
+--- a/src/app/pages/layout/infinite-list/infinite-list.component.html
++++ b/src/app/pages/layout/infinite-list/infinite-list.component.html
+@@ -1,8 +1,9 @@
+ <div class="infinite-cards row">
+   <div class="col-md-12 col-lg-6 col-xxxl-6">
+-    <nb-card class="own-scroll">
++    <nb-card class="own-scroll" data-testid="inf-card-own-scroll">
+       <nb-card-header>Own Scroll</nb-card-header>
+       <nb-list
++        data-testid="inf-list" tabindex="0"
+         nbInfiniteList
+         [threshold]="500"
+         (bottomThreshold)="loadNext(firstCard)">
+diff --git a/src/app/pages/layout/infinite-list/news-post/news-post.component.html b/src/app/pages/layout/infinite-list/news-post/news-post.component.html
+index af5449d..0aa404c 100644
+--- a/src/app/pages/layout/infinite-list/news-post/news-post.component.html
++++ b/src/app/pages/layout/infinite-list/news-post/news-post.component.html
+@@ -1,4 +1,4 @@
+-<article>
++<article data-testid="inf-news-item">
+   <h2>{{post.title}}</h2>
+   <p>{{post.text}}</p>
+   <a [attr.href]="post.link">Read full article</a>
+diff --git a/src/app/pages/layout/stepper/stepper.component.html b/src/app/pages/layout/stepper/stepper.component.html
+index 86e0116..edbda4f 100644
+--- a/src/app/pages/layout/stepper/stepper.component.html
++++ b/src/app/pages/layout/stepper/stepper.component.html
+@@ -32,18 +32,18 @@
+   <div class="col-md-12 col-lg-6 col-xxxl-6">
+     <nb-card>
+       <nb-card-body>
+-        <nb-stepper #stepper>
++        <nb-stepper #stepper data-testid="stepper-form">
+           <nb-step [stepControl]="firstForm" label="First step">
+-            <form [formGroup]="firstForm" (ngSubmit)="onFirstSubmit()" class="step-container">
++            <form [formGroup]="firstForm" (ngSubmit)="onFirstSubmit()" class="step-container" data-testid="stepper-step-1-content">
+               <p class="lorem">
+                 Lorizzle ipsum dolizzle stuff fizzle, consectetuer adipiscing break it down. Nullizzle sapien velizzle,
+                 my shizz pimpin', shizzle my nizzle crocodizzle shut the shizzle up, gravida vizzle, dang.
+               </p>
+               <div class="input-group">
+-                <input type="text" placeholder="Enter your name" class="form-control" formControlName="firstCtrl"
++                <input type="text" data-testid="stepper-name-input" placeholder="Enter your name" class="form-control" formControlName="firstCtrl"
+                        [ngClass]="{'form-control-danger': firstForm.invalid && (firstForm.dirty || firstForm.touched)}">
+               </div>
+-              <button nbButton nbStepperNext>next</button>
++              <button nbButton nbStepperNext data-testid="stepper-next-1">next</button>
+             </form>
+           </nb-step>
+           <nb-step [stepControl]="secondForm" label="Second step">
+@@ -54,11 +54,11 @@
+                 Maurizzle cool nibh owned turpizzle. My shizz fo shizzle tortor.
+               </p>
+               <div class="input-group">
+-                <input type="text" placeholder="Enter favorite movie" class="form-control" formControlName="secondCtrl"
++                <input type="text" data-testid="stepper-movie-input" placeholder="Enter favorite movie" class="form-control" formControlName="secondCtrl"
+                        [ngClass]="{'form-control-danger': secondForm.invalid && (secondForm.dirty || secondForm.touched)}">
+               </div>
+               <button nbButton nbStepperPrevious>prev</button>
+-              <button nbButton nbStepperNext>next</button>
++              <button nbButton nbStepperNext data-testid="stepper-next-2">next</button>
+             </form>
+           </nb-step>
+           <nb-step [stepControl]="thirdForm" label="Third step">
+@@ -67,17 +67,17 @@
+                 Things boom shackalack rhoncus yo. In fo shizzle my nizzle gangsta platea dictumst. Check it out pot.
+               </p>
+               <div class="input-group">
+-                <input type="text" placeholder="Enter something" class="form-control" formControlName="thirdCtrl"
++                <input type="text" data-testid="stepper-something-input" placeholder="Enter something" class="form-control" formControlName="thirdCtrl"
+                        [ngClass]="{'form-control-danger': thirdForm.invalid && (thirdForm.dirty || thirdForm.touched)}">
+               </div>
+               <button nbButton nbStepperPrevious>prev</button>
+-              <button nbButton nbStepperNext>Confirm</button>
++              <button nbButton nbStepperNext data-testid="stepper-next-3">Confirm</button>
+             </form>
+           </nb-step>
+           <nb-step [stepControl]="thirdForm" [hidden]="true" label="Third step">
+             <div class="step-container">
+-              <h3>Wizard completed!</h3>
+-              <button nbButton (click)="stepper.reset()">Try again</button>
++              <h3 data-testid="stepper-done">Wizard completed!</h3>
++              <button nbButton data-testid="stepper-retry" (click)="stepper.reset()">Try again</button>
+             </div>
+           </nb-step>
+         </nb-stepper>
+diff --git a/src/app/pages/modal-overlays/dialog/dialog-name-prompt/dialog-name-prompt.component.html b/src/app/pages/modal-overlays/dialog/dialog-name-prompt/dialog-name-prompt.component.html
+index 267efd3..3be63e5 100644
+--- a/src/app/pages/modal-overlays/dialog/dialog-name-prompt/dialog-name-prompt.component.html
++++ b/src/app/pages/modal-overlays/dialog/dialog-name-prompt/dialog-name-prompt.component.html
+@@ -1,10 +1,10 @@
+ <nb-card>
+   <nb-card-header>Enter your name</nb-card-header>
+   <nb-card-body>
+-    <input #name nbInput placeholder="Name">
++    <input #name nbInput data-testid="prompt-input" placeholder="Name">
+   </nb-card-body>
+   <nb-card-footer>
+     <button class="cancel" nbButton status="danger" (click)="cancel()">Cancel</button>
+-    <button nbButton status="success" (click)="submit(name.value)">Submit</button>
++    <button nbButton data-testid="prompt-submit" status="success" (click)="submit(name.value)">Submit</button>
+   </nb-card-footer>
+ </nb-card>
+diff --git a/src/app/pages/modal-overlays/dialog/dialog.component.html b/src/app/pages/modal-overlays/dialog/dialog.component.html
+index 655d03a..9f2a934 100644
+--- a/src/app/pages/modal-overlays/dialog/dialog.component.html
++++ b/src/app/pages/modal-overlays/dialog/dialog.component.html
+@@ -3,7 +3,7 @@
+     <nb-card>
+       <nb-card-header>Open Dialog</nb-card-header>
+       <nb-card-body>
+-        <button nbButton (click)="open()">Open Dialog with component</button>
++        <button nbButton data-testid="dlg-open" (click)="open()">Open Dialog with component</button>
+ 
+         <button nbButton (click)="open2(dialog)">Open Dialog with template</button>
+       </nb-card-body>
+@@ -47,11 +47,11 @@
+     <nb-card class="form-input-card">
+       <nb-card-header>Return Result From Dialog</nb-card-header>
+       <nb-card-body class="result-from-dialog">
+-        <button nbButton (click)="open3()">Enter Name</button>
++        <button nbButton data-testid="dlg-prompt-open" (click)="open3()">Enter Name</button>
+         <br>
+         <h3 class="title">Names:</h3>
+-        <ul>
+-          <li *ngFor="let name of names">{{ name }}</li>
++        <ul data-testid="dlg-names">
++          <li data-testid="dlg-names-item" *ngFor="let name of names">{{ name }}</li>
+         </ul>
+       </nb-card-body>
+     </nb-card>
+diff --git a/src/app/pages/modal-overlays/toastr/toastr.component.html b/src/app/pages/modal-overlays/toastr/toastr.component.html
+index 6e1c4c6..a00aa60 100644
+--- a/src/app/pages/modal-overlays/toastr/toastr.component.html
++++ b/src/app/pages/modal-overlays/toastr/toastr.component.html
+@@ -8,8 +8,8 @@
+       <div class="col-md-6 col-sm-12">
+         <div class="form-group">
+           <label class="label">Position:</label>
+-          <nb-select [(selected)]="position" class="position-select">
+-            <nb-option *ngFor="let p of positions" [value]="p">{{ p }}</nb-option>
++          <nb-select data-testid="toast-position" [(selected)]="position" class="position-select">
++            <nb-option [attr.data-testid]="'toast-pos-opt-' + p" *ngFor="let p of positions" [value]="p">{{ p }}</nb-option>
+           </nb-select>
+         </div>
+ 
+@@ -27,15 +27,15 @@
+ 
+         <div class="form-group">
+           <label class="label">Time to hide toast, ms. 0 to persistent toast:</label>
+-          <input nbInput type="number" [(ngModel)]="duration" name="timeout">
++          <input nbInput data-testid="toast-duration" type="number" [(ngModel)]="duration" name="timeout">
+         </div>
+       </div>
+ 
+       <div class="col-md-6 col-sm-12">
+         <div class="form-group">
+           <label class="label">Toast type:</label>
+-          <nb-select [(selected)]="status">
+-            <nb-option *ngFor="let t of types" [value]="t">{{ t }}</nb-option>
++          <nb-select data-testid="toast-status" [(selected)]="status">
++            <nb-option [attr.data-testid]="'toast-status-opt-' + t" *ngFor="let t of types" [value]="t">{{ t }}</nb-option>
+           </nb-select>
+         </div>
+ 
+@@ -43,7 +43,7 @@
+           <nb-checkbox [(ngModel)]="destroyByClick">Hide on click</nb-checkbox>
+         </div>
+         <div>
+-          <nb-checkbox [(ngModel)]="preventDuplicates">Prevent arising of duplicate toast</nb-checkbox>
++          <nb-checkbox data-testid="toast-prevent-dup" [(ngModel)]="preventDuplicates">Prevent arising of duplicate toast</nb-checkbox>
+         </div>
+         <div>
+           <nb-checkbox [(ngModel)]="hasIcon">Show toast with icon</nb-checkbox>
+@@ -53,7 +53,7 @@
+   </nb-card-body>
+ 
+   <nb-card-footer>
+-    <button nbButton (click)="makeToast()">Show toast</button>
++    <button nbButton data-testid="toast-show" (click)="makeToast()">Show toast</button>
+     <button nbButton status="success" (click)="openRandomToast()">Random toast</button>
+   </nb-card-footer>
+ </nb-card>
+diff --git a/src/app/pages/modal-overlays/window/window.component.html b/src/app/pages/modal-overlays/window/window.component.html
+index db824d2..09eac18 100644
+--- a/src/app/pages/modal-overlays/window/window.component.html
++++ b/src/app/pages/modal-overlays/window/window.component.html
+@@ -3,7 +3,7 @@
+     <nb-card>
+       <nb-card-header>Window Form</nb-card-header>
+       <nb-card-body>
+-        <button (click)="openWindowForm()" nbButton>Open window form</button>
++        <button (click)="openWindowForm()" nbButton data-testid="win-open">Open window form</button>
+ 
+         <button (click)="openWindow(contentTemplate)" nbButton>Open window with template</button>
+       </nb-card-body>
+diff --git a/src/app/pages/tables/smart-table/smart-table.component.html b/src/app/pages/tables/smart-table/smart-table.component.html
+index 05cd834..46b3111 100644
+--- a/src/app/pages/tables/smart-table/smart-table.component.html
++++ b/src/app/pages/tables/smart-table/smart-table.component.html
+@@ -4,7 +4,7 @@
+   </nb-card-header>
+ 
+   <nb-card-body>
+-    <ng2-smart-table [settings]="settings" [source]="source" (deleteConfirm)="onDeleteConfirm($event)">
++    <ng2-smart-table data-testid="st-table" [settings]="settings" [source]="source" (deleteConfirm)="onDeleteConfirm($event)">
+     </ng2-smart-table>
+   </nb-card-body>
+ </nb-card>
+diff --git a/src/app/pages/tables/tree-grid/tree-grid.component.html b/src/app/pages/tables/tree-grid/tree-grid.component.html
+index 8e339f9..cf39b50 100644
+--- a/src/app/pages/tables/tree-grid/tree-grid.component.html
++++ b/src/app/pages/tables/tree-grid/tree-grid.component.html
+@@ -4,7 +4,7 @@
+     <label class="search-label" for="search">Search:</label>
+     <input nbInput [nbFilterInput]="dataSource" id="search" class="search-input">
+ 
+-    <table [nbTreeGrid]="dataSource" [nbSort]="dataSource" (sort)="updateSort($event)">
++    <table data-testid="tg-table" [nbTreeGrid]="dataSource" [nbSort]="dataSource" (sort)="updateSort($event)">
+ 
+       <tr nbTreeGridHeaderRow *nbTreeGridHeaderRowDef="allColumns"></tr>
+       <tr nbTreeGridRow *nbTreeGridRowDef="let row; columns: allColumns"></tr>
+diff --git a/src/assets/wlb-shim.js b/src/assets/wlb-shim.js
+new file mode 100644
+index 0000000..9090851
+--- /dev/null
++++ b/src/assets/wlb-shim.js
+@@ -0,0 +1,146 @@
++// hv/wlb-shim.js v5.3 - verification shim: assigns data-testid to library-rendered DOM
++// (Nebular/ng2-smart-table internals). Observation-only; no behavior changes
++// except the verifier-side window.confirm accept used by the delete-confirm probe.
++(function () {
++  'use strict';
++  window.confirm = function () { return true; };
++
++  function each(sel, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), fn); }
++  function setTid(el, tid) { if (el && el.getAttribute('data-testid') !== tid) el.setAttribute('data-testid', tid); }
++  function textOf(el) { return (el.textContent || '').replace(/\s+/g, ' ').trim(); }
++
++  function assign() {
++    // nb-menu: top-level item titles (order assert) + Infinite List item anchor
++    var topMenu = document.querySelector('nb-menu ul.menu-items');
++    if (topMenu) {
++      Array.prototype.forEach.call(topMenu.children, function (li) {
++        var t = li.querySelector('.menu-title') || (li.classList.contains('menu-group') ? li.querySelector('span') : null);
++        if (t) setTid(t, 'menu-group-titles');
++        if (t && t.textContent.trim() === 'Layout') setTid(li, 'menu-group-layout');
++      });
++    }
++    each('nb-menu li.menu-item a', function (a) {
++      var t = a.querySelector('.menu-title');
++      if (t && textOf(t) === 'Infinite List') setTid(a, 'menu-item-infinite-list');
++    });
++
++    // toastr container/items (+ viewport-derived position tag)
++    each('nb-toastr-container', function (el) {
++      setTid(el, 'nb-toast-container');
++      var r = el.getBoundingClientRect();
++      var vert = (r.top + r.bottom) / 2 > window.innerHeight / 2 ? 'bottom' : 'top';
++      var horz = (r.left + r.right) / 2 > window.innerWidth / 2 ? 'right' : 'left';
++      el.setAttribute('data-pos', vert + '-' + horz);
++    });
++    each('nb-toast', function (el) { setTid(el, 'nb-toast-item'); });
++
++    // dialog / window containers
++    each('nb-dialog-container', function (el) { setTid(el, 'nb-dialog-container'); });
++    each('nb-windows-container', function (el) { setTid(el, 'nb-window-container'); });
++    each('nb-window', function (el) { setTid(el, 'nb-window-item'); });
++
++    // tabset headers by text; recent-time caption when Recent tab active
++    each('ul.tabset > li.tab', function (li) {
++      if (textOf(li) === 'Recent') setTid(li, 'contacts-recent-tab');
++    });
++    each('nb-tabset', function (ts) {
++      var active = ts.querySelector('ul.tabset > li.tab.active');
++      if (active && textOf(active) === 'Recent') {
++        var cap = ts.querySelector('.caption');
++        if (cap) setTid(cap, 'contacts-recent-first-time');
++      }
++    });
++
++    // calendar / datepicker day cells
++    each('.day-cell', function (el) {
++      var txt = textOf(el);
++      if (!/^\d{1,2}$/.test(txt)) return;
++      var picker = !!el.closest('.cdk-overlay-container') || !!el.closest('nb-datepicker');
++      if (el.classList.contains('selected')) {
++        setTid(el, picker ? 'dp-cell-selected' : 'cal-cell-selected');
++      } else {
++        setTid(el, (picker ? 'dp-cell-' : 'cal-cell-') + txt);
++      }
++    });
++
++    // ng2-smart-table rows/cells/actions
++    each('tr.ng2-smart-row', function (tr) {
++      setTid(tr, 'st-row');
++      var cells = tr.querySelectorAll('td');
++      if (cells[1]) setTid(cells[1], 'st-col-id');
++      if (cells[5]) setTid(cells[5], 'st-col-email');
++    });
++    each('a.ng2-smart-action-add-add', function (el) { setTid(el, 'st-add'); });
++    var formRow = document.querySelector('tr[ng2-st-thead-form-row]');
++    if (formRow) {
++      var inputs = formRow.querySelectorAll('input');
++      if (inputs[0]) setTid(inputs[0], 'st-add-id');
++      if (inputs[1]) setTid(inputs[1], 'st-add-firstName');
++      var create = formRow.querySelector('a.ng2-smart-action-add-create');
++      if (create) setTid(create, 'st-add-confirm');
++    }
++    var delButtons = document.querySelectorAll('tr.ng2-smart-row a.ng2-smart-action-delete-delete');
++    if (delButtons.length) setTid(delButtons[0], 'st-delete-first');
++
++    // tree-grid rows + first toggle
++    each('tr.cdk-row', function (tr) { setTid(tr, 'tg-row'); });
++    var toggles = document.querySelectorAll('nb-tree-grid-row-toggle');
++    if (toggles.length) setTid(toggles[0], 'tg-expand-first');
++
++    // chat form input/send
++    each('nb-chat-form input', function (el) { setTid(el, 'chat-input'); });
++    each('nb-chat-form button', function (el) { setTid(el, 'chat-send'); });
++
++    // nb-search trigger + expanded field
++    each('nb-search button.start-search', function (el) { setTid(el, 'header-search'); });
++    each('nb-search-field input', function (el) { setTid(el, 'search-input-expanded'); });
++
++    // body theme mirror for exact-match assertions (pace adds unrelated classes)
++    var tm = document.body.className.match(/nb-theme-[\w-]+/);
++    document.body.setAttribute('data-theme', tm ? tm[0] : '');
++
++    // checkbox state mirror (span.custom-checkbox carries .checked)
++    each('nb-checkbox', function (el) {
++      var ind = el.querySelector('.custom-checkbox');
++      el.setAttribute('data-checked', ind && ind.classList.contains('checked') ? 'true' : 'false');
++    });
++
++    // nb-auth forms (login/register): email/password inputs + submit button
++    each('form', function (form) {
++      var em = form.querySelector('input[name="email"]');
++      var pw = form.querySelector('input[name="password"]');
++      if (em) setTid(em, 'login-email');
++      if (pw) setTid(pw, 'login-password');
++      if (em || pw) {
++        var btn = form.querySelector('button[type="submit"], button:not([type])');
++        if (btn) setTid(btn, 'login-submit');
++      }
++    });
++
++    // nb-tab scope for the temperature drag: both tabs render their thumbs in DOM,
++    // and the wlb-drag-probe targets are siblings of the dragger, so the drag
++    // source and targets are scoped to the Temperature tab container.
++    each('nb-tab', function (el) {
++      if (el.getAttribute('tabTitle') === 'Temperature') setTid(el, 'temp-tab-temperature');
++    });
++
++    // authed-indicator probe geometry: the *ngIf div renders empty (0px tall), so
++    // Playwright isVisible() reports false even while it is attached; give it a tiny
++    // fixed box (pointer-events:none) so visibility reflects authentication state.
++    each('[data-testid= authed-indicator]', function (el) {
++      if (el.style.width !== '2px') {
++        el.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;z-index:2147483647;pointer-events:none;';
++      }
++    });
++  }
++
++  var scheduled = false;
++  function schedule() {
++    if (scheduled) return;
++    scheduled = true;
++    requestAnimationFrame(function () { scheduled = false; assign(); });
++  }
++  var mo = new MutationObserver(schedule);
++  mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
++  document.addEventListener('DOMContentLoaded', assign);
++})();

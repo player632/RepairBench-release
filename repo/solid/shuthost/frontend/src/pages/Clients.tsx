@@ -1,0 +1,298 @@
+import { RotateCcw } from 'lucide-solid';
+import { createMemo, For, Show } from 'solid-js';
+import { state } from '../helpers/appStore';
+import { serverData } from '../helpers/dataIslands';
+import { demo, demoSubpath, isDemoMode } from '../helpers/demo';
+import {
+    ApiFetchUnauthorizedError,
+    apiFetch,
+    formatRelativeTimestamp,
+    sortActiveFirst,
+} from '../helpers/utils';
+import { type AnyComponent, useCurrentTime } from '../helpers/utils/solid';
+import clientGotchasHtml from '../htmlPartials/client_install_requirements_gotchas.md?raw';
+import { AppLayout } from '../sharedComponents/App';
+import {
+    CopyableCodeBlock,
+    CopyableInstallCommand,
+} from '../sharedComponents/CopyButton';
+
+// ==========================
+// Shared client helpers
+// ==========================
+
+const formatLastUsed = (clientId: string, now: number): string => {
+    if (state.dbData.status !== 'available') return '';
+    const stats = state.dbData.payload.clientStats[clientId];
+    return formatRelativeTimestamp(stats?.lastUsed, now);
+};
+
+const resetLeases = async (clientId: string) => {
+    if (isDemoMode) return demo.resetLeases(clientId);
+    try {
+        await apiFetch(`/api/reset_leases/${clientId}`, {
+            method: 'POST',
+        });
+    } catch (err) {
+        if (err instanceof ApiFetchUnauthorizedError) return;
+        console.error(`Failed to reset leases for client ${clientId}:`, err);
+    }
+};
+
+// ==========================
+// ClientResetButton
+// ==========================
+
+const ClientResetButton = ((props: { clientId: string; leases: string[] }) => (
+    <div class="actions-cell">
+        <button
+            class="btn btn-height btn-red reset-client"
+            type="button"
+            disabled={props.leases.length === 0}
+            onClick={() => resetLeases(props.clientId)}
+            aria-label="Reset Leases"
+        >
+            <RotateCcw size={14} aria-hidden="true" />
+            Reset Leases
+        </button>
+    </div>
+)) satisfies AnyComponent;
+
+// ==========================
+// ClientRow
+// ==========================
+
+const ClientRow = ((props: {
+    clientId: string;
+    leases: string[];
+    now: number;
+}) => (
+    <tr class="table-row" data-client-id={props.clientId}>
+        <th class="table-cell" scope="row">
+            {props.clientId}
+        </th>
+        <td class="table-cell leases" aria-label="Leases">
+            {props.leases.join(', ') || 'None'}
+        </td>
+        <Show when={state.dbData.status === 'available'}>
+            <td class="table-cell last-used" aria-label="Last Used">
+                {formatLastUsed(props.clientId, props.now)}
+            </td>
+        </Show>
+        <td class="table-cell" aria-label="Actions">
+            <ClientResetButton
+                clientId={props.clientId}
+                leases={props.leases}
+            />
+        </td>
+    </tr>
+)) satisfies AnyComponent;
+
+// ==========================
+// ClientCard (mobile)
+// ==========================
+
+const ClientCard = ((props: {
+    clientId: string;
+    leases: string[];
+    now: number;
+}) => (
+    <li class="actions-card" data-client-id={props.clientId}>
+        <p class="actions-card-id">{props.clientId}</p>
+        <p class="actions-card-row">
+            <span class="actions-card-label">Leases: </span>
+            {props.leases.join(', ') || 'None'}
+        </p>
+        <Show when={state.dbData.status === 'available'}>
+            <p class="actions-card-row">
+                <span class="actions-card-label">Last Used: </span>
+                {formatLastUsed(props.clientId, props.now)}
+            </p>
+        </Show>
+        <ClientResetButton clientId={props.clientId} leases={props.leases} />
+    </li>
+)) satisfies AnyComponent;
+
+const makeClientCommands = () => {
+    const baseUrl = window.location.origin + demoSubpath;
+    return {
+        clientSh: `curl -sSL ${baseUrl}/download/client_installer.sh | sh -s ${baseUrl}`,
+        clientPs1: `curl.exe -sSLO '${baseUrl}/download/client_installer.ps1'; powershell -ExecutionPolicy Bypass -File .\\client_installer.ps1 ${baseUrl}`,
+    };
+};
+
+export const ClientsPage = (() => {
+    const currentTime = useCurrentTime();
+
+    // Build a map of clientId -> [hosts with that client's lease]
+    const clientLeaseMap = createMemo(() => {
+        const map = new Map<string, string[]>();
+        for (const [host, leases] of Object.entries(state.leaseMap)) {
+            for (const lease of leases) {
+                if (lease.type === 'Client') {
+                    const existing = map.get(lease.value) ?? [];
+                    existing.push(host);
+                    map.set(lease.value, existing);
+                }
+            }
+        }
+        for (const clientId of state.clients) {
+            if (!map.has(clientId)) map.set(clientId, []);
+        }
+        return map;
+    });
+
+    const sortedClients = createMemo(() =>
+        sortActiveFirst(
+            Array.from(clientLeaseMap().entries()),
+            ([, leases]) => leases.length > 0,
+            ([id]) => id,
+        ),
+    );
+
+    const cmds = createMemo(makeClientCommands);
+
+    return (
+        <AppLayout>
+            {/* Install Instructions Panel */}
+            <section
+                class="section-container mt-0 py-0"
+                aria-labelledby="client-install-title"
+            >
+                <details
+                    class="collapsible-details"
+                    aria-labelledby="client-install-title"
+                >
+                    <summary
+                        class="collapsible-header py-2"
+                        aria-controls="client-install-content"
+                        id="client-install-header"
+                    >
+                        <h2
+                            class="section-title mb-0 text-base"
+                            id="client-install-title"
+                        >
+                            Install Client
+                        </h2>
+                        <span class="collapsible-icon" aria-hidden="true" />
+                    </summary>
+                    {/* biome-ignore lint/a11y/useSemanticElements: role="group" has no semantic HTML element equivalent outside of form contexts */}
+                    <div
+                        id="client-install-content"
+                        class="collapsible-content"
+                        role="group"
+                        aria-labelledby="client-install-title"
+                    >
+                        <p class="mb-1 text-sm">
+                            Run one of the following commands in your terminal:
+                        </p>
+
+                        <CopyableInstallCommand
+                            title="For Linux/macOS:"
+                            id="client-install-command-sh"
+                            command={cmds().clientSh}
+                        />
+
+                        <CopyableInstallCommand
+                            title="For Windows (PowerShell):"
+                            id="client-install-command-ps1"
+                            command={cmds().clientPs1}
+                        />
+
+                        <p class="description-text text-xs">
+                            Optionally specify a custom base client ID as the
+                            second argument (otherwise random). The full client
+                            ID will include your hostname. <strong>Tip:</strong>{' '}
+                            Use separate clients for different use cases.
+                        </p>
+                        <p class="description-text text-xs">
+                            Then, add the output to the clients section of your
+                            config on the Coordinator Host:
+                        </p>
+                        <CopyableCodeBlock
+                            id="client-config-location"
+                            value={serverData.configPath}
+                            label="Copy config location"
+                        />
+
+                        {/* Inlined at build time from htmlPartials/client_install_requirements_gotchas.md */}
+                        <div innerHTML={clientGotchasHtml} />
+                    </div>
+                </details>
+            </section>
+
+            {/* Clients Table */}
+            <section
+                class="section-container mt-4"
+                aria-labelledby="clients-table-title"
+            >
+                <h2 id="clients-table-title" class="sr-only">
+                    Clients Table
+                </h2>
+                {/* Mobile card list */}
+                <ul
+                    id="client-card-list"
+                    class="flex flex-col gap-3 py-3 md:hidden"
+                    aria-live="polite"
+                >
+                    <For each={sortedClients()}>
+                        {([clientId, leases]) => (
+                            <ClientCard
+                                clientId={clientId}
+                                leases={leases}
+                                now={currentTime()}
+                            />
+                        )}
+                    </For>
+                </ul>
+                {/* Desktop table */}
+                <div class="table-wrapper hidden md:block">
+                    <table
+                        class="actions-table w-full"
+                        aria-describedby="clients-table-title"
+                    >
+                        <thead>
+                            <tr>
+                                <th class="table-header" scope="col">
+                                    Client ID
+                                </th>
+                                <th class="table-header" scope="col">
+                                    Leases
+                                </th>
+                                <Show
+                                    when={state.dbData.status === 'available'}
+                                >
+                                    <th
+                                        id="last-used-header"
+                                        class="table-header"
+                                        scope="col"
+                                    >
+                                        Last Used
+                                    </th>
+                                </Show>
+                                <th class="table-header" scope="col">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody
+                            id="client-table-body"
+                            class="divide-y divide-gray-200"
+                            aria-live="polite"
+                        >
+                            <For each={sortedClients()}>
+                                {([clientId, leases]) => (
+                                    <ClientRow
+                                        clientId={clientId}
+                                        leases={leases}
+                                        now={currentTime()}
+                                    />
+                                )}
+                            </For>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </AppLayout>
+    );
+}) satisfies AnyComponent;

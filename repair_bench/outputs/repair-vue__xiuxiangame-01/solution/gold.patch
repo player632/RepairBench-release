@@ -1,0 +1,143 @@
+diff --git a/src/App.vue b/src/App.vue
+index cf8c0cc..3ea78f7 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -55,7 +55,7 @@
+ 
+   onMounted(() => {
+     // 初始化玩家数据
+-    player.value = JSON.parse(JSON.stringify(useMainStore().player))
++    player.value = useMainStore().player
+     setInterval(() => {
+       // 每分钟增加1岁
+       player.value.age += 1
+diff --git a/src/views/cultivatePage.vue b/src/views/cultivatePage.vue
+index 716d164..2e3db15 100644
+--- a/src/views/cultivatePage.vue
++++ b/src/views/cultivatePage.vue
+@@ -63,7 +63,7 @@
+   const startCultivate = () => {
+     isStart.value = false
+     const zs = player.value.reincarnation * 10
+-    const time = zs >= 200 ? 100 : 3000 - zs
++    const time = zs >= 200 ? 100 : 300 - zs
+     const timerId = setInterval(() => {
+       if (player.value.cultivation <= player.value.maxCultivation) {
+         isStop.value = true
+diff --git a/src/views/endlessPage.vue b/src/views/endlessPage.vue
+index 1885a85..61b6a2f 100644
+--- a/src/views/endlessPage.vue
++++ b/src/views/endlessPage.vue
+@@ -297,7 +297,7 @@
+     // 增加层数
+     currentFloor.value++
+     // 检查是否是10的倍数层，且之前没有获得过该层的奖励
+-    if (currentFloor.value % 7 === 0 && !player.value.rewardedTowerFloors.includes(currentFloor.value)) {
++    if (currentFloor.value % 5 === 0 && !player.value.rewardedTowerFloors.includes(currentFloor.value)) {
+       player.value.props.cultivateDan += 500
+       player.value.rewardedTowerFloors.push(currentFloor.value)
+       battleLogs.value.push(`恭喜你通过第 ${currentFloor.value} 层，获得额外奖励：500培养丹！`)
+diff --git a/src/views/game/Dicegame.vue b/src/views/game/Dicegame.vue
+index c516dcd..e23e02d 100644
+--- a/src/views/game/Dicegame.vue
++++ b/src/views/game/Dicegame.vue
+@@ -57,7 +57,7 @@
+         clearInterval(rollInterval)
+         finishRoll()
+       }
+-    }, 600)
++    }, 100)
+   }
+ 
+   const finishRoll = () => {
+diff --git a/src/views/game/SecretRealm.vue b/src/views/game/SecretRealm.vue
+index 3a8ad92..8e7535e 100644
+--- a/src/views/game/SecretRealm.vue
++++ b/src/views/game/SecretRealm.vue
+@@ -91,6 +91,7 @@
+     if (gameOver.value || board.value[row][col].revealed || !canExplore.value || movesLeft.value <= 0) return
+     const cell = board.value[row][col]
+     cell.revealed = true
++    movesLeft.value--
+     switch (cell.type) {
+       case cellTypes.value.REWARD:
+         const reward = Math.floor(Math.random() * 500) + 50
+diff --git a/src/views/game/checkin.vue b/src/views/game/checkin.vue
+index f5cc5d7..613bcc0 100644
+--- a/src/views/game/checkin.vue
++++ b/src/views/game/checkin.vue
+@@ -35,7 +35,7 @@
+   const canCheckIn = computed(() => {
+     const now = new Date()
+     const lastCheckin = new Date(player.value.lastCheckinDate)
+-    return !player.value.lastCheckinDate || now.toDateString() === lastCheckin.toDateString()
++    return !player.value.lastCheckinDate || now.toDateString() !== lastCheckin.toDateString()
+   })
+ 
+   const daysUntilNextBonus = computed(() => {
+diff --git a/src/views/game/game.vue b/src/views/game/game.vue
+index 3503b9c..fc27fdb 100644
+--- a/src/views/game/game.vue
++++ b/src/views/game/game.vue
+@@ -80,7 +80,7 @@
+           player.value.props[key] += value
+         })
+       } else {
+-        player.value.props.money -= reward
++        player.value.props.money += reward
+       }
+     }
+   }
+diff --git a/src/views/game/rock.vue b/src/views/game/rock.vue
+index 0a54c31..240d847 100644
+--- a/src/views/game/rock.vue
++++ b/src/views/game/rock.vue
+@@ -65,7 +65,7 @@
+     const won =
+       (playerChoice === '石头' && computerChoice === '剪刀') ||
+       (playerChoice === '剪刀' && computerChoice === '布') ||
+-      (playerChoice === '布' && computerChoice === '剪刀')
++      (playerChoice === '布' && computerChoice === '石头')
+     const draw = playerChoice === computerChoice
+     const reward = won ? betAmount.value * 2 : draw ? 0 : betAmount.value
+     result.value = {
+diff --git a/src/views/homePage.vue b/src/views/homePage.vue
+index c370b03..e642025 100644
+--- a/src/views/homePage.vue
++++ b/src/views/homePage.vue
+@@ -1242,7 +1242,7 @@
+   watch(
+     () => inventoryActive.value,
+     type => {
+-      if (type == 'wife' && !player.value.shopData.length) {
++      if (type == 'shop' && !player.value.shopData.length) {
+         player.value.shopData = shop.drawPrize(maxLv)
+       }
+       if (type == 'props') gameNotifys({ title: '提示', message: '点击道具可以获取道具相关信息' })
+@@ -1749,7 +1749,7 @@
+     )
+       .then(() => {
+         // 如果炼器成功
+-        if (Math.random() >= successRate) {
++        if (Math.random() <= successRate) {
+           // 攻击
+           const attack = Math.floor(item.initial.attack * 0.2)
+           // 血量
+@@ -2019,7 +2019,7 @@
+ 
+   // 购买装备
+   const shopBuy = item => {
+-    if (player.value.props.currency <= shopPrice.value) {
++    if (player.value.props.currency >= shopPrice.value) {
+       // 扣除鸿蒙石
+       player.value.props.currency -= shopPrice.value
+       // 如果装备背包当前容量大于等于背包总容量
+@@ -2396,7 +2396,7 @@
+       // 如果是血量
+       else if (type == 'health') playerAttribute(0, 0, numText, 0, 0)
+       // 扣除点数
+-      player.value.points++
++      player.value.points--
+       gameNotifys({
+         title: '加点提示',
+         message: `加点成功${typeNames[type]}增加了${numText}点`

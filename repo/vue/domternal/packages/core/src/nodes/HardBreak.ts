@@ -1,0 +1,92 @@
+/**
+ * HardBreak Node
+ *
+ * Inline line break element (br).
+ * Keyboard shortcuts: Mod-Enter, Shift-Enter
+ */
+
+import { Node } from '../Node.js';
+import type { CommandSpec } from '../types/Commands.js';
+import type { ToolbarItem } from '../types/Toolbar.js';
+
+declare module '@domternal/core' {
+  interface RawCommands {
+    setHardBreak: CommandSpec;
+    insertNbsp: CommandSpec;
+  }
+}
+
+export interface HardBreakOptions {
+  HTMLAttributes: Record<string, unknown>;
+}
+
+export const HardBreak = Node.create<HardBreakOptions>({
+  name: 'hardBreak',
+  group: 'inline',
+  inline: true,
+  selectable: false,
+
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'br' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['br', { ...this.options.HTMLAttributes, ...HTMLAttributes }];
+  },
+
+  addCommands() {
+    const { name } = this;
+    return {
+      setHardBreak:
+        () =>
+        ({ commands }) => {
+          return commands.insertContent({ type: name });
+        },
+      insertNbsp:
+        () =>
+        ({ tr, dispatch }) => {
+          if (dispatch) {
+            tr.insertText('\u00A0');
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+
+  addToolbarItems(): ToolbarItem[] {
+    return [
+      {
+        type: 'button',
+        name: 'hardBreak',
+        command: 'setHardBreak',
+        icon: 'linkBreak',
+        label: 'Hard Break',
+        shortcut: 'Shift-Enter',
+        group: 'insert',
+        priority: 50,
+      },
+    ];
+  },
+
+  addKeyboardShortcuts() {
+    const { editor } = this;
+    return {
+      'Mod-Enter': () => {
+        return editor?.commands['setHardBreak']?.() ?? false;
+      },
+      'Shift-Enter': () => {
+        return editor?.commands['setHardBreak']?.() ?? false;
+      },
+      'Mod-Shift-Space': () => {
+        return editor?.commands['insertNbsp']?.() ?? false;
+      },
+    };
+  },
+});

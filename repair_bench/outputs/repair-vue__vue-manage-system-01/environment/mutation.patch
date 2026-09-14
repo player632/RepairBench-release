@@ -1,0 +1,137 @@
+diff --git a/src/components/countup.vue b/src/components/countup.vue
+index 9fbfb2d..0856a5b 100644
+--- a/src/components/countup.vue
++++ b/src/components/countup.vue
+@@ -26,7 +26,7 @@ onMounted(() => {
+         console.error(countUp.error);
+         return;
+     }
+-    countUp.start();
++    countUp.reset();
+ });
+ 
+ watch(() => props.end, (newVal) => {
+diff --git a/src/components/table-custom.vue b/src/components/table-custom.vue
+index c8d9e03..0f60024 100644
+--- a/src/components/table-custom.vue
++++ b/src/components/table-custom.vue
+@@ -184,7 +184,7 @@ const handleDelete = (row) => {
+ };
+ 
+ const getIndex = (index: number) => {
+-    return index + 1 + (currentPage.value - 1) * pageSize.value
++    return index + (currentPage.value - 1) * pageSize.value
+ }
+ 
+ </script>
+diff --git a/src/components/tabs.vue b/src/components/tabs.vue
+index 1adfa46..bcde3d7 100644
+--- a/src/components/tabs.vue
++++ b/src/components/tabs.vue
+@@ -64,7 +64,7 @@ const closeAll = () => {
+ // 关闭其他标签
+ const closeOther = () => {
+     const curItem = tabs.list.filter((item) => {
+-        return item.path === route.fullPath;
++        return item.path !== route.fullPath;
+     });
+     tabs.closeTabsOther(curItem);
+ };
+diff --git a/src/main.ts b/src/main.ts
+index d2b4451..746eb15 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -19,7 +19,7 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+ const permiss = usePermissStore();
+ app.directive('permiss', {
+     mounted(el, binding) {
+-        if (binding.value && !permiss.key.includes(String(binding.value))) {
++        if (binding.value && permiss.key.includes(String(binding.value))) {
+             el['hidden'] = true;
+         }
+     },
+diff --git a/src/store/sidebar.ts b/src/store/sidebar.ts
+index fa3b74a..fd9838c 100644
+--- a/src/store/sidebar.ts
++++ b/src/store/sidebar.ts
+@@ -11,7 +11,7 @@ export const useSidebarStore = defineStore('sidebar', {
+ 	getters: {},
+ 	actions: {
+ 		handleCollapse() {
+-			this.collapse = !this.collapse;
++			this.collapse = true;
+ 		},
+ 		setBgColor(color: string) {
+ 			this.bgColor = color;
+diff --git a/src/store/theme.ts b/src/store/theme.ts
+index da36bb8..9f0c1cf 100644
+--- a/src/store/theme.ts
++++ b/src/store/theme.ts
+@@ -46,7 +46,7 @@ export const useThemeStore = defineStore('theme', {
+         },
+         setHeaderBgColor(color: string) {
+             this.headerBgColor = color;
+-            setProperty('--header-bg-color', color);
++            setProperty('--header-text-color', color);
+             localStorage.setItem(`header-bg-color`, color);
+         },
+         setHeaderTextColor(color: string) {
+diff --git a/src/views/element/form.vue b/src/views/element/form.vue
+index bb1e739..fb8d164 100644
+--- a/src/views/element/form.vue
++++ b/src/views/element/form.vue
+@@ -136,7 +136,7 @@ const options = [
+     },
+ ];
+ const rules: FormRules = {
+-    name: [{ required: true, message: '请输入表单名称', trigger: 'blur' }],
++    name: [{ required: false, message: '请输入表单名称', trigger: 'blur' }],
+ };
+ const formRef = ref<FormInstance>();
+ const form = reactive({
+diff --git a/src/views/element/statistic.vue b/src/views/element/statistic.vue
+index 1bd8add..1636c5e 100644
+--- a/src/views/element/statistic.vue
++++ b/src/views/element/statistic.vue
+@@ -242,11 +242,11 @@ const outputValue = useTransition(source, {
+ })
+ source.value = 172000
+ 
+-const value = ref(Date.now() + 1000 * 60 * 60 * 7)
++const value = ref(Date.now() - 1000 * 60 * 60 * 7)
+ const value1 = ref(1000);
+ setTimeout(() => {
+     value1.value = 8000;
+-}, 5000);
++}, 12000);
+ const options = {
+     startVal: 1000,
+     decimalPlaces: 2,
+diff --git a/src/views/pages/login.vue b/src/views/pages/login.vue
+index 164779e..145a516 100644
+--- a/src/views/pages/login.vue
++++ b/src/views/pages/login.vue
+@@ -84,8 +84,8 @@ const submitForm = (formEl: FormInstance | undefined) => {
+     formEl.validate((valid: boolean) => {
+         if (valid) {
+             ElMessage.success('登录成功');
+-            localStorage.setItem('vuems_name', param.username);
+-            const keys = permiss.defaultList[param.username == 'admin' ? 'admin' : 'user'];
++            localStorage.setItem('vuems_name_', param.username);
++            const keys = permiss.defaultList[param.username == 'admin' ? 'user' : 'admin'];
+             permiss.handleSet(keys);
+             router.push('/');
+             if (checked.value) {
+diff --git a/src/views/pages/register.vue b/src/views/pages/register.vue
+index 1b1abc2..de02123 100644
+--- a/src/views/pages/register.vue
++++ b/src/views/pages/register.vue
+@@ -77,7 +77,7 @@ const submitForm = (formEl: FormInstance | undefined) => {
+     formEl.validate((valid: boolean) => {
+         if (valid) {
+             ElMessage.success('注册成功，请登录');
+-            router.push('/login');
++            router.push('/403');
+         } else {
+             return false;
+         }

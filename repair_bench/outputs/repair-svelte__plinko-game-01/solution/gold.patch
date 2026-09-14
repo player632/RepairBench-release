@@ -1,0 +1,141 @@
+diff --git a/src/lib/components/Plinko/BinsRow.svelte b/src/lib/components/Plinko/BinsRow.svelte
+index 250def9..e918c72 100644
+--- a/src/lib/components/Plinko/BinsRow.svelte
++++ b/src/lib/components/Plinko/BinsRow.svelte
+@@ -1,6 +1,5 @@
+ <script lang="ts">
+   import { binColorsByRowCount, binPayouts } from '$lib/constants/game';
+-  import { RiskLevel } from '$lib/types';
+   import { plinkoEngine, riskLevel, rowCount, winRecords } from '$lib/stores/game';
+   import { isAnimationOn } from '$lib/stores/settings';
+   import type { Action } from 'svelte/action';
+@@ -53,7 +52,7 @@
+ <div data-testid="bin-row" class="flex h-[clamp(10px,0.352px+2.609vw,16px)] w-full justify-center lg:h-7">
+   {#if $plinkoEngine}
+     <div class="flex gap-[1%]" style:width={`${($plinkoEngine.binsWidthPercentage ?? 0) * 100}%`}>
+-      {#each binPayouts[$rowCount][RiskLevel.MEDIUM] as payout, binIndex}
++      {#each binPayouts[$rowCount][$riskLevel] as payout, binIndex}
+         <!-- Font-size clamping:
+               - Mobile (< 1024px): From 6px at 370px viewport width to 8px at 600px viewport width
+               - Desktop (>= 1024px): From 10px at 1024px viewport width to 12px at 1100px viewport width
+diff --git a/src/lib/components/Plinko/LastWins.svelte b/src/lib/components/Plinko/LastWins.svelte
+index 612f214..76b14b9 100644
+--- a/src/lib/components/Plinko/LastWins.svelte
++++ b/src/lib/components/Plinko/LastWins.svelte
+@@ -11,7 +11,7 @@
+ 
+   let { winCount = 4 }: Props = $props();
+ 
+-  let lastWins = $state($winRecords.slice(-winCount).toReversed());
++  let lastWins = $derived($winRecords.slice(-winCount).toReversed());
+ </script>
+ 
+ <!-- Clamps in mobile:
+diff --git a/src/lib/components/Plinko/PlinkoEngine.ts b/src/lib/components/Plinko/PlinkoEngine.ts
+index 746c7b9..bb1e1dc 100644
+--- a/src/lib/components/Plinko/PlinkoEngine.ts
++++ b/src/lib/components/Plinko/PlinkoEngine.ts
+@@ -6,6 +6,7 @@ import {
+   betAmount,
+   balance,
+   betAmountOfExistingBalls,
++  totalProfitHistory,
+ } from '$lib/stores/game';
+ import type { RiskLevel, RowCount } from '$lib/types';
+ import { getRandomBetween } from '$lib/utils/numbers';
+@@ -115,7 +116,7 @@ class PlinkoEngine {
+     this.rowCount = get(rowCount);
+     this.riskLevel = get(riskLevel);
+     betAmount.subscribe((value) => (this.betAmount = value));
+-    rowCount.subscribe((value) => (this.rowCount = value));
++    rowCount.subscribe((value) => this.updateRowCount(value));
+     riskLevel.subscribe((value) => (this.riskLevel = value));
+ 
+     this.engine = Matter.Engine.create({
+@@ -273,6 +274,10 @@ class PlinkoEngine {
+           profit,
+         },
+       ]);
++      totalProfitHistory.update((history) => {
++        const lastTotalProfit = history.slice(-1)[0];
++        return [...history, lastTotalProfit + profit];
++      });
+       balance.update((balance) => balance + payoutValue);
+     }
+ 
+diff --git a/src/lib/components/SettingsWindow/SettingsWindow.svelte b/src/lib/components/SettingsWindow/SettingsWindow.svelte
+index 9dffd0f..65bfaf4 100644
+--- a/src/lib/components/SettingsWindow/SettingsWindow.svelte
++++ b/src/lib/components/SettingsWindow/SettingsWindow.svelte
+@@ -34,7 +34,7 @@
+ 
+       <button
+         data-testid="reset-balance-button"
+-        onclick={() => ($balance += DEFAULT_BALANCE)}
++        onclick={() => ($balance = DEFAULT_BALANCE)}
+         class="touch-manipulation self-start rounded-md bg-red-500 px-3 py-2 text-sm text-white transition-colors hover:bg-red-400 active:bg-red-600"
+       >
+         Reset Balance
+diff --git a/src/lib/components/Sidebar/Sidebar.svelte b/src/lib/components/Sidebar/Sidebar.svelte
+index 2644e09..151a30e 100644
+--- a/src/lib/components/Sidebar/Sidebar.svelte
++++ b/src/lib/components/Sidebar/Sidebar.svelte
+@@ -81,6 +81,10 @@
+       $plinkoEngine?.dropBall();
+       autoBetsLeft -= 1;
+     }
++    if (autoBetsLeft === 0 && autoBetInterval !== null) {
++      resetAutoBetInterval();
++      return;
++    }
+   }
+ 
+   const handleAutoBetInputFocusOut: FormEventHandler<HTMLInputElement> = (e) => {
+@@ -190,7 +194,7 @@
+     <Select
+       data-testid="risk-select"
+       id="riskLevel"
+-      value={$riskLevel}
++      bind:value={$riskLevel}
+       items={riskLevels}
+       disabled={hasOutstandingBalls || autoBetInterval !== null}
+     />
+@@ -273,7 +277,7 @@
+         <Tooltip.Root>
+           <Tooltip.Trigger
+             data-testid="settings-open-button"
+-            onclick={() => ($isLiveStatsOpen = !$isLiveStatsOpen)}
++            onclick={() => ($isGameSettingsOpen = !$isGameSettingsOpen)}
+             class={twMerge(
+               'rounded-full p-2 text-slate-300 transition hover:bg-slate-600 active:bg-slate-500',
+               $isGameSettingsOpen && 'text-slate-100',
+diff --git a/src/lib/utils/settings.ts b/src/lib/utils/settings.ts
+index f20ae6a..01bc82d 100644
+--- a/src/lib/utils/settings.ts
++++ b/src/lib/utils/settings.ts
+@@ -1,5 +1,5 @@
+ export function hasPreferReducedMotion(): boolean {
+-  const query = '(prefers-reduced-motion: no-preference)';
++  const query = '(prefers-reduced-motion: reduce)';
+   if (window && window.matchMedia) {
+     return window.matchMedia(query).matches;
+   }
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 2ab108d..a95ee2b 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -11,12 +11,10 @@
+   $effect(() => {
+     setBalanceFromLocalStorage();
+   });
+-
+-  $effect(() => {
+-    writeBalanceToLocalStorage();
+-  });
+ </script>
+ 
++<svelte:window onbeforeunload={writeBalanceToLocalStorage} />
++
+ <div class="relative flex min-h-dvh w-full flex-col">
+   <nav class="sticky top-0 z-10 w-full bg-gray-700 px-5 drop-shadow-lg">
+     <div class="mx-auto flex h-14 max-w-7xl items-center justify-between">

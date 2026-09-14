@@ -1,0 +1,484 @@
+diff --git a/src/App.svelte b/src/App.svelte
+index 3b621a0..ca36ca6 100644
+--- a/src/App.svelte
++++ b/src/App.svelte
+@@ -289,18 +289,20 @@
+                 <div class="parent grid-parent">
+                   <input
+                     class="child"
++                    data-testid="docs-input"
+                     placeholder="Search Documentation"
+                     type="text"
+                     bind:value={textVal}
+                   />
+                   <button
+                     class="searchButton"
++                    data-testid="docs-search"
+                     on:click|preventDefault={handleKeyup2}>Search</button
+                   >
+-                  <button class="backButton" on:click={handleDocuments}>Back</button
++                  <button class="backButton" data-testid="docs-back" on:click={handleDocuments}>Back</button
+                   >
+                 </div>
+-                <iframe class="docs" title="test" src={documentation} />
++                <iframe class="docs" title="test" data-testid="docs-frame" src={documentation} />
+               {/if}
+               {#if performanceBool === true}
+                 <div>
+@@ -309,18 +311,18 @@
+ 
+                 <footer>
+                   <span>
+-                    <button class="backButton" on:click={handlePerformance}>Back</button>
++                    <button class="backButton" data-testid="perf-back" on:click={handlePerformance}>Back</button>
+                   </span>
+                 </footer>
+ 
+               {/if}
+               <!-- the editor for the Split-View -->
+               {#if editorBool === true}
+-                <div class="editor-wrapper-split">
++                <div class="editor-wrapper-split" data-testid="split-wrap">
+                   <Editor />
+                   </div>
+                   <span>
+-                    <button class="backButton" on:click={handleEditorToggle}>Back</button>
++                    <button class="backButton" data-testid="split-back" on:click={handleEditorToggle}>Back</button>
+                   </span>
+             {/if}
+ 
+@@ -330,11 +332,13 @@
+                   <button
+                     type="button"
+                     class="childButton"
++                    data-testid="btn-performance"
+                     on:click={handlePerformance}> Performance Dash<span class="material-symbols-outlined"> speed</span> </button>
+                 </span>
+                   <button
+                     type="button"
+                     class="childButton"
++                    data-testid="btn-docs"
+                     on:click={handleDocuments}> Docs<span class="material-symbols-outlined"> manage_search</span></button
+                   >
+                   <!-- button to access Split-View -->
+@@ -342,6 +346,7 @@
+                   <button
+                     type="button"
+                     class="childButton"
++                    data-testid="btn-split"
+                     on:click={handleEditorToggle}> Split View <span class="material-symbols-outlined"> vertical_split</span> </button>
+                 </span>
+                 </div>
+diff --git a/src/CodeEditor/Editor.svelte b/src/CodeEditor/Editor.svelte
+index 9d6de14..fdd361c 100644
+--- a/src/CodeEditor/Editor.svelte
++++ b/src/CodeEditor/Editor.svelte
+@@ -183,14 +183,15 @@
+ </script>
+ 
+ <!--==========================================MARKUP==========================================-->
+-<ul>
++<ul data-testid="tab-bar">
+   {#each $openTabs as tab}
+-    <li class={activeTabValue === tab.tabId ? "active" : ""}>
++    <li class={activeTabValue === tab.tabId ? "active" : ""} data-testid={`tab-item-${tab.tabId}`}>
+       <span class="tab-span" on:click={() => handleClick(tab)}>
+         <img src="../src/icons/file_type_{tab.ext}.svg" alt={""} />
+         {tab.fileName}
+         <span
+           class="delete-button"
++          data-testid={`tab-delete-${tab.tabId}`}
+           value={tab}
+           on:click={() => deleteTab(tab)}
+         >
+@@ -202,7 +203,7 @@
+ </ul>
+ 
+ {#if $openTabs.length > 0}
+-  <div class="editor-body">
++  <div class="editor-body" data-testid="editor-body">
+ 
+     <CodeMirror
+       class="childClass current"
+diff --git a/src/DataStore/SvelteStormDataStore.ts b/src/DataStore/SvelteStormDataStore.ts
+index 6a7b47b..afaf289 100644
+--- a/src/DataStore/SvelteStormDataStore.ts
++++ b/src/DataStore/SvelteStormDataStore.ts
+@@ -46,6 +46,25 @@ const collectionOfAllSnaps = writable([]);
+ // SStorm 5.0 Update - Adding object to hold values of web-vitals 
+ const vitals: Writable<VitalObject> = writable<VitalObject>({})
+ 
++
++// Verification probe: expose the live store handles for headless inspection.
++if (typeof window !== 'undefined') {
++  (window as any).__stores = {
++    DirectoryData,
++    openTabs,
++    editorCache,
++    codeMirrorEditor,
++    currentTabFilePath,
++    showEditorBackground,
++    appBeingDebugedPath,
++    saveToFileName,
++    snapshots,
++    collectionOfSnaps,
++    collectionOfAllSnaps,
++    vitals,
++  };
++}
++
+ export {
+   DirectoryData,
+   openTabs,
+diff --git a/src/Directory/DirTopMenu.svelte b/src/Directory/DirTopMenu.svelte
+index 5393840..77b1c61 100644
+--- a/src/Directory/DirTopMenu.svelte
++++ b/src/Directory/DirTopMenu.svelte
+@@ -119,15 +119,15 @@
+ 
+ <div class="fileMenu">
+ 
+-  <div class="refresh" on:click={refreshDir}>
++  <div class="refresh" data-testid="menu-refresh" on:click={refreshDir}>
+     <FolderRefreshOutline {color} {size} {width} {height} {viewBox} />
+   </div>
+ 
+-  <div class="addFile" on:click={addFile}>
++  <div class="addFile" data-testid="menu-add-file" on:click={addFile}>
+     <FilePlusOutline {color} {size} {width} {height} {viewBox} />
+   </div>
+ 
+-  <div class="addFolder" on:click={addFolder}>
++  <div class="addFolder" data-testid="menu-add-folder" on:click={addFolder}>
+     <FolderPlusOutline {color} {size} {width} {height} {viewBox} />
+   </div>
+ 
+@@ -137,6 +137,7 @@
+   <span>
+     <input
+       class="textBox"
++      data-testid="new-file-input"
+       bind:this={fileName}
+       on:keydown={(e) => createFileHandler(e, mainDir)}
+       bind:value={newName}
+@@ -150,6 +151,7 @@
+   <span>
+     <input
+       class="textBox"
++      data-testid="new-folder-input"
+       bind:this={fileName}
+       on:keydown={(e) => createFolderHandler(e, mainDir)}
+       bind:value={newName}
+diff --git a/src/PerformanceDashboard/PerformanceDashboard.svelte b/src/PerformanceDashboard/PerformanceDashboard.svelte
+index b5bd0e2..87f9176 100644
+--- a/src/PerformanceDashboard/PerformanceDashboard.svelte
++++ b/src/PerformanceDashboard/PerformanceDashboard.svelte
+@@ -41,7 +41,7 @@ and not SvelteStorm itself.
+ <main> 
+     <div class="state-container">
+         <div class="h5Container">
+-          <h4 class="title">PERFORMANCE DASHBOARD</h4>
++          <h4 class="title" data-testid="perf-title">PERFORMANCE DASHBOARD</h4>
+         </div>
+         <!-- <div>
+           <button>Start</button>
+diff --git a/src/PerformanceDashboard/RerenderChart.svelte b/src/PerformanceDashboard/RerenderChart.svelte
+index b83537a..a303556 100644
+--- a/src/PerformanceDashboard/RerenderChart.svelte
++++ b/src/PerformanceDashboard/RerenderChart.svelte
+@@ -48,8 +48,8 @@
+   </script> 
+   
+   <main>
+-    <h5 class="graph-title" data-tooltip='Dynamically track re-render counts of Svelte app components.'>Component Rerender Tracker</h5>
+-      <svg {width} {height} class="chart">
++    <h5 class="graph-title" data-testid="chart-title" data-tooltip='Dynamically track re-render counts of Svelte app components.'>Component Rerender Tracker</h5>
++      <svg {width} {height} class="chart" data-testid="chart-svg">
+           <g transform={`translate(${margin.left},${margin.top})`}>
+             {#each xScale.ticks() as tickValue}
+               <g transform={`translate(${xScale(tickValue)},0)`} class="yAxis">
+@@ -70,6 +70,7 @@
+                 {d.component}
+               </text>
+               <rect class="bars"
++                data-testid="chart-bar"
+                 x="0"
+                 y={yScale(d.component)}
+                 width={xScale(d.count)}
+diff --git a/src/PerformanceDashboard/WebVitals.svelte b/src/PerformanceDashboard/WebVitals.svelte
+index b2c553c..c09598f 100644
+--- a/src/PerformanceDashboard/WebVitals.svelte
++++ b/src/PerformanceDashboard/WebVitals.svelte
+@@ -21,17 +21,17 @@
+       <div class='vitals-left'>
+         <div class='individual-vital'>
+           <h5>Largest Contentful Paint</h5>
+-          <p>{$vitals.LCP === undefined ? "TBD" : ($vitals.LCP.value).toFixed(3) + 's'}</p>
++          <p data-testid="vital-value-LCP">{$vitals.LCP === undefined ? "TBD" : ($vitals.LCP.value).toFixed(3) + 's'}</p>
+           {#if $vitals.LCP}
+             <p>Rating: 
+-              <span class={$vitals.LCP.rating[0]}>{$vitals.LCP.rating.toUpperCase()}
++              <span class={$vitals.LCP.rating[0]} data-testid="vital-rating-LCP">{$vitals.LCP.rating.toUpperCase()}
+               </span>
+             </p>
+           {/if}
+         </div>
+         <div class='individual-vital'>
+           <h5>First Input Delay</h5>
+-          <p>{$vitals.FID === undefined ? "TBD" : ($vitals.FID.value).toFixed(3) + 'ms'}</p>
++          <p data-testid="vital-value-FID">{$vitals.FID === undefined ? "TBD" : ($vitals.FID.value).toFixed(3) + 'ms'}</p>
+           {#if $vitals.FID}
+             <p>Rating: 
+               <span class={$vitals.FID.rating[0]}>{$vitals.FID.rating.toUpperCase()}
+@@ -41,7 +41,7 @@
+         </div>
+         <div class='individual-vital'>
+           <h5>Cumulative Layout Shift</h5>
+-          <p>{$vitals.CLS === undefined ? "TBD" : ($vitals.CLS.value).toFixed(3)}</p>
++          <p data-testid="vital-value-CLS">{$vitals.CLS === undefined ? "TBD" : ($vitals.CLS.value).toFixed(3)}</p>
+           {#if $vitals.CLS}
+             <p>Rating: 
+               <span class={$vitals.CLS.rating[0]}>{$vitals.CLS.rating.toUpperCase()}
+@@ -53,7 +53,7 @@
+       <div class='vitals-right'>
+         <div class='individual-vital'>
+           <h5>First Contentful Paint</h5>
+-          <p>{$vitals.FCP === undefined ? "TBD" : ($vitals.FCP.value).toFixed(3) + 's'}</p>
++          <p data-testid="vital-value-FCP">{$vitals.FCP === undefined ? "TBD" : ($vitals.FCP.value).toFixed(3) + 's'}</p>
+           {#if $vitals.FCP}
+             <p>Rating: 
+               <span class={$vitals.FCP.rating[0]}>{$vitals.FCP.rating.toUpperCase()}
+@@ -63,7 +63,7 @@
+         </div>
+         <div class='individual-vital'>
+           <h5>Time To First Byte</h5>
+-          <p>{$vitals.TTFB === undefined ? "TBD" : ($vitals.TTFB.value).toFixed(3) + 'ms'}</p>
++          <p data-testid="vital-value-TTFB">{$vitals.TTFB === undefined ? "TBD" : ($vitals.TTFB.value).toFixed(3) + 'ms'}</p>
+           {#if $vitals.TTFB}
+             <p>Rating: 
+               <span class={$vitals.TTFB.rating[0]}>{$vitals.TTFB.rating.toUpperCase()}
+@@ -73,7 +73,7 @@
+         </div>
+         <div class='individual-vital'>
+           <h5>Interaction to Next Paint</h5>
+-          <p>{$vitals.INP === undefined ? "TBD" : ($vitals.INP.value).toFixed(3) + 'ms'}</p>
++          <p data-testid="vital-value-INP">{$vitals.INP === undefined ? "TBD" : ($vitals.INP.value).toFixed(3) + 'ms'}</p>
+           {#if $vitals.INP}
+             <p>Rating: 
+               <span class={$vitals.INP.rating[0]}>{$vitals.INP.rating.toUpperCase()}
+diff --git a/src/StateManager/StateManager.svelte b/src/StateManager/StateManager.svelte
+index a6fc0a8..3bbe7d0 100644
+--- a/src/StateManager/StateManager.svelte
++++ b/src/StateManager/StateManager.svelte
+@@ -11,9 +11,9 @@
+ 
+ <div class="state-container">
+   <div class="h5Container">
+-    <h4 class="title">COMPONENTS & PROPS</h4>
++    <h4 class="title" data-testid="statemgr-title">COMPONENTS & PROPS</h4>
+   </div>
+-  <ul>
++  <ul data-testid="statemgr-list">
+     {#each Object.entries(stateObj) as [file, state]}
+       <li class="fileName">
+         {file} : <span class="stateName">{"{ "}{state.join()}{" }"}</span>
+diff --git a/src/Terminal/XTerm.svelte b/src/Terminal/XTerm.svelte
+index a40f3d9..f3b10e6 100644
+--- a/src/Terminal/XTerm.svelte
++++ b/src/Terminal/XTerm.svelte
+@@ -98,5 +98,5 @@
+ </script>
+ 
+ <main>
+-  <div id="xterm" />
++  <div id="xterm" data-testid="xterm-host" />
+ </main>
+\ No newline at end of file
+diff --git a/src/TimeTraveler/Card.svelte b/src/TimeTraveler/Card.svelte
+index 1e8383d..7bbfe87 100644
+--- a/src/TimeTraveler/Card.svelte
++++ b/src/TimeTraveler/Card.svelte
+@@ -60,14 +60,14 @@
+ 
+ <div class="cardContainer">
+   <div class="componentName">    
+-    <button class="compName" on:click={openCardInfo}> <strong>{componentName}<strong/> </button>
++    <button class="compName" data-testid="card-toggle" on:click={openCardInfo}> <strong>{componentName}<strong/> </button>
+   </div>
+ 
+   
+     <div class="componentStates">
+       {#each listOfKeys as key}
+       {#if ifOpened}
+-      <div>
++      <div data-testid="card-row">
+           {key}: {component[Object.keys(component)[0]][key]}
+       </div> 
+       {/if}   
+diff --git a/src/TimeTraveler/CardHolder.svelte b/src/TimeTraveler/CardHolder.svelte
+index 750d6a4..77632b7 100644
+--- a/src/TimeTraveler/CardHolder.svelte
++++ b/src/TimeTraveler/CardHolder.svelte
+@@ -3,7 +3,7 @@
+   export let snapshot;
+       
+ </script>
+-<div class="cardHolder">
++<div class="cardHolder" data-testid="card-holder">
+ 
+   {#each snapshot as component, idx}
+   <div class="card">
+diff --git a/src/TimeTraveler/Debugger.svelte b/src/TimeTraveler/Debugger.svelte
+index 1066541..8bc8dbc 100644
+--- a/src/TimeTraveler/Debugger.svelte
++++ b/src/TimeTraveler/Debugger.svelte
+@@ -199,6 +199,7 @@
+         .select(el)
+         .append('svg')
+         .attr('id', 'D3Tree')
++        .attr('data-testid', 'd3-tree')
+         .attr('viewBox', `0 0 ${treeParent.clientWidth} ${treeParent.clientHeight}`),
+         // var svg = d3.select("body").append("svg")
+         // .attr('width', width + margin.left + margin.right)
+@@ -320,12 +321,14 @@
+     {#if collectionOfAllSnapshots.length}
+     <div class="buttonContainer">
+     <button class="refreshbtn"
++      data-testid="snap-reset"
+       on:click={() => {
+         refresh();
+         }}>Reset</button
+     >
+     {#each collectionOfAllSnapshots as snapshot, idx}
+       <button
++        data-testid={`snap-btn-${idx + 1}`}
+         on:click={() => {
+           activeIndex = idx;
+           updateWindow(activeIndex);
+@@ -339,7 +342,7 @@
+   {/if}
+   
+   <!-- D3 tree -->
+-  <div class="svgtree" bind:this={el} />
++  <div class="svgtree" data-testid="d3-tree-host" bind:this={el} />
+ </div>
+ 
+ <!-- /*
+diff --git a/src/sample.spec.js b/src/sample.spec.js
+deleted file mode 100644
+index a8ec97f..0000000
+--- a/src/sample.spec.js
++++ /dev/null
+@@ -1,7 +0,0 @@
+-import { describe, expect, test } from 'vitest';
+-
+-describe('Example File', () => {
+-  test('Sample test', () => {
+-    expect(1 + 3).equal(4);
+-  });
+-});
+diff --git a/test/base.test.ts b/test/base.test.ts
+deleted file mode 100644
+index 426ff16..0000000
+--- a/test/base.test.ts
++++ /dev/null
+@@ -1,98 +0,0 @@
+-import { _electron as electron } from "playwright";
+-import { test, expect } from "@playwright/test";
+-import { 
+-  clickMenuItemById,
+-  findLatestBuild, 
+-  ipcMainCallFirstListener, 
+-  ipcRendererCallFirstListener, 
+-  parseElectronApp,
+-  ipcMainInvokeHandler,
+-  ipcRendererInvoke
+-} from 'electron-playwright-helpers'
+-
+-test("Launch electron app", async () => {
+-  // Launch electron app
+-  const electronApp = await electron.launch({ args: ["."] });
+-
+-  const windowState: {
+-    isVisible: boolean;
+-    isDevToolsOpened: boolean;
+-    isCrashed: boolean;
+-  } = await electronApp.evaluate(async ({ BrowserWindow }) => {
+-    const mainWindow = BrowserWindow.getAllWindows()[0];
+-
+-    const getState = () => ({
+-      isVisible: mainWindow.isVisible(),
+-      isDevToolsOpened: mainWindow.webContents.isDevToolsOpened(),
+-      isCrashed: mainWindow.webContents.isCrashed(),
+-    });
+-
+-    return new Promise((resolve) => {
+-      if (mainWindow.isVisible()) {
+-        resolve(getState());
+-      } else {
+-        mainWindow.once("ready-to-show", () =>
+-          setTimeout(() => resolve(getState()), 0)
+-        );
+-      }
+-    });
+-  });
+-
+-  // Expect the following
+-  expect(windowState.isVisible, "Expect window to be visible").toBeTruthy();
+-  expect(windowState.isDevToolsOpened, "Expect Dev Tools to be closed").toBeFalsy();
+-  expect(windowState.isCrashed, "Expect Window to not Crash").toBeFalsy();
+-
+-  await electronApp.close();
+-});
+-
+-test.describe("Check Main Page", async () => {
+-  let electronApp;
+-  let firstWindow;
+-
+-  test.beforeAll(async () => {
+-    electronApp = await electron.launch({ args: ["."] });
+-    firstWindow = await electronApp.firstWindow();
+-  });
+-
+-  test("Check title", async () => {
+-    const title = await firstWindow.title();
+-    expect(title).toBe("SvelteStorm");
+-  });
+-
+-  test('Trigger IPC listener via main process', async () => {
+-    electronApp.evaluate(({ ipcMain }) => {
+-      ipcMain.emit('new-window')
+-    })
+-    const newPage = await electronApp.waitForEvent('window')
+-    expect(newPage).toBeTruthy()
+-    firstWindow = newPage
+-  })
+-
+-  test('Send IPC message from Renderer to Main and open new window', async () => {
+-    // evaluate this script in render process
+-    // requires webPreferences.nodeIntegration true and contextIsolation false
+-    await firstWindow.evaluate(() => {
+-      require('electron').ipcRenderer.send('openDebugAppWindow', '8080')
+-    })
+-    
+-    const newPage = await electronApp.waitForEvent('window')
+-    expect(newPage).toBeTruthy()
+-    firstWindow = newPage
+-  })
+-  
+-  test('receive synchronous data via ipcMainCallFirstListener()', async () => {
+-    const data = await ipcMainCallFirstListener(electronApp, 'main-synchronous-data')
+-    expect(data).toBe('Main Synchronous Data')
+-  })
+-  
+-  test('receive asynchronous data via ipcMainCallFirstListener()', async () => {
+-    const data = await ipcMainCallFirstListener(electronApp, 'main-asynchronous-data')
+-    expect(data).toBe('Main Asynchronous Data')
+-  })
+-
+-  test.afterAll(async () => {
+-    await electronApp.close();
+-  });
+-
+-});
+\ No newline at end of file

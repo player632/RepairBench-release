@@ -1,0 +1,54 @@
+diff --git a/src/lib/composables/remoteSync.ts b/src/lib/composables/remoteSync.ts
+index b4245e70f..8f8f03df2 100644
+--- a/src/lib/composables/remoteSync.ts
++++ b/src/lib/composables/remoteSync.ts
+@@ -32,8 +32,7 @@ export function compareVersions(a: string, b: string): number {
+   return 0;
+ }
+ 
+-const REMOTE_DEFAULTS_URL =
+-  'https://raw.githubusercontent.com/nichind/comine/main/remote-defaults.json';
++const REMOTE_DEFAULTS_URL = '/remote-defaults.json';
+ const REMOTE_DEFAULTS_CACHE_KEY = 'comine_remote_defaults';
+ 
+ interface RemoteDefaultsPayload {
+diff --git a/src/lib/stores/settings.ts b/src/lib/stores/settings.ts
+index 0c1193a9d..854b87a25 100644
+--- a/src/lib/stores/settings.ts
++++ b/src/lib/stores/settings.ts
+@@ -411,7 +411,21 @@ export const defaultSettings: AppSettings = {
+   backgroundType: 'acrylic',
+   backgroundColor: '#1a1a2e',
+   backgroundImage: '',
+-  backgroundVideo: 'https://nichind.dev/assets/video/atri.mp4',
++  // repair-bench adaptation (environment/adaptation.patch): the seed's own default here is
++  // 'https://nichind.dev/assets/video/atri.mp4'. BackgroundProvider.svelte:36-52 derives
++  // effectiveBackgroundType while `onDesktop` is still false (it is only assigned in onMount), and for any
++  // window-effect backgroundType that pre-mount branch returns `backgroundVideo ? 'animated' : 'solid'`, so
++  // EVERY boot - on any userAgent - renders <video src=that https URL autoplay> for one tick and the page
++  // issues an off-origin request before the element is removed again. Measured, not inferred: the COMDIAG
++  // leg recorded exactly one off-origin request on the clean face, {url:
++  // 'https://nichind.dev/assets/video/atri.mp4', type:'media'}, with videoElementCount() already back to 0
++  // by the time the probes were read. Emptied here so the offline face has zero runtime egress (ruling G3:
++  // a runtime-fetched external resource is neutralized; a 4 MiB internet-hosted video cannot be vendored
++  // same-origin under the 0-network rule). The provider, the setting and its handler in
++  // src/routes/settings/+page.svelte:571 are untouched, so the value stays user-settable and the 'animated'
++  // branch stays reachable - P17 measures the outcome (0 off-origin resources, 0 nichind.dev hits, 0 video
++  // elements) rather than this line.
++  backgroundVideo: '',
+   backgroundBlur: 20,
+   backgroundOpacity: 100,
+   windowTint: 48,
+diff --git a/static/remote-defaults.json b/static/remote-defaults.json
+new file mode 100644
+index 000000000..8a33934ec
+--- /dev/null
++++ b/static/remote-defaults.json
+@@ -0,0 +1,7 @@
++{
++  "version": 1,
++  "defaults": {
++    "youtubePlayerClient": "default,-android_sdkless",
++    "usePlayerClientForExtraction": true
++  }
++}

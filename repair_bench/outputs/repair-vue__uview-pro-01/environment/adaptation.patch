@@ -1,0 +1,115 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -3,10 +3,14 @@
+     <head>
+         <meta charset="UTF-8" />
+         <meta name="referrer" content="no-referrer" />
++        <!-- OFFLINE ADAPTATION (repair-bench): the favicon pointed at ik.imagekit.io, i.e. one real
++             external request on EVERY page load. [environment] allow_internet=false forbids it, so it is
++             re-pointed at a locally authored same-origin SVG that ships in src/static/rb-vendor/. The
++             distinguishing query string is kept so the substitution stays traceable. -->
+         <link
+             rel="shortcut icon"
+-            type="image/x-icon"
+-            href="https://ik.imagekit.io/anyup/uview-pro/common/favicon.ico"
++            type="image/svg+xml"
++            href="/static/rb-vendor/placeholder.svg?rb=favicon"
+         />
+         <script>
+             var coverSupport =
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -22,7 +22,7 @@
+         "dev:quickapp-webview": "uni -p quickapp-webview",
+         "dev:quickapp-webview-huawei": "uni -p quickapp-webview-huawei",
+         "dev:quickapp-webview-union": "uni -p quickapp-webview-union",
+-        "build": "node scripts/update-date.js && uni build",
++        "build": "uni build",
+         "postbuild": "node scripts/fix-empty-css.js",
+         "build:custom": "node scripts/update-date.js && uni build -p",
+         "build:h5": "node scripts/update-date.js && uni build",
+diff --git a/src/common/demo.scss b/src/common/demo.scss
+--- a/src/common/demo.scss
++++ b/src/common/demo.scss
+@@ -137,3 +137,23 @@
+     }
+ }
+ /* end--演示页面使用的统一样式--end */
++
++/* OFFLINE ADAPTATION (repair-bench) - vendor runtime preload neutralised.
++   The @dcloudio/uni-h5 runtime stylesheet ships, verbatim in the built bundle
++   (measured: dist/build/h5/assets/index-iCk2Ehn7.css),
++     body:after{position:fixed;content:"";left:-1000px;top:-1000px;
++                animation:shadow-preload .1s;animation-delay:3s}
++     @keyframes shadow-preload{0%{background-image:url(https://cdn.dcloud.net.cn/img/shadow-grey.png)}
++                              to{background-image:url(https://cdn.dcloud.net.cn/...)}}
++   i.e. an off-screen pseudo-element that preloads a remote image 3 SECONDS after every page load. That
++   is exactly the second blocked host the gate-1 probe saw (cdn.dcloud.net.cn, 2 requests = the two
++   keyframe stops) and it is NOT in src/ at all (rg over src/ + index.html: 0 hits), so it cannot be
++   fixed at its own source and must not be fixed inside node_modules (the delivered recipe restores
++   node_modules from the durable nm archive, which no patch may touch). This file is @import-ed LAST in
++   the global <style> block of src/App.vue (line 19), and the override is !important so bundle order is
++   irrelevant. Killing the animation means the keyframes never apply, so neither URL is ever requested.
++   Nothing observable changes: body:after is an invisible off-screen preload hack at (-1000px,-1000px). */
++body::after {
++    animation: none !important;
++    background-image: none !important;
++}
+diff --git a/src/components/demo-card/demo-card.vue b/src/components/demo-card/demo-card.vue
+--- a/src/components/demo-card/demo-card.vue
++++ b/src/components/demo-card/demo-card.vue
+@@ -95,7 +95,9 @@
+     background-position: center;
+     position: relative;
+     z-index: 1;
+-    background-image: url(https://ik.imagekit.io/anyup/uview-pro/common/bg-item.png);
++    /* OFFLINE ADAPTATION (repair-bench): remote ik.imagekit.io background raster -> local same-origin
++       placeholder. Decorative only; no selector, no box model and no observable layout value changes. */
++    background-image: url(/static/rb-vendor/placeholder.svg?rb=bg-item);
+     transition: background 0.3s;
+     /* #ifdef APP-PLUS */
+     margin-bottom: 40rpx;
+diff --git a/src/pages/example/components.vue b/src/pages/example/components.vue
+--- a/src/pages/example/components.vue
++++ b/src/pages/example/components.vue
+@@ -186,7 +186,12 @@
+     // #ifdef APP
+     return '/static/app/example/' + path + '.png';
+     // #endif
+-    return 'https://ik.imagekit.io/anyup/uview-pro/example/' + path + '.png';
++    // OFFLINE ADAPTATION (repair-bench): the H5 branch built a remote ik.imagekit.io URL per icon, and
++    // this page renders one <u-image> per group (line 111) plus one per item (line 128) - measured as the
++    // bulk of the 81 blocked requests in the gate-1 probe. Re-pointed at a locally authored same-origin
++    // placeholder; the icon name is KEPT in the query string so every src stays individually addressable
++    // and the reactive contract (one distinct src per component) is unchanged. 0 bytes fetched.
++    return '/static/rb-vendor/placeholder.svg?rb=' + path;
+ };
+ 
+ const offsetTop = computed(() => {
+diff --git a/src/pages/scenes/favorites/index.vue b/src/pages/scenes/favorites/index.vue
+--- a/src/pages/scenes/favorites/index.vue
++++ b/src/pages/scenes/favorites/index.vue
+@@ -62,7 +62,9 @@
+     // #ifdef APP
+     return '/static/app/example/' + path + '.png';
+     // #endif
+-    return 'https://ik.imagekit.io/anyup/uview-pro/example/' + path + '.png';
++    // OFFLINE ADAPTATION (repair-bench): same substitution as src/pages/example/components.vue getIcon -
++    // remote ik.imagekit.io raster becomes a local same-origin placeholder, icon name kept in the query.
++    return '/static/rb-vendor/placeholder.svg?rb=' + path;
+ }
+ 
+ // 格式化时间
+diff --git a/src/static/rb-vendor/placeholder.svg b/src/static/rb-vendor/placeholder.svg
+new file mode 100644
+--- /dev/null
++++ b/src/static/rb-vendor/placeholder.svg
+@@ -0,0 +1,6 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="offline placeholder">
++  <rect width="120" height="120" rx="12" fill="#eef1f5" />
++  <rect x="10" y="10" width="100" height="100" rx="8" fill="none" stroke="#c9d2de" stroke-width="2" stroke-dasharray="6 5" />
++  <circle cx="44" cy="46" r="10" fill="#c9d2de" />
++  <path d="M22 96l26-30 18 20 12-13 20 23z" fill="#c9d2de" />
++</svg>

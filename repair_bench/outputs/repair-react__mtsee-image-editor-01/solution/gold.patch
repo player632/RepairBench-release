@@ -1,0 +1,156 @@
+diff --git a/src/pages/editor/HotKeys.tsx b/src/pages/editor/HotKeys.tsx
+index a721fe0..0ab2bf4 100644
+--- a/src/pages/editor/HotKeys.tsx
++++ b/src/pages/editor/HotKeys.tsx
+@@ -239,7 +239,7 @@ function HotKeys(props: IProps) {
+               console.log('右移10px');
+               const elems = editor.getElementDataByIds([...editor.selectedElementIds]);
+               elems.forEach(el => {
+-                el.x -= 10;
++                el.x += 10;
+               });
+               editor.updateCanvas();
+             }
+diff --git a/src/pages/editor/components/canvas/SetCanvasSize.tsx b/src/pages/editor/components/canvas/SetCanvasSize.tsx
+index 9aeeecf..6fef0b1 100644
+--- a/src/pages/editor/components/canvas/SetCanvasSize.tsx
++++ b/src/pages/editor/components/canvas/SetCanvasSize.tsx
+@@ -9,7 +9,7 @@ export interface IProps {}
+ function SetCanvasSize(props: IProps) {
+   const zoomIn = () => {
+     let scale = editor.store.app.scale as number;
+-    scale += 0.1;
++    scale -= 0.1;
+     if (scale < 0.1) {
+       scale = 0.1;
+     }
+diff --git a/src/pages/editor/components/options/PageOption.tsx b/src/pages/editor/components/options/PageOption.tsx
+index 9762e28..75fba2a 100644
+--- a/src/pages/editor/components/options/PageOption.tsx
++++ b/src/pages/editor/components/options/PageOption.tsx
+@@ -32,7 +32,7 @@ function PageOption(props: IProps) {
+           <Tooltip content="复制画布">
+             <a
+               onClick={() => {
+-                const nPage = editor.pageData as any;
++                const nPage = util.toJS(editor.pageData);
+                 nPage.id = util.createID();
+                 editor.data.pages.push(nPage);
+                 editor.selectPageId = nPage.id;
+diff --git a/src/pages/editor/components/options/components/flipxy/FlipXY.tsx b/src/pages/editor/components/options/components/flipxy/FlipXY.tsx
+index d720766..97f7572 100644
+--- a/src/pages/editor/components/options/components/flipxy/FlipXY.tsx
++++ b/src/pages/editor/components/options/components/flipxy/FlipXY.tsx
+@@ -39,7 +39,7 @@ function FlipXY(props: IProps) {
+         <Tooltip content="水平翻转">
+           <a
+             onClick={() => {
+-              elementData.flipy = !elementData.flipy;
++              elementData.flipx = !elementData.flipx;
+               editor.updateCanvas();
+             }}
+           >
+diff --git a/src/pages/editor/components/options/components/position/Position.tsx b/src/pages/editor/components/options/components/position/Position.tsx
+index 0bcf779..2b725db 100644
+--- a/src/pages/editor/components/options/components/position/Position.tsx
++++ b/src/pages/editor/components/options/components/position/Position.tsx
+@@ -22,7 +22,7 @@ function Position(props: IProps) {
+           prefix="X"
+           value={util.toNum(elementData.x)}
+           onChange={(v: number) => {
+-            elementData.y = util.toNum(v);
++            elementData.x = util.toNum(v);
+             editor.updateCanvas();
+             forceUpdate();
+           }}
+diff --git a/src/pages/editor/components/sources/layers/Layers.tsx b/src/pages/editor/components/sources/layers/Layers.tsx
+index a6e0f1e..fddbe54 100644
+--- a/src/pages/editor/components/sources/layers/Layers.tsx
++++ b/src/pages/editor/components/sources/layers/Layers.tsx
+@@ -25,7 +25,7 @@ function Layers(props: IProps) {
+ 
+   const clickItem = (e, item) => {
+     // console.log(item, e.ctrlKey);
+-    if (e.ctrlKey || true) {
++    if (e.ctrlKey) {
+       const ids = [...editor.selectedElementIds];
+       if (ids.find(d => d === item.id)) {
+         remove(ids, d => d === item.id);
+diff --git a/src/pages/editor/components/sources/layers/Pages.tsx b/src/pages/editor/components/sources/layers/Pages.tsx
+index 83ccf05..e17e7c5 100644
+--- a/src/pages/editor/components/sources/layers/Pages.tsx
++++ b/src/pages/editor/components/sources/layers/Pages.tsx
+@@ -42,7 +42,7 @@ function Pages(props: IProps) {
+                 layers: [],
+               });
+               editor.data.selectPageId = pid;
+-              editor.selectPageId = editor.data.pages[0].id;
++              editor.selectPageId = pid;
+               editor.selectedElementIds = [];
+               editor.updateCanvasKey = util.createID();
+             });
+diff --git a/src/pages/editor/core/Record.tsx b/src/pages/editor/core/Record.tsx
+index 1d1433c..9acc992 100644
+--- a/src/pages/editor/core/Record.tsx
++++ b/src/pages/editor/core/Record.tsx
+@@ -47,7 +47,7 @@ function RecordManager(props: IProps) {
+       }
+       // 找到对应的数据，然后设置参数
+       if (item.mdata) {
+-        utils.objectCopyValue(store.data, item.mdata);
++        utils.objectCopyValue(item.mdata, store.data);
+       }
+       // 更新视图
+       store.update();
+diff --git a/src/pages/editor/core/stores/Store.ts b/src/pages/editor/core/stores/Store.ts
+index 806f341..7375ae0 100644
+--- a/src/pages/editor/core/stores/Store.ts
++++ b/src/pages/editor/core/stores/Store.ts
+@@ -104,7 +104,7 @@ export default class Store {
+     //   });
+     // };
+     // findLayers(this.data.layers);
+-    remove(this.data.layers, d => d.id === ids[0]);
++    remove(this.data.layers, d => ids.includes(d.id));
+   }
+ 
+   /**
+diff --git a/src/pages/editor/core/tools/helper.ts b/src/pages/editor/core/tools/helper.ts
+index ff4abe2..443b210 100644
+--- a/src/pages/editor/core/tools/helper.ts
++++ b/src/pages/editor/core/tools/helper.ts
+@@ -48,7 +48,7 @@ export function createLayer<T extends LayerType>(type: T): BaseLayer {
+       visible: false,
+     },
+     blendMode: 'normal',
+-    opacity: 0,
++    opacity: 1,
+     rotation: 0,
+     shadow: undefined,
+     _dirty: '',
+diff --git a/src/stores/editor.ts b/src/stores/editor.ts
+index ae02e8c..7b56e41 100644
+--- a/src/stores/editor.ts
++++ b/src/stores/editor.ts
+@@ -190,7 +190,7 @@ class Editor {
+       ids = [...this.selectedElementIds];
+     }
+     const removedObjects = remove(this.pageData.layers, obj => ids.includes(obj.id));
+-    this.pageData.layers.push(...removedObjects);
++    this.pageData.layers.unshift(...removedObjects);
+     this.updateCanvas();
+     this.store.emitControl(ids);
+   }
+diff --git a/src/utils/util.ts b/src/utils/util.ts
+index a374c53..4600151 100644
+--- a/src/utils/util.ts
++++ b/src/utils/util.ts
+@@ -120,7 +120,7 @@ export function toNum(n: number, m?: number) {
+     n = 0;
+   }
+   try {
+-    let v = Number(n.toFixed(0));
++    let v = Number(n.toFixed(m));
+     if (isNaN(v)) {
+       v = 0;
+     }

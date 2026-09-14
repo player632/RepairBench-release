@@ -1,0 +1,170 @@
+diff --git a/packages/svgcanvas/core/event.js b/packages/svgcanvas/core/event.js
+index 9c1b514..de9d561 100644
+--- a/packages/svgcanvas/core/event.js
++++ b/packages/svgcanvas/core/event.js
+@@ -305,7 +305,7 @@ const mouseMoveEvent = (evt) => {
+ 
+       let // ts = null,
+         tx = 0; let ty = 0
+-      let sy = height ? (height + dy) / height : 1
++      let sy = height ? (height - dy) / height : 1
+       let sx = width ? (width + dx) / width : 1
+       // if we are dragging on the north side, then adjust the scale factor and ty
+       if (svgCanvas.getCurrentResizeMode().includes('n')) {
+@@ -755,10 +755,6 @@ const mouseUpEvent = (evt) => {
+             }
+           })
+ 
+-          if (!batchCmd.isEmpty()) {
+-            svgCanvas.addCommandToHistory(batchCmd)
+-          }
+-
+           // Clear the stored transforms AND reset the flag together
+           svgCanvas.dragStartTransforms = null
+           svgCanvas.hasDragStartTransform = false
+@@ -1027,7 +1023,7 @@ const mouseUpEvent = (evt) => {
+       if (svgCanvas.getCurrentMode() === 'path') {
+         svgCanvas.pathActions.toEditMode(element)
+       } else if (svgCanvas.getCurConfig().selectNew) {
+-        const modes = ['circle', 'ellipse', 'square', 'rect', 'fhpath', 'line', 'fhellipse', 'fhrect', 'star', 'polygon', 'shapelib']
++        const modes = ['circle', 'ellipse', 'square', 'fhpath', 'line', 'fhellipse', 'fhrect', 'star', 'polygon', 'shapelib']
+         if (modes.indexOf(svgCanvas.getCurrentMode()) !== -1 && !evt.altKey) {
+           svgCanvas.setMode('select')
+         }
+diff --git a/packages/svgcanvas/core/history.js b/packages/svgcanvas/core/history.js
+index 0616e8d..c65a84b 100644
+--- a/packages/svgcanvas/core/history.js
++++ b/packages/svgcanvas/core/history.js
+@@ -585,7 +585,7 @@ export class UndoManager {
+   undo () {
+     if (this.undoStackPointer > 0) {
+       const cmd = this.undoStack[--this.undoStackPointer]
+-      cmd.unapply(this.handler_)
++      cmd.apply(this.handler_)
+     }
+   }
+ 
+diff --git a/packages/svgcanvas/core/select.js b/packages/svgcanvas/core/select.js
+index f313cb1..0927eb6 100644
+--- a/packages/svgcanvas/core/select.js
++++ b/packages/svgcanvas/core/select.js
+@@ -14,7 +14,7 @@ import { warn } from '../common/logger.js'
+ 
+ let svgCanvas
+ // change radius if touch screen
+-const gripRadius = window.ontouchstart ? 10 : 4
++const gripRadius = window.ontouchstart ? 10 : 8
+ 
+ /**
+  * Private singleton manager for selector state
+diff --git a/packages/svgcanvas/core/text-actions.js b/packages/svgcanvas/core/text-actions.js
+index 90e5f05..0c690ff 100644
+--- a/packages/svgcanvas/core/text-actions.js
++++ b/packages/svgcanvas/core/text-actions.js
+@@ -489,7 +489,6 @@ class TextActions {
+   toSelectMode (selectElem) {
+     svgCanvas.setCurrentMode('select')
+     clearInterval(this.#blinker)
+-    this.#blinker = null
+     if (this.#selblock) {
+       this.#selblock.setAttribute('display', 'none')
+     }
+diff --git a/packages/svgcanvas/svgcanvas.js b/packages/svgcanvas/svgcanvas.js
+index ec782a3..95b7adf 100644
+--- a/packages/svgcanvas/svgcanvas.js
++++ b/packages/svgcanvas/svgcanvas.js
+@@ -221,7 +221,7 @@ class SvgCanvas {
+       font_size: this.curConfig.text?.font_size,
+       font_family: this.curConfig.text?.font_family
+     })
+-    this.curText = allProperties.text // Current text style properties
++    this.curText = allProperties.shape // Current text style properties
+ 
+     // Current shape style properties
+     this.curShape = allProperties.shape
+diff --git a/src/editor/Editor.js b/src/editor/Editor.js
+index 54db8a5..a0f109b 100644
+--- a/src/editor/Editor.js
++++ b/src/editor/Editor.js
+@@ -102,9 +102,7 @@ class Editor extends EditorStartup {
+       // Shortcuts not associated with buttons
+       {
+         key: ['ctrl+arrowleft', true],
+-        fn: () => {
+-          this.rotateSelected(0, 1)
+-        }
++        fn: this.rotateSelected
+       },
+       {
+         key: 'ctrl+arrowright',
+@@ -765,7 +763,6 @@ class Editor extends EditorStartup {
+ 
+     // we tell it to skip focusing the text control if the
+     // text element was previously in focus
+-    this.topPanel.updateContextPanel()
+ 
+     // In the event a gradient was flipped:
+     if (this.selectedElement && mode === 'select') {
+diff --git a/src/editor/components/seZoom.js b/src/editor/components/seZoom.js
+index 03ddeb6..a9246d9 100644
+--- a/src/editor/components/seZoom.js
++++ b/src/editor/components/seZoom.js
+@@ -350,9 +350,10 @@ class SeZoom extends HTMLElement {
+       this.incrementHold = true
+       !isFirst && this.increment()
+ 
++      const held = this.incrementHold
+       setTimeout(
+         () => {
+-          if (this.incrementHold) {
++          if (held) {
+             this.handleMouseDown(dir, false)
+           }
+         },
+@@ -362,9 +363,10 @@ class SeZoom extends HTMLElement {
+       this.decrementHold = true
+       !isFirst && this.decrement()
+ 
++      const held = this.decrementHold
+       setTimeout(
+         () => {
+-          if (this.decrementHold) {
++          if (held) {
+             this.handleMouseDown(dir, false)
+           }
+         },
+diff --git a/src/editor/dialogs/cmenuDialog.js b/src/editor/dialogs/cmenuDialog.js
+index aa4d4fb..ebdd394 100644
+--- a/src/editor/dialogs/cmenuDialog.js
++++ b/src/editor/dialogs/cmenuDialog.js
+@@ -197,6 +197,7 @@ export class SeCMenuDialog extends HTMLElement {
+     const current = this
+     const onMenuOpenHandler = (e) => {
+       e.preventDefault()
++      svgEditor.$click(current.$pasteLink, (evt) => onMenuClickHandler(evt, 'paste'))
+       // Detect mouse position
+       let x = e.pageX
+       let y = e.pageY
+@@ -231,7 +232,6 @@ export class SeCMenuDialog extends HTMLElement {
+     this._workarea.addEventListener('mousedown', onMenuCloseHandler)
+     svgEditor.$click(this.$cutLink, (evt) => onMenuClickHandler(evt, 'cut'))
+     svgEditor.$click(this.$copyLink, (evt) => onMenuClickHandler(evt, 'copy'))
+-    svgEditor.$click(this.$pasteLink, (evt) => onMenuClickHandler(evt, 'paste'))
+     svgEditor.$click(this.$pasteInPlaceLink, (evt) => onMenuClickHandler(evt, 'paste_in_place'))
+     svgEditor.$click(this.$deleteLink, (evt) => onMenuClickHandler(evt, 'delete'))
+     svgEditor.$click(this.$groupLink, (evt) => onMenuClickHandler(evt, 'group'))
+diff --git a/src/editor/panels/LayersPanel.js b/src/editor/panels/LayersPanel.js
+index 027b8c6..39ac9ed 100644
+--- a/src/editor/panels/LayersPanel.js
++++ b/src/editor/panels/LayersPanel.js
+@@ -306,6 +306,10 @@ class LayersPanel {
+     const elements = $id('layerlist').querySelectorAll('td.layervis')
+     Array.from(elements).forEach(function (element) {
+       $click(element, function (evt) {
++        // ignore visibility toggles while a redo step is pending
++        if (self.editor.svgCanvas.undoMgr.getRedoStackSize() > 0) {
++          return
++        }
+         const ele = evt.currentTarget.parentNode.querySelector('td.layername')
+         const name = (ele) ? ele.textContent : ''
+         const vis = evt.currentTarget.classList.contains('layerinvis')

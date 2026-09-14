@@ -1,0 +1,155 @@
+diff --git a/src/directive/clickOutside/index.ts b/src/directive/clickOutside/index.ts
+index a4f9edc..dd04d97 100644
+--- a/src/directive/clickOutside/index.ts
++++ b/src/directive/clickOutside/index.ts
+@@ -13,7 +13,7 @@ const directive: Directive = {
+       throw 'callback must be a function'
+     }
+     el.__handleClick__ = function(e) {
+-      if (el === e.target) {
++      if (el.contains(e.target)) {
+         binding.value(false)
+       } else {
+         binding.value(true)
+diff --git a/src/directive/copy/index.ts b/src/directive/copy/index.ts
+index f6c1b5e..e3f7b54 100644
+--- a/src/directive/copy/index.ts
++++ b/src/directive/copy/index.ts
+@@ -14,6 +14,9 @@ const directive: Directive = {
+     el.copyData = binding.value
+     el.addEventListener('click', handleClick)
+   },
++  updated(el: ElType, binding: DirectiveBinding) {
++    el.copyData = binding.value
++  },
+   beforeUnmount(el: ElType) {
+     el.removeEventListener('click', el.__handleClick__)
+   }
+diff --git a/src/directive/debounce/index.ts b/src/directive/debounce/index.ts
+index f62c22a..976a8c8 100644
+--- a/src/directive/debounce/index.ts
++++ b/src/directive/debounce/index.ts
+@@ -15,6 +15,9 @@ const directive: Directive = {
+     }
+     let timer: NodeJS.Timeout|null = null
+     el.__handleClick__ = function(e: ElType) {
++      if (timer) {
++        clearInterval(timer)
++      }
+       timer = setTimeout(() => {
+         binding.value()
+       }, 200)
+diff --git a/src/directive/dragable/index.ts b/src/directive/dragable/index.ts
+index 4f095f4..570e8cb 100644
+--- a/src/directive/dragable/index.ts
++++ b/src/directive/dragable/index.ts
+@@ -80,8 +80,8 @@ const directive: Directive = {
+       // 进行x,y坐标边界处理判断
+       if (x < 0) {
+         el.__position__.x = 0
+-      } else if (x > parentDomRect.width) {
+-        el.__position__.x = parentDomRect.width
++      } else if (x > parentDomRect.width - elDomRect.width) {
++        el.__position__.x = parentDomRect.width - elDomRect.width
+       } else {
+         el.__position__.x = x
+       }
+diff --git a/src/directive/longpress/index.ts b/src/directive/longpress/index.ts
+index d4f9113..e150c9a 100644
+--- a/src/directive/longpress/index.ts
++++ b/src/directive/longpress/index.ts
+@@ -39,6 +39,7 @@ const directive: Directive = {
+     el.addEventListener('mousedown', start)
+     el.addEventListener('touchstart', start)
+     // 取消计时器
++    el.addEventListener('click', cancel)
+     el.addEventListener('mouseout', cancel)
+     el.addEventListener('touchend', cancel)
+     el.addEventListener('touchcancel', cancel)
+diff --git a/src/directive/waterMarker/index.ts b/src/directive/waterMarker/index.ts
+index a4da3a0..2377452 100644
+--- a/src/directive/waterMarker/index.ts
++++ b/src/directive/waterMarker/index.ts
+@@ -18,7 +18,7 @@ function addWaterMarker(str: string, parentNode: HTMLElement, font: FontProperty
+   parentNode.appendChild(can)
+   can.width = 200
+   can.height = 150
+-  can.style.display = 'block'
++  can.style.display = 'none'
+   var cans = can.getContext('2d') as CanvasRenderingContext2D
+   cans.rotate((-20 * Math.PI) / 180)
+   cans.font = font || '16px Microsoft JhengHei'
+diff --git a/src/router/permission.ts b/src/router/permission.ts
+index 797b39f..e4069a2 100644
+--- a/src/router/permission.ts
++++ b/src/router/permission.ts
+@@ -37,6 +37,7 @@ async function addRoutes() {
+       return
+     }    
+     FrontRoutes.forEach(item => {
++      modules.push(item)
+       router.addRoute(item)
+     })
+     resolve()
+diff --git a/src/store/modules/app.ts b/src/store/modules/app.ts
+index 62d6e9e..5d0f653 100644
+--- a/src/store/modules/app.ts
++++ b/src/store/modules/app.ts
+@@ -58,7 +58,7 @@ const mutations = {
+     state.menuList = arr
+   },
+   stateChange(state: appState, option: Option<appState>) {
+-    state[option.name] = option
++    state[option.name] = option.value
+   }
+ }
+ 
+diff --git a/src/store/modules/keepAlive.ts b/src/store/modules/keepAlive.ts
+index e6355ff..251c8a8 100644
+--- a/src/store/modules/keepAlive.ts
++++ b/src/store/modules/keepAlive.ts
+@@ -23,7 +23,7 @@ const mutations = {
+   },
+   delKeepAliveComponentsName(state: keepAliveState, name: string) {
+     const key = state.keepAliveComponentsName.indexOf(name)
+-    if (key > 0) {
++    if (key !== -1) {
+       state.keepAliveComponentsName.splice(key, 1)
+       console.log(state.keepAliveComponentsName)
+     }
+diff --git a/src/store/modules/user.ts b/src/store/modules/user.ts
+index bdaccc6..edc3cc6 100644
+--- a/src/store/modules/user.ts
++++ b/src/store/modules/user.ts
+@@ -66,6 +66,7 @@ const actions = {
+     })
+     .finally(() => {
+       localStorage.removeItem('tabs')
++      localStorage.removeItem('vuex')
+       sessionStorage.removeItem('vuex')
+       location.reload()
+     })
+diff --git a/src/utils/system/title.ts b/src/utils/system/title.ts
+index bf7c9bb..a81ef63 100644
+--- a/src/utils/system/title.ts
++++ b/src/utils/system/title.ts
+@@ -3,5 +3,5 @@ import { isBackMenu, systemTitle } from '@/config'
+ const { t } = i18n.global
+ 
+ export function changeTitle(name: any) {
+-  document.title = isBackMenu ? `${t(name)}-${t(systemTitle)}` : `${name}-${systemTitle}`
++  document.title = isBackMenu ? `${name}-${systemTitle}` : `${t(name)}-${t(systemTitle)}`
+ }
+diff --git a/src/utils/tab/index.ts b/src/utils/tab/index.ts
+index 02118e8..cf87499 100644
+--- a/src/utils/tab/index.ts
++++ b/src/utils/tab/index.ts
+@@ -6,7 +6,7 @@
+ /** 关闭当前标签 */
+ export const closeCurrentTab = (nextPath?: string) => {
+   /** 拿到tab组件 */
+-  const tab = document.getElementById('vueAdminBoxTabCloseSelfOnly')
++  const tab = document.getElementById('vueAdminBoxTabCloseSelf')
+   if (nextPath) {
+     /** 设置下一个tab的路径 */
+     tab?.setAttribute('nextpath', nextPath)

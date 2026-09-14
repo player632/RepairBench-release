@@ -1,0 +1,191 @@
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 6bb60e7..1c5e1b7 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -2,8 +2,10 @@
+ <div class="app__main-container">
+   <app-header />
+   <div class="app__page-container">
+-    @defer (on timer(1500)) {
++    @defer (on hover) {
+       <app-cookie-popup />
++    } @placeholder {
++      <span></span>
+     }
+     <router-outlet />
+   </div>
+diff --git a/src/app/features/authentication/pages/log-in/log-in.component.ts b/src/app/features/authentication/pages/log-in/log-in.component.ts
+index 1731e0e..468ad36 100644
+--- a/src/app/features/authentication/pages/log-in/log-in.component.ts
++++ b/src/app/features/authentication/pages/log-in/log-in.component.ts
+@@ -69,7 +69,7 @@ export class LogInComponent {
+   sendForm(): void {
+     this.updateFormState({ isSubmitted: true });
+ 
+-    if (this.logInForm.invalid) {
++    if (this.logInForm.valid) {
+       this.logInForm.markAllAsTouched();
+       return;
+     }
+diff --git a/src/app/features/authentication/pages/my-account/my-account.component.html b/src/app/features/authentication/pages/my-account/my-account.component.html
+index 5acf637..05f9e28 100644
+--- a/src/app/features/authentication/pages/my-account/my-account.component.html
++++ b/src/app/features/authentication/pages/my-account/my-account.component.html
+@@ -3,7 +3,6 @@
+   <form
+     class="form__container update-user__form"
+     [formGroup]="updateUserForm"
+-    (ngSubmit)="sendForm()"
+   >
+     <div class="theme-button__container">
+       <app-theme-button />
+diff --git a/src/app/features/authentication/pages/my-account/my-account.component.ts b/src/app/features/authentication/pages/my-account/my-account.component.ts
+index 3fdc180..7d6df8f 100644
+--- a/src/app/features/authentication/pages/my-account/my-account.component.ts
++++ b/src/app/features/authentication/pages/my-account/my-account.component.ts
+@@ -114,7 +114,6 @@ export class MyAccountComponent implements OnInit {
+     this.updateUserForm.markAllAsTouched();
+     if (this.updateUserForm.valid) {
+       this.isButtonUpdateUserFormLoading.set(true);
+-      this.updateUser();
+     }
+   }
+ 
+diff --git a/src/app/features/authentication/pages/register/register.component.ts b/src/app/features/authentication/pages/register/register.component.ts
+index 6f67122..b2b4d4f 100644
+--- a/src/app/features/authentication/pages/register/register.component.ts
++++ b/src/app/features/authentication/pages/register/register.component.ts
+@@ -11,7 +11,7 @@ import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angu
+ import { Router, RouterModule } from '@angular/router';
+ import { NgOptimizedImage } from '@angular/common';
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+-import { catchError, EMPTY, merge } from 'rxjs';
++import { catchError, EMPTY } from 'rxjs';
+ import { AUTH_URLS, POKEMON_URLS, USER_URLS } from '~core/constants/urls.constants';
+ import { emailValidator } from '~shared/validators/email.validator';
+ import { passwordValidator } from '~shared/validators/password.validator';
+@@ -84,7 +84,7 @@ export class RegisterComponent implements OnInit {
+   ngOnInit() {
+     this.pokemonAppearAudio.volume = 0.1;
+     this.formControls.favouritePokemonId.setErrors({ pokemonName: true });
+-    merge(this.formControls.password.valueChanges, this.formControls.confirmPassword.valueChanges)
++    this.formControls.confirmPassword.valueChanges
+       .pipe(takeUntilDestroyed(this.destroyRef))
+       .subscribe(() => {
+         this.checkPasswords();
+diff --git a/src/app/features/authentication/services/authentication.service.ts b/src/app/features/authentication/services/authentication.service.ts
+index a324d22..3be0705 100644
+--- a/src/app/features/authentication/services/authentication.service.ts
++++ b/src/app/features/authentication/services/authentication.service.ts
+@@ -34,8 +34,8 @@ export class AuthenticationService {
+   private readonly languageService = inject(LanguageService);
+ 
+   private readonly authTokens = signal<AuthTokens>({
+-    accessToken: this.storageService?.getItem(ACCESS_TOKEN_KEY) ?? undefined,
+-    refreshToken: this.storageService?.getItem(REFRESH_TOKEN_KEY) ?? undefined,
++    accessToken: undefined,
++    refreshToken: undefined,
+   });
+ 
+   readonly authState = linkedSignal({
+diff --git a/src/app/features/pokemon/components/catch-animation/catch-animation.component.ts b/src/app/features/pokemon/components/catch-animation/catch-animation.component.ts
+index d498f72..3500d91 100644
+--- a/src/app/features/pokemon/components/catch-animation/catch-animation.component.ts
++++ b/src/app/features/pokemon/components/catch-animation/catch-animation.component.ts
+@@ -84,7 +84,6 @@ export class CatchAnimationComponent implements OnInit {
+     }, 3000);
+     setTimeout(() => {
+       this.pokeballState.set(PokeballState.Shining);
+-      this.pokemonBattleEvent().set(BattleEvent.CATCH_ANIMATION_ENDED);
+     }, 6500);
+   }
+ 
+diff --git a/src/app/features/pokemon/components/pokemon-battlefield/pokemon-battlefield.component.ts b/src/app/features/pokemon/components/pokemon-battlefield/pokemon-battlefield.component.ts
+index 4e870ed..cc02b42 100644
+--- a/src/app/features/pokemon/components/pokemon-battlefield/pokemon-battlefield.component.ts
++++ b/src/app/features/pokemon/components/pokemon-battlefield/pokemon-battlefield.component.ts
+@@ -49,7 +49,6 @@ export class PokemonBattlefieldComponent implements OnInit {
+ 
+   private handleResetBattleEvent(): void {
+     if ((this.pokemonBattleEvent()() as unknown as BattleEvent) === BattleEvent.RESET_BATTLE) {
+-      this.startCatchAnimation.set(false);
+       this.pokemonImageLoaded.set(false);
+     }
+   }
+diff --git a/src/app/features/pokemon/services/pokemon.service.ts b/src/app/features/pokemon/services/pokemon.service.ts
+index 4598eab..da76701 100644
+--- a/src/app/features/pokemon/services/pokemon.service.ts
++++ b/src/app/features/pokemon/services/pokemon.service.ts
+@@ -32,7 +32,7 @@ export class PokemonService {
+     const getPokemonRequests = ids.map((id) => this.getPokemon(id));
+     return forkJoin(getPokemonRequests).pipe(
+       map((pokemons: Pokemon[]) =>
+-        pokemons.toSorted((pokemonA, pokemonB) => Number(pokemonA.order) - Number(pokemonB.order)),
++        pokemons.toSorted((pokemonA, pokemonB) => Number(pokemonB.order) - Number(pokemonA.order)),
+       ),
+     );
+   }
+diff --git a/src/app/shared/directives/lowercase.directive.ts b/src/app/shared/directives/lowercase.directive.ts
+index 9b7a51e..2fa74db 100644
+--- a/src/app/shared/directives/lowercase.directive.ts
++++ b/src/app/shared/directives/lowercase.directive.ts
+@@ -15,7 +15,6 @@ export class LowercaseDirective {
+     effect(() => {
+       const { control } = this.ngControl;
+       if (control && this.value()) {
+-        control.setValue(this.value(), { emitEvent: false });
+       }
+     });
+   }
+diff --git a/src/app/shared/directives/sl-checkbox-control.directive.ts b/src/app/shared/directives/sl-checkbox-control.directive.ts
+index a0e2fb7..74f07e0 100644
+--- a/src/app/shared/directives/sl-checkbox-control.directive.ts
++++ b/src/app/shared/directives/sl-checkbox-control.directive.ts
+@@ -1,4 +1,4 @@
+-import { Directive, ElementRef, forwardRef, inject, model } from '@angular/core';
++import { Directive, forwardRef, model } from '@angular/core';
+ import type { ControlValueAccessor } from '@angular/forms';
+ import { NG_VALUE_ACCESSOR } from '@angular/forms';
+ 
+@@ -18,8 +18,6 @@ import { NG_VALUE_ACCESSOR } from '@angular/forms';
+   },
+ })
+ export class AppSlCheckboxControlDirective implements ControlValueAccessor {
+-  private readonly el = inject(ElementRef);
+-
+   // @ts-expect-error - value used by angular forms
+   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+   private onChangeFn = (value: boolean) => {};
+@@ -42,8 +40,6 @@ export class AppSlCheckboxControlDirective implements ControlValueAccessor {
+   }
+ 
+   onSlChange(): void {
+-    const { checked } = this.el.nativeElement;
+-    this.onChangeFn(checked);
+     this.onTouchedFn();
+   }
+ }
+diff --git a/src/app/shared/directives/trim.directive.ts b/src/app/shared/directives/trim.directive.ts
+index 24adbad..a061840 100644
+--- a/src/app/shared/directives/trim.directive.ts
++++ b/src/app/shared/directives/trim.directive.ts
+@@ -10,6 +10,6 @@ export class TrimDirective {
+   private readonly el = inject(ElementRef);
+ 
+   onBlur() {
+-    this.el.nativeElement.value = this.el.nativeElement.value.trim();
++    this.el.nativeElement.value = this.el.nativeElement.value;
+   }
+ }
+diff --git a/src/app/shared/pipes/first-title-case.pipe.ts b/src/app/shared/pipes/first-title-case.pipe.ts
+index 66fb153..1f60722 100644
+--- a/src/app/shared/pipes/first-title-case.pipe.ts
++++ b/src/app/shared/pipes/first-title-case.pipe.ts
+@@ -8,6 +8,6 @@ export class FirstTitleCasePipe implements PipeTransform {
+     if (!value?.length) {
+       return '';
+     }
+-    return value.charAt(0).toUpperCase() + value.slice(1);
++    return value.charAt(0).toLowerCase() + value.slice(1);
+   }
+ }

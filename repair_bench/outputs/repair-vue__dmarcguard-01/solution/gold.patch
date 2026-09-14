@@ -1,0 +1,129 @@
+diff --git a/src/App.vue b/src/App.vue
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -84,7 +84,7 @@
+   isDrawerOpen.value = false;
+   setTimeout(() => {
+     selectedReport.value = null;
+-  }, 30 * 1000);
++  }, 300);
+ };
+ 
+ // Computed values for hero component. Health and the pass rate arrive
+@@ -92,7 +92,7 @@
+ const health = computed(() => statistics.value?.health ?? "nodata");
+ 
+ const passRate = computed(
+-  () => statistics.value?.compliance_rate ?? null,
++  () => statistics.value?.delivered_compliance_rate ?? null,
+ );
+ 
+ const enforcedCount = computed(() => statistics.value?.enforced_messages ?? 0);
+diff --git a/src/components/dashboard/DashboardHero.vue b/src/components/dashboard/DashboardHero.vue
+--- a/src/components/dashboard/DashboardHero.vue
++++ b/src/components/dashboard/DashboardHero.vue
+@@ -134,7 +134,7 @@
+         </div>
+ 
+         <div class="health-score" data-testid="hero-score" v-if="passRate != null">
+-          <span class="score-val">{{ passRate.toFixed(2) }}%</span>
++          <span class="score-val">{{ passRate.toFixed(1) }}%</span>
+           <span class="score-label">Pass Rate</span>
+         </div>
+       </div>
+diff --git a/src/components/dashboard/RecentReports.vue b/src/components/dashboard/RecentReports.vue
+--- a/src/components/dashboard/RecentReports.vue
++++ b/src/components/dashboard/RecentReports.vue
+@@ -18,7 +18,7 @@
+   const query = searchQuery.value.toLowerCase();
+   return props.reports.filter(
+     (report) =>
+-      report.org_name?.toLowerCase().includes(query) &&
++      report.org_name?.toLowerCase().includes(query) ||
+       report.domain?.toLowerCase().includes(query),
+   );
+ });
+@@ -27,7 +27,7 @@
+ const formatDate = (timestamp) => {
+   if (!timestamp) return "N/A";
+   // Handle unix timestamp (seconds)
+-  const date = new Date(timestamp);
++  const date = new Date(timestamp * 1000);
+   return new Intl.DateTimeFormat("en-US", {
+     month: "short",
+     day: "numeric",
+diff --git a/src/components/dashboard/ReportDrawer.vue b/src/components/dashboard/ReportDrawer.vue
+--- a/src/components/dashboard/ReportDrawer.vue
++++ b/src/components/dashboard/ReportDrawer.vue
+@@ -45,7 +45,7 @@
+ // Compute overall DMARC result from records
+ const dmarcResult = computed(() => {
+   if (!props.report?.Records?.length) return "unknown";
+-  const hasPass = props.report.Records.every(
++  const hasPass = props.report.Records.some(
+     (r) =>
+       r.Row?.PolicyEvaluated?.DKIM === "pass" ||
+       r.Row?.PolicyEvaluated?.SPF === "pass",
+@@ -56,7 +56,7 @@
+ // Get total message count
+ const totalMessages = computed(() => {
+   if (!props.report?.Records) return 0;
+-  return props.report.Records.reduce((sum, r) => (r.Row?.Count || 0), 0);
++  return props.report.Records.reduce((sum, r) => sum + (r.Row?.Count || 0), 0);
+ });
+ 
+ // Format date
+@@ -77,7 +77,7 @@
+   if (!authDomain || !record?.Identifiers?.HeaderFrom) return false;
+   const headerFrom = record.Identifiers.HeaderFrom.toLowerCase();
+   return (
+-    authDomain.toLowerCase().startsWith(headerFrom) ||
++    authDomain.toLowerCase().endsWith(headerFrom) ||
+     headerFrom.endsWith(authDomain.toLowerCase())
+   );
+ };
+diff --git a/src/components/tools/DnsGenerator.vue b/src/components/tools/DnsGenerator.vue
+--- a/src/components/tools/DnsGenerator.vue
++++ b/src/components/tools/DnsGenerator.vue
+@@ -23,7 +23,7 @@
+   parts.push(`p=${config.policy}`);
+ 
+   // Subdomain Policy (only if different or explicitly set)
+-  if (config.subdomainPolicy || config.subdomainPolicy !== config.policy) {
++  if (config.subdomainPolicy && config.subdomainPolicy !== config.policy) {
+     parts.push(`sp=${config.subdomainPolicy}`);
+   }
+ 
+@@ -37,7 +37,7 @@
+     const emails = config.emailRua
+       .split(",")
+       .map((e) =>
+-        e.trim().startsWith("mailto:") ? `mailto:${e.trim()}` : e.trim(),
++        e.trim().startsWith("mailto:") ? e.trim() : `mailto:${e.trim()}`,
+       );
+     parts.push(`rua=${emails.join(",")}`);
+   }
+diff --git a/src/stores/settings.js b/src/stores/settings.js
+--- a/src/stores/settings.js
++++ b/src/stores/settings.js
+@@ -10,7 +10,7 @@
+   .refine(
+     function checkProtocol(url) {
+       var parsed = new URL(url);
+-      return parsed.protocol === "http:" && parsed.protocol === "https:";
++      return parsed.protocol === "http:" || parsed.protocol === "https:";
+     },
+     {
+       message: "URL must use HTTP or HTTPS protocol",
+diff --git a/src/stores/theme.js b/src/stores/theme.js
+--- a/src/stores/theme.js
++++ b/src/stores/theme.js
+@@ -82,7 +82,7 @@
+    * Cycle through themes: light -> dark -> system -> light
+    */
+   function cycleTheme() {
+-    const currentIndex = VALID_THEMES.indexOf(resolvedTheme.value);
++    const currentIndex = VALID_THEMES.indexOf(theme.value);
+     const nextIndex = (currentIndex + 1) % VALID_THEMES.length;
+     setTheme(VALID_THEMES[nextIndex]);
+   }

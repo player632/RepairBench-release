@@ -1,0 +1,203 @@
+import { Component, ChangeDetectionStrategy, OnDestroy, signal, input, effect, untracked, computed } from '@angular/core';
+import type { IconSet } from '@domternal/core';
+import {
+  DomternalEditorComponent,
+  DomternalToolbarComponent,
+  DomternalBubbleMenuComponent,
+  DomternalEmojiPickerComponent,
+} from '@domternal/angular';
+import {
+  Bold,
+  Italic,
+  Underline,
+  Strike,
+  Code,
+  Highlight,
+  Subscript,
+  Superscript,
+  Link,
+  LinkPopover,
+  Heading,
+  Blockquote,
+  HardBreak,
+  HorizontalRule,
+  BulletList,
+  OrderedList,
+  TaskList,
+  TextAlign,
+  TextColor,
+  FontSize,
+  FontFamily,
+  LineHeight,
+  InvisibleChars,
+  SelectionDecoration,
+  ClearFormatting,
+  Dropcursor,
+  Print,
+  Editor,
+  inlineStyles,
+  type ToolbarLayoutEntry,
+} from '@domternal/core';
+import { CodeBlockLowlight, createCodeHighlighter } from '@domternal/extension-code-block-lowlight';
+import { Image } from '@domternal/extension-image';
+import { MathInline, MathBlock, createKatexRenderer } from '@domternal/extension-math';
+import { Details } from '@domternal/extension-details';
+import { Table } from '@domternal/extension-table';
+import { Emoji, emojis, createEmojiSuggestionRenderer } from '@domternal/extension-emoji';
+import { Mention, createMentionSuggestionRenderer } from '@domternal/extension-mention';
+import { SmartPaste } from '@domternal/extension-block-controls';
+import type { MentionItem } from '@domternal/extension-mention';
+import { createLowlight, common } from 'lowlight';
+import katex from 'katex';
+import { DEMO_CONTENT } from './demo-content.js';
+import {
+  parseBubbleIconsParam,
+  parseBubbleItemsParam,
+  resolveBubbleIcons,
+  type BubbleIconsParam,
+} from '../bubble-icons-fixtures.js';
+
+const lowlight = createLowlight(common);
+const codeHighlighter = createCodeHighlighter(lowlight);
+const mathRenderer = createKatexRenderer(katex);
+
+const mockUsers: MentionItem[] = [
+  { id: '1', label: 'Alice Johnson' },
+  { id: '2', label: 'Bob Smith' },
+  { id: '3', label: 'Charlie Brown' },
+  { id: '4', label: 'Diana Prince' },
+  { id: '5', label: 'Eve Adams' },
+  { id: '6', label: 'Frank Castle' },
+  { id: '7', label: 'Grace Hopper' },
+  { id: '8', label: 'Henry Ford' },
+];
+
+@Component({
+  selector: 'app-editor-demo',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DomternalEditorComponent, DomternalToolbarComponent, DomternalBubbleMenuComponent, DomternalEmojiPickerComponent],
+  templateUrl: './editor-demo.component.html',
+})
+export class EditorDemoComponent implements OnDestroy {
+  private readonly params = new URLSearchParams(window.location.search);
+  private readonly constrainTable = !this.params.has('constrainTable', 'false');
+  private readonly resizeBehavior = (this.params.get('resizeBehavior') ?? 'neighbor') as 'neighbor' | 'independent' | 'redistribute';
+  private readonly emojiToolbar = this.params.get('emojiToolbar') !== 'false';
+  readonly bubbleAuto = this.params.get('bubbleAuto') === 'true';
+
+  extensions = [
+    // Inline formatting
+    Italic, Bold, Underline, Strike, Code, Highlight, Subscript, Superscript, Link,
+    // Block elements
+    Heading, Blockquote, CodeBlockLowlight.configure({ lowlight }), HardBreak, HorizontalRule,
+    // Lists (auto-include ListItem / TaskItem)
+    BulletList, OrderedList, TaskList,
+    // Text styling (TextColor/FontSize/FontFamily auto-include TextStyle)
+    TextAlign, TextColor, FontSize, FontFamily, LineHeight,
+    // Table (auto-includes TableRow, TableCell, TableHeader)
+    Table.configure({ constrainToContainer: this.constrainTable, resizeBehavior: this.resizeBehavior }),
+    // Details / Accordion (auto-includes DetailsSummary, DetailsContent)
+    Details,
+    // Media & Emoji
+    Image,
+    MathInline.configure({ renderer: mathRenderer }),
+    MathBlock.configure({ renderer: mathRenderer }),
+    Emoji.configure({ emojis, enableEmoticons: true, toolbar: this.emojiToolbar, suggestion: { render: createEmojiSuggestionRenderer() } }),
+    // Mentions
+    Mention.configure({
+      suggestion: {
+        char: '@',
+        name: 'user',
+        items: ({ query }: { query: string }) => mockUsers.filter((u) => u.label.toLowerCase().includes(query.toLowerCase())),
+        render: createMentionSuggestionRenderer(),
+        minQueryLength: 0,
+        invalidNodes: ['codeBlock'],
+      },
+    }),
+    // Editor utilities
+    LinkPopover, InvisibleChars, SelectionDecoration, ClearFormatting, Dropcursor, Print,
+    // Preserve block formatting when pasting block content (heading,
+    // codeBlock, blockquote, list, hr) at inline positions - without it
+    // PM's content fitter strips the block wrapper and reduces to plain text.
+    SmartPaste,
+  ];
+  editorContent = DEMO_CONTENT;
+  emojiData = emojis;
+  editor = signal<Editor | null>(null);
+  // Selector-state tick: bumped on every transaction / selection change
+  // so downstream computed() re-reads editor.isActive() / editor.isEmpty.
+  readonly stateTick = signal(0);
+  readonly isBold = computed(() => {
+    this.stateTick();
+    return untracked(() => this.editor()?.isActive('bold') ?? false);
+  });
+  readonly isItalic = computed(() => {
+    this.stateTick();
+    return untracked(() => this.editor()?.isActive('italic') ?? false);
+  });
+  readonly isEmptyState = computed(() => {
+    this.stateTick();
+    return untracked(() => this.editor()?.isEmpty ?? true);
+  });
+  readonly useLayout = input(false);
+
+  // E2E fixture: ?bubble-icons= URL param + window.__DEMO_SET_BUBBLE_ICONS__ runtime hook.
+  readonly bubbleIcons = signal<IconSet | undefined>(resolveBubbleIcons(parseBubbleIconsParam()));
+  readonly bubbleItems = signal<string[] | undefined>(parseBubbleItemsParam());
+  readonly bubbleContexts = computed(() =>
+    this.bubbleItems() ? undefined : { text: ['bold', 'italic', 'underline', 'strike', 'code', '|', 'link'] },
+  );
+  toolbarLayout: ToolbarLayoutEntry[] = [
+    'bold', 'italic', 'underline', 'heading1',
+    '|',
+    { dropdown: 'Formatting', icon: 'textStrikethrough', items: ['strike', 'code', 'subscript', 'superscript'], displayMode: 'icon' },
+    { dropdown: 'Lists', icon: 'list', items: ['bulletList', 'orderedList', 'taskList'], dynamicIcon: true },
+    'clearFormatting',
+    '|',
+    'heading', 'textAlign', 'lineHeight',
+    '|',
+    'textColor', 'highlight',
+    '|',
+    { dropdown: 'Insert', icon: 'plus', items: ['link', 'image', 'emoji'] },
+    '|',
+    'undo', 'redo',
+  ];
+
+  constructor() {
+    effect(() => {
+      this.useLayout(); // track
+      const editor = untracked(() => this.editor());
+      if (editor) {
+        requestAnimationFrame(() => editor.commands.focus());
+      }
+    });
+
+    const w = window as unknown as Record<string, unknown>;
+    w['__DEMO_SET_BUBBLE_ICONS__'] = (key: BubbleIconsParam | null): void => {
+      this.bubbleIcons.set(resolveBubbleIcons(key));
+    };
+  }
+
+  ngOnDestroy(): void {
+    const w = window as unknown as Record<string, unknown>;
+    w['__DEMO_SET_BUBBLE_ICONS__'] = undefined;
+  }
+
+  getStyledHtml(html: string): string {
+    return inlineStyles(html, { codeHighlighter, tableColumnWidths: 'pixel' });
+  }
+
+  onEditorCreated(editor: Editor): void {
+    this.editor.set(editor);
+    // Demo-only: expose editor on window for Playwright E2E tests
+    (window as unknown as Record<string, unknown>)['__DEMO_EDITOR__'] = editor;
+    // Refresh the derived selectors on every transaction. contentUpdated now
+    // fires only for user-facing changes (it honors skipUpdate), so programmatic
+    // setContent(html, false) would otherwise leave isEmpty/isActive stale.
+    editor.on('transaction', () => this.bumpState());
+  }
+
+  bumpState(): void {
+    this.stateTick.update((n) => n + 1);
+  }
+}

@@ -1,0 +1,152 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 94d2ad0..11265d6 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -49,7 +49,7 @@ const App = () => {
+     // eslint-disable-next-line react-compiler/react-compiler
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [])
+-  useKeyDown('o', onKeyDown, 0, true)
++  useKeyDown('o', onKeyDown, 0, false)
+ 
+   const _handleGamepadButtonDown = useCallback(handleGamepadButtonDown, [])
+   useGamepad({
+diff --git a/src/components/HtmlHead.tsx b/src/components/HtmlHead.tsx
+index d09c68e..d8d8773 100644
+--- a/src/components/HtmlHead.tsx
++++ b/src/components/HtmlHead.tsx
+@@ -20,7 +20,7 @@ const HtmlHead = () => {
+ 
+   return (
+     <Helmet prioritizeSeoTags>
+-      <html lang={lang} dir={langInfo[lang].isRtl ? 'rtl' : 'ltr'} />
++      <html lang={lang} dir={langInfo[lang].isRtl ? 'ltr' : 'rtl'} />
+ 
+       <title>{_.i18n('ArcoMage HD')}</title>
+       <meta name="title" content={_.i18n('ArcoMage HD')} />
+diff --git a/src/components/screens/LangPref.tsx b/src/components/screens/LangPref.tsx
+index 1c8d8a2..6d19702 100644
+--- a/src/components/screens/LangPref.tsx
++++ b/src/components/screens/LangPref.tsx
+@@ -78,7 +78,7 @@ const LangPref = () => {
+       <label className="flex w-full justify-center">
+         <CheckBox
+           data-testid="rb-langpref-erathian"
+-          checked={langInfo[lang].isLatinScript ? erathian : false}
++          checked={erathian}
+           disabled={!langInfo[lang].isLatinScript}
+           onChange={(e) => {
+             dispatch({
+diff --git a/src/components/screens/Pref.tsx b/src/components/screens/Pref.tsx
+index 9578b73..00a0a04 100644
+--- a/src/components/screens/Pref.tsx
++++ b/src/components/screens/Pref.tsx
+@@ -126,7 +126,7 @@ const Pref = () => {
+       .concat(defaultSettings)
+       .findIndex((settings) => allCondAndOtherSettingsEqual(o, settings))
+     if (indexMatched === preSettings.length) {
+-      return -2
++      return -1
+     } else {
+       return indexMatched
+     }
+@@ -141,7 +141,7 @@ const Pref = () => {
+     const winTowerMin = formFields.tower + 1
+     // resource victory condition must be 1 higher than any (res + resProd)
+     const winResourceMin =
+-      Math.max(
++      Math.min(
+         formFields.bricks + formFields.brickProd,
+         formFields.gems + formFields.gemProd,
+         formFields.recruits + formFields.recruitProd,
+@@ -264,7 +264,7 @@ const Pref = () => {
+   }
+ 
+   const setFFPreset = (index: number) => {
+-    const _index = index === -2 ? preSettings.length : index
++    const _index = index === -1 ? preSettings.length : index
+     if (_index >= 0) {
+       const targetSettings = preSettings.concat(defaultSettings)[_index]
+ 
+@@ -648,7 +648,7 @@ const Pref = () => {
+             name={otherSettingNames[1]}
+             id={otherSettingNames[1]}
+             min={
+-              Math.max(
++              Math.min(
+                 formFields.bricks + formFields.brickProd,
+                 formFields.gems + formFields.gemProd,
+                 formFields.recruits + formFields.recruitProd,
+diff --git a/src/components/screens/SgPref.tsx b/src/components/screens/SgPref.tsx
+index bd2cdf9..c6ce02f 100644
+--- a/src/components/screens/SgPref.tsx
++++ b/src/components/screens/SgPref.tsx
+@@ -51,7 +51,6 @@ const SgPref = () => {
+     () =>
+       visualPresets.findIndex((visualPreset) =>
+         shallowCompare(visualvalues, {
+-          ...defaultVisualvalues,
+           ...visualPreset.values,
+         }),
+       ),
+diff --git a/src/components/screens/Window.tsx b/src/components/screens/Window.tsx
+index 317d4ae..8161309 100644
+--- a/src/components/screens/Window.tsx
++++ b/src/components/screens/Window.tsx
+@@ -66,7 +66,7 @@ const Window = ({
+   }, [exitable])
+ 
+   const cancelFunc = useCallback(() => {
+-    if (exitableRef.current) {
++    if (exitable) {
+       onCancel?.()
+       dispatch({
+         type: screenActionType,
+diff --git a/src/components/special/NumberInput.tsx b/src/components/special/NumberInput.tsx
+index 8b88d0d..ca0b615 100644
+--- a/src/components/special/NumberInput.tsx
++++ b/src/components/special/NumberInput.tsx
+@@ -79,7 +79,7 @@ type NumberInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  * @returns {JSX.Element} A controlled input component that handles numeric values
+  */
+ const NumberInput = ({
+-  debounceDelay = 1000,
++  debounceDelay = 45000,
+   validate = defaultValidate,
+   sanitize = defaultSanitize,
+   ...props
+diff --git a/src/components/zoneCards/Card.tsx b/src/components/zoneCards/Card.tsx
+index 6245b12..bda381b 100644
+--- a/src/components/zoneCards/Card.tsx
++++ b/src/components/zoneCards/Card.tsx
+@@ -60,7 +60,7 @@ const Card = ({
+       ? totalObj[playersTurn ? 'player' : 'opponent']
+       : totalObj[owner]
+   const isM0 = total === cardsInHand
+-  const isCardback = n === -1 || (hideOpponentCard && owner === 'opponent')
++  const isCardback = n === -1 || (!hideOpponentCard && owner === 'opponent')
+   const type = isCardback ? undefined : dataCards[n].type
+   const isNotPlayersTurn =
+     (playersTurn && owner === 'opponent') ||
+@@ -135,7 +135,7 @@ const Card = ({
+           }
+         }
+       } else {
+-        if (!unusable) {
++        if (unusable) {
+           buttonDisabled = false
+           return {
+             onClick: useCardFunc,
+diff --git a/src/epics/settings_lang_etc/readlsUpdatestoreInitEpic.ts b/src/epics/settings_lang_etc/readlsUpdatestoreInitEpic.ts
+index fd96851..ef2a0d6 100644
+--- a/src/epics/settings_lang_etc/readlsUpdatestoreInitEpic.ts
++++ b/src/epics/settings_lang_etc/readlsUpdatestoreInitEpic.ts
+@@ -42,7 +42,7 @@ export default (
+       const boldfont = lsGet<boolean>(['lang', 'boldfont'])
+       const erathian = lsGet<boolean>(['lang', 'erathian'])
+       const settings = lsGet<Partial<SettingsStateType>>(['settings'])
+-      const volume = lsGet<number>(['sound', 'volume'])
++      const volume = lsGet<number>(['visual', 'volume'])
+       const stereo = lsGet<boolean>(['sound', 'stereo'])
+       const noanim = lsGet<boolean>(['visual', 'noanim'])
+       const pixelation = lsGet<number>(['visual', 'pixelation'])

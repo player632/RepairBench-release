@@ -1,0 +1,221 @@
+<div
+  class="content-area"
+  *ngIf="ms.game.enemyManager.currentEnemy; else noEnemy"
+>
+  <div class="clr-row" *ngIf="ms.game.enemyManager.currentEnemy">
+    <div class="clr-col-12 clr-col-sm-12 clr-col-lg-7">
+      <h1>
+        <clr-icon
+          [attr.shape]="ms.game.enemyManager.currentEnemy?.shape"
+          size="48"
+          class="resIcon"
+        ></clr-icon>
+        {{ ms.game.enemyManager.currentEnemy?.name }}
+      </h1>
+      <span>
+        Level
+        <app-formatted-quantity
+          [quantity]="ms.game.enemyManager.currentEnemy.level"
+          [integer]="true"
+        ></app-formatted-quantity>
+        &nbsp;&nbsp;&nbsp; District per icon tile:
+        <app-formatted-quantity
+          [quantity]="totalDistrictGain"
+          [integer]="true"
+        ></app-formatted-quantity>
+        &nbsp;&nbsp;&nbsp; Fight time:
+        <app-formatted-quantity
+          [quantity]="ms.game.fleetManager.timePerFight"
+          [integer]="false"
+        ></app-formatted-quantity>
+        s
+      </span>
+
+      <br />
+      <!-- <p>Level: {{ ms.game.enemyManager.currentEnemy.level }}</p> -->
+
+      <div class="btn-group ">
+        <button
+          class="btn btn-success"
+          (click)="startBattle()"
+          [disabled]="
+            ms.game.enemyManager.inBattle || !ms.game.fleetManager.fightEnabled
+          "
+        >
+          <clr-icon shape="ship"></clr-icon>
+          Fight
+        </button>
+        <button
+          class="btn btn-primary nuke"
+          [ngClass]="{
+            'btn-success': ms.game.enemyManager.nukeAction.nukeAll,
+            'btn-primary': !ms.game.enemyManager.nukeAction.nukeAll
+          }"
+          *ngIf="ms.game.enemyManager.currentEnemy.level > 8"
+          [disabled]="ms.game.enemyManager.nukeAction.maxBuy.lte(0)"
+          (click)="nuke(ms.game.enemyManager.nukeAction.maxBuy)"
+        >
+          <clr-icon shape="missile"></clr-icon>
+
+          <app-formatted-quantity
+            [quantity]="ms.game.enemyManager.nukeAction.maxBuy"
+            [integer]="true"
+          ></app-formatted-quantity>
+        </button>
+        <button class="btn btn-danger" (click)="surrenderModal = true">
+          <clr-icon shape="trash"></clr-icon>
+          Surrender
+        </button>
+      </div>
+
+      <div class="btn-group">
+        <div class="checkbox btn">
+          <input
+            type="checkbox"
+            id="btn-demo-check-1"
+            [(ngModel)]="ms.game.fleetManager.autoFight"
+          />
+          <label for="btn-demo-check-1">A. Fight</label>
+        </div>
+        <div class="checkbox btn">
+          <input
+            type="checkbox"
+            id="btn-demo-check-2"
+            [(ngModel)]="ms.game.fleetManager.autoReinforce"
+          />
+          <label for="btn-demo-check-2">A. Reinforce</label>
+        </div>
+        <div
+          class="checkbox btn"
+          *ngIf="ms.game.enemyManager.currentEnemy.level > 8"
+        >
+          <input
+            type="checkbox"
+            id="check-3"
+            [(ngModel)]="ms.game.enemyManager.autoNuke"
+          />
+          <label for="check-3">A. Nuke</label>
+        </div>
+        <div class="checkbox btn">
+          <input
+            type="checkbox"
+            id="check-next"
+            title="Auto proceed to next enemy."
+            [(ngModel)]="ms.game.enemyManager.autoNext"
+          />
+          <label for="check-next">A. Next</label>
+        </div>
+      </div>
+
+      <div class="clr-row">
+        <div class="clr-col-6 clr-col-xl-4">
+          <form clrForm clrLayout="compact">
+            <clr-input-container>
+              <label class="clr-col-12 clr-col-md-8 clr-col-xl-6"
+                >Auto Fight min %
+              </label>
+
+              <input
+                class="clr-col-12 clr-col-md-4"
+                clrInput
+                placeholder="100"
+                name="autoPerc"
+                type="number"
+                min="0"
+                max="100"
+                [(ngModel)]="ms.game.fleetManager.autoFightPer"
+              />
+            </clr-input-container>
+          </form>
+        </div>
+
+        <div class="clr-col-6 clr-col-xl-4" *ngIf="maxExtraTile >= 1">
+          <form clrForm clrLayout="compact">
+            <clr-input-container>
+              <label class="clr-col-12 clr-col-md-10"
+                >Extra tile / fight
+                <small
+                  >(max:
+                  <app-formatted-quantity
+                    [quantity]="maxExtraTile"
+                    [integer]="true"
+                  ></app-formatted-quantity
+                  >)</small
+                >
+              </label>
+
+              <input
+                class="clr-col-12 clr-col-md-2"
+                clrInput
+                placeholder="100"
+                name="autoPerc"
+                type="number"
+                min="0"
+                [attr.max]="maxExtraTile"
+                [(ngModel)]="ms.game.enemyManager.mergeLevel"
+              />
+            </clr-input-container>
+          </form>
+        </div>
+      </div>
+
+      <!-- <br /><br /> -->
+      <app-battlefield
+        [enemy]="ms.game.enemyManager.currentEnemy"
+      ></app-battlefield>
+    </div>
+    <div class="clr-col-12 clr-col-sm-12 clr-col-lg-5">
+      <h4>{{ ms.options.name }}</h4>
+      <app-fleet-table [fleet]="ms.game.fleetManager.ships"></app-fleet-table>
+      <h4>{{ ms.game.enemyManager.currentEnemy?.name }}</h4>
+      <app-fleet-table
+        [fleet]="ms.game.enemyManager.currentEnemy.currentZone.ships"
+      ></app-fleet-table>
+    </div>
+  </div>
+</div>
+
+<!-- Surrender enemy modal -->
+<clr-modal [(clrModalOpen)]="surrenderModal">
+  <h3 class="modal-title">Surrender</h3>
+  <div class="modal-body">
+    <p>
+      {{ ms.game.enemyManager.currentEnemy?.name }} will be deleted. You will be
+      able to attack other enemies. There are no penalties.
+    </p>
+  </div>
+  <div class="modal-footer">
+    <button
+      type="button"
+      class="btn btn-outline"
+      (click)="surrenderModal = false"
+    >
+      Cancel
+    </button>
+    <button type="button" class="btn btn-danger" (click)="surrender()">
+      Surrender
+    </button>
+  </div>
+</clr-modal>
+
+<ng-template #noEnemy>
+  <div class="content-area">
+    <clr-alert [clrAlertClosable]="false">
+      <clr-alert-item>
+        <span class="alert-text">
+          You are not attacking any enemy.
+          <a [routerLink]="'/enemies/search'">Search for an enemy</a>
+        </span>
+      </clr-alert-item>
+    </clr-alert>
+    <div class="checkbox btn">
+      <input
+        type="checkbox"
+        id="check-next"
+        title="Auto proceed to next enemy."
+        [(ngModel)]="ms.game.enemyManager.autoNext"
+      />
+      <label for="check-next">Auto Next</label>
+    </div>
+  </div>
+</ng-template>

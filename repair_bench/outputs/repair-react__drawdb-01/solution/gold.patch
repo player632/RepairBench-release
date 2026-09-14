@@ -1,0 +1,145 @@
+diff --git a/src/components/EditorHeader/ControlPanel.jsx b/src/components/EditorHeader/ControlPanel.jsx
+index 0435166..0535858 100644
+--- a/src/components/EditorHeader/ControlPanel.jsx
++++ b/src/components/EditorHeader/ControlPanel.jsx
+@@ -1731,7 +1731,7 @@ export default function ControlPanel({
+   };
+ 
+   useHotkeys("mod+i", fileImport, { preventDefault: true });
+-  useHotkeys("mod+z", undo, { preventDefault: true }, []);
++  useHotkeys("mod+z", undo, { preventDefault: true });
+   useHotkeys("mod+y", redo, { preventDefault: true });
+   useHotkeys("mod+s", save, { preventDefault: true });
+   useHotkeys("mod+o", open, { preventDefault: true });
+@@ -1841,7 +1841,7 @@ export default function ControlPanel({
+               data-testid="zoom-out"
+               className="py-1 px-2 hover-2 rounded-sm text-lg"
+               onClick={() =>
+-                setTransform((prev) => ({ ...prev, zoom: prev.zoom / 1.02 }))
++                setTransform((prev) => ({ ...prev, zoom: prev.zoom / 1.2 }))
+               }
+             >
+               <i className="fa-solid fa-magnifying-glass-minus" />
+@@ -1905,7 +1905,7 @@ export default function ControlPanel({
+               data-testid="zoom-in"
+               className="py-1 px-2 hover-2 rounded-sm text-lg"
+               onClick={() =>
+-                setTransform((prev) => ({ ...prev, zoom: prev.zoom * 1.02 }))
++                setTransform((prev) => ({ ...prev, zoom: prev.zoom * 1.2 }))
+               }
+             >
+               <i className="fa-solid fa-magnifying-glass-plus" />
+diff --git a/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx b/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
+index 4876f9a..a706b41 100644
+--- a/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
++++ b/src/components/EditorSidePanel/TablesTab/FieldDetails.jsx
+@@ -35,10 +35,7 @@ export default function FieldDetails({ data, tid }) {
+         readonly={layout.readOnly}
+         disabled={resolved.noDefault || data.increment}
+         onChange={(value) => updateField(tid, data.id, { default: value })}
+-        onFocus={(e) => {
+-          if (!("default" in editField))
+-            setEditField({ default: e.target.value });
+-        }}
++        onFocus={(e) => setEditField({ default: e.target.value })}
+         onBlur={(e) => {
+           if (e.target.value === editField.default) return;
+           setUndoStack((prev) => [
+diff --git a/src/components/EditorSidePanel/TablesTab/TableInfo.jsx b/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
+index 9497cde..dd160ee 100644
+--- a/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
++++ b/src/components/EditorSidePanel/TablesTab/TableInfo.jsx
+@@ -158,9 +158,7 @@ export default function TableInfo({ data, index = 0 }) {
+           placeholder={t("name")}
+           className="ms-2"
+           readonly={layout.readOnly}
+-          onChange={(value) => {
+-            data.name = value;
+-          }}
++          onChange={(value) => updateTable(data.id, { name: value })}
+           onFocus={(e) => setEditField({ name: e.target.value })}
+           onBlur={(e) => {
+             if (e.target.value === editField.name) return;
+diff --git a/src/components/SortableList/SortableList.jsx b/src/components/SortableList/SortableList.jsx
+index 66945d7..efc55a5 100644
+--- a/src/components/SortableList/SortableList.jsx
++++ b/src/components/SortableList/SortableList.jsx
+@@ -43,7 +43,7 @@ export function SortableList({
+         {items.map((item, i) => (
+           <SortableItem
+             id={item.id}
+-            key={`${keyPrefix}-sortable-item-${i}`}
++            key={`${keyPrefix}-sortable-item-${item.id}`}
+           >
+             {renderItem(item, i)}
+           </SortableItem>
+diff --git a/src/components/Workspace.jsx b/src/components/Workspace.jsx
+index 09bd104..9fbb1a8 100644
+--- a/src/components/Workspace.jsx
++++ b/src/components/Workspace.jsx
+@@ -455,7 +455,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
+     isTemplate,
+     loadedDiagramId,
+     cloudOnly,
+-    transform.zoom,
+   ]);
+ 
+   const returnToCurrentDiagram = async () => {
+@@ -477,7 +476,10 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
+       setSaveState(State.SAVING);
+     }
+   }, [
++    undoStack,
++    redoStack,
+     settings.autosave,
++    tables?.length,
+     areas?.length,
+     notes?.length,
+     types?.length,
+diff --git a/src/context/DiagramContext.jsx b/src/context/DiagramContext.jsx
+index 1d9b1b1..6eac27f 100644
+--- a/src/context/DiagramContext.jsx
++++ b/src/context/DiagramContext.jsx
+@@ -71,7 +71,7 @@ export default function DiagramContextProvider({ children }) {
+         return temp;
+       });
+     } else {
+-      setTables([...tables, newTable]);
++      setTables((prev) => [...prev, newTable]);
+     }
+     if (addToHistory) {
+       setUndoStack((prev) => [
+@@ -215,6 +215,7 @@ export default function DiagramContextProvider({ children }) {
+           }),
+         },
+       ]);
++      setRedoStack([]);
+     }
+     setRelationships((prev) => prev.filter((e) => !referencesField(e)));
+     updateTable(tid, {
+diff --git a/src/utils/calcPath.js b/src/utils/calcPath.js
+index c9badae..f7be319 100644
+--- a/src/utils/calcPath.js
++++ b/src/utils/calcPath.js
+@@ -62,7 +62,7 @@ export function calcPath(r, tableWidth = 200, zoom = 1, showComments = true) {
+     if (x1 + width <= x2) {
+       return `M ${x1 + width} ${y1} L ${
+         midX - radius
+-      } ${y1} A ${radius} ${radius} 0 0 0 ${midX} ${y1 + radius} L ${midX} ${
++      } ${y1} A ${radius} ${radius} 0 0 1 ${midX} ${y1 + radius} L ${midX} ${
+         y2 - radius
+       } A ${radius} ${radius} 0 0 0 ${midX + radius} ${y2} L ${endX} ${y2}`;
+     } else if (x2 <= x1 + width && x1 <= x2) {
+diff --git a/src/utils/exportSQL/mysql.js b/src/utils/exportSQL/mysql.js
+index ae4272a..85078ad 100644
+--- a/src/utils/exportSQL/mysql.js
++++ b/src/utils/exportSQL/mysql.js
+@@ -37,7 +37,7 @@ export function toMySQL(diagram) {
+                   ? " UNSIGNED"
+                   : ""
+               }${field.notNull ? " NOT NULL" : ""}${
+-                ""
++                field.increment ? " AUTO_INCREMENT" : ""
+               }${field.unique ? " UNIQUE" : ""}${
+                 field.default !== ""
+                   ? ` DEFAULT ${parseDefault(field, diagram.database)}`

@@ -1,0 +1,133 @@
+diff --git a/js/interface/MiniPadderUpdater.js b/js/interface/MiniPadderUpdater.js
+index 757fea1..e0ea89f 100644
+--- a/js/interface/MiniPadderUpdater.js
++++ b/js/interface/MiniPadderUpdater.js
+@@ -59,7 +59,7 @@ class MiniPadderUpdater extends Updater {
+               Mapper.mappings.XInput.buttons.face.r3 = Mapper.mappings.XInput.sticks.right.button
+             }
+             if (Mapper.mappings.hasOwnProperty('DInput')) {
+-              Mapper.mappings.DInput.buttons.face.l3 = Mapper.mappings.DInput.sticks.left.button
++              Mapper.mappings.DInput.buttons.face.l3 = Mapper.mappings.DInput.sticks.right.button
+               Mapper.mappings.DInput.buttons.face.r3 = Mapper.mappings.DInput.sticks.right.button
+             }
+             Mapper.store()
+diff --git a/js/interface/controlPanel.js b/js/interface/controlPanel.js
+index 17adb06..780fac7 100644
+--- a/js/interface/controlPanel.js
++++ b/js/interface/controlPanel.js
+@@ -647,7 +647,7 @@ class ControlPanel {
+         if (this.panelValue) {
+           this.applyPanelValue()
+         } else {
+-          this.receivePanelValue(this.slider.min)
++          this.receivePanelValue(this.slider.max)
+           this.updatePanelValue(this.panelValue)
+         }
+         this.slider.addEventListener('change', e => {
+diff --git a/js/module/GamepadRenderer.js b/js/module/GamepadRenderer.js
+index 09bf6d0..2c8cadc 100644
+--- a/js/module/GamepadRenderer.js
++++ b/js/module/GamepadRenderer.js
+@@ -502,7 +502,7 @@ class GamepadRenderer {
+         continue
+       }
+       
+-      const pastValue = opacityOrder[i-1] || 1
++      const pastValue = opacityOrder[i] || 1
+       const diffRate = opacityOrder[i] <= 0 ?
+         10 ** ( -1 * ( this.fadeoutOpacityPrecision ) ) :
+         opacityOrder[i] / pastValue
+@@ -563,7 +563,7 @@ class GamepadRenderer {
+   }
+   getFadeoutOptionAsTextArray () {
+     return [
+-      this.fadeout.time.map(v => v/1000).join(','),
++      this.fadeout.time.join(','),
+       this.fadeout.opacity.join(','),
+       (this.fadeout.duration/1000).toString()
+     ]
+@@ -925,7 +925,7 @@ class GamepadRenderer {
+       const pathParts = internalName.split('-')
+       const path = `./skin/${pathParts[0]}`
+       const configPathWithoutExtension =
+-        `${path}/${pathParts[1] || pathParts[0]}`
++        `${path}/${pathParts[1]}`
+       
+       GamepadRenderer.fetchConfigData(
+         configPathWithoutExtension
+@@ -1052,8 +1052,8 @@ class GamepadRenderer {
+         layer = GamepadRenderer.newCanvasLayer(
+           layerData.width,
+           layerData.height,
+-          layerData.x,
+-          layerData.y
++          layerData.y,
++          layerData.x
+         )
+         layer.innerHTML = altMessage
+         skinSlot.ctx.push(layer.getContext('2d'))
+diff --git a/js/module/MPCommon.js b/js/module/MPCommon.js
+index 2c50b80..beea3e1 100644
+--- a/js/module/MPCommon.js
++++ b/js/module/MPCommon.js
+@@ -129,7 +129,7 @@ class MPCommon {
+       const indexBeforeBracket = idString.search(/ \(/)
+       return {
+         name: idString.substring(0, indexBeforeBracket),
+-        gamepadId: 'XInput'
++        gamepadId: 'xinput'
+       }
+     } else {
+       return {
+diff --git a/js/module/MappingManager.js b/js/module/MappingManager.js
+index 5055efc..34c2c51 100644
+--- a/js/module/MappingManager.js
++++ b/js/module/MappingManager.js
+@@ -228,7 +228,7 @@ class MappingManager {
+         Object.keys(mappings[gamepadId]).length > 0
+       const hasInfo =
+         (mappings[gamepadId].hasOwnProperty('name') && mappings[gamepadId].name.constructor === String) &&
+-        (mappings[gamepadId].hasOwnProperty('properties') && mappings[gamepadId].properties.constructor === Array)
++        (mappings[gamepadId].hasOwnProperty('properties') && mappings[gamepadId].properties.constructor === Object)
+       const hasMapping =
+         (mappings[gamepadId].hasOwnProperty('sticks') && mappings[gamepadId].sticks.constructor === Object) &&
+         (mappings[gamepadId].hasOwnProperty('buttons') && mappings[gamepadId].buttons.constructor === Object)
+@@ -851,7 +851,6 @@ class MappingManager {
+       })))
+       return mappingsAreValid
+     }
+-    this.removeAll()
+     for (const gamepadId in exportedMappings) {
+       if (!exportedMappings.hasOwnProperty(gamepadId)) { continue }
+       this.addOrUpdate(gamepadId, exportedMappings[gamepadId])
+@@ -977,7 +976,7 @@ class MappingManager {
+       processedChange.properties = mapping.properties
+       
+       // sticks.left and sticks.right
+-      if (processedChange.properties.indexOf('nosticks') !== -1) {} else {
++      if (processedChange.properties.indexOf('nosticks') === -1) {} else {
+         // 'nosticks' : no analog sticks on the gamepad
+         processedChange.sticks = MappingManager.processSticks(
+           mapping.sticks, change.axes, change.buttons
+@@ -1117,7 +1116,7 @@ class MappingManager {
+       const deadzone = mappingStick.deadzone || mappingSticks.deadzone || 0
+       isActive = processedChangeSticks[side].pressed ||
+                  (value[0] ? Math.abs(value[0].value) > deadzone : false) ||
+-                 (value[1] ? Math.abs(value[1].value) > deadzone : false)
++                 (value[0] ? Math.abs(value[0].value) > deadzone : false)
+       processedChangeSticks[side].active = isActive
+     }
+     
+diff --git a/js/module/OnBrowserTextEditor.js b/js/module/OnBrowserTextEditor.js
+index 581f1e2..1d6852e 100644
+--- a/js/module/OnBrowserTextEditor.js
++++ b/js/module/OnBrowserTextEditor.js
+@@ -152,7 +152,7 @@ class OnBrowserTextEditor {
+     this.reference.data = dataRef
+     this.reference.callback = callback
+     this.reference.format = { raw, nospace, type }
+-    if (!callback) {
++    if (callback) {
+       setTimeout(() => {
+         this.dom.saveButton.setAttribute('disabled', '')
+       }, this.buttonProtectionDuration + 1)

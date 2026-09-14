@@ -1,0 +1,728 @@
+diff --git a/src/main.ts b/src/main.ts
+index ace1809..d7a96f3 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -2,6 +2,7 @@ import { enableProdMode } from '@angular/core';
+ import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+ 
+ import { AppModule } from './app/app.module';
++import './rb-probe';
+ import { environment } from './environments/environment';
+ 
+ if (environment.production) {
+diff --git a/src/rb-probe.ts b/src/rb-probe.ts
+new file mode 100644
+index 0000000..9480162
+--- /dev/null
++++ b/src/rb-probe.ts
+@@ -0,0 +1,710 @@
++// Offline verification probe for the repair-bench harness.
++//
++// Two responsibilities, both strictly read-only with respect to application
++// state:
++//   1. window.__ARCH__ - a bridge of live getters. Every getter re-queries the
++//      DOM / storage on each call and returns a scalar (string, number or
++//      boolean); nothing is memoised, so a consumer that polls always sees the
++//      current render.
++//   2. data-testid stamping. Angular recreates view nodes on every route change
++//      and ng-bootstrap re-parents dropdown/modal containers, so the stamping
++//      pass runs from a childList MutationObserver plus a low-frequency safety
++//      tick and is idempotent.
++//
++// The probe never clicks, never writes to storage, never patches application
++// code and never changes what the user sees.
++
++const DOC = document;
++const TID = 'data-testid';
++
++// Own window properties that already exist before the app boots, plus the two
++// names this probe itself owns. Used by residueGlobals() so that a repair which
++// parks state in a global is visible to the state-isolation checkpoints.
++const GLOBAL_BASELINE: string[] = [];
++const GLOBAL_ALLOW = ['__ARCH__', '__rb_frozen'];
++function ownUnderscoreGlobals() {
++  const out = [];
++  try {
++    const names = Object.getOwnPropertyNames(window);
++    for (let i = 0; i < names.length; i += 1) {
++      if (names[i].indexOf('__') === 0) { out.push(names[i]); }
++    }
++  } catch (e) { /* enumeration is best effort */ }
++  return out;
++}
++try {
++  const snap = ownUnderscoreGlobals();
++  for (let i = 0; i < snap.length; i += 1) { GLOBAL_BASELINE.push(snap[i]); }
++} catch (e) { /* enumeration is best effort */ }
++
++function q(root, sel) {
++  try { return Array.prototype.slice.call(root.querySelectorAll(sel)); } catch (e) { return []; }
++}
++
++function first(root, sel) {
++  const list = q(root, sel);
++  return list.length ? list[0] : null;
++}
++
++function attrOf(root, sel, name) {
++  const el = first(root, sel);
++  return el ? String(el.getAttribute(name)) : '';
++}
++
++function textOf(root, sel) {
++  const el = first(root, sel);
++  return el ? String(el.textContent || '').replace(/\s+/g, ' ').trim() : '';
++}
++
++function textOfExcluding(root, sel, excludeSel) {
++  const el = first(root, sel);
++  if (!el) { return ''; }
++  const clone = el.cloneNode(true);
++  const drop = q(clone, excludeSel);
++  for (let i = 0; i < drop.length; i += 1) {
++    if (drop[i].parentNode) { drop[i].parentNode.removeChild(drop[i]); }
++  }
++  return String(clone.textContent || '').replace(/\s+/g, ' ').trim();
++}
++
++function classOf(root, sel) {
++  const el = first(root, sel);
++  return el ? String(el.className || '') : '';
++}
++
++function hasClass(root, sel, cls) {
++  const el = first(root, sel);
++  return !!el && String(el.className || '').split(/\s+/).indexOf(cls) >= 0;
++}
++
++function slug(text) {
++  return String(text || '')
++    .replace(/[^a-zA-Z0-9]+/g, '-')
++    .replace(/^-+|-+$/g, '')
++    .toLowerCase();
++}
++
++function setTid(el, id) {
++  if (el && el.getAttribute && el.getAttribute(TID) !== id) { el.setAttribute(TID, id); }
++}
++
++function setTidBySel(sel, id) {
++  setTid(first(DOC, sel), id);
++}
++
++function setTidIndexed(sel, prefix) {
++  const list = q(DOC, sel);
++  for (let i = 0; i < list.length; i += 1) { setTid(list[i], prefix + '-' + i); }
++  return list.length;
++}
++
++// --- shell / layout ---------------------------------------------------------
++function shell() { return first(DOC, 'app-base-layout > div'); }
++function sidebarRoot() { return first(DOC, 'app-sidebar > div'); }
++function headerRoot() { return first(DOC, 'app-header > div'); }
++function desktopBurger() { return first(DOC, 'app-header .app-header-left button.hamburger'); }
++function mobileBurger() { return first(DOC, 'app-header button.close-sidebar-btn'); }
++
++// --- sidebar menu -----------------------------------------------------------
++const GROUP_SLUGS = ['pages', 'elements', 'components', 'tables', 'forms', 'charts', 'widgets'];
++
++function vsmGroups() { return q(DOC, 'app-sidebar .vsm-item.has-sub'); }
++
++function groupBySlug(s) {
++  const want = slug(s);
++  const list = vsmGroups();
++  for (let i = 0; i < list.length; i += 1) {
++    const title = textOf(list[i], ':scope > .vsm-link .vsm-title');
++    if (slug(title) === want) { return list[i]; }
++  }
++  return null;
++}
++
++function groupTitleAt(i) {
++  const list = vsmGroups();
++  return list.length > i ? textOf(list[i], ':scope > .vsm-link .vsm-title') : '';
++}
++
++function stampPageLinks(widget, prefix) {
++  if (!widget) { return; }
++  const links = q(widget, 'a.page-link');
++  for (let i = 0; i < links.length; i += 1) {
++    const t = String(links[i].textContent || '').replace(/\s+/g, ' ').trim();
++    if (/^\d+$/.test(t)) { setTid(links[i], prefix + '-' + t); }
++  }
++}
++
++// --- docs section -----------------------------------------------------------
++function docsLinks() { return q(DOC, 'app-docs-layout .docs-sidebar__link'); }
++
++function docsLinkByLabel(label) {
++  const list = docsLinks();
++  const want = String(label || '').replace(/\s+/g, ' ').trim().toLowerCase();
++  for (let i = 0; i < list.length; i += 1) {
++    if (String(list[i].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() === want) { return list[i]; }
++  }
++  return null;
++}
++
++// --- modals -----------------------------------------------------------------
++function modalWindows() { return q(DOC, 'ngb-modal-window'); }
++function topModal() { const w = modalWindows(); return w.length ? w[w.length - 1] : null; }
++
++// --- line chart -------------------------------------------------------------
++function lineTable() { return first(DOC, 'app-line-chart table'); }
++function lineHeads() { return q(DOC, 'app-line-chart table thead th'); }
++function lineRows() { const t = lineTable(); if (!t) { return []; } const hd = q(t, 'thead tr'); return q(t, 'tr').filter((r) => hd.indexOf(r) < 0); }
++function lineButtons() { return q(DOC, 'app-line-chart .text-center button'); }
++
++function lineButtonByLabel(label) {
++  const list = lineButtons();
++  const want = String(label || '').replace(/\s+/g, ' ').trim().toLowerCase();
++  for (let i = 0; i < list.length; i += 1) {
++    if (String(list[i].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() === want) { return list[i]; }
++  }
++  return null;
++}
++
++// --- pagination -------------------------------------------------------------
++function pgCards() { return q(DOC, 'app-pagination .card.main-card'); }
++function pgWidgetsIn(card) { return card ? q(card, 'ngb-pagination') : []; }
++function pgReadoutIn(card) { return card ? textOf(card, 'pre') : ''; }
++function pgActiveOf(widget) {
++  const el = widget ? first(widget, '.page-item.active .page-link') : null;
++  const t = el ? String(el.textContent || '').replace(/\s+/g, ' ').trim() : '';
++  const n = Number(t);
++  return Number.isFinite(n) && t !== '' ? n : -1;
++}
++
++// --- progress bars ----------------------------------------------------------
++function pbCards() { return q(DOC, 'app-progress-bar .card.main-card'); }
++function pbCurrentBars() { return pgLikeBars(1); }
++function pgLikeBars(cardIndex) {
++  const cards = pbCards();
++  return cards.length > cardIndex ? q(cards[cardIndex], 'ngb-progressbar') : [];
++}
++
++// --- notifications ----------------------------------------------------------
++function notifItems() { return q(DOC, 'app-notifications-box .dropdown-menu button.dropdown-item.d-flex'); }
++function notifMenu() { return first(DOC, 'app-notifications-box .dropdown-menu'); }
++
++// --- code blocks ------------------------------------------------------------
++function codeCopies() { return q(DOC, 'app-code-block .code-block__copy'); }
++
++// --- tabs -------------------------------------------------------------------
++function tabBasic() { return q(DOC, 'app-tabs #basicTab button.nav-link'); }
++function tabPills() { return q(DOC, 'app-tabs #pillsTab button.nav-link'); }
++
++// ---------------------------------------------------------------------------
++// data-testid stamping (idempotent, re-run on every DOM mutation)
++// ---------------------------------------------------------------------------
++function stamp() {
++  setTid(shell(), 'arch-shell');
++  setTid(headerRoot(), 'arch-header-root');
++  setTid(sidebarRoot(), 'arch-sidebar-root');
++  setTid(desktopBurger(), 'arch-burger');
++  setTid(mobileBurger(), 'arch-burger-mobile');
++  setTidBySel('app-footer', 'arch-footer');
++  setTidBySel('app-page-title .app-page-title', 'arch-page-title');
++  setTidBySel('app-page-title .page-title-heading', 'arch-page-title-heading');
++  setTidBySel('app-page-title .page-title-subheading', 'arch-page-title-subheading');
++  setTidBySel('app-page-title .page-title-icon i', 'arch-page-title-icon');
++  setTidBySel('app-header .app-header-left .search-wrapper', 'arch-search');
++  setTidBySel('app-notifications-box button.btn-link', 'arch-notif-toggle');
++  setTid(notifMenu(), 'arch-notif-menu');
++  setTidBySel('app-notifications-box .badge', 'arch-notif-badge');
++  setTidIndexed('app-notifications-box .dropdown-menu button.dropdown-item.d-flex', 'arch-notif-item');
++  setTidBySel('app-user-box button.btn-link', 'arch-user-toggle');
++  setTidBySel('app-user-box .dropdown-menu', 'arch-user-menu');
++  setTidIndexed('app-user-box .dropdown-menu button.dropdown-item', 'arch-user-item');
++
++  const groups = vsmGroups();
++  for (let i = 0; i < groups.length; i += 1) {
++    const s = slug(groupTitleAt(i)) || ('g' + i);
++    setTid(groups[i], 'arch-vsm-group-' + s);
++    setTid(first(groups[i], ':scope > .vsm-link'), 'arch-vsm-grouplink-' + s);
++    setTid(first(groups[i], ':scope > .vsm-dropdown'), 'arch-vsm-dropdown-' + s);
++  }
++  setTidIndexed('app-sidebar .v-sidebar-menu > .vsm-list > .vsm-item', 'arch-vsm-top');
++
++  setTidBySel('app-accordions #headingOne button', 'arch-acc-basic-simple');
++  setTidBySel('app-accordions #headingTwo button', 'arch-acc-basic-fancy');
++  setTidBySel('app-accordions #collapseOne', 'arch-acc-basic-simple-body');
++  setTidBySel('app-accordions #collapseTwo', 'arch-acc-basic-fancy-body');
++  setTidBySel('app-accordions #headingFour button', 'arch-acc-one-first');
++  setTidBySel('app-accordions #headingFive button', 'arch-acc-one-second');
++  setTidBySel('app-accordions #collapseFour', 'arch-acc-one-first-body');
++  setTidBySel('app-accordions #collapseFive', 'arch-acc-one-second-body');
++  setTidBySel('app-accordions #headingSix button', 'arch-acc-toggle-first');
++  setTidBySel('app-accordions #headingSeven button', 'arch-acc-toggle-second');
++  setTidBySel('app-accordions .text-center button.btn-primary', 'arch-acc-toggle-first-btn');
++  setTidBySel('app-accordions .text-center button.btn-info', 'arch-acc-toggle-second-btn');
++
++  const pgc = pgCards();
++  const pgDefault = pgWidgetsIn(pgc[0])[0] || null;
++  setTid(pgDefault, 'arch-pg-default');
++  setTid(pgWidgetsIn(pgc[0])[1] || null, 'arch-pg-nodirection');
++  setTid(pgWidgetsIn(pgc[0])[2] || null, 'arch-pg-boundary');
++  setTid(first(pgc[0] || DOC, 'pre'), 'arch-pg-basic-readout');
++  const adv = pgWidgetsIn(pgc[1]);
++  for (let i = 0; i < adv.length; i += 1) { setTid(adv[i], 'arch-pg-adv-' + i); }
++  setTid(first(pgc[1] || DOC, 'pre'), 'arch-pg-adv-readout');
++  setTid(pgWidgetsIn(pgc[4])[0] || null, 'arch-pg-disabled');
++  setTidBySel('app-pagination button.btn-sm.btn-primary', 'arch-pg-toggle-disabled');
++  stampPageLinks(pgDefault, 'arch-pg-default-link');
++  for (let ai = 0; ai < adv.length; ai += 1) { stampPageLinks(adv[ai], 'arch-pg-adv-' + ai + '-link'); }
++  stampPageLinks(pgWidgetsIn(pgc[4])[0] || null, 'arch-pg-disabled-link');
++
++  setTid(first(DOC, 'app-modals pre'), 'arch-modal-readout');
++  const launches = q(DOC, 'app-modals .card-body > button');
++  let li = 0;
++  for (let i = 0; i < launches.length; i += 1) {
++    const t = String(launches[i].textContent || '').replace(/\s+/g, ' ').trim();
++    if (t === 'Launch demo modal') { setTid(launches[i], 'arch-modal-launch-' + li); li += 1; }
++  }
++  const tm = topModal();
++  if (tm) {
++    setTid(first(tm, '.modal-dialog'), 'arch-modal-dialog');
++    setTid(first(tm, '.modal-title'), 'arch-modal-title');
++    setTid(first(tm, '.modal-footer .btn-secondary'), 'arch-modal-close');
++    setTid(first(tm, '.modal-header .btn-close'), 'arch-modal-x');
++  }
++
++  setTid(lineTable(), 'arch-line-table');
++  const lb = lineButtons();
++  for (let i = 0; i < lb.length; i += 1) {
++    setTid(lb[i], 'arch-line-btn-' + slug(String(lb[i].textContent || '')));
++  }
++
++  const tb = tabBasic();
++  for (let i = 0; i < tb.length; i += 1) { setTid(tb[i], 'arch-tab-basic-' + i); }
++  const tp = tabPills();
++  for (let i = 0; i < tp.length; i += 1) { setTid(tp[i], 'arch-tab-pills-' + i); }
++
++  const pbb = pbCurrentBars();
++  for (let i = 0; i < pbb.length; i += 1) { setTid(pbb[i], 'arch-pb-current-' + i); }
++
++  const dl = docsLinks();
++  for (let i = 0; i < dl.length; i += 1) {
++    setTid(dl[i], 'arch-docs-nav-' + (slug(String(dl[i].textContent || '')) || i));
++  }
++  setTidIndexed('app-docs-layout .docs-sidebar__group', 'arch-docs-group');
++  setTidBySel('app-docs-layout .docs-content h1', 'arch-docs-h1');
++  setTidBySel('app-docs-layout .docs-header__burger', 'arch-docs-burger');
++  setTidIndexed('app-code-block .code-block__copy', 'arch-code-copy');
++}
++
++// ---------------------------------------------------------------------------
++// window.__ARCH__ - live scalar getters (re-read on every call, never memoised)
++// ---------------------------------------------------------------------------
++const bridge = {
++  version: () => 'arch-probe-1',
++
++  // --- boot / shell ---
++  ready: () => !!shell(),
++  title: () => String(DOC.title || ''),
++  pathName: () => String(location.pathname || ''),
++  search: () => String(location.search || ''),
++  hash: () => String(location.hash || ''),
++  shellExists: () => !!shell(),
++  shellClass: () => (shell() ? String(shell().className || '') : ''),
++  shellHasClass: (c) => !!shell() && String(shell().className || '').split(/\s+/).indexOf(String(c)) >= 0,
++  headerExists: () => !!headerRoot(),
++  sidebarExists: () => !!sidebarRoot(),
++  footerExists: () => !!first(DOC, 'app-footer'),
++  footerText: () => textOf(DOC, 'app-footer'),
++  bodyHasClass: (c) => String(DOC.body.className || '').split(/\s+/).indexOf(String(c)) >= 0,
++  burgerExists: () => !!desktopBurger(),
++  burgerIsActive: () => !!desktopBurger() && String(desktopBurger().className || '').split(/\s+/).indexOf('is-active') >= 0,
++  burgerMobileExists: () => !!mobileBurger(),
++  burgerMobileIsActive: () => !!mobileBurger() && String(mobileBurger().className || '').split(/\s+/).indexOf('is-active') >= 0,
++  searchWrapperExists: () => !!first(DOC, 'app-header .search-wrapper'),
++  searchWrapperActive: () => hasClass(DOC, 'app-header .search-wrapper', 'active'),
++  appNodeCount: () => DOC.getElementsByTagName('*').length,
++
++  // --- state isolation ---
++  lsKeys: () => { try { return localStorage.length; } catch (e) { return -1; } },
++  ssKeys: () => { try { return sessionStorage.length; } catch (e) { return -1; } },
++  lsKeyAt: (i) => { try { return String(localStorage.key(Number(i)) || ''); } catch (e) { return ''; } },
++  cookieText: () => String(DOC.cookie || ''),
++  residueGlobals: () => {
++    const now = ownUnderscoreGlobals();
++    let n = 0;
++    for (let i = 0; i < now.length; i += 1) {
++      if (GLOBAL_ALLOW.indexOf(now[i]) >= 0) { continue; }
++      if (GLOBAL_BASELINE.indexOf(now[i]) >= 0) { continue; }
++      n += 1;
++    }
++    return n;
++  },
++  residueGlobalNames: () => {
++    const now = ownUnderscoreGlobals();
++    const out = [];
++    for (let i = 0; i < now.length; i += 1) {
++      if (GLOBAL_ALLOW.indexOf(now[i]) >= 0) { continue; }
++      if (GLOBAL_BASELINE.indexOf(now[i]) >= 0) { continue; }
++      out.push(now[i]);
++    }
++    return out.join(',');
++  },
++
++  // --- page title (shared component) ---
++  pageTitleExists: () => !!first(DOC, 'app-page-title'),
++  pageTitleHeading: () => textOfExcluding(DOC, 'app-page-title .page-title-heading', '.page-title-subheading'),
++  pageTitleSubheading: () => textOf(DOC, 'app-page-title .page-title-subheading'),
++  pageTitleIconClass: () => classOf(DOC, 'app-page-title .page-title-icon i'),
++  pageTitleActionText: () => textOf(DOC, 'app-page-title .page-title-actions .btn-success'),
++  pageTitleActionCount: () => q(DOC, 'app-page-title .page-title-actions button').length,
++
++  // --- sidebar menu ---
++  vsmGroupCount: () => vsmGroups().length,
++  vsmGroupTitleAt: (i) => groupTitleAt(Number(i)),
++  vsmGroupExists: (s) => !!groupBySlug(s),
++  vsmGroupOpen: (s) => {
++    const g = groupBySlug(s);
++    return !!g && String(g.className || '').split(/\s+/).indexOf('vsm-open') >= 0;
++  },
++  vsmDropdownShown: (s) => {
++    const g = groupBySlug(s);
++    return !!g && hasClass(g, ':scope > .vsm-dropdown', 'vsm-dropdown-show');
++  },
++  vsmOpenDropdownCount: () => q(DOC, 'app-sidebar .vsm-dropdown.vsm-dropdown-show').length,
++  vsmOpenGroupCount: () => q(DOC, 'app-sidebar .vsm-item.has-sub.vsm-open').length,
++  vsmChildCount: (s) => {
++    const g = groupBySlug(s);
++    return g ? q(g, ':scope > .vsm-dropdown .vsm-item').length : -1;
++  },
++  vsmChildTextAt: (s, i) => {
++    const g = groupBySlug(s);
++    if (!g) { return ''; }
++    const list = q(g, ':scope > .vsm-dropdown .vsm-item a');
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  vsmChildHrefAt: (s, i) => {
++    const g = groupBySlug(s);
++    if (!g) { return ''; }
++    const list = q(g, ':scope > .vsm-dropdown .vsm-item a');
++    return list.length > Number(i) ? String(list[Number(i)].getAttribute('href') || '') : '';
++  },
++  vsmTopItemCount: () => q(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-item').length,
++  vsmTopLinkTextAt: (i) => {
++    const list = q(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-item');
++    return list.length > Number(i) ? textOf(list[Number(i)], '.vsm-link') : '';
++  },
++  vsmActiveTopCount: () => q(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-item.vsm-active').length,
++  vsmActiveTopText: () => textOf(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-item.vsm-active .vsm-link'),
++  vsmSectionHeaderCount: () => q(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-header').length,
++  vsmSectionHeaderTextAt: (i) => {
++    const list = q(DOC, 'app-sidebar .v-sidebar-menu > .vsm-list > .vsm-header');
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  vsmLeafLinkCount: () => q(DOC, 'app-sidebar a.vsm-link').length,
++  logoFullText: () => textOf(DOC, 'app-sidebar .logo-full'),
++  logoCollapsedText: () => textOf(DOC, 'app-sidebar .logo-collapsed'),
++
++  // --- header boxes ---
++  notifToggleExists: () => !!first(DOC, 'app-notifications-box button.btn-link'),
++  notifMenuOpen: () => hasClass(DOC, 'app-notifications-box .dropdown-menu', 'show'),
++  notifItemCount: () => notifItems().length,
++  notifItemBoldCount: () => q(DOC, 'app-notifications-box .dropdown-menu button.dropdown-item.d-flex span.fw-bold').length,
++  notifItemBold: (i) => {
++    const list = notifItems();
++    if (list.length <= Number(i)) { return false; }
++    const sp = first(list[Number(i)], 'span');
++    return !!sp && String(sp.className || '').split(/\s+/).indexOf('fw-bold') >= 0;
++  },
++  notifItemMessage: (i) => {
++    const list = notifItems();
++    return list.length > Number(i) ? textOf(list[Number(i)], '.flex-grow-1 span') : '';
++  },
++  notifItemTime: (i) => {
++    const list = notifItems();
++    return list.length > Number(i) ? textOf(list[Number(i)], '.small') : '';
++  },
++  notifBadgeText: () => textOf(DOC, 'app-notifications-box .badge'),
++  notifBadgeExists: () => !!first(DOC, 'app-notifications-box .badge'),
++  notifHeaderText: () => textOf(DOC, 'app-notifications-box .dropdown-header h6'),
++  notifNewText: () => textOf(DOC, 'app-notifications-box .dropdown-header small'),
++  notifViewAllText: () => textOf(DOC, 'app-notifications-box .dropdown-menu button.dropdown-item.text-center'),
++  userToggleExists: () => !!first(DOC, 'app-user-box button.btn-link'),
++  userMenuOpen: () => hasClass(DOC, 'app-user-box .dropdown-menu', 'show'),
++  userMenuItemCount: () => q(DOC, 'app-user-box .dropdown-menu button.dropdown-item').length,
++  userHeading: () => textOf(DOC, 'app-user-box .widget-heading'),
++  userSubheading: () => textOf(DOC, 'app-user-box .widget-subheading'),
++  userAvatarSrc: () => attrOf(DOC, 'app-user-box .widget-content-left + div img', 'src'),
++  messagesExists: () => !!first(DOC, 'app-messages-box'),
++
++  // --- accordions demo page ---
++  accExists: () => !!first(DOC, 'app-accordions'),
++  accCardCount: () => q(DOC, 'app-accordions .card').length,
++  accAriaExpanded: (id) => attrOf(DOC, 'app-accordions #' + id + ' button', 'aria-expanded'),
++  accBodyClass: (id) => classOf(DOC, 'app-accordions #' + id),
++  accBodyHasShow: (id) => hasClass(DOC, 'app-accordions #' + id, 'show'),
++  accOneExpandedCount: () => {
++    let n = 0;
++    const ids = ['headingFour', 'headingFive'];
++    for (let i = 0; i < ids.length; i += 1) {
++      if (attrOf(DOC, 'app-accordions #' + ids[i] + ' button', 'aria-expanded') === 'true') { n += 1; }
++    }
++    return n;
++  },
++  accOneSecondText: () => textOf(DOC, 'app-accordions #headingFive button'),
++  accOneFirstText: () => textOf(DOC, 'app-accordions #headingFour button'),
++  accToggleButtonTextAt: (i) => {
++    const list = q(DOC, 'app-accordions .text-center button');
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  accPreventSecondText: () => textOf(DOC, 'app-accordions #accordionPrevent .card:last-child button'),
++
++  // --- pagination demo page ---
++  pgExists: () => !!first(DOC, 'app-pagination'),
++  pgCardCount: () => pgCards().length,
++  pgCardHeaderTextAt: (i) => {
++    const c = pgCards();
++    return c.length > Number(i) ? textOf(c[Number(i)], '.card-header') : '';
++  },
++  pgBasicReadout: () => pgReadoutIn(pgCards()[0]),
++  pgAdvReadout: () => pgReadoutIn(pgCards()[1]),
++  pgDefaultActive: () => pgActiveOf(first(DOC, '[data-testid="arch-pg-default"]') || pgWidgetsIn(pgCards()[0])[0]),
++  pgNoDirectionActive: () => pgActiveOf(pgWidgetsIn(pgCards()[0])[1]),
++  pgBoundaryActive: () => pgActiveOf(pgWidgetsIn(pgCards()[0])[2]),
++  pgAdvActiveAt: (i) => pgActiveOf(pgWidgetsIn(pgCards()[1])[Number(i)]),
++  pgSizingActiveAt: (i) => pgActiveOf(pgWidgetsIn(pgCards()[2])[Number(i)]),
++  pgAlignActiveAt: (i) => pgActiveOf(pgWidgetsIn(pgCards()[3])[Number(i)]),
++  pgDisabledActive: () => pgActiveOf(pgWidgetsIn(pgCards()[4])[0]),
++  pgDefaultLinkCount: () => {
++    const w = pgWidgetsIn(pgCards()[0])[0];
++    return w ? q(w, 'li.page-item').length : -1;
++  },
++  pgDefaultNumberCount: () => {
++    const w = pgWidgetsIn(pgCards()[0])[0];
++    if (!w) { return -1; }
++    let n = 0;
++    const list = q(w, 'a.page-link');
++    for (let i = 0; i < list.length; i += 1) {
++      if (/^\d+$/.test(String(list[i].textContent || '').trim())) { n += 1; }
++    }
++    return n;
++  },
++  pgDisabledItemDisabledCount: () => {
++    const w = pgWidgetsIn(pgCards()[4])[0];
++    return w ? q(w, 'li.page-item.disabled').length : -1;
++  },
++  pgDisabledItemCount: () => {
++    const w = pgWidgetsIn(pgCards()[4])[0];
++    return w ? q(w, 'li.page-item').length : -1;
++  },
++  pgWidgetCount: () => q(DOC, 'app-pagination ngb-pagination').length,
++  pgToggleDisabledText: () => textOf(DOC, 'app-pagination button.btn-sm.btn-primary'),
++
++  // --- modals demo page ---
++  modalExists: () => !!first(DOC, 'app-modals'),
++  modalReadoutExists: () => !!first(DOC, 'app-modals pre'),
++  modalReadout: () => textOf(DOC, 'app-modals pre'),
++  modalOpenCount: () => modalWindows().length,
++  modalDialogTitle: () => (topModal() ? textOf(topModal(), '.modal-title') : ''),
++  modalDialogClass: () => (topModal() ? classOf(topModal(), '.modal-dialog') : ''),
++  modalDialogHasClass: (c) => {
++    const m = topModal();
++    return !!m && String(classOf(m, '.modal-dialog') || '').split(/\s+/).indexOf(String(c)) >= 0;
++  },
++  modalWindowClass: () => (topModal() ? String(topModal().className || '') : ''),
++  modalFooterButtonCount: () => (topModal() ? q(topModal(), '.modal-footer button').length : -1),
++  modalFooterButtonTextAt: (i) => {
++    const m = topModal();
++    if (!m) { return ''; }
++    const list = q(m, '.modal-footer button');
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  modalCloseExists: () => { const m = topModal(); return !!m && !!first(m, '.modal-footer .btn-secondary'); },
++  modalXExists: () => { const m = topModal(); return !!m && !!first(m, '.modal-header .btn-close'); },
++  modalLaunchCount: () => q(DOC, '[data-testid^="arch-modal-launch-"]').length,
++  modalCardHeaderTextAt: (i) => {
++    const list = q(DOC, 'app-modals .card.main-card');
++    return list.length > Number(i) ? textOf(list[Number(i)], '.card-header') : '';
++  },
++  modalBackdropCount: () => q(DOC, 'body > .modal-backdrop').length,
++
++  // --- line chart demo (chartjs page) ---
++  lineTableExists: () => !!lineTable(),
++  lineHeadCount: () => lineHeads().length,
++  lineHeadAt: (i) => {
++    const list = lineHeads();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  lineRowCount: () => lineRows().length,
++  lineCellCountAt: (r) => {
++    const list = lineRows();
++    return list.length > Number(r) ? q(list[Number(r)], 'td').length : -1;
++  },
++  lineCellAt: (r, c) => {
++    const list = lineRows();
++    if (list.length <= Number(r)) { return ''; }
++    const cells = q(list[Number(r)], 'td');
++    return cells.length > Number(c) ? String(cells[Number(c)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  lineRowClassAt: (r) => {
++    const list = lineRows();
++    return list.length > Number(r) ? String(list[Number(r)].className || '') : '';
++  },
++  lineButtonCount: () => lineButtons().length,
++  lineButtonTextAt: (i) => {
++    const list = lineButtons();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  lineButtonExistsByLabel: (label) => !!lineButtonByLabel(label),
++  lineCanvasCount: () => q(DOC, 'app-line-chart canvas').length,
++  chartjsExampleCount: () => q(DOC, 'app-chartjs canvas').length,
++
++  // --- tabs demo page (decoy A surface) ---
++  tabBasicCount: () => tabBasic().length,
++  tabBasicLabelAt: (i) => {
++    const list = tabBasic();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  tabBasicDisabledAt: (i) => {
++    const list = tabBasic();
++    return list.length > Number(i) ? !!list[Number(i)].disabled : false;
++  },
++  tabBasicHasDisabledAttrAt: (i) => {
++    const list = tabBasic();
++    return list.length > Number(i) ? list[Number(i)].hasAttribute('disabled') : false;
++  },
++  tabBasicAriaSelectedAt: (i) => {
++    const list = tabBasic();
++    return list.length > Number(i) ? String(list[Number(i)].getAttribute('aria-selected') || '') : '';
++  },
++  tabBasicActiveCount: () => q(DOC, 'app-tabs #basicTab button.nav-link.active').length,
++  tabPillsCount: () => tabPills().length,
++  tabPillsDisabledAt: (i) => {
++    const list = tabPills();
++    return list.length > Number(i) ? !!list[Number(i)].disabled : false;
++  },
++  tabPillsLabelAt: (i) => {
++    const list = tabPills();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  tabPaneCount: () => q(DOC, 'app-tabs .tab-pane').length,
++  tabPaneVisibleCount: () => q(DOC, 'app-tabs .tab-pane.show').length,
++
++  // --- progress bar demo page (decoy B surface) ---
++  pbCurrentCount: () => pbCurrentBars().length,
++  pbCurrentValueAt: (i) => {
++    const list = pbCurrentBars();
++    return list.length > Number(i) ? String(list[Number(i)].getAttribute('aria-valuenow') || '') : '';
++  },
++  pbCurrentMaxAt: (i) => {
++    const list = pbCurrentBars();
++    return list.length > Number(i) ? String(list[Number(i)].getAttribute('aria-valuemax') || '') : '';
++  },
++  pbCurrentTextAt: (i) => {
++    const list = pbCurrentBars();
++    return list.length > Number(i) ? textOf(list[Number(i)], '.progress-bar') : '';
++  },
++  pbCurrentWidthAt: (i) => {
++    const list = pbCurrentBars();
++    if (list.length <= Number(i)) { return ''; }
++    const bar = first(list[Number(i)], '.progress-bar');
++    return bar ? String(bar.style.width || '') : '';
++  },
++  pbCurrentBarClassAt: (i) => {
++    const list = pbCurrentBars();
++    return list.length > Number(i) ? classOf(list[Number(i)], '.progress-bar') : '';
++  },
++  pbCardHeaderTextAt: (i) => {
++    const c = pbCards();
++    return c.length > Number(i) ? textOf(c[Number(i)], '.card-header') : '';
++  },
++  pbTotalCount: () => q(DOC, 'app-progress-bar ngb-progressbar').length,
++
++  // --- documentation section ---
++  docsSidebarExists: () => !!first(DOC, 'app-docs-layout .docs-sidebar'),
++  docsNavGroupCount: () => q(DOC, 'app-docs-layout .docs-sidebar__group').length,
++  docsNavGroupTitleAt: (i) => {
++    const list = q(DOC, 'app-docs-layout .docs-sidebar__title');
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  docsNavItemCount: () => docsLinks().length,
++  docsNavLinkTextAt: (i) => {
++    const list = docsLinks();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  docsNavLinkHrefByLabel: (label) => {
++    const el = docsLinkByLabel(label);
++    return el ? String(el.getAttribute('href') || '') : '';
++  },
++  docsNavLinkActiveCount: () => q(DOC, 'app-docs-layout .docs-sidebar__link.active').length,
++  docsNavLinkActiveLabel: () => textOf(DOC, 'app-docs-layout .docs-sidebar__link.active'),
++  docsH1: () => textOf(DOC, 'app-docs-layout .docs-content h1'),
++  docsH1Exists: () => !!first(DOC, 'app-docs-layout .docs-content h1'),
++  docsContentExists: () => !!first(DOC, 'app-docs-layout .docs-content'),
++  docsBurgerExists: () => !!first(DOC, 'app-docs-layout .docs-header__burger'),
++  docsSidebarOpen: () => hasClass(DOC, 'app-docs-layout .docs-sidebar', 'docs-sidebar--open'),
++  docsBackToAppHref: () => attrOf(DOC, 'app-docs-layout .docs-header__back', 'href'),
++
++  // --- docs code blocks ---
++  codeCopyCount: () => codeCopies().length,
++  codeCopyTextAt: (i) => {
++    const list = codeCopies();
++    return list.length > Number(i) ? String(list[Number(i)].textContent || '').replace(/\s+/g, ' ').trim() : '';
++  },
++  codeCopyAriaAt: (i) => {
++    const list = codeCopies();
++    return list.length > Number(i) ? String(list[Number(i)].getAttribute('aria-label') || '') : '';
++  },
++  codePreCount: () => q(DOC, 'app-code-block .code-block__pre').length,
++  codePreNonEmpty: () => {
++    const list = q(DOC, 'app-code-block .code-block__pre');
++    let n = 0;
++    for (let i = 0; i < list.length; i += 1) {
++      if (String(list[i].textContent || '').trim() !== '') { n += 1; }
++    }
++    return n;
++  },
++
++  // --- frozen samples measured inside setup (纪律⑨) ---
++  frozen: (key) => {
++    const bag = (window as any).__rb_frozen;
++    if (!bag) { return '__no_bag__'; }
++    const v = bag[String(key)];
++    if (v === undefined) { return '__unset__'; }
++    return v;
++  },
++  frozenIsSet: (key) => {
++    const bag = (window as any).__rb_frozen;
++    return !!bag && bag[String(key)] !== undefined;
++  },
++};
++
++(window as any).__ARCH__ = bridge;
++
++// ---------------------------------------------------------------------------
++// stamping lifecycle
++// ---------------------------------------------------------------------------
++let scheduled = false;
++function scheduleStamp() {
++  if (scheduled) { return; }
++  scheduled = true;
++  setTimeout(() => { scheduled = false; stamp(); }, 0);
++}
++
++function install() {
++  stamp();
++  try {
++    const observer = new MutationObserver(() => scheduleStamp());
++    observer.observe(DOC.documentElement, { childList: true, subtree: true });
++  } catch (e) {
++    // fall back to the safety tick only
++  }
++  setTimeout(stamp, 300);
++  setTimeout(stamp, 1200);
++  setInterval(stamp, 400);
++}
++
++if (DOC.readyState === 'loading') {
++  DOC.addEventListener('DOMContentLoaded', install);
++} else {
++  install();
++}
++
++export const RB_PROBE_VERSION = 'arch-probe-1';

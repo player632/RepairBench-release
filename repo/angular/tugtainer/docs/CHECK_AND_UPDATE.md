@@ -1,0 +1,94 @@
+# Check and update process
+
+## Check process
+
+1. Verify that a container is suitable for checking (not a local image);
+2. Pull image (if enabled in the settings, disabled by default), this may be handy if you are using a registry proxy;
+3. Request current digest of an image from a registry;
+4. Compare digests;
+5. If different, the container is **marked as available**.
+
+**Scheduled** process includes all enabled hosts and all containers **selected for auto-check**.
+
+**Manual** process includes all containers despite the auto-check toggle, a single container, or a selected set of containers.
+
+## Update process
+
+- ### Dependency graph
+  - Containers of a host are processed as a single set;
+  - A dependency graph is built for that host from:
+    - Compose dependencies (`com.docker.compose.depends_on` for containers with the same `com.docker.compose.project` and `com.docker.compose.project.config_files`)
+    - Custom dependencies ([dev.quenary.tugtainer.depends_on](../README.md#custom-labels))
+  - Dependencies are directional: if container A depends on B, B is started before A and stopped after A;
+  - Containers without dependencies are treated as independent nodes
+
+- ### Process
+  1. The dependency graph is built:
+     - [protected](../README.md#custom-labels) containers are skipped;
+     - not `running` containers are skipped by default (can be changed in the settings);
+  2. A set of **updatable** containers is calculated:
+     - an updatable container has an **available** update and is either **selected for auto-update** or included by a **manual** run;
+  3. A set of **affected** containers is calculated:
+     - includes all containers that depend (directly or transitively) on any updatable container;
+     - excludes the updatable containers themselves;
+  4. A topological execution order is built from the dependency graph;
+  5. Images are pulled for **updatable** containers;
+  6. All involved containers (**updatable** and **affected**) that were running are stopped once, from most dependent to least dependent;
+  7. Then, in reverse order (least dependent → most dependent):
+     - **Updatable** containers are recreated and started;
+     - **Affected** containers are started;
+  8. After start, healthchecks are waited on; if an updatable container becomes unhealthy, it is rolled back to the previous image.
+
+**Scheduled** process runs on all enabled hosts for containers **selected for auto-update**.
+
+**Manual** process updates all containers with an available update despite the auto-update toggle (Check all / Update all on a host), a single container, or a selected set of containers. Dependents of those containers are still included in `affected` and are stopped/started with the plan. Select several rows in the containers table to check or update them together.
+
+Check and update jobs on the **same host** run one after another (a check of A and B cannot overlap an update of C and D). Jobs on different hosts can run at the same time.
+
+Per-host `HostState` is the source of truth: `current` job, `queued` jobs, and `completed` jobs. Each `Job` carries its own `containers` (status + result). Finished jobs stay in `completed` until the cache expires.
+
+Optional [hooks](../README.md#hooks) can run around stop, update, and rollback when enabled.
+
+## Update delay
+
+Optional delay between detecting a new image and applying a **scheduled** update (security buffer while a bad release can be yanked or fixed).
+
+- Global setting `DELAY_UPDATE_FOR` (seconds, default `0` = no delay);
+- Per-container `delay_update_for` overrides the global value when set; otherwise the global setting is used;
+- When remote digests change, `remote_digests_changed_at` is updated and kept as the last change time;
+- Scheduled update runs only if `now - remote_digests_changed_at >=` effective delay (or delay is `0` / timestamp is missing);
+- **Manual** updates ignore the delay;
+- Notifications on check are **not** delayed.
+
+## Previous image
+
+After a container is successfully updated, the identity of the image it was
+running before is recorded, so the previous version can be pinned again if the
+new one turns out to be broken.
+
+Everything is read from the image inspect that the update already performs
+before pulling, so no extra registry requests are made.
+
+- `previous_image_digests` — repo digests of the previous image, e.g.
+  `nginx@sha256:...`. This is the only value that pins the exact image again;
+  put it in the `image:` of your compose file to go back to it;
+- `previous_image_tags` — repo tags the previous image had locally. Useful when
+  the container tracks a pinned tag, less so when it tracks a floating one such
+  as `latest`;
+- `previous_image_version` — version taken from the previous image labels
+  (`org.opencontainers.image.version`, falling back to
+  `org.label-schema.version`). It is a hint from the image publisher: it may be
+  inherited from a base image, be a branch name, or not be published as a tag in
+  that exact form. Pin the digest, not this value.
+
+Recorded only when the update **succeeded**. After a rollback or a failure the
+container is running that same image again, so it is the current one and is not
+recorded as previous. An update that could not collect any of the three values
+leaves the previously recorded ones untouched.
+
+There is no reverse lookup from a digest to a tag in the registry API, and
+enumerating every tag of a repository to find one would cost a request per tag,
+so it is deliberately not attempted.
+
+The values are shown on the container card and are available in the
+[notification templates](./NOTIFICATIONS.md).

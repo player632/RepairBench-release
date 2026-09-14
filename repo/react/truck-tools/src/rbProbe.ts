@@ -1,0 +1,880 @@
+// RepairBench instrumentation: a strictly READ-ONLY probe published once as `window.__rb`.
+//
+// Contract (same discipline as every other RepairBench probe face):
+//   * published exactly once, after the first render is scheduled (see src/main.tsx);
+//   * every member is a pure read of the DOM / storage / harness record that the application
+//     itself already produced - the probe never writes application state, never dispatches an
+//     event, never touches storage, never mutates the DOM and never changes what is rendered;
+//   * every member is fail-closed: on any error it returns an inert sentinel ('' / -1 / false)
+//     instead of throwing, so a probe bug can never be mistaken for an application behaviour;
+//   * every member returns a SCALAR (string / number / boolean) because
+//     evaluation/dsl_runner.mjs compares js_eval results with a loose == against `expected`,
+//     and an object or array expectation would compare false forever.
+//
+// Why a probe at all: this seed has NO stable locator surface. There is not one data-testid in
+// the tree (measured: `rg -c 'data-testid' src/` = 0 hits), every class string is a Tailwind v4
+// utility that @tailwindcss/vite regenerates per build, and the React Compiler + rolldown/vite 8
+// pipeline minifies identifiers away. So the verifier addresses the UI by RENDERED TEXT (which
+// comes from src/translations/en-US.json, a tracked, deterministic file) and by ARIA roles that
+// HeroUI/react-aria author, and reads the host-side effect of a click off the adaptation's own
+// IPC record. Nothing here is harness-authored markup injected into the seed.
+
+import { rbBackendRecord } from "./rbBackend";
+import { rbState, rbStoreEntries } from "./rbFixtures";
+
+const norm = (v: unknown): string => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+
+const q = (sel: string): Element | null => {
+	try {
+		return document.querySelector(sel);
+	} catch {
+		return null;
+	}
+};
+
+const qa = (sel: string): Element[] => {
+	try {
+		return Array.from(document.querySelectorAll(sel));
+	} catch {
+		return [];
+	}
+};
+
+const textOf = (el: Element | null): string => norm((el as HTMLElement | null)?.textContent ?? "");
+
+const bodyText = (): string => {
+	try {
+		return norm(document.body.textContent || "");
+	} catch {
+		return "";
+	}
+};
+
+// --------------------------------------------------------------------- error tap
+
+const errTap: { errors: string[]; rejections: string[] } = { errors: [], rejections: [] };
+
+/** Attached BEFORE the first render (src/main.tsx) so a boot-time crash is recorded rather than
+ *  silently swallowed. This is the arm that carries the mine-#1 positive control: the pristine
+ *  seed rejects on mount (useDarkModeContex.tsx:64 and useProfileContex.tsx:145 attach no
+ *  `.catch`), the adapted tree must read 0. */
+export function installRbErrorTap(): void {
+	if (typeof window === "undefined") return;
+	window.addEventListener("error", (e) => {
+		if (errTap.errors.length < 40) {
+			errTap.errors.push(norm(e.message || (e.error && e.error.message) || "error"));
+		}
+	});
+	window.addEventListener("unhandledrejection", (e) => {
+		const r = (e as PromiseRejectionEvent).reason;
+		if (errTap.rejections.length < 40) {
+			errTap.rejections.push(norm((r && (r.message || r.toString())) || "rejection"));
+		}
+	});
+}
+
+// --------------------------------------------------------------------- UI handles
+
+/** HeroUI/react-aria tabs. RenderOptions renders `aria-label="options"` with 5 tabs and
+ *  SelectProfile renders a second `aria-label="options"` group with 2 tabs (ETS 2 / ATS), so the
+ *  two groups are told apart by their own labels, never by position. */
+function tabEls(group: string): HTMLElement[] {
+	const boxes = qa('[role="tablist"]');
+	for (const box of boxes) {
+		const label = norm(box.getAttribute("aria-label") ?? "");
+		const owner = box.closest('[class*="fixed"]');
+		const ownerLabel = owner ? norm(owner.getAttribute("aria-label") ?? "") : "";
+		if (label === group || ownerLabel === group) {
+			return Array.from(box.querySelectorAll('[role="tab"]')) as HTMLElement[];
+		}
+	}
+	if (!group) return qa('[role="tab"]') as HTMLElement[];
+	return [];
+}
+
+function cardTitleEls(): HTMLElement[] {
+	return qa("h4").filter((h) => !(h as HTMLElement).closest('[role="dialog"]')) as HTMLElement[];
+}
+
+/** The card a title belongs to: walk up from the h4 to the nearest ancestor that also holds the
+ *  card's Open button, capped so a missing card degrades to a small scope. */
+function cardOf(title: string): HTMLElement | null {
+	const want = norm(title);
+	if (!want) return null;
+	for (const h of cardTitleEls()) {
+		if (norm(h.textContent) !== want) continue;
+		let box: HTMLElement | null = h.parentElement;
+		for (let up = 0; box && up < 8; up += 1) {
+			if (box.querySelector("button")) return box;
+			box = box.parentElement;
+		}
+		return h.parentElement;
+	}
+	return null;
+}
+
+function btnEls(scope: Element | null): HTMLElement[] {
+	const root = scope ?? document.body;
+	return Array.from(root.querySelectorAll("button")) as HTMLElement[];
+}
+
+function btnByLabel(label: string, scope: Element | null): HTMLElement | null {
+	const want = norm(label);
+	if (!want) return null;
+	for (const b of btnEls(scope)) if (norm(b.textContent) === want) return b;
+	for (const b of btnEls(scope)) if (norm(b.textContent).indexOf(want) >= 0) return b;
+	return null;
+}
+
+function dialogEls(): HTMLElement[] {
+	return qa('[role="dialog"]') as HTMLElement[];
+}
+
+function openDialog(): HTMLElement | null {
+	for (const d of dialogEls()) {
+		const st = (d as HTMLElement).getAttribute("data-open");
+		const hidden = (d as HTMLElement).hasAttribute("hidden");
+		if (!hidden && (st === "true" || norm(d.textContent).length > 0)) return d;
+	}
+	return null;
+}
+
+/** react-aria renders a visually-hidden native `<select>` next to every HeroUI Select trigger, so
+ *  the selected value is readable without depending on the popover's transient DOM. */
+function selectEls(): HTMLSelectElement[] {
+	return qa("select") as HTMLSelectElement[];
+}
+
+/** Nearest-match wins, and an exact aria-label/name match wins outright.
+ *
+ *  Why the ranking: HeroUI's Select renders `<div base><HiddenSelect/>…<div main><trigger>` (measured
+ *  in the pinned @heroui/select@2.4.33 dist chunk-BJWIL32D.mjs:119-124), and HiddenSelect itself
+ *  renders `div[data-testid=hidden-select-container] > label > select` (chunk-XERXV5SZ.mjs:69-77).
+ *  So the hidden <select>'s first ancestor div IS its own Select base (depth 0), while the profile
+ *  bar's shared flex row - which contains both the "Select profile" and the "Select save" Select -
+ *  sits at depth 1 for BOTH of them. The previous first-hit-wins walk therefore answered
+ *  `selectByLabel("Select save")` with the PROFILE select (document order), silently mis-reading
+ *  every save-side member of `probe.profile`. Ranking by the shallowest matching ancestor keeps the
+ *  two siblings apart and is still fail-closed: no match anywhere returns null. */
+function selectByLabel(label: string): HTMLSelectElement | null {
+	const want = norm(label);
+	if (!want) return null;
+	for (const s of selectEls()) {
+		if (norm(s.getAttribute("aria-label") ?? "") === want) return s;
+		if (norm(s.getAttribute("name") ?? "") === want) return s;
+	}
+	let best: HTMLSelectElement | null = null;
+	let bestDepth = Number.POSITIVE_INFINITY;
+	for (const s of selectEls()) {
+		const box = s.closest("div");
+		let p: HTMLElement | null = box ? (box.parentElement as HTMLElement) : null;
+		for (let up = 0; p && up < 5; up += 1) {
+			if (norm(p.textContent).indexOf(want) >= 0) {
+				if (up < bestDepth) {
+					bestDepth = up;
+					best = s;
+				}
+				break;
+			}
+			p = p.parentElement as HTMLElement | null;
+		}
+	}
+	return best;
+}
+
+function selectOptions(s: HTMLSelectElement | null): string[] {
+	if (!s) return [];
+	return Array.from(s.options).map((o) => norm(o.textContent));
+}
+
+// --------------------------------------------------------------------- probe
+
+export interface RbProbe {
+	version: number;
+	boot: {
+		rootKids: () => number;
+		ready: () => boolean;
+		bodyLen: () => number;
+		overlay: () => boolean;
+		title: () => string;
+	};
+	loc: { path: () => string; search: () => string; href: () => string };
+	dom: {
+		count: (sel: string) => number;
+		text: (sel: string) => string;
+		texts: (sel: string, limit: number) => string;
+		attr: (sel: string, name: string) => string;
+		attrs: (sel: string, name: string, limit: number) => string;
+		bodySlice: (start: number, len: number) => string;
+		hasText: (needle: string) => boolean;
+		pos: (needle: string) => number;
+		needleCount: (needle: string) => number;
+		before: (a: string, b: string) => boolean;
+	};
+	tabs: {
+		count: (group: string) => number;
+		labels: (group: string) => string;
+		selected: (group: string) => string;
+		disabled: (group: string) => string;
+		indexOf: (group: string, label: string) => number;
+	};
+	cards: {
+		count: () => number;
+		titles: () => string;
+		has: (title: string) => boolean;
+		indexOf: (title: string) => number;
+		text: (title: string, maxLen: number) => string;
+		hasIn: (title: string, needle: string) => boolean;
+		buttonDisabled: (title: string, label: string) => boolean;
+		buttonCount: (title: string) => number;
+	};
+	buttons: {
+		count: () => number;
+		labels: (limit: number) => string;
+		has: (label: string) => boolean;
+		disabled: (label: string) => boolean;
+		indexOf: (label: string) => number;
+	};
+	modal: {
+		count: () => number;
+		open: () => boolean;
+		title: () => string;
+		text: (maxLen: number) => string;
+		has: (needle: string) => boolean;
+		pos: (needle: string) => number;
+		buttonDisabled: (label: string) => boolean;
+		inputValue: (label: string) => string;
+		inputCount: () => number;
+		switchCount: () => number;
+		switchStates: () => string;
+	};
+	profile: {
+		name: () => string;
+		savesText: () => string;
+		savesCount: () => number;
+		errorVisible: () => boolean;
+		errorText: (maxLen: number) => string;
+		avatarSrc: () => string;
+		avatarIsForeign: () => boolean;
+		selectOptions: () => string;
+		selectCount: () => number;
+		selectedProfile: () => string;
+		selectedSave: () => string;
+		saveOptions: () => string;
+		saveCount: () => number;
+		disabled: () => string;
+	};
+	alert: {
+		count: () => number;
+		visible: () => boolean;
+		title: () => string;
+		text: () => string;
+		opacityClass: () => string;
+	};
+	theme: {
+		bodyClass: () => string;
+		dark: () => boolean;
+		htmlLang: () => string;
+	};
+	store: {
+		localKeys: () => string;
+		local: (key: string) => string;
+		sessionKeys: () => string;
+		session: (key: string) => string;
+		cookieLen: () => number;
+	};
+	backend: {
+		commands: () => string;
+		commandCount: () => number;
+		callCount: () => number;
+		countOf: (cmd: string) => number;
+		unknown: () => string;
+		unknownCount: () => number;
+		rejections: () => number;
+		firstRejection: () => string;
+		netCount: () => number;
+		netHosts: () => string;
+		netBlocked: () => number;
+		passthrough: () => number;
+		installed: () => boolean;
+	};
+	state: {
+		scalar: (key: string) => string;
+		callCount: (cmd: string) => number;
+		shellOpens: () => string;
+		shellOpenCount: () => number;
+		explorerOpens: () => string;
+		skill: (key: string) => string;
+		truckCount: () => number;
+		trailerCount: () => number;
+		currentTruckId: () => string;
+		currentTrailerId: () => string;
+		profileName: () => string;
+		money: () => string;
+		argOf: (cmd: string, key: string) => string;
+		argKeysOf: (cmd: string) => string;
+		store: () => string;
+		storeKeys: () => string;
+	};
+	errors: {
+		count: () => number;
+		first: () => string;
+		all: (limit: number) => string;
+		rejections: () => number;
+		firstRejection: () => string;
+	};
+	globals: { rbKeys: () => string };
+}
+
+const stateScalar = (key: string): string => {
+	try {
+		const v = (rbState as unknown as Record<string, unknown>)[String(key)];
+		if (v === undefined) return "__NOSUCHKEY__";
+		if (v === null) return "null";
+		if (typeof v === "object") return JSON.stringify(v);
+		return String(v);
+	} catch {
+		return "";
+	}
+};
+
+const probe: RbProbe = {
+	version: 1,
+	boot: {
+		rootKids: () => {
+			try {
+				const r = document.getElementById("root");
+				return r ? r.children.length : -1;
+			} catch {
+				return -1;
+			}
+		},
+		/** Mounted for real: #root has children, the option tablist rendered, and the bottom
+		 *  profile bar rendered its two game tabs. Locale gates the whole tree
+		 *  (useLocaleContext.tsx:72 `{Lang.loaded && children}`), so a tablist at all proves the
+		 *  locale chain resolved. */
+		ready: () => {
+			try {
+				const r = document.getElementById("root");
+				if (!r || r.children.length === 0) return false;
+				if (qa('[role="tab"]').length === 0) return false;
+				return bodyText().length > 0;
+			} catch {
+				return false;
+			}
+		},
+		bodyLen: () => bodyText().length,
+		overlay: () => {
+			try {
+				// vite's dev error overlay is a custom element; it must never appear in a build.
+				return q("vite-error-overlay") !== null;
+			} catch {
+				return false;
+			}
+		},
+		title: () => {
+			try {
+				return norm(document.title);
+			} catch {
+				return "";
+			}
+		},
+	},
+	loc: {
+		path: () => {
+			try {
+				return location.pathname;
+			} catch {
+				return "";
+			}
+		},
+		search: () => {
+			try {
+				return location.search;
+			} catch {
+				return "";
+			}
+		},
+		href: () => {
+			try {
+				return location.href;
+			} catch {
+				return "";
+			}
+		},
+	},
+	dom: {
+		count: (sel) => qa(sel).length,
+		text: (sel) => textOf(q(sel)),
+		texts: (sel, limit) =>
+			qa(sel)
+				.slice(0, Number(limit) || 0)
+				.map((el) => textOf(el))
+				.join("|"),
+		attr: (sel, name) => {
+			const el = q(sel);
+			if (!el) return "";
+			const v = el.getAttribute(String(name));
+			return v == null ? "" : String(v);
+		},
+		attrs: (sel, name, limit) =>
+			qa(sel)
+				.slice(0, Number(limit) || 0)
+				.map((el) => norm(el.getAttribute(String(name)) ?? ""))
+				.join("|"),
+		bodySlice: (start, len) => {
+			try {
+				const t = bodyText();
+				const s = Math.max(0, Number(start) || 0);
+				const n = Math.max(0, Number(len) || 0);
+				return t.slice(s, s + n);
+			} catch {
+				return "";
+			}
+		},
+		hasText: (needle) => bodyText().indexOf(norm(needle)) >= 0,
+		pos: (needle) => bodyText().indexOf(norm(needle)),
+		needleCount: (needle) => {
+			try {
+				const n = norm(needle);
+				if (!n) return 0;
+				const hay = bodyText();
+				let c = 0;
+				let i = hay.indexOf(n);
+				while (i >= 0 && c < 999) {
+					c += 1;
+					i = hay.indexOf(n, i + n.length);
+				}
+				return c;
+			} catch {
+				return -1;
+			}
+		},
+		/** Order relation as a SCALAR boolean: both needles present AND a first. Fail-closed
+		 *  (false) when either is missing, so a vanished section can never read as "ordered". */
+		before: (a, b) => {
+			try {
+				const hay = bodyText();
+				const ia = hay.indexOf(norm(a));
+				const ib = hay.indexOf(norm(b));
+				if (ia < 0 || ib < 0) return false;
+				return ia < ib;
+			} catch {
+				return false;
+			}
+		},
+	},
+	tabs: {
+		count: (group) => tabEls(String(group)).length,
+		labels: (group) => tabEls(String(group)).map((t) => textOf(t)).join("|"),
+		selected: (group) => {
+			const hit = tabEls(String(group)).filter(
+				(t) => norm(t.getAttribute("aria-selected")) === "true"
+			);
+			return hit.length ? textOf(hit[0]) : "";
+		},
+		disabled: (group) =>
+			tabEls(String(group))
+				.filter((t) => t.hasAttribute("disabled") || norm(t.getAttribute("aria-disabled")) === "true")
+				.map((t) => textOf(t))
+				.join("|"),
+		indexOf: (group, label) => {
+			const want = norm(label);
+			const list = tabEls(String(group)).map((t) => textOf(t));
+			return list.indexOf(want);
+		},
+	},
+	cards: {
+		count: () => cardTitleEls().length,
+		titles: () => cardTitleEls().map((h) => textOf(h)).join("|"),
+		has: (title) => cardTitleEls().some((h) => textOf(h) === norm(title)),
+		indexOf: (title) => cardTitleEls().map((h) => textOf(h)).indexOf(norm(title)),
+		text: (title, maxLen) => {
+			const card = cardOf(String(title));
+			if (!card) return "";
+			const n = Math.max(0, Number(maxLen) || 0);
+			return norm(card.textContent).slice(0, n);
+		},
+		hasIn: (title, needle) => {
+			const card = cardOf(String(title));
+			if (!card) return false;
+			const nd = norm(needle);
+			return nd ? norm(card.textContent).indexOf(nd) >= 0 : false;
+		},
+		buttonDisabled: (title, label) => {
+			const card = cardOf(String(title));
+			if (!card) return false;
+			const b = btnByLabel(String(label), card);
+			if (!b) return false;
+			return (b as HTMLButtonElement).disabled === true || norm(b.getAttribute("aria-disabled")) === "true";
+		},
+		buttonCount: (title) => {
+			const card = cardOf(String(title));
+			return card ? btnEls(card).length : -1;
+		},
+	},
+	buttons: {
+		count: () => btnEls(null).length,
+		labels: (limit) =>
+			btnEls(null)
+				.slice(0, Number(limit) || 0)
+				.map((b) => textOf(b))
+				.filter((t) => t)
+				.join("|"),
+		has: (label) => btnByLabel(String(label), null) !== null,
+		disabled: (label) => {
+			const b = btnByLabel(String(label), null);
+			if (!b) return false;
+			return (b as HTMLButtonElement).disabled === true || norm(b.getAttribute("aria-disabled")) === "true";
+		},
+		indexOf: (label) => {
+			const want = norm(label);
+			return btnEls(null).map((b) => textOf(b)).indexOf(want);
+		},
+	},
+	modal: {
+		count: () => dialogEls().length,
+		open: () => openDialog() !== null,
+		title: () => {
+			const d = openDialog();
+			if (!d) return "";
+			const h = d.querySelector("h4, [role='heading']");
+			return h ? textOf(h) : "";
+		},
+		text: (maxLen) => {
+			const d = openDialog();
+			if (!d) return "";
+			const n = Math.max(0, Number(maxLen) || 0);
+			return norm(d.textContent).slice(0, n);
+		},
+		has: (needle) => {
+			const d = openDialog();
+			if (!d) return false;
+			const nd = norm(needle);
+			return nd ? norm(d.textContent).indexOf(nd) >= 0 : false;
+		},
+		pos: (needle) => {
+			const d = openDialog();
+			if (!d) return -1;
+			return norm(d.textContent).indexOf(norm(needle));
+		},
+		buttonDisabled: (label) => {
+			const d = openDialog();
+			if (!d) return false;
+			const b = btnByLabel(String(label), d);
+			if (!b) return false;
+			return (b as HTMLButtonElement).disabled === true || norm(b.getAttribute("aria-disabled")) === "true";
+		},
+		inputValue: (label) => {
+			const d = openDialog();
+			if (!d) return "";
+			const want = norm(label);
+			for (const el of Array.from(d.querySelectorAll("input, textarea"))) {
+				let p: HTMLElement | null = el.parentElement as HTMLElement | null;
+				for (let up = 0; p && up < 6; up += 1) {
+					if (norm(p.textContent).indexOf(want) >= 0) {
+						return String((el as HTMLInputElement).value ?? "");
+					}
+					p = p.parentElement as HTMLElement | null;
+				}
+				if (norm(el.getAttribute("aria-label") ?? "") === want) {
+					return String((el as HTMLInputElement).value ?? "");
+				}
+			}
+			return "";
+		},
+		inputCount: () => {
+			const d = openDialog();
+			return d ? d.querySelectorAll("input, textarea").length : -1;
+		},
+		switchCount: () => {
+			const d = openDialog();
+			return d ? d.querySelectorAll('[role="switch"]').length : -1;
+		},
+		switchStates: () => {
+			const d = openDialog();
+			if (!d) return "";
+			return Array.from(d.querySelectorAll('[role="switch"]'))
+				.map((s) => norm(s.getAttribute("aria-checked")))
+				.join("|");
+		},
+	},
+	profile: {
+		name: () => {
+			const ps = qa("p");
+			for (const p of ps) {
+				const t = textOf(p);
+				if (t && !p.closest('[role="dialog"]') && p.parentElement?.querySelector("small")) return t;
+			}
+			return "";
+		},
+		savesText: () => {
+			for (const s of qa("small")) {
+				const t = textOf(s);
+				if (/^\d+\s/.test(t) && !s.closest('[role="dialog"]')) return t;
+			}
+			return "";
+		},
+		savesCount: () => {
+			for (const s of qa("small")) {
+				const t = textOf(s);
+				const m = /^(\d+)\s/.exec(t);
+				if (m && !s.closest('[role="dialog"]')) return Number(m[1]);
+			}
+			return -1;
+		},
+		errorVisible: () => bodyText().indexOf("Profiles not found") >= 0,
+		errorText: (maxLen) => {
+			const i = bodyText().indexOf("Profiles not found");
+			if (i < 0) return "";
+			const n = Math.max(0, Number(maxLen) || 0);
+			return bodyText().slice(i, i + n);
+		},
+		avatarSrc: () => {
+			for (const img of qa("img")) {
+				const alt = norm(img.getAttribute("alt") ?? "");
+				if (alt === "profile avatar" || alt === "profile avatar select") {
+					return String((img as HTMLImageElement).getAttribute("src") ?? "");
+				}
+			}
+			return "";
+		},
+		/** The G3 guard as a SCALAR: true means an <img> the app itself authored points at a
+		 *  foreign origin. Must be false in every state of every arm. */
+		avatarIsForeign: () => {
+			try {
+				for (const img of qa("img")) {
+					const src = String((img as HTMLImageElement).getAttribute("src") ?? "");
+					if (!src) continue;
+					const u = new URL(src, window.location.href);
+					if (u.origin !== window.location.origin && u.protocol !== "data:") return true;
+				}
+				return false;
+			} catch {
+				return false;
+			}
+		},
+		selectOptions: () => selectOptions(selectByLabel("Select profile")).join("|"),
+		selectCount: () => selectOptions(selectByLabel("Select profile")).length,
+		selectedProfile: () => {
+			const s = selectByLabel("Select profile");
+			if (!s) return "";
+			const o = s.options[s.selectedIndex];
+			return o ? norm(o.textContent) : "";
+		},
+		selectedSave: () => {
+			const s = selectByLabel("Select save");
+			if (!s) return "";
+			const o = s.options[s.selectedIndex];
+			return o ? norm(o.textContent) : "";
+		},
+		saveOptions: () => selectOptions(selectByLabel("Select save")).join("|"),
+		saveCount: () => selectOptions(selectByLabel("Select save")).length,
+		disabled: () =>
+			selectEls()
+				.map((s) => (s.disabled ? "1" : "0"))
+				.join("|"),
+	},
+	alert: {
+		count: () => qa('[role="alert"]').length,
+		visible: () => {
+			for (const a of qa('[role="alert"]')) {
+				const box = (a as HTMLElement).parentElement;
+				const cls = box ? String(box.className || "") : "";
+				if (cls.indexOf("opacity-0") < 0) return true;
+			}
+			return false;
+		},
+		title: () => textOf(q('[role="alert"]')),
+		text: () => {
+			const a = q('[role="alert"]');
+			return a ? norm(a.textContent) : "";
+		},
+		opacityClass: () => {
+			const a = q('[role="alert"]');
+			const box = a ? (a.parentElement as HTMLElement | null) : null;
+			if (!box) return "";
+			const cls = String(box.className || "");
+			if (cls.indexOf("opacity-0") >= 0) return "opacity-0";
+			if (cls.indexOf("opacity-100") >= 0) return "opacity-100";
+			return "";
+		},
+	},
+	theme: {
+		bodyClass: () => {
+			try {
+				return norm(document.body.className);
+			} catch {
+				return "";
+			}
+		},
+		dark: () => {
+			try {
+				return norm(document.body.className).split(" ").indexOf("dark") >= 0;
+			} catch {
+				return false;
+			}
+		},
+		htmlLang: () => {
+			try {
+				return norm(document.documentElement.getAttribute("lang"));
+			} catch {
+				return "";
+			}
+		},
+	},
+	store: {
+		localKeys: () => {
+			try {
+				return Object.keys(localStorage).sort().join(",");
+			} catch {
+				return "";
+			}
+		},
+		local: (key) => {
+			try {
+				const v = localStorage.getItem(String(key));
+				return v == null ? "" : String(v);
+			} catch {
+				return "";
+			}
+		},
+		sessionKeys: () => {
+			try {
+				return Object.keys(sessionStorage).sort().join(",");
+			} catch {
+				return "";
+			}
+		},
+		session: (key) => {
+			try {
+				const v = sessionStorage.getItem(String(key));
+				return v == null ? "" : String(v);
+			} catch {
+				return "";
+			}
+		},
+		cookieLen: () => {
+			try {
+				return norm(document.cookie).length;
+			} catch {
+				return -1;
+			}
+		},
+	},
+	backend: {
+		commands: () => rbBackendRecord.ipc.map((c) => c.cmd).join(","),
+		commandCount: () => {
+			const seen: string[] = [];
+			for (const c of rbBackendRecord.ipc) if (!seen.includes(c.cmd)) seen.push(c.cmd);
+			return seen.length;
+		},
+		callCount: () => rbBackendRecord.ipc.length,
+		countOf: (cmd) => rbBackendRecord.ipc.filter((c) => c.cmd === String(cmd)).length,
+		unknown: () => rbBackendRecord.unknown.map((u) => u.cmd).join(","),
+		unknownCount: () => rbBackendRecord.unknown.length,
+		rejections: () => rbBackendRecord.rejections.length,
+		firstRejection: () =>
+			rbBackendRecord.rejections.length ? rbBackendRecord.rejections[0].message : "",
+		netCount: () => rbBackendRecord.net.length,
+		netHosts: () => {
+			const seen: string[] = [];
+			for (const n of rbBackendRecord.net) if (n.host && !seen.includes(n.host)) seen.push(n.host);
+			return seen.sort().join(",");
+		},
+		netBlocked: () => rbBackendRecord.net.filter((n) => n.blocked).length,
+		passthrough: () => rbBackendRecord.passthrough,
+		installed: () => rbBackendRecord.installed === true,
+	},
+	state: {
+		scalar: (key) => stateScalar(key),
+		callCount: (cmd) => rbState.calls[String(cmd)] || 0,
+		shellOpens: () => rbState.shellOpens.join(","),
+		shellOpenCount: () => rbState.shellOpens.length,
+		explorerOpens: () => rbState.explorerOpens.join(","),
+		skill: (key) => {
+			try {
+				const v = (rbState.skills as Record<string, string>)[String(key)];
+				return v === undefined ? "__NOSUCHKEY__" : String(v);
+			} catch {
+				return "";
+			}
+		},
+		truckCount: () => rbState.trucks.length,
+		trailerCount: () => rbState.trailers.length,
+		currentTruckId: () => String(rbState.currentTruckId),
+		currentTrailerId: () => (rbState.currentTrailerId === null ? "null" : String(rbState.currentTrailerId)),
+		profileName: () => String(rbState.profileName),
+		money: () => String(rbState.money),
+		/** The value the UI last handed host command `cmd` under `key`. Fail-closed sentinels tell
+		 *  "never called" (__NOCALL__) apart from "called without that key" (__NOKEY__) apart from
+		 *  "called with null" (null), so a missing write can never read as an empty-string write. */
+		argOf: (cmd, key) => {
+			try {
+				const rec = (rbState.lastArgs as Record<string, Record<string, unknown>>)[String(cmd)];
+				if (!rec) return "__NOCALL__";
+				if (!(String(key) in rec)) return "__NOKEY__";
+				const v = rec[String(key)];
+				if (v === null) return "null";
+				if (v === undefined) return "undefined";
+				if (typeof v === "object") return JSON.stringify(v);
+				return String(v);
+			} catch {
+				return "";
+			}
+		},
+		argKeysOf: (cmd) => {
+			try {
+				const rec = (rbState.lastArgs as Record<string, Record<string, unknown>>)[String(cmd)];
+				if (!rec) return "__NOCALL__";
+				return Object.keys(rec).sort().join(",");
+			} catch {
+				return "";
+			}
+		},
+		store: () => {
+			try {
+				return rbStoreEntries();
+			} catch {
+				return "";
+			}
+		},
+		storeKeys: () => {
+			try {
+				return rbStoreEntries()
+					.split("|")
+					.map((kv) => kv.split("=")[0])
+					.filter((k) => k)
+					.join(",");
+			} catch {
+				return "";
+			}
+		},
+	},
+	errors: {
+		count: () => errTap.errors.length,
+		first: () => (errTap.errors.length ? errTap.errors[0] : ""),
+		all: (limit) => errTap.errors.slice(0, Number(limit) || 0).join("|"),
+		rejections: () => errTap.rejections.length,
+		firstRejection: () => (errTap.rejections.length ? errTap.rejections[0] : ""),
+	},
+	globals: {
+		rbKeys: () => {
+			try {
+				return Object.keys(window)
+					.filter((k) => k.indexOf("__rb") === 0)
+					.sort()
+					.join(",");
+			} catch {
+				return "";
+			}
+		},
+	},
+};
+
+export function publishRbProbe(): void {
+	if (typeof window === "undefined") return;
+	const w = window as unknown as Record<string, unknown>;
+	if (w.__rb) return;
+	w.__rb = probe;
+}

@@ -1,0 +1,179 @@
+diff --git a/packages/core/plugin/HistoryPlugin.ts b/packages/core/plugin/HistoryPlugin.ts
+index b21e6be..1d2dd40 100644
+--- a/packages/core/plugin/HistoryPlugin.ts
++++ b/packages/core/plugin/HistoryPlugin.ts
+@@ -34,7 +34,6 @@ class HistoryPlugin implements IPluginTempl {
+     // 监听对象变更事件
+     const events = {
+       'object:removed': () => this.saveState(),
+-      'object:modified': () => this.saveState(),
+       'object:skewing': () => this.saveState(),
+     };
+ 
+diff --git a/packages/core/plugin/LayerPlugin.ts b/packages/core/plugin/LayerPlugin.ts
+index 6cb5de0..f6a25e3 100644
+--- a/packages/core/plugin/LayerPlugin.ts
++++ b/packages/core/plugin/LayerPlugin.ts
+@@ -34,7 +34,7 @@ class LayerPlugin implements IPluginTempl {
+     const actives = this.canvas.getActiveObjects();
+     if (actives && actives.length === 1) {
+       const activeObject = this.canvas.getActiveObjects()[0];
+-      activeObject && activeObject.bringForward();
++      activeObject && activeObject.bringToFront();
+       this.canvas.renderAll();
+       this._workspaceSendToBack();
+     }
+diff --git a/packages/core/plugin/LockPlugin.ts b/packages/core/plugin/LockPlugin.ts
+index c184480..44e82c4 100644
+--- a/packages/core/plugin/LockPlugin.ts
++++ b/packages/core/plugin/LockPlugin.ts
+@@ -187,7 +187,6 @@ export default class LockPlugin implements IPluginTempl {
+       });
+       this.controlCornersVisible(activeObject);
+       this.canvas.renderAll();
+-      this.editor.emit(SelectEvent.ONE, [activeObject]);
+     }
+   }
+ 
+diff --git a/src/components/bgBar.vue b/src/components/bgBar.vue
+index 821092f..5258b9c 100644
+--- a/src/components/bgBar.vue
++++ b/src/components/bgBar.vue
+@@ -83,7 +83,6 @@ function setColor(c) {
+   const workspace = canvasEditor.canvas.getObjects().find((item) => item.id === 'workspace');
+   workspace.set('fill', c);
+   canvasEditor.canvas.renderAll();
+-  color.value = c;
+ }
+ 
+ // 加载模板时回显颜色值
+diff --git a/src/components/clone.vue b/src/components/clone.vue
+index d30b9ec..c0cf857 100644
+--- a/src/components/clone.vue
++++ b/src/components/clone.vue
+@@ -9,7 +9,7 @@ import useSelect from '@/hooks/select';
+ import { debounce } from 'lodash-es';
+ 
+ const { canvasEditor, isOne } = useSelect();
+-const clone = debounce(function () {
++const clone = () => {
+   canvasEditor.clone();
+-}, 300);
++};
+ </script>
+diff --git a/src/components/history.vue b/src/components/history.vue
+index d00a3c9..ff8f26c 100644
+--- a/src/components/history.vue
++++ b/src/components/history.vue
+@@ -43,8 +43,8 @@ const redo = () => {
+ 
+ onMounted(() => {
+   canvasEditor.on('historyUpdate', (canUndoParam: number, canRedoParam: number) => {
+-    canUndo.value = canUndoParam;
+-    canRedo.value = canRedoParam;
++    canUndo.value = canRedoParam;
++    canRedo.value = canUndoParam;
+   });
+ });
+ </script>
+diff --git a/src/components/importFile.vue b/src/components/importFile.vue
+index 19b2e13..98c7cf6 100644
+--- a/src/components/importFile.vue
++++ b/src/components/importFile.vue
+@@ -91,7 +91,7 @@ const HANDLEMAP = {
+   },
+   // 插入字符串元素
+   insertSvgStr: function () {
+-    fabric.loadSVGFromString(state.svgStr, (objects, options) => {
++    fabric.loadSVGFromString(state.showModal, (objects, options) => {
+       const item = fabric.util.groupSVGElements(objects, {
+         ...options,
+         name: 'defaultSVG',
+diff --git a/src/components/inputNumber/inputNumber.vue b/src/components/inputNumber/inputNumber.vue
+index a290a6c..13adbd2 100644
+--- a/src/components/inputNumber/inputNumber.vue
++++ b/src/components/inputNumber/inputNumber.vue
+@@ -361,15 +361,6 @@ onMounted(() => {
+ });
+ 
+ // watch
+-watch(
+-  () => props.modelValue,
+-  (value: number | undefined) => {
+-    if (value !== valueNumber.value) {
+-      _value.value = getStringValue(value);
+-      updateNumberStatus(value);
+-    }
+-  }
+-);
+ watch(
+   () => props.min,
+   (newVal) => {
+diff --git a/src/components/lang.vue b/src/components/lang.vue
+index 2145aa2..4192dd0 100644
+--- a/src/components/lang.vue
++++ b/src/components/lang.vue
+@@ -28,8 +28,6 @@
+ </template>
+ 
+ <script setup name="saveBar">
+-import { setLocal } from '@/utils/local';
+-import { LANG } from '@/config/constants/app';
+ 
+ import { useI18n } from 'vue-i18n';
+ const { locale } = useI18n();
+@@ -50,7 +48,6 @@ const lang = computed(() => {
+ // 设置语言
+ const setLang = (type) => {
+   locale.value = type;
+-  setLocal(LANG, type);
+ };
+ </script>
+ 
+diff --git a/src/components/layer.vue b/src/components/layer.vue
+index 682cca9..ba63212 100644
+--- a/src/components/layer.vue
++++ b/src/components/layer.vue
+@@ -170,7 +170,7 @@ const doLock = (item) => {
+ 
+ onMounted(() => {
+   getList();
+-  canvasEditor.canvas.on('after:render', getList);
++  canvasEditor.canvas.on('object:modified', getList);
+ });
+ </script>
+ 
+diff --git a/src/components/tools.vue b/src/components/tools.vue
+index 6de6692..780cec8 100644
+--- a/src/components/tools.vue
++++ b/src/components/tools.vue
+@@ -296,7 +296,7 @@ const cancelDraw = () => {
+   canvasEditor.emit('wlbDrawMode', state.isDrawingLineMode, state.lineType);
+ };
+ 
+-onDeactivated(() => {
++onUnmounted(() => {
+   cancelDraw();
+ });
+ </script>
+diff --git a/src/views/home/components/left/index.vue b/src/views/home/components/left/index.vue
+index 03059fb..aba45c3 100644
+--- a/src/views/home/components/left/index.vue
++++ b/src/views/home/components/left/index.vue
+@@ -23,14 +23,14 @@ const leftBar = reactive([
+   {
+     //基础元素
+     key: 'tools',
+-    name: computed(() => t('elements')),
++    name: t('elements'),
+     icon: 'md-images',
+     wlbTestid: 'wlb-menu-tools',
+   },
+   {
+     // 图层
+     key: 'layer',
+-    name: computed(() => t('layers')),
++    name: t('layers'),
+     icon: 'md-reorder',
+     wlbTestid: 'wlb-menu-layer',
+   },

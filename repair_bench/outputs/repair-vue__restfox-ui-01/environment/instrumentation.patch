@@ -1,0 +1,2768 @@
+diff --git a/src/components/CodeMirrorEditor.vue b/src/components/CodeMirrorEditor.vue
+index ea31b83..a3c9075 100644
+--- a/src/components/CodeMirrorEditor.vue
++++ b/src/components/CodeMirrorEditor.vue
+@@ -197,6 +197,7 @@ export default {
+             state: createState(this.lang, this.modelValue, this),
+             parent: this.$el
+         })
++        this.$el.__cmView = this.editor
+     }
+ }
+ </script>
+diff --git a/src/components/CodeMirrorSingleLine.vue b/src/components/CodeMirrorSingleLine.vue
+index df142b1..29a0cef 100644
+--- a/src/components/CodeMirrorSingleLine.vue
++++ b/src/components/CodeMirrorSingleLine.vue
+@@ -262,6 +262,7 @@ export default {
+             state: createState(this),
+             parent: this.$el
+         })
++        this.$el.__cmView = this.editor
+     }
+ }
+ </script>
+diff --git a/src/components/ContextMenu.vue b/src/components/ContextMenu.vue
+index 96d7fd5..d453311 100644
+--- a/src/components/ContextMenu.vue
++++ b/src/components/ContextMenu.vue
+@@ -8,6 +8,8 @@
+                         <button
+                             type="button"
+                             class="context-menu-item"
++                            data-testid="rfx-menu-item"
++                            :data-value="String(option.value ?? '')"
+                             :class="`${option.class ? option.class : ''}`"
+                             :disabled="option.disabled"
+                             @click.stop="handleClick(option)"
+diff --git a/src/components/Frame.vue b/src/components/Frame.vue
+index 5d7d665..998bfdd 100644
+--- a/src/components/Frame.vue
++++ b/src/components/Frame.vue
+@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
+ </script>
+ 
+ <template>
+-    <div class="container">
++    <div class="container" data-testid="rfx-frame">
+         <header>
+             <NavBar nav="collection" />
+         </header>
+diff --git a/src/components/NavBar.vue b/src/components/NavBar.vue
+index 526eb96..34fce3d 100644
+--- a/src/components/NavBar.vue
++++ b/src/components/NavBar.vue
+@@ -1,6 +1,6 @@
+ <template>
+     <div class="navbar">
+-        <div class="heading">
++        <div class="heading" data-testid="rfx-nav-heading">
+             <img src="/pwa-192x192.png" width="20" height="20" style="margin-right: 5px;">
+             <div v-if="!activeWorkspaceLoaded">Workspaces</div>
+             <div v-else>
+@@ -10,11 +10,11 @@
+                 <button class="button" @click="openWorkspaceFolder">Open Folder</button>
+             </div>
+             <div style="margin-left: 0.5rem; font-size: 0.6rem" v-if="activeWorkspaceLoaded">
+-                <button class="button workspace-quick-switcher" @click="openWorkspaceQuickSwitcher"><i class="fa fa-repeat"></i> Switch</button>
++                <button class="button workspace-quick-switcher" @click="openWorkspaceQuickSwitcher" data-testid="rfx-nav-switch"><i class="fa fa-repeat"></i> Switch</button>
+             </div>
+         </div>
+         <div class="right-nav-container">
+-            <a href="#" @click.prevent="cycleTheme()" class="bl theme-selector">Theme: {{ getThemeName(theme) }}</a>
++            <a href="#" @click.prevent="cycleTheme()" class="bl theme-selector" data-testid="rfx-nav-theme">Theme: {{ getThemeName(theme) }}</a>
+             <div v-if="nav === 'collection'" style="height: 100%;">
+                 <template v-if="activeTab && activeTab._type === 'request'">
+                     <a href="#" @click.prevent="requestResponseLayout = 'top-bottom'" v-if="requestResponseLayout === 'left-right'" class="bl view-switcher">View: Column</a>
+@@ -25,7 +25,7 @@
+                         <i class="fas fa-code" style="padding-right: 0.5rem"></i>
+                         Environment
+                     </a>
+-                    <div class="custom-dropdown" style="padding-left: 0; padding-right: 0.5rem;" @click="toggleEnvSelectorDropdown">
++                    <div class="custom-dropdown" style="padding-left: 0; padding-right: 0.5rem;" @click="toggleEnvSelectorDropdown" data-testid="rfx-nav-env">
+                         <i class="fa fa-circle" :style="{ color: currentEnvironmentColor }"></i>&nbsp;&nbsp;{{ currentEnvironment ?? 'Default' }}
+                         <i class="fa fa-caret-down space-right"></i>
+                     </div>
+@@ -40,7 +40,7 @@
+                     />
+                 </div>
+                 <div class="navbar-item">
+-                    <a href="#" @click.prevent="showImportModal">
++                    <a href="#" @click.prevent="showImportModal" data-testid="rfx-nav-import">
+                         <i class="fas fa-file-import" style="padding-right: 0.5rem"></i>
+                         Import
+                     </a>
+@@ -48,7 +48,7 @@
+                 <div class="navbar-item">
+                     <div
+                         :class="collectionLength > 0 ? 'custom-dropdown' : 'custom-dropdown disabled'"
+-                        style="padding-left: 0.5rem; padding-right: 0.5rem" @click="toggleExportSelectorDropdown"
++                        style="padding-left: 0.5rem; padding-right: 0.5rem" @click="toggleExportSelectorDropdown" data-testid="rfx-nav-export"
+                     >
+                         <i class="fa fa-file-export"></i>&nbsp;&nbsp;{{ 'Export' }}
+                         <i class="fa fa-caret-down space-right"></i>
+@@ -69,19 +69,19 @@
+                 <a href="#" @click.prevent="backupAndRestore" class="bl">Backup & Restore</a>
+             </template>
+             <div class="navbar-item">
+-                <a href="#" @click.prevent="showPluginsManager">
++                <a href="#" @click.prevent="showPluginsManager" data-testid="rfx-nav-plugins">
+                     <i class="fas fa-plug" style="padding-right: 0.5rem"></i>
+                     Plugins
+                 </a>
+             </div>
+             <div class="navbar-item">
+-                <a href="#" @click.prevent="showSettings">
++                <a href="#" @click.prevent="showSettings" data-testid="rfx-nav-settings">
+                     <i class="fas fa-cog" style="padding-right: 0.5rem"></i>
+                     Settings
+                 </a>
+             </div>
+             <div class="navbar-item">
+-                <a href="#" @click.prevent="showLogs" class="br">
++                <a href="#" @click.prevent="showLogs" class="br" data-testid="rfx-nav-logs">
+                     <i class="fas fa-file-lines" style="padding-right: 0.5rem"></i>
+                     Logs
+                 </a>
+@@ -93,7 +93,7 @@
+                         <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                     </svg>
+                     <span style="margin-left: 3px; margin-right: 5px;">Star</span>
+-                    <span :aria-label="`${githubStarCount} stargazers on GitHub`" style="border-left: 1px solid var(--default-border-color); padding-left: 5px; padding-top: 3px; padding-bottom: 3px;">{{ githubStarCount }}</span>
++                    <span data-testid="rfx-nav-stars" :aria-label="`${githubStarCount} stargazers on GitHub`" style="border-left: 1px solid var(--default-border-color); padding-left: 5px; padding-top: 3px; padding-bottom: 3px;">{{ githubStarCount }}</span>
+                 </a>
+             </div>
+         </div>
+diff --git a/src/components/RequestPanel.vue b/src/components/RequestPanel.vue
+index 1501bb5..e0e2236 100644
+--- a/src/components/RequestPanel.vue
++++ b/src/components/RequestPanel.vue
+@@ -1,7 +1,7 @@
+ <template>
+     <template v-if="activeTab && activeTab._type === 'request'">
+         <div class="request-panel-address-bar">
+-            <div class="custom-dropdown" @click="toggleMethodSelectorDropdown">
++            <div class="custom-dropdown" @click="toggleMethodSelectorDropdown" data-testid="rfx-method-selector">
+                 <div :class="'request-method--' + activeTab.method">{{ activeTab.method }}</div>
+                 <i class="fa fa-caret-down space-right"></i>
+                 <ContextMenu
+@@ -172,6 +172,7 @@
+                 </div>
+                 <div v-if="activeTab.body.mimeType === 'text/plain'" class="oy-a">
+                     <CodeMirrorEditor
++                        data-testid="rfx-body-editor"
+                         v-model="activeTab.body.text"
+                         lang="text"
+                         :env-variables="collectionItemEnvironmentResolved"
+@@ -183,6 +184,7 @@
+                 </div>
+                 <div v-if="activeTab.body.mimeType === 'application/json'" class="oy-a">
+                     <CodeMirrorEditor
++                        data-testid="rfx-body-editor"
+                         v-model="activeTab.body.text"
+                         lang="json"
+                         :env-variables="collectionItemEnvironmentResolved"
+@@ -257,7 +259,7 @@
+             </div>
+             <template v-if="activeRequestPanelTab === 'Query'">
+                 <table style="table-layout: fixed">
+-                    <tr v-for="(param, index) in activeTab.parameters">
++                    <tr v-for="(param, index) in activeTab.parameters" data-testid="rfx-query-row">
+                         <td>
+                             <CodeMirrorSingleLine
+                                 v-model="param.name"
+diff --git a/src/components/ResponsePanel.vue b/src/components/ResponsePanel.vue
+index 5fba354..9ee4d45 100644
+--- a/src/components/ResponsePanel.vue
++++ b/src/components/ResponsePanel.vue
+@@ -1,5 +1,5 @@
+ <template>
+-    <div class="loading-overlay" v-if="status === 'loading'">
++    <div class="loading-overlay" v-if="status === 'loading'" data-testid="rfx-resp-loading">
+         <h2 style="font-variant-numeric: tabular-nums; font-weight: 500">Loading...</h2>
+         <div class="pad">
+             <i class="fas fa-sync fa-spin"></i>
+@@ -13,6 +13,7 @@
+             <div class="response-panel-address-bar-tag-container">
+                 <div
+                     class="tag"
++                    data-testid="rfx-resp-status-tag"
+                     :class="responseStatusColorMapping(response)"
+                     style="max-width: 15rem; text-overflow: ellipsis; overflow: hidden;"
+                     :title="response.statusText === '' ? getStatusDescription(response.status) : response.statusText"
+@@ -20,11 +21,11 @@
+                     <span class="bold">{{ response.status }}</span>
+                     {{ response.statusText === '' ? getStatusText(response.status) : response.statusText }}
+                 </div>
+-                <div class="tag ml-0_6rem" v-if="response.timeTaken" v-tooltip="getFullTimeTaken(response)" :key="response._id">{{ humanFriendlyTime(response.timeTaken) }}</div>
+-                <div class="tag ml-0_6rem" v-if="responseSize">{{ humanFriendlySize(responseSize) }}</div>
++                <div class="tag ml-0_6rem" v-if="response.timeTaken" v-tooltip="getFullTimeTaken(response)" :key="response._id" data-testid="rfx-resp-time-tag">{{ humanFriendlyTime(response.timeTaken) }}</div>
++                <div class="tag ml-0_6rem" v-if="responseSize" data-testid="rfx-resp-size-tag">{{ humanFriendlySize(responseSize) }}</div>
+             </div>
+             <div class="response-panel-address-bar-select-container">
+-                <div v-if="response.createdAt" class="custom-dropdown" @click="handleResponseHistoryContextMenu" @contextmenu.prevent="handleResponseHistoryContextMenu">
++                <div v-if="response.createdAt" class="custom-dropdown" @click="handleResponseHistoryContextMenu" @contextmenu.prevent="handleResponseHistoryContextMenu" data-testid="rfx-resp-history">
+                     <span class="custom-dropdown-content">{{ timeAgo(response.createdAt) }} | {{ dateFormat(response.createdAt, true) }} | {{ response.name ?? response.url }}</span>
+                     <i class="fa fa-caret-down space-right"></i>
+                 </div>
+@@ -33,6 +34,7 @@
+         <div class="response-panel-tabs">
+             <div
+                 class="response-panel-tab"
++                :data-testid="'rfx-resp-tab-' + responsePanelTab.name"
+                 :class="{
+                     'response-panel-tab-active': activeResponsePanelTab === responsePanelTab.name,
+                     'custom-dropdown': responsePanelTab.name === 'Preview'
+@@ -80,7 +82,7 @@
+                     </div>
+                 </template>
+ 
+-                <section v-else style="height: 100%; overflow: auto;" ref="scrollableArea">
++                <section v-else style="height: 100%; overflow: auto;" ref="scrollableArea" data-testid="rfx-resp-preview">
+                     <template v-if="response.statusText !== 'Error'">
+                         <!-- Raw mode - always show raw text for any content type -->
+                         <template v-if="previewMode === 'raw'">
+@@ -179,8 +181,8 @@
+                     <div>Please refer <a href="https://docs.restfox.dev/plugins/testing-response-data.html" target="_blank">https://docs.restfox.dev/plugins/testing-response-data.html</a> for more info on how to write tests.</div>
+                 </div>
+                 <div v-else>
+-                    <div style="padding-bottom: 0.5rem">Tests: {{ response.testResults.length }}, Passed: {{ passedTestCases }}, Failed: {{ response.testResults.length - passedTestCases }}</div>
+-                    <div v-for="testResult in response.testResults" style="padding-bottom: 0.5rem">
++                    <div style="padding-bottom: 0.5rem" data-testid="rfx-resp-tests-summary">Tests: {{ response.testResults.length }}, Passed: {{ passedTestCases }}, Failed: {{ response.testResults.length - passedTestCases }}</div>
++                    <div v-for="testResult in response.testResults" style="padding-bottom: 0.5rem" data-testid="rfx-resp-test-row">
+                         <div :style="{ color: testResult.passed ? 'var(--base-color-success)' : 'var(--base-color-error)' }"><span v-if="testResult.passed">✔  </span><span v-else>✘  </span>{{ testResult.description }}</div>
+                         <div v-if="!testResult.passed" style="margin-left: 1rem; margin-top: 0.15rem;">{{ testResult.error }}</div>
+                     </div>
+@@ -193,7 +195,7 @@
+     </template>
+     <template v-else>
+         <div style="display: grid; place-items: center; height: 100%; grid-row: span 3;">
+-            <div>Send request to see response here</div>
++            <div data-testid="rfx-resp-empty">Send request to see response here</div>
+         </div>
+     </template>
+     <ContextMenu
+diff --git a/src/components/Sidebar.vue b/src/components/Sidebar.vue
+index 86ff1bd..84320f2 100644
+--- a/src/components/Sidebar.vue
++++ b/src/components/Sidebar.vue
+@@ -1,7 +1,7 @@
+ <template>
+     <div class="sidebar-filter">
+-        <input type="search" placeholder="Filter" spellcheck="false" v-model="collectionFilter">
+-        <div style="cursor: pointer; align-self: center; padding-left: 0.5rem; padding-right: 0.5rem;" @click="handleSidebarCreateButton" title="Create New Request / Folder" v-if="collectionFilter === ''">
++        <input type="search" placeholder="Filter" spellcheck="false" v-model="collectionFilter" data-testid="rfx-sidebar-filter">
++        <div style="cursor: pointer; align-self: center; padding-left: 0.5rem; padding-right: 0.5rem;" @click="handleSidebarCreateButton" title="Create New Request / Folder" v-if="collectionFilter === ''" data-testid="rfx-sidebar-create">
+             <i class="fa fa-plus-circle"></i>
+         </div>
+         <div style="cursor: pointer; align-self: center; padding-left: 0.5rem; padding-right: 0.5rem;" @click="collapseFolders" title="Collapse Folders" v-if="collectionFilter === ''">
+@@ -15,7 +15,7 @@
+                 <sidebar-item :sidebar-item="sidebarItem" />
+             </template>
+         </div>
+-        <div v-if="sidebarItems.length === 0" class="sidebar-empty-message">
++        <div v-if="sidebarItems.length === 0" class="sidebar-empty-message" data-testid="rfx-sidebar-empty">
+             <template v-if="collectionFilter === ''">
+                 You can right click here to create a new request or a new folder
+             </template>
+diff --git a/src/components/SidebarItem.vue b/src/components/SidebarItem.vue
+index c83811f..db6cab2 100644
+--- a/src/components/SidebarItem.vue
++++ b/src/components/SidebarItem.vue
+@@ -9,6 +9,7 @@
+         :data-parent-id="sidebarItem.parentId"
+         :data-id="sidebarItem._id"
+         :data-type="sidebarItem._type"
++        data-testid="rfx-sidebar-item"
+         :title="!showInputToRenameRequest ? sidebarItem.name : 'Press Enter to save, Esc to cancel'"
+     >
+         <template v-if="sidebarItem._type === 'request_group'">
+diff --git a/src/components/TabBar.vue b/src/components/TabBar.vue
+index 2e5f132..218800f 100644
+--- a/src/components/TabBar.vue
++++ b/src/components/TabBar.vue
+@@ -12,12 +12,13 @@
+             @mousedown.middle.prevent.stop
+             @mouseup.middle.prevent.stop="closeTab(tab)"
+             :data-id="tab._id"
++            data-testid="rfx-tab"
+             draggable="true"
+             @contextmenu.prevent="handleTabContextMenu($event, tab)"
+         >
+             <span :class="`request-method--${getTabMethodName(tab)}`">{{ getTabMethodName(tab) }}</span> <template v-if="tab._id in sidebarItemTemporaryName">{{ sidebarItemTemporaryName[tab._id] }}</template><template v-else>{{ tab.name }}</template>
+             <span class="tab-more-btn" @click.stop="handleTabMoreBtn($event, tab)">⋮</span>
+-            <span style="margin-left: 0.5rem" @click.stop="closeTab(tab)" class="tab-close"><i class="fas fa-times"></i></span>
++            <span style="margin-left: 0.5rem" @click.stop="closeTab(tab)" class="tab-close" data-testid="rfx-tab-close"><i class="fas fa-times"></i></span>
+         </div>
+     </div>
+     <!-- <div class="tab-add" @click="addTab" style="visibility: hidden">+</div> -->
+diff --git a/src/components/Workspaces.vue b/src/components/Workspaces.vue
+index 135c2a3..f2adafd 100644
+--- a/src/components/Workspaces.vue
++++ b/src/components/Workspaces.vue
+@@ -1,6 +1,6 @@
+ <template>
+     <div class="workspace-container">
+-        <div class="workspace" v-for="workspace in workspaces" @click="setActiveWorkspace(workspace)">
++        <div class="workspace" v-for="workspace in workspaces" @click="setActiveWorkspace(workspace)" data-testid="rfx-workspace-card">
+             <div class="workspace-settings-button-container">
+                 <div class="workspace-settings-button" @click.stop="handleContextMenu($event, workspace)">
+                     <svg width="1em" height="1em" viewBox="0 0 14 3" fill="none" xmlns="http://www.w3.org/2000/svg">
+diff --git a/src/components/WorkspacesFrame.vue b/src/components/WorkspacesFrame.vue
+index 479c15a..7800e2a 100644
+--- a/src/components/WorkspacesFrame.vue
++++ b/src/components/WorkspacesFrame.vue
+@@ -4,7 +4,7 @@ import Workspaces from '@/components/Workspaces.vue'
+ </script>
+ 
+ <template>
+-    <div class="container">
++    <div class="container" data-testid="rfx-workspaces-screen">
+         <header>
+             <NavBar nav="workspaces" />
+         </header>
+diff --git a/src/components/modals/AddFolderModal.vue b/src/components/modals/AddFolderModal.vue
+index 89de750..efc1ab6 100644
+--- a/src/components/modals/AddFolderModal.vue
++++ b/src/components/modals/AddFolderModal.vue
+@@ -1,13 +1,13 @@
+ <template>
+     <form @submit.prevent="createFolder" v-if="showModalComp">
+-        <modal title="New Folder" v-model="showModalComp">
++        <modal title="New Folder" v-model="showModalComp" data-testid="rfx-add-folder-modal">
+             <label>
+                 <div style="font-weight: 500; margin-bottom: var(--label-margin-bottom)">Name</div>
+-                <input type="text" class="full-width-input" v-model="folderName" placeholder="New Folder" required spellcheck="false" v-focus>
++                <input type="text" class="full-width-input" v-model="folderName" placeholder="New Folder" required spellcheck="false" v-focus data-testid="rfx-add-folder-name">
+             </label>
+ 
+             <template #footer>
+-                <button class="button">Create</button>
++                <button class="button" data-testid="rfx-add-folder-create">Create</button>
+             </template>
+         </modal>
+     </form>
+diff --git a/src/components/modals/AddRequestModal.vue b/src/components/modals/AddRequestModal.vue
+index 09931c6..dbdbb84 100644
+--- a/src/components/modals/AddRequestModal.vue
++++ b/src/components/modals/AddRequestModal.vue
+@@ -1,13 +1,13 @@
+ <template>
+     <form @submit.prevent="createRequest" v-if="showModalComp">
+-        <modal title="New Request" v-model="showModalComp">
++        <modal title="New Request" v-model="showModalComp" data-testid="rfx-add-request-modal">
+             <label>
+                 <div style="font-weight: 500; margin-bottom: var(--label-margin-bottom)">Name</div>
+-                <input type="text" class="full-width-input" v-model="requestName" placeholder="My Request" required spellcheck="false" v-focus>
++                <input type="text" class="full-width-input" v-model="requestName" placeholder="My Request" required spellcheck="false" v-focus data-testid="rfx-add-request-name">
+             </label>
+ 
+             <template #footer>
+-                <button class="button">Create</button>
++                <button class="button" data-testid="rfx-add-request-create">Create</button>
+             </template>
+         </modal>
+     </form>
+diff --git a/src/components/modals/CollectionRunnerModal.vue b/src/components/modals/CollectionRunnerModal.vue
+index 9245030..9d1ecd8 100644
+--- a/src/components/modals/CollectionRunnerModal.vue
++++ b/src/components/modals/CollectionRunnerModal.vue
+@@ -1,13 +1,13 @@
+ <template>
+     <form @submit.prevent="startRun" v-if="showModalComp">
+-        <modal title="Collection Runner" v-model="showModalComp">
++        <modal title="Collection Runner" v-model="showModalComp" data-testid="rfx-runner-modal">
+             <div>
+                 <p><strong>{{ sourceName }}</strong> - {{ allRequests.length }} request(s)</p>
+ 
+                 <!-- Request Selection Tree -->
+                 <div style="margin-top: 1rem; max-height: 300px; overflow-y: auto; border: 1px solid var(--default-border-color); padding: 0.5rem;">
+                     <div style="margin-bottom: 0.5rem;">
+-                        <button type="button" class="button" style="margin-right: 0.5rem;" @click="selectAll">Select All</button>
++                        <button type="button" class="button" style="margin-right: 0.5rem;" @click="selectAll" data-testid="rfx-runner-select-all">Select All</button>
+                         <button type="button" class="button" @click="deselectAll">Deselect All</button>
+                     </div>
+                     <div v-for="item in treeItems" :key="item._id">
+@@ -21,13 +21,13 @@
+                 <!-- Iterations -->
+                 <label style="display: block; margin-top: 1rem;">
+                     <div style="font-weight: 500; margin-bottom: var(--label-margin-bottom)">Iterations</div>
+-                    <input type="number" class="full-width-input" v-model.number="iterations" min="1" required>
++                    <input type="number" class="full-width-input" v-model.number="iterations" min="1" required data-testid="rfx-runner-iterations">
+                 </label>
+ 
+                 <!-- Delay -->
+                 <label style="display: block; margin-top: 1rem;">
+                     <div style="font-weight: 500; margin-bottom: var(--label-margin-bottom)">Delay between requests (ms)</div>
+-                    <input type="number" class="full-width-input" v-model.number="delayMs" min="0">
++                    <input type="number" class="full-width-input" v-model.number="delayMs" min="0" data-testid="rfx-runner-delay">
+                 </label>
+ 
+                 <!-- Continue on Error -->
+@@ -39,7 +39,7 @@
+ 
+             <template #footer>
+                 <button type="button" class="button" @click="showModalComp = false">Cancel</button>
+-                <button type="submit" class="button" style="margin-left: 1rem;" :disabled="selectedRequestIds.length === 0">Run</button>
++                <button type="submit" class="button" style="margin-left: 1rem;" :disabled="selectedRequestIds.length === 0" data-testid="rfx-runner-start">Run</button>
+             </template>
+         </modal>
+     </form>
+diff --git a/src/components/modals/CollectionRunnerProgressModal.vue b/src/components/modals/CollectionRunnerProgressModal.vue
+index 2200578..8c0ea3c 100644
+--- a/src/components/modals/CollectionRunnerProgressModal.vue
++++ b/src/components/modals/CollectionRunnerProgressModal.vue
+@@ -7,7 +7,7 @@
+                     <span v-if="totalIterations > 1" class="stat-item">
+                         <strong>Iteration {{ currentIteration }}</strong> of {{ totalIterations }}
+                     </span>
+-                    <span class="stat-item">
++                    <span class="stat-item" data-testid="rfx-runner-stats">
+                         <strong>{{ completedCount }}</strong> / {{ totalRequests }}
+                     </span>
+                     <span class="stat-item success">
+@@ -31,6 +31,8 @@
+                     :key="index"
+                     class="request-item"
+                     :class="result.status"
++                    data-testid="rfx-runner-result-row"
++                    :data-status="result.status"
+                 >
+                     <div class="request-icon">
+                         <i v-if="result.status === 'pending'" class="fa fa-circle-o"></i>
+diff --git a/src/components/modals/DuplicateCollectionItemModal.vue b/src/components/modals/DuplicateCollectionItemModal.vue
+index 9bd4058..0e053f2 100644
+--- a/src/components/modals/DuplicateCollectionItemModal.vue
++++ b/src/components/modals/DuplicateCollectionItemModal.vue
+@@ -1,13 +1,13 @@
+ <template>
+     <form @submit.prevent="duplicateCollectionItem" v-if="showModalComp">
+-        <modal :title="title" v-model="showModalComp">
++        <modal :title="title" v-model="showModalComp" data-testid="rfx-dup-modal">
+             <label>
+                 <div style="font-weight: 500; margin-bottom: var(--label-margin-bottom)">Name</div>
+-                <input type="text" class="full-width-input" v-model="newName" :placeholder="placeholder" required spellcheck="false" v-focus>
++                <input type="text" class="full-width-input" v-model="newName" :placeholder="placeholder" required spellcheck="false" v-focus data-testid="rfx-dup-name">
+             </label>
+ 
+             <template #footer>
+-                <button class="button">Create</button>
++                <button class="button" data-testid="rfx-dup-create">Create</button>
+             </template>
+         </modal>
+     </form>
+diff --git a/src/helpers.spec.ts b/src/helpers.spec.ts
+deleted file mode 100644
+index 0c39c45..0000000
+--- a/src/helpers.spec.ts
++++ /dev/null
+@@ -1,797 +0,0 @@
+-// @vitest-environment edge-runtime
+-
+-import { assert, test, describe, expect, vi, afterEach, beforeEach } from 'vitest'
+-import {
+-    substituteEnvironmentVariables,
+-    parseContentDispositionHeaderAndGetFileName,
+-    convertPostmanAuthToRestfoxAuth,
+-    scriptConversion,
+-    toTree,
+-    getSpaces,
+-    getSavedRequestTimeout,
+-    fetchWrapper,
+-    handleRequest
+-} from './helpers'
+-import type { CollectionItem } from './global'
+-
+-type FetchInitWithSignal = {
+-    signal: AbortSignal
+-}
+-
+-type WindowWithExtensionHook = Window & {
+-    __EXTENSION_HOOK__?: string
+-}
+-
+-beforeEach(() => {
+-    const store: Record<string, string> = {}
+-    vi.stubGlobal('localStorage', {
+-        getItem: vi.fn((key: string) => store[key] ?? null),
+-        setItem: vi.fn((key: string, value: string) => {
+-            store[key] = value
+-        }),
+-        removeItem: vi.fn((key: string) => {
+-            delete store[key]
+-        }),
+-        clear: vi.fn(() => {
+-            Object.keys(store).forEach(key => {
+-                delete store[key]
+-            })
+-        }),
+-    })
+-})
+-
+-afterEach(() => {
+-    vi.restoreAllMocks()
+-    vi.useRealTimers()
+-    delete (window as WindowWithExtensionHook).__EXTENSION_HOOK__
+-    localStorage.clear()
+-})
+-
+-describe(`Function: ${substituteEnvironmentVariables.name}`, () => {
+-
+-    // build environment vars
+-    const env: any = {}
+-
+-    env.i = 1
+-    env.nothing = null
+-    env.num = 1234
+-    env.str = 'This is string'
+-
+-    env.arrNum = [ 1, 2, 3 ]
+-    env.arrStr = [ 'a', 'bb', 'cc' ]
+-    env.arrObj = [
+-        { keyStr: 'string' },
+-        { keyNum: 1 },
+-        { keyObj: { nestedObj: 'nest object value', nestedArr: [ 1, 2, 3 ] } }
+-    ]
+-
+-    env.arr2dMix = [ env.arrNum, env.arrStr, env.arrObj ]
+-
+-    env.strCamelCase      = 'This is camelCase'
+-    env.str_snake_case    = 'This is snake-case'
+-    env['str-kebab-case'] = 'This is kebab-case'
+-    env['key with space'] = 'This key has space'
+-
+-    const extremelyMessyKey = 'extremelyMESSY-K_E_Y ~!@#$%^&*()_+12 34567980{{} :>}notReplaced::{{  num }}::notReplaced"?<, . shouldReplaceThisInFuture::{{  num   }}::replaced /;\'[ ]'
+-    env[ extremelyMessyKey ] = 'Very messy key :)'
+-
+-    test('Positive Case', async() => {
+-        const input = `{
+-            "i": {{i}},
+-            "_i": {{ i }},
+-
+-            "nothing": {{nothing}},
+-            "nothing": {{ nothing }},
+-
+-            "num": {{num}},
+-            "_num": {{ num }},
+-
+-            "str": "{{str}}",
+-            "_str": "{{ str }}",
+-
+-            "arrNum": {{arrNum}},
+-            "_arrNum": {{ arrNum }},
+-            "arrNum[0]": "{{arrNum[0]}}",
+-            "_arrNum[0]": "{{ arrNum[0] }}",
+-
+-            "arrStr": {{arrStr}},
+-            "arrStr_": {{arrStr}},
+-            "arrStr[0]": "{{arrStr[0]}}",
+-
+-            "arrObj[0]": "{{arrObj[0]}}",
+-            "arrObj[1]": "{{arrObj[1]}}",
+-            "arrObj[2]": "{{arrObj[2]}}",
+-            "arrObj[2].keyObj": "{{arrObj[2].keyObj}}",
+-
+-            "arr2dMix": {{arr2dMix}},
+-            "arr2dMix_": {{arr2dMix}},
+-
+-            "arr2dMix[2][2].keyObj.nestedArr": {{arr2dMix[2][2].keyObj.nestedArr}},
+-            "arr2dMix[2][2].keyObj.nestedArr[0]": {{arr2dMix[2][2].keyObj.nestedArr[0]}},
+-
+-            "strCamelCase":   "{{strCamelCase}}",
+-            "str_snake_case": "{{str_snake_case}}",
+-            "str-kebab-case": "{{str-kebab-case}}",
+-            "key with space": "{{key with space}}",
+-
+-            "messyKey": "{{${extremelyMessyKey}}}",
+-        }`
+-        const expectedOutput = `{
+-            "i": ${env.i},
+-            "_i": ${env.i},
+-
+-            "nothing": ${env.nothing},
+-            "nothing": ${env.nothing},
+-
+-            "num": ${env.num},
+-            "_num": ${env.num},
+-
+-            "str": "${env.str}",
+-            "_str": "${env.str}",
+-
+-            "arrNum": ${JSON.stringify(env.arrNum)},
+-            "_arrNum": ${JSON.stringify(env.arrNum)},
+-            "arrNum[0]": "${env.arrNum[0]}",
+-            "_arrNum[0]": "${env.arrNum[0]}",
+-
+-            "arrStr": ${JSON.stringify(env.arrStr)},
+-            "arrStr_": ${JSON.stringify(env.arrStr)},
+-            "arrStr[0]": "${env.arrStr[0]}",
+-
+-            "arrObj[0]": "${JSON.stringify(env.arrObj[0])}",
+-            "arrObj[1]": "${JSON.stringify(env.arrObj[1])}",
+-            "arrObj[2]": "${JSON.stringify(env.arrObj[2])}",
+-            "arrObj[2].keyObj": "${JSON.stringify(env.arrObj[2].keyObj)}",
+-
+-            "arr2dMix": ${JSON.stringify(env.arr2dMix)},
+-            "arr2dMix_": ${JSON.stringify(env.arr2dMix)},
+-
+-            "arr2dMix[2][2].keyObj.nestedArr": ${JSON.stringify(env.arr2dMix[2][2].keyObj.nestedArr)},
+-            "arr2dMix[2][2].keyObj.nestedArr[0]": ${env.arr2dMix[2][2].keyObj.nestedArr[0]},
+-
+-            "strCamelCase":   "${env.strCamelCase}",
+-            "str_snake_case": "${env.str_snake_case}",
+-            "str-kebab-case": "${env['str-kebab-case']}",
+-            "key with space": "${env['key with space']}",
+-
+-            "messyKey": "${env[extremelyMessyKey]}",
+-        }`
+-        assert.equal(await substituteEnvironmentVariables(env, input), expectedOutput)
+-
+-    })
+-
+-    test('Negative Case', async() => {
+-        const input = `{
+-            "": "",
+-            "{": "}",
+-            "{{": "}}",
+-            "}}": "{{",
+-            "{": "}}",
+-            "{{": "}",
+-            "{ { ": " } }",
+-
+-            "num": num,
+-            "num": {num,
+-            "num": num},
+-            "num": {num},
+-            "num": {{num},
+-            "num": {num}},
+-
+-            "num": { {num}},
+-            "num": {{num} },
+-            "num": { {num} },
+-            "num": { {num } },
+-            "num": { { num} },
+-            "num": { { num } },
+-
+-            "num": {{ num}},
+-            "num": {{num }},
+-
+-            "num": {{  num}},
+-            "num": {{num  }},
+-            "num": {{  num }},
+-            "num": {{ num  }},
+-            "num": {{  num  }},
+-
+-            "num": {{
+-                num}},
+-            "num": {{num
+-            }},
+-            "num": {{
+-                num
+-            }},
+-            "num": {
+-                {num}
+-            },
+-
+-            "num": {
+-                {num
+-            }},
+-            "num": {{
+-                num}
+-            }},
+-
+-
+-            "str": {{ s t r }},
+-            "str": {{}},
+-            "str": {,
+-            "str": {{,
+-            "str": {{},
+-            "str": {}},
+-            "str": {{}},
+-            "str": { { } },
+-            "str": {  } },
+-
+-            "-_-": "-_-",
+-            "{{}}": "-._.-",
+-            "{{}}": "_.",
+-            "{{}}": "{{_.}}",
+-
+-            "{{}}": "{{_. arrNum}}",
+-            "{{}}": "{{_ .arrNum}}",
+-
+-            "{{}}": "{{ _.arrNum  }}",
+-            "{{}}": "{{_.arrNum }}",
+-            "{{}}": "{{  _.arrNum  }}",
+-            "{{}}": "{{  _.arrNum.  }}",
+-
+-            "{{}}": "{{arrNum.}}",
+-            "{{str": "}}",
+-            "{{str": }},
+-            "arrNum": "{{arrNum[999]}}",
+-        }`
+-
+-        const extraForRegExSpecific = `{
+-            "num": {{ num    }}, "num": {{num  }}, "num": {{  num }},
+-                                                            "num": {{  num }},
+-            "num": {{ num  }},
+-            "num": {{
+-                num
+-            }},
+-            "num": {{num
+-            }},
+-            "num": {{
+-                num}},
+-            "str": {{ s t r }},
+-        }`
+-
+-        assert.equal(await substituteEnvironmentVariables(env, input), input)
+-        assert.equal(await substituteEnvironmentVariables(env, extraForRegExSpecific), extraForRegExSpecific)
+-
+-    })
+-
+-    test('Insomnia support', async() => {
+-        const input = `{
+-            "num": {{_.num}},
+-            "_num": {{ _.num }},
+-
+-            "str": "{{_.str}}",
+-            "_str": "{{ _.str }}",
+-
+-            "arr2dMix": {{_.arr2dMix}},
+-            "arr2dMix_": {{ _.arr2dMix }},
+-
+-            "arr2dMix[2][2].keyObj.nestedArr": {{ _.arr2dMix[2][2].keyObj.nestedArr }},
+-            "arr2dMix[2][2].keyObj.nestedArr[0]": {{_.arr2dMix[2][2].keyObj.nestedArr[0]}},
+-
+-            "strCamelCase":   "{{_.strCamelCase}}",
+-            "str_snake_case": "{{_.str_snake_case}}",
+-            "str-kebab-case": "{{_.str-kebab-case}}",
+-            "key with space": "{{ _.key with space }}",
+-
+-            "messyKey": "{{${extremelyMessyKey}}}",
+-        }`
+-        const expectedOutput = `{
+-            "num": ${env.num},
+-            "_num": ${env.num},
+-
+-            "str": "${env.str}",
+-            "_str": "${env.str}",
+-
+-            "arr2dMix": ${JSON.stringify(env.arr2dMix)},
+-            "arr2dMix_": ${JSON.stringify(env.arr2dMix)},
+-
+-            "arr2dMix[2][2].keyObj.nestedArr": ${JSON.stringify(env.arr2dMix[2][2].keyObj.nestedArr)},
+-            "arr2dMix[2][2].keyObj.nestedArr[0]": ${env.arr2dMix[2][2].keyObj.nestedArr[0]},
+-
+-            "strCamelCase":   "${env.strCamelCase}",
+-            "str_snake_case": "${env.str_snake_case}",
+-            "str-kebab-case": "${env['str-kebab-case']}",
+-            "key with space": "${env['key with space']}",
+-
+-            "messyKey": "${env[extremelyMessyKey]}",
+-        }`
+-        assert.equal(await substituteEnvironmentVariables(env, input), expectedOutput)
+-    })
+-
+-    test('Insomnia support will not be used if "_" is present as a key in "environment"', async() => {
+-        env._ = { someKey: '"_" will be used treated as the key, if its present in the env' }
+-
+-        const input = `{
+-            "_.someKey": {{_.someKey}},
+-            "_.someKey": {{ _.someKey }},
+-
+-            "num": {{_.num}},
+-            "_.someKey": {{ _.someKey}},
+-            "_.someKey": {{_.someKey }},
+-            "_.someKey": {{  _.someKey }},
+-            "_.someKey": {{ _.someKey  }},
+-            "_.someKey": {{  _.someKey  }},
+-        }`
+-        const expectedOutput = `{
+-            "_.someKey": ${env._.someKey},
+-            "_.someKey": ${env._.someKey},
+-
+-            "num": {{_.num}},
+-            "_.someKey": {{ _.someKey}},
+-            "_.someKey": {{_.someKey }},
+-            "_.someKey": {{  _.someKey }},
+-            "_.someKey": {{ _.someKey  }},
+-            "_.someKey": {{  _.someKey  }},
+-        }`
+-        assert.equal(await substituteEnvironmentVariables(env, input), expectedOutput)
+-    })
+-})
+-
+-describe(`Function: ${parseContentDispositionHeaderAndGetFileName.name}`, () => {
+-    test('Type 1', () => {
+-        const input = `inline; filename="file.txt"`
+-        const expectedOutput = 'file.txt'
+-        assert.equal(parseContentDispositionHeaderAndGetFileName(input, 'fallbackFileName'), expectedOutput)
+-    })
+-
+-    test('Type 2', () => {
+-        const input = `attachment; filename="image.jpg"`
+-        const expectedOutput = 'image.jpg'
+-        assert.equal(parseContentDispositionHeaderAndGetFileName(input, 'fallbackFileName'), expectedOutput)
+-    })
+-
+-    test('Type 3', () => {
+-        const input = `attachment; filename=annacerrato_vbb_ritratti-02056.jpg; filename*=UTF-8''annacerrato_vbb_ritratti-02056.jpg`
+-        const expectedOutput = 'annacerrato_vbb_ritratti-02056.jpg'
+-        assert.equal(parseContentDispositionHeaderAndGetFileName(input, 'fallbackFileName'), expectedOutput)
+-    })
+-})
+-
+-describe('Function: getSavedRequestTimeout', () => {
+-    test('returns saved positive timeout as an integer', () => {
+-        localStorage.setItem('Restfox-RequestTimeout', '1500.9')
+-
+-        expect(getSavedRequestTimeout()).toBe(1500)
+-    })
+-
+-    test('returns 0 for missing or invalid timeout values', () => {
+-        expect(getSavedRequestTimeout()).toBe(0)
+-
+-        localStorage.setItem('Restfox-RequestTimeout', '-1')
+-        expect(getSavedRequestTimeout()).toBe(0)
+-
+-        localStorage.setItem('Restfox-RequestTimeout', 'abc')
+-        expect(getSavedRequestTimeout()).toBe(0)
+-    })
+-})
+-
+-describe(`Function: ${fetchWrapper.name}`, () => {
+-    test('throws TimeoutError when requestTimeout elapses before response', async() => {
+-        vi.useFakeTimers()
+-        vi.stubGlobal('fetch', (_url: string, init: FetchInitWithSignal) => new Promise((_resolve, reject) => {
+-            init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+-        }))
+-
+-        const abortController = new AbortController()
+-        const promise = fetchWrapper(
+-            new URL('https://example.com'),
+-            'GET',
+-            {},
+-            null,
+-            abortController.signal,
+-            {
+-                electronSwitchToChromiumFetch: false,
+-                disableSSLVerification: false,
+-                requestTimeout: 10,
+-            }
+-        )
+-        const expectation = expect(promise).rejects.toMatchObject({ name: 'TimeoutError' })
+-
+-        await vi.advanceTimersByTimeAsync(10)
+-
+-        await expectation
+-    })
+-
+-    test('propagates AbortError when user cancels before timeout', async() => {
+-        vi.useFakeTimers()
+-        vi.stubGlobal('fetch', (_url: string, init: FetchInitWithSignal) => new Promise((_resolve, reject) => {
+-            init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+-        }))
+-
+-        const abortController = new AbortController()
+-        const promise = fetchWrapper(
+-            new URL('https://example.com'),
+-            'GET',
+-            {},
+-            null,
+-            abortController.signal,
+-            {
+-                electronSwitchToChromiumFetch: false,
+-                disableSSLVerification: false,
+-                requestTimeout: 1000,
+-            }
+-        )
+-        const expectation = expect(promise).rejects.toMatchObject({ name: 'AbortError' })
+-
+-        abortController.abort()
+-
+-        await expectation
+-    })
+-
+-    test('does not send extension request when file serialization finishes after timeout', async() => {
+-        vi.useFakeTimers()
+-        ;(window as WindowWithExtensionHook).__EXTENSION_HOOK__ = 'Restfox CORS Helper Enabled'
+-
+-        let resolveArrayBuffer: (value: ArrayBuffer) => void = () => {
+-            throw new Error('arrayBuffer resolver was not set')
+-        }
+-        const body = new File(['body'], 'body.txt')
+-        vi.spyOn(body, 'arrayBuffer').mockImplementation(() => new Promise<ArrayBuffer>(resolve => {
+-            resolveArrayBuffer = resolve
+-        }))
+-        const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => undefined)
+-
+-        const abortController = new AbortController()
+-        fetchWrapper(
+-            new URL('https://example.com'),
+-            'POST',
+-            {},
+-            body,
+-            abortController.signal,
+-            {
+-                electronSwitchToChromiumFetch: false,
+-                disableSSLVerification: false,
+-                requestTimeout: 10,
+-            }
+-        ).catch(() => undefined)
+-
+-        await vi.advanceTimersByTimeAsync(10)
+-        resolveArrayBuffer(new ArrayBuffer(0))
+-        await Promise.resolve()
+-        await Promise.resolve()
+-
+-        expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+-            event: 'sendRequest'
+-        }))
+-    })
+-})
+-
+-describe(`Function: ${handleRequest.name}`, () => {
+-    test('returns timeout error when requestTimeout elapses', async() => {
+-        vi.useFakeTimers()
+-        vi.spyOn(console, 'error').mockImplementation(() => undefined)
+-        vi.stubGlobal('fetch', (_url: string, init: FetchInitWithSignal) => new Promise((_resolve, reject) => {
+-            init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+-        }))
+-
+-        const abortController = new AbortController()
+-        const promise = handleRequest(
+-            {
+-                _id: 'request-id',
+-                _type: 'request',
+-                name: 'Request',
+-                parentId: null,
+-                workspaceId: 'workspace-id',
+-                url: 'https://example.com',
+-                method: 'GET',
+-            } as CollectionItem,
+-            {},
+-            {},
+-            undefined,
+-            async() => undefined,
+-            [],
+-            null,
+-            abortController.signal,
+-            {
+-                electronSwitchToChromiumFetch: false,
+-                disableSSLVerification: false,
+-                requestTimeout: 10,
+-            }
+-        )
+-
+-        await vi.advanceTimersByTimeAsync(10)
+-
+-        await expect(promise).resolves.toMatchObject({ error: 'Error: Request Timed Out' })
+-    })
+-})
+-
+-describe('convertPostmanAuthToRestfoxAuth', () => {
+-    test('should return No Auth when auth is not present', () => {
+-        const request = {}
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({ type: 'No Auth' })
+-    })
+-
+-    test('should handle bearer authentication', () => {
+-        const request = {
+-            auth: {
+-                type: 'bearer',
+-                bearer: [
+-                    { key: 'token', value: 'test-token' }
+-                ]
+-            }
+-        }
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({
+-            type: 'bearer',
+-            token: 'test-token'
+-        })
+-    })
+-
+-    test('should handle basic authentication in Postman v2.0 format', () => {
+-        const request = {
+-            auth: {
+-                type: 'basic',
+-                basic: {
+-                    username: 'user_v2',
+-                    password: 'pass_v2'
+-                }
+-            }
+-        }
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({
+-            type: 'basic',
+-            username: 'user_v2',
+-            password: 'pass_v2'
+-        })
+-    })
+-
+-    test('should handle basic authentication in Postman v2.1 format', () => {
+-        const request = {
+-            auth: {
+-                type: 'basic',
+-                basic: [
+-                    { key: 'username', value: 'user_v2.1' },
+-                    { key: 'password', value: 'pass_v2.1' }
+-                ]
+-            }
+-        }
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({
+-            type: 'basic',
+-            username: 'user_v2.1',
+-            password: 'pass_v2.1'
+-        })
+-    })
+-
+-    test('should handle OAuth2 authentication', () => {
+-        const request = {
+-            auth: {
+-                type: 'oauth2',
+-                oauth2: [
+-                    { key: 'grant_type', value: 'password' },
+-                    { key: 'username', value: 'oauth_user' },
+-                    { key: 'password', value: 'oauth_pass' },
+-                    { key: 'clientId', value: 'client_123' },
+-                    { key: 'clientSecret', value: 'secret_456' },
+-                    { key: 'accessTokenUrl', value: 'https://token.url' },
+-                    { key: 'scope', value: 'read write' }
+-                ]
+-            }
+-        }
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({
+-            type: 'oauth2',
+-            grantType: 'password',
+-            username: 'oauth_user',
+-            password: 'oauth_pass',
+-            clientId: 'client_123',
+-            clientSecret: 'secret_456',
+-            accessTokenUrl: 'https://token.url',
+-            scope: 'read write'
+-        })
+-    })
+-
+-    test('should handle missing fields gracefully', () => {
+-        const request = {
+-            auth: {
+-                type: 'basic',
+-                basic: []
+-            }
+-        }
+-        const result = convertPostmanAuthToRestfoxAuth(request)
+-        expect(result).toEqual({
+-            type: 'basic',
+-            username: '',
+-            password: ''
+-        })
+-    })
+-})
+-
+-describe('scriptConversion', () => {
+-    test('should convert Postman script to Restfox script with basic mappings', () => {
+-        const postmanScript = `
+-      pm.environment.set("key", "value");
+-      pm.environment.get("key");
+-      pm.response.json();
+-      pm.response.code;
+-      pm.test("Test", function () {});
+-      pm.response.text();
+-    `
+-
+-        const expectedRestfoxScript = `
+-      rf.setEnvVar("key", "value");
+-      rf.getEnvVar("key");
+-      rf.response.getBodyJSON();
+-      rf.response.getStatusCode();
+-      test("Test", function () {});
+-      rf.response.getBodyText();
+-    `
+-
+-        const result = scriptConversion(postmanScript, 'postmanToRestfox')
+-        expect(result).toBe(expectedRestfoxScript)
+-    })
+-
+-    test('should convert Restfox script to Postman script with basic mappings', () => {
+-        const restfoxScript = `
+-      rf.setEnvVar("key", "value");
+-      rf.getEnvVar("key");
+-      rf.response.getBodyJSON();
+-    `
+-
+-        const expectedPostmanScript = `
+-      pm.environment.set("key", "value");
+-      pm.environment.get("key");
+-      pm.response.json();
+-    `
+-
+-        const result = scriptConversion(restfoxScript, 'restfoxToPostman')
+-        expect(result).toBe(expectedPostmanScript)
+-    })
+-
+-    test('should convert Restfox script to Insomnia script with basic mappings', () => {
+-        const restfoxScript = `
+-      rf.setEnvVar("key", "value");
+-      rf.getEnvVar("key");
+-      rf.response.getBodyJSON();
+-    `
+-
+-        const expectedInsomniaScript = `
+-      insomnia.setEnvironmentVariable("key", "value");
+-      insomnia.getEnvironmentVariable("key");
+-      insomnia.response.json();
+-    `
+-
+-        const result = scriptConversion(restfoxScript, 'restfoxToInsomnia')
+-        expect(result).toBe(expectedInsomniaScript)
+-    })
+-
+-    test('should convert Postman status code assertions to Restfox', () => {
+-        const postmanScript = `
+-      pm.response.to.have.status(200);
+-      pm.response.to.have.status(404);
+-    `
+-
+-        const expectedRestfoxScript = `
+-      rf.response.getStatusCode() === 200;
+-      rf.response.getStatusCode() === 404;
+-    `
+-
+-        const result = scriptConversion(postmanScript, 'postmanToRestfox')
+-        expect(result).toBe(expectedRestfoxScript)
+-    })
+-
+-    test('should throw error for unsupported script types', () => {
+-        const unsupportedScript = 'some random script'
+-        expect(() => scriptConversion(unsupportedScript, 'unsupportedType' as any)).toThrowError('Unsupported script type: unsupportedType')
+-    })
+-})
+-
+-describe('toTree', () => {
+-    test('should return an empty array when input is empty', () => {
+-        const input: any = []
+-        const result = toTree(input)
+-        expect(result).toEqual([])
+-    })
+-
+-    test('should handle a flat list with no parent-child relationships', () => {
+-        const input: any = [
+-            { _id: '1', _type: 'request', parentId: null },
+-            { _id: '2', _type: 'request', parentId: null }
+-        ]
+-        const result = toTree(input)
+-        expect(result).toEqual(input) // No hierarchy, so the result is the same as input
+-    })
+-
+-    test('should build a tree structure when there are parent-child relationships', () => {
+-        const input: any = [
+-            { _id: '1', _type: 'request_group', parentId: null },
+-            { _id: '2', _type: 'request', parentId: '1' }
+-        ]
+-        const expected = [
+-            {
+-                _id: '1',
+-                _type: 'request_group',
+-                parentId: null,
+-                children: [{ _id: '2', _type: 'request', parentId: '1' }]
+-            }
+-        ]
+-        const result = toTree(input)
+-        expect(result).toEqual(expected)
+-    })
+-
+-    test('should build nested trees with multiple levels', () => {
+-        const input: any = [
+-            { _id: '1', _type: 'request_group', parentId: null },
+-            { _id: '2', _type: 'request_group', parentId: '1' },
+-            { _id: '3', _type: 'request', parentId: '2' }
+-        ]
+-        const expected = [
+-            {
+-                _id: '1',
+-                _type: 'request_group',
+-                parentId: null,
+-                children: [
+-                    {
+-                        _id: '2',
+-                        _type: 'request_group',
+-                        parentId: '1',
+-                        children: [{ _id: '3', _type: 'request', parentId: '2' }]
+-                    }
+-                ]
+-            }
+-        ]
+-        const result = toTree(input)
+-        expect(result).toEqual(expected)
+-    })
+-
+-    test('should handle multiple root elements', () => {
+-        const input: any = [
+-            { _id: '1', _type: 'request_group', parentId: null },
+-            { _id: '2', _type: 'request_group', parentId: null },
+-            { _id: '3', _type: 'request', parentId: '1' }
+-        ]
+-        const expected = [
+-            {
+-                _id: '1',
+-                _type: 'request_group',
+-                parentId: null,
+-                children: [{ _id: '3', _type: 'request', parentId: '1' }]
+-            },
+-            {
+-                _id: '2',
+-                _type: 'request_group',
+-                parentId: null,
+-                children: []
+-            }
+-        ]
+-        const result = toTree(input)
+-        expect(result).toEqual(expected)
+-    })
+-})
+-
+-describe('getSpaces', () => {
+-    test('should return 4 spaces when passed number 4', () => {
+-        expect(getSpaces(4)).toBe('    ') // 4 spaces
+-    })
+-
+-    test('should return 4 spaces when passed string "4"', () => {
+-        expect(getSpaces('4')).toBe('    ') // 4 spaces
+-    })
+-
+-    test('should return empty string when passed string "abc"', () => {
+-        expect(getSpaces('abc')).toBe('') // invalid input
+-    })
+-
+-    test('should return empty string when passed a negative number', () => {
+-        expect(getSpaces(-3)).toBe('') // negative number returns empty string
+-    })
+-
+-    test('should return empty string when passed 0', () => {
+-        expect(getSpaces(0)).toBe('') // 0 returns empty string
+-    })
+-
+-    test('should return empty string when passed an empty string', () => {
+-        expect(getSpaces('')).toBe('') // empty string returns empty string
+-    })
+-
+-    test('should return 10 spaces when passed string "10"', () => {
+-        expect(getSpaces('10')).toBe('          ') // 10 spaces
+-    })
+-})
+diff --git a/src/main.ts b/src/main.ts
+index 3559bbb..cbb6f90 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -66,4 +66,8 @@ function argsMapping(args: any[]): string {
+             return arg
+         }
+     }).join(' ')
+-}
+\ No newline at end of file
++}
++// WLB instrumentation bridge: offline fixture seeding + state inspection
++import * as db from './db'
++import constants from './constants'
++;(window as any).__RESTFOX__ = { store, db, constants }
+diff --git a/src/plugin.spec.ts b/src/plugin.spec.ts
+deleted file mode 100644
+index 9f78a96..0000000
+--- a/src/plugin.spec.ts
++++ /dev/null
+@@ -1,204 +0,0 @@
+-// @vitest-environment edge-runtime
+-
+-import { test, expect } from 'vitest'
+-import { createRequestContextForPlugin, createResponseContextForPlugin, usePlugin } from './plugin'
+-import { CollectionItem, RequestFinalResponse, RequestParam } from './global'
+-import { nanoid } from 'nanoid'
+-
+-async function createExpose({ parameters = [] }: { parameters?: RequestParam[] } = {}) {
+-    const request: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        parameters,
+-    }
+-    const environment: any = {}
+-    const setEnvironmentVariable = (key: string, value: string) => {
+-        environment[key] = value
+-    }
+-    const state = {
+-        testResults: []
+-    }
+-
+-    const cacheId = nanoid()
+-
+-    const { expose } = await createRequestContextForPlugin(cacheId, request, environment, setEnvironmentVariable, state.testResults, null)
+-
+-    return { expose, environment }
+-}
+-
+-function createResponseExpose(responseBuffer: ArrayBuffer) {
+-    const response: RequestFinalResponse = {
+-        _id: 'test',
+-        collectionId: '',
+-        url: '',
+-        status: 200,
+-        statusText: '',
+-        headers: [],
+-        mimeType: '',
+-        buffer: responseBuffer,
+-        timeTaken: 0,
+-        request: {} as any,
+-        createdAt: 0,
+-        testResults: [],
+-    }
+-
+-    const environment: any = {}
+-    const setEnvironmentVariable = (key: string, value: string) => {
+-        environment[key] = value
+-    }
+-
+-    const state = {
+-        testResults: [],
+-    }
+-
+-    const { expose } = createResponseContextForPlugin(response, environment, setEnvironmentVariable, state.testResults, null)
+-
+-    return { expose, environment }
+-}
+-
+-test('import crypto-js from esm.sh', async() => {
+-    const { expose, environment } = await createExpose()
+-
+-    await usePlugin(expose, {
+-        name: 'Test Plugin',
+-        code: `
+-            import CryptoJS from 'https://esm.sh/crypto-js@latest?target=es2020'
+-
+-            var data = "cat"
+-
+-            // Encrypt
+-            var ciphertext = CryptoJS.AES.encrypt(JSON.stringify(data), 'secret key 123').toString();
+-
+-            // Decrypt
+-            var bytes  = CryptoJS.AES.decrypt(ciphertext, 'secret key 123');
+-            var decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+-
+-            rf.setEnvVar('decryptedText', decryptedData)
+-        `,
+-        parentPathForReadFile: null,
+-    })
+-
+-    expect(environment.decryptedText).toBe('cat')
+-})
+-
+-test('import pako from unpkg.com', async() => {
+-    const { expose, environment } = await createExpose()
+-
+-    const code = JSON.parse(JSON.stringify(`
+-        import pako from 'https://unpkg.com/pako@2.1.0/dist/pako.esm.mjs?module'
+-        const buffer = rf.base64.toUint8Array('EAAAAB+LCAAAAAAAAAqrVvLMKy5JzEtOLVayio6tBQCx9ZeKEAAAAA==')
+-        const slicedBuffer = buffer.slice(4)
+-        const decompressedGzip = pako.inflate(slicedBuffer)
+-        const result = rf.arrayBuffer.toString(decompressedGzip)
+-        rf.setEnvVar('result', result)
+-    `))
+-
+-    await usePlugin(expose, {
+-        name: 'Test Plugin',
+-        code,
+-        parentPathForReadFile: null,
+-    })
+-
+-    expect(environment.result).toBe('{"Instances":[]}')
+-})
+-
+-test('Setting query params over existing query params', async() => {
+-    {
+-        const parameters: RequestParam[] = [{ name: 'testKey', value: 'testValue' }]
+-        const { expose, environment } = await createExpose({ parameters })
+-
+-        await usePlugin(expose, {
+-            name: 'Query Params Plugin',
+-            code: `
+-                const queryParams = rf.request.getQueryParams()
+-                rf.request.setQueryParams([...queryParams, { name: 'cat', value: '3' }])
+-                const updatedQueryParams = rf.request.getQueryParams()
+-                rf.setEnvVar('updatedQueryParams', JSON.stringify(updatedQueryParams))
+-            `,
+-            parentPathForReadFile: null,
+-        })
+-
+-        expect(environment.updatedQueryParams).toBe(JSON.stringify([
+-            ...parameters,
+-            { name: 'cat', value: '3' },
+-        ]))
+-    }
+-
+-    // tests for the case mentioned at https://github.com/flawiddsouza/Restfox/issues/110#issue-2218114329, now working:
+-    {
+-        const parameters: RequestParam[] = [{ name: 'testKey', value: 'testValue' }]
+-        const { expose, environment } = await createExpose({ parameters })
+-
+-        await usePlugin(expose, {
+-            name: 'Query Params Plugin',
+-            code: `
+-                const queryParams = rf.request.getQueryParams()
+-                queryParams.push({ name: 'cat', value: '2' })
+-                queryParams.push({ name: 'cat', value: '3' })
+-                rf.request.setQueryParams(queryParams)
+-                const updatedQueryParams = rf.request.getQueryParams()
+-                rf.setEnvVar('updatedQueryParams', JSON.stringify(updatedQueryParams))
+-            `,
+-            parentPathForReadFile: null,
+-        })
+-
+-        expect(environment.updatedQueryParams).toBe(JSON.stringify([
+-            ...parameters,
+-            { name: 'cat', value: '2' },
+-            { name: 'cat', value: '3' },
+-        ]))
+-    }
+-})
+-
+-test('ungzip rf.response.getBody() using pako from unpkg.com', async() => {
+-    const responseBuffer = new TextEncoder().encode('EAAAAB+LCAAAAAAAAAqrVvLMKy5JzEtOLVayio6tBQCx9ZeKEAAAAA==').buffer
+-    const { expose, environment } = createResponseExpose(responseBuffer)
+-
+-    await usePlugin(expose, {
+-        name: 'Test Plugin',
+-        code: `
+-            import pako from 'https://unpkg.com/pako@2.1.0/dist/pako.esm.mjs?module'
+-
+-            const responseBody = rf.response.getBody()
+-            // this should work but it doesn't:
+-            // const bufferToString = rf.arrayBuffer.toString(responseBody)
+-            // for some reason new Uint8Array(...) wrap is needed - most likely a side effect of how we define vm.newFunction('rf.arrayBuffer.toString') in plugin.ts
+-            const bufferToString = rf.arrayBuffer.toString(new Uint8Array(responseBody))
+-            const buffer = rf.base64.toUint8Array(bufferToString)
+-            const bufferSlice = buffer.slice(4)
+-            const decompressedGzip = pako.inflate(bufferSlice)
+-            const uncompressedText = rf.arrayBuffer.toString(decompressedGzip)
+-
+-            rf.setEnvVar('uncompressedText', uncompressedText)
+-        `,
+-        parentPathForReadFile: null,
+-    })
+-
+-    expect(environment.uncompressedText).toBe('{"Instances":[]}')
+-})
+-
+-test('ungzip rf.response.getBodyText() using pako from unpkg.com', async() => {
+-    const responseBuffer = new TextEncoder().encode('EAAAAB+LCAAAAAAAAAqrVvLMKy5JzEtOLVayio6tBQCx9ZeKEAAAAA==').buffer
+-    const { expose, environment } = createResponseExpose(responseBuffer)
+-
+-    await usePlugin(expose, {
+-        name: 'Test Plugin',
+-        code: `
+-            import pako from 'https://unpkg.com/pako@2.1.0/dist/pako.esm.mjs?module'
+-
+-            const responseBody = rf.response.getBodyText()
+-            const buffer = rf.base64.toUint8Array(responseBody)
+-            const bufferSlice = buffer.slice(4)
+-            const decompressedGzip = pako.inflate(bufferSlice)
+-            const uncompressedText = rf.arrayBuffer.toString(decompressedGzip)
+-
+-            rf.setEnvVar('uncompressedText', uncompressedText)
+-        `,
+-        parentPathForReadFile: null,
+-    })
+-
+-    expect(environment.uncompressedText).toBe('{"Instances":[]}')
+-})
+diff --git a/src/utils/array.spec.ts b/src/utils/array.spec.ts
+deleted file mode 100644
+index 96b417c..0000000
+--- a/src/utils/array.spec.ts
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import { describe, it, expect } from 'vitest'
+-import { mergeArraysByProperty } from './array'
+-
+-describe('mergeArraysByProperty', () => {
+-    it('should correctly merge two arrays by a specified property, overwriting with values from the second array', () => {
+-        const arr1 = [
+-            { id: 1, name: 'Alice', age: 25 },
+-            { id: 2, name: 'Bob', age: 22 }
+-        ]
+-        const arr2 = [
+-            { id: 2, name: 'Robert' },
+-            { id: 3, name: 'Charlie', age: 30 }
+-        ]
+-
+-        const expected = [
+-            { id: 1, name: 'Alice', age: 25 },
+-            { id: 2, name: 'Robert', age: 22 },
+-            { id: 3, name: 'Charlie', age: 30 }
+-        ]
+-
+-        const result = mergeArraysByProperty(arr1, arr2, 'id')
+-        expect(result).toEqual(expected)
+-    })
+-
+-    // handle sub-objects
+-    it('should correctly merge two arrays by a specified property, overwriting with values from the second array, even if the property is a sub-object', () => {
+-        const arr1 = [
+-            { id: 1, environment: { API: 'cat', API_2: 'ball' } },
+-        ]
+-
+-        const arr2 = [
+-            { id: 1, environment: { API: 'bat' } },
+-        ]
+-
+-        const expected = [
+-            { id: 1, environment: { API: 'bat', API_2: 'ball' } },
+-        ]
+-
+-        const result = mergeArraysByProperty(arr1, arr2, 'id')
+-        expect(result).toEqual(expected)
+-    })
+-})
+diff --git a/src/utils/codemirror-extensions.spec.ts b/src/utils/codemirror-extensions.spec.ts
+deleted file mode 100644
+index 16282f3..0000000
+--- a/src/utils/codemirror-extensions.spec.ts
++++ /dev/null
+@@ -1,121 +0,0 @@
+-import { test, expect } from 'vitest'
+-import { variableMatchingRegex } from './codemirror-extensions'
+-
+-test('validate variableMatchingRegex', async() => {
+-    const testValues = [
+-        {
+-            var: '{{cat}}',
+-            valid: true,
+-            extract: [
+-                'cat'
+-            ],
+-        },
+-        {
+-            var: '{{ cat }}',
+-            valid: true,
+-            extract: [
+-                'cat'
+-            ],
+-        },
+-        {
+-            var: '{{ cat}}',
+-            valid: false
+-        },
+-        {
+-            var: '{{cat }}',
+-            valid: false
+-        },
+-        {
+-            var: '{{   cat  }}',
+-            valid: false
+-        },
+-        {
+-            var: '{{process.env.cat}}',
+-            valid: true,
+-            extract: [
+-                'process.env.cat'
+-            ],
+-        },
+-        {
+-            var: '{{ process.env.cat }}',
+-            valid: true,
+-            extract: [
+-                'process.env.cat'
+-            ],
+-        },
+-        {
+-            var: '{{ process.env.cat}}',
+-            valid: false
+-        },
+-        {
+-            var: '{{process.env.cat }}',
+-            valid: false
+-        },
+-        {
+-            var: '{{   process.env.cat  }}',
+-            valid: false
+-        },
+-        {
+-            var: '{{ process.env.cat }} {{ cat }}',
+-            valid: true,
+-            extract: [
+-                'process.env.cat',
+-                'cat'
+-            ]
+-        },
+-        {
+-            var: '{{ cat! }}',
+-            valid: true,
+-            extract: [
+-                'cat!'
+-            ]
+-        },
+-        {
+-            // this one doesn't actually substitute in our env substitution, but it's a valid variable path actually
+-            var: '{{ API["URL"] }}',
+-            valid: true,
+-            extract: [
+-                'API["URL"]'
+-            ]
+-        },
+-        {
+-            var: '{{ API[0].cat }}',
+-            valid: true,
+-            extract: [
+-                'API[0].cat'
+-            ]
+-        },
+-        {
+-            var: '{{API[0].cat!}}',
+-            valid: true,
+-            extract: [
+-                'API[0].cat!'
+-            ]
+-        },
+-        {
+-            // GH Issue #211
+-            var: '{{my-key}}',
+-            valid: true,
+-            extract: [
+-                'my-key'
+-            ]
+-        },
+-    ]
+-
+-    testValues.forEach((testValue) => {
+-        let match
+-        let i = 0
+-        while ((match = variableMatchingRegex.exec(testValue.var))) {
+-            const varName = match[1] || match[2]
+-            const expectedVarName = testValue.extract ? testValue.extract[i] : 'extract array not defined for valid true case!'
+-            expect(varName).toBe(expectedVarName)
+-            i++
+-        }
+-
+-        if (testValue.valid) {
+-            expect(i).toBe(testValue.extract!.length)
+-        } else {
+-            expect(i).toBe(0)
+-        }
+-    })
+-})
+diff --git a/src/utils/curl-cmd-to-bash.spec.ts b/src/utils/curl-cmd-to-bash.spec.ts
+deleted file mode 100644
+index 8b34d53..0000000
+--- a/src/utils/curl-cmd-to-bash.spec.ts
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import { test, expect } from 'vitest'
+-import { readFile } from 'node:fs/promises'
+-import path from 'node:path'
+-import { convertCurlCmdToBash } from './curl-cmd-to-bash'
+-
+-async function runTest(type: string) {
+-    const currentFolder = process.cwd()
+-    const testDataFolder = path.resolve(path.join(currentFolder,'test-data', 'curl-cmd-to-bash'))
+-
+-    const input = await readFile(path.join(testDataFolder, `${type}_input.txt`), 'utf-8')
+-    const expectedOutput = await readFile(path.join(testDataFolder, `${type}_output.txt`), 'utf-8')
+-    const output = convertCurlCmdToBash(input)
+-
+-    expect(output).toBe(expectedOutput)
+-}
+-
+-test('convertCurlCmdToBash - Type 1', async() => {
+-    await runTest('1')
+-})
+-
+-test('convertCurlCmdToBash - Type 2', async() => {
+-    await runTest('2')
+-})
+-
+-test('convertCurlCmdToBash - Type 3', async() => {
+-    await runTest('3')
+-})
+diff --git a/src/utils/generate-code.spec.ts b/src/utils/generate-code.spec.ts
+deleted file mode 100644
+index 56cd3ea..0000000
+--- a/src/utils/generate-code.spec.ts
++++ /dev/null
+@@ -1,83 +0,0 @@
+-// @vitest-environment edge-runtime
+-
+-import { assert, test, describe, vi, beforeAll } from 'vitest'
+-import { generateCode } from './generate-code'
+-
+-describe(`${generateCode.name}`, () => {
+-    beforeAll(() => {
+-        // Define a full localStorage mock to match the Storage interface
+-        const localStorageMock = (() => {
+-            let store: Record<string, string> = {}
+-
+-            return {
+-                getItem: vi.fn((key: string) => store[key] || null),
+-                setItem: vi.fn((key: string, value: string) => {
+-                    store[key] = value
+-                }),
+-                removeItem: vi.fn((key: string) => {
+-                    delete store[key]
+-                }),
+-                clear: vi.fn(() => {
+-                    store = {}
+-                }),
+-                // `length` getter to return the number of items stored
+-                get length() {
+-                    return Object.keys(store).length
+-                },
+-                // `key` method to return the key at a specific index
+-                key: vi.fn((index: number) => Object.keys(store)[index] || null),
+-            }
+-        })()
+-
+-        // Assign the mock to the global object
+-        Object.defineProperty(global, 'localStorage', {
+-            value: localStorageMock,
+-            configurable: true, // Allows reassignment if needed
+-            writable: true,     // Ensures it can be changed during tests
+-        })
+-    })
+-
+-    test('shell - curl', async() => {
+-        const request = {
+-            '_id': 'dUrySgUfq8DUMn5Az6z2H',
+-            '_type': 'request' as const,
+-            'name': 'New Request',
+-            'method': 'POST',
+-            'body': {
+-                'mimeType': 'application/json',
+-                'text': '[{"event_type":"api_event","event_id":"954a6478-88bf-4baf-8c1b-efe2ea9fd0e6","timestamp":1697544030000,"app_id":"demo_app2","attributes":{"environment":"test","value":279.9}}]'
+-            },
+-            'parentId': null,
+-            'workspaceId': 'Hgvsi-H9tgXzT2dwTy42x',
+-            'sortOrder': 0,
+-            'url': '{{ API_URL }}/collect',
+-            'headers': [
+-                {
+-                    'name': 'Content-Type',
+-                    'value': 'application/json; charset=utf-8'
+-                }
+-            ],
+-            'parameters': [
+-                {
+-                    'name': 'appId',
+-                    'value': 'demo_app2',
+-                    'disabled': false
+-                }
+-            ],
+-            'authentication': {
+-                'type': 'No Auth'
+-            }
+-        }
+-
+-        const environment = {
+-            API_URL: 'http://clicks-inges-abc-xyz.ap-south-1.elb.amazonaws.com'
+-        }
+-
+-        const input = await generateCode(request, environment, {}, undefined, 'shell', 'curl')
+-        const expectedOutput = `curl --request POST \\
+-    --url 'http://clicks-inges-abc-xyz.ap-south-1.elb.amazonaws.com/collect?appId=demo_app2' \\
+-    --header 'content-type: application/json; charset=utf-8' \\
+-    --data '[{"event_type":"api_event","event_id":"954a6478-88bf-4baf-8c1b-efe2ea9fd0e6","timestamp":1697544030000,"app_id":"demo_app2","attributes":{"environment":"test","value":279.9}}]'`
+-        assert.equal(input, expectedOutput)
+-    })
+-})
+diff --git a/src/utils/query-params-sync.spec.ts b/src/utils/query-params-sync.spec.ts
+deleted file mode 100644
+index 6222cbc..0000000
+--- a/src/utils/query-params-sync.spec.ts
++++ /dev/null
+@@ -1,554 +0,0 @@
+-import { test, assert } from 'vitest'
+-import { onUrlChange, onParametersChange, migrateOldData } from './query-params-sync'
+-import { CollectionItem } from '@/global'
+-
+-test('Main', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat?6=a&b=2&c={{var}}',
+-    }
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: '6', value: 'a' },
+-        { name: 'b', value: '2' },
+-        { name: 'c', value: '{{var}}' },
+-    ])
+-
+-    activeTab.url = 'cat?6=a'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: '6', value: 'a' },
+-    ])
+-
+-    activeTab.url = 'cat?b={{cat}}&6=a&6=a'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: 'b', value: '{{cat}}' },
+-        { name: '6', value: 'a' },
+-        { name: '6', value: 'a' },
+-    ])
+-
+-    activeTab.url = 'cat?b={{cat}}&6=a'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: 'b', value: '{{cat}}' },
+-        { name: '6', value: 'a' },
+-    ])
+-
+-    activeTab.url = 'cat?a=1&a=2&a=3&b=1&b=2&b=3'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: 'a', value: '1' },
+-        { name: 'a', value: '2' },
+-        { name: 'a', value: '3' },
+-        { name: 'b', value: '1' },
+-        { name: 'b', value: '2' },
+-        { name: 'b', value: '3' },
+-    ])
+-
+-    activeTab.parameters!.find(param => param.name === 'a' && param.value === '3')!.disabled = true
+-
+-    assert.equal(onParametersChange(activeTab), true)
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.equal(activeTab.url, 'cat?a=1&a=2&b=1&b=2&b=3')
+-
+-    const expectedParameters = [
+-        { name: 'a', value: '1' },
+-        { name: 'a', value: '2' },
+-        { name: 'a', value: '3', disabled: true },
+-        { name: 'b', value: '1' },
+-        { name: 'b', value: '2' },
+-        { name: 'b', value: '3' },
+-    ]
+-
+-    assert.deepEqual(activeTab.parameters, expectedParameters)
+-
+-    activeTab.url = 'cat?c=10&a=1&a=2&b=1&b=2&b=3'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: 'c', value: '10' },
+-        ...expectedParameters
+-    ])
+-
+-    activeTab.url = 'cat'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [
+-        { name: 'a', value: '3', disabled: true },
+-    ])
+-
+-    activeTab.parameters = []
+-
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.parameters, [])
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.equal(activeTab.url, 'cat')
+-})
+-
+-test('Ordering', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat?cat=1&hey=54654',
+-        parameters: [
+-            { name: 'cat', value: '1' },
+-            { name: 'bat', value: 'f', disabled: true },
+-            { name: 'cat', value: '2', disabled: true },
+-            { name: 'hey', value: '54654' },
+-        ]
+-    }
+-
+-    activeTab.url = 'cat?cat=1&cat=1&hey=54654'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    const expectedParameters = [
+-        { name: 'cat', value: '1' },
+-        { name: 'cat', value: '1' },
+-        { name: 'bat', value: 'f', disabled: true },
+-        { name: 'cat', value: '2', disabled: true },
+-        { name: 'hey', value: '54654' },
+-    ]
+-
+-    assert.deepEqual(activeTab.parameters, expectedParameters)
+-})
+-
+-test('Ordering 2', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat?cat=2&cat=3&cat=4',
+-        parameters: [
+-            { name: 'cat', value: '1', disabled: true },
+-            { name: 'cat', value: '2' },
+-            { name: 'cat', value: '3' },
+-            { name: 'cat', value: '1', disabled: true },
+-            { name: 'cat', value: '4' },
+-        ]
+-    }
+-
+-    activeTab.url = 'cat?cat=2&cat=3&cat=1&cat=4'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    const expectedParameters = [
+-        { name: 'cat', value: '1', disabled: true },
+-        { name: 'cat', value: '2' },
+-        { name: 'cat', value: '3' },
+-        { name: 'cat', value: '1' },
+-        { name: 'cat', value: '1', disabled: true },
+-        { name: 'cat', value: '4' },
+-    ]
+-
+-    assert.deepEqual(activeTab.parameters, expectedParameters)
+-})
+-
+-test('Migrate Old Data', () => {
+-    const tab: CollectionItem = {
+-        '_id': 'Nwmy0w4971yHvqQDNVGoF',
+-        '_type': 'request',
+-        'name': 'New Request',
+-        'method': 'GET',
+-        'body': {
+-            'mimeType': 'No Body'
+-        },
+-        'parentId': null,
+-        'workspaceId': 'Hgvsi-H9tgXzT2dwTy42x',
+-        'sortOrder': 0,
+-        'url': 'https://echo.hoppscotch.io?test1=232311',
+-        'parameters': [
+-            {
+-                'name': 'testarg',
+-                'value': '234234'
+-            },
+-            {
+-                'name': 'test1',
+-                'value': '232311',
+-                'disabled': true
+-            },
+-            {
+-                'name': 'testarg',
+-                'value': '111'
+-            }
+-        ]
+-    }
+-
+-    migrateOldData(tab)
+-
+-    assert.equal(tab.url, 'https://echo.hoppscotch.io?test1=232311&testarg=234234&testarg=111')
+-
+-    assert.deepEqual(tab.parameters, [
+-        {
+-            'name': 'test1',
+-            'value': '232311'
+-        },
+-        {
+-            'name': 'testarg',
+-            'value': '234234'
+-        },
+-        {
+-            'name': 'test1',
+-            'value': '232311',
+-            'disabled': true
+-        },
+-        {
+-            'name': 'testarg',
+-            'value': '111'
+-        }
+-    ])
+-})
+-
+-test('Migrate Old Data 2', () => {
+-    const tab: CollectionItem = {
+-        '_id': '99DNWtghD5bKhlbgDpG_H',
+-        '_type': 'request',
+-        'name': 'New Request',
+-        'method': 'POST',
+-        'body': {
+-            'mimeType': 'application/json',
+-            'text': '{\n    "link": []\n}'
+-        },
+-        'parentId': null,
+-        'workspaceId': 'Hgvsi-H9tgXzT2dwTy42x',
+-        'sortOrder': 0,
+-        'headers': [
+-            {
+-                'name': 'Content-Type',
+-                'value': 'application/json'
+-            }
+-        ],
+-        'url': 'http://localhost:5093/add-to-queue?bat=cagsgdds',
+-        'parameters': [
+-            {
+-                'name': 'cat',
+-                'value': '1'
+-            },
+-            {
+-                'name': 'cat',
+-                'value': '2',
+-                'disabled': true
+-            },
+-            {
+-                'name': 'bat',
+-                'value': 'cagsgdds',
+-                'disabled': false
+-            },
+-            {
+-                'name': 'va',
+-                'value': 'assasg',
+-                'disabled': true
+-            },
+-            {
+-                'name': 'cat',
+-                'value': '43643'
+-            }
+-        ]
+-    }
+-
+-    migrateOldData(tab)
+-
+-    assert.equal(tab.url, 'http://localhost:5093/add-to-queue?cat=1&bat=cagsgdds&cat=43643')
+-
+-    assert.deepEqual(tab.parameters, [
+-        {
+-            'name': 'cat',
+-            'value': '1'
+-        },
+-        {
+-            'name': 'cat',
+-            'value': '2',
+-            'disabled': true
+-        },
+-        {
+-            'name': 'bat',
+-            'value': 'cagsgdds',
+-            'disabled': false
+-        },
+-        {
+-            'name': 'va',
+-            'value': 'assasg',
+-            'disabled': true
+-        },
+-        {
+-            'name': 'cat',
+-            'value': '43643'
+-        }
+-    ])
+-})
+-
+-test('Multiple equal signs test', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat?cat===1',
+-        parameters: []
+-    }
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-    assert.equal(onParametersChange(activeTab), true)
+-
+-    const expectedParameters = [
+-        { name: 'cat', value: '==1' },
+-    ]
+-
+-    assert.deepEqual(activeTab.parameters, expectedParameters)
+-})
+-
+-test('Path Params Sync - In Between Substitution Test', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat/:cat/:cat3',
+-        pathParameters: [
+-            { name: 'cat', value: '1' },
+-            { name: 'cat3', value: '3' },
+-        ]
+-    }
+-
+-    activeTab.url = 'cat/:cat/:cat2/:cat3/'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    const expectedPathParameters = [
+-        { name: 'cat', value: '1' },
+-        { name: 'cat2', value: '' },
+-        { name: 'cat3', value: '3' },
+-    ]
+-
+-    assert.deepEqual(activeTab.pathParameters, expectedPathParameters)
+-})
+-
+-test('Path Params Sync - In Between Substitution Test 2', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat/:cat/:cat3',
+-        pathParameters: [
+-            { name: 'cat', value: '1' },
+-            { name: 'cat3', value: '3' },
+-        ]
+-    }
+-
+-    activeTab.url = 'caat/:cat/:cat2:cat3'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    const expectedPathParameters = [
+-        { name: 'cat', value: '1' },
+-        { name: 'cat2:cat3', value: '' },
+-    ]
+-
+-    assert.deepEqual(activeTab.pathParameters, expectedPathParameters)
+-
+-    activeTab.url = 'cat/:cat/:cat2/:cat3'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    const expectedPathParameters2 = [
+-        { name: 'cat', value: '1' },
+-        { name: 'cat2', value: '' },
+-        { name: 'cat3', value: '' },
+-    ]
+-
+-    assert.deepEqual(activeTab.pathParameters, expectedPathParameters2)
+-})
+-
+-test('Path Params Sync - Duplicate removal test', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: 'cat/:cat/:cat',
+-        pathParameters: [
+-            { name: 'cat', value: '1' },
+-            { name: 'cat', value: '2' },
+-            { name: 'cat', value: '3', disabled: true },
+-        ]
+-    }
+-
+-    activeTab.url = 'cat/:cat/:cat/:cat'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    const expectedPathParameters = [
+-        { name: 'cat', value: '1' },
+-    ]
+-
+-    assert.deepEqual(activeTab.pathParameters, expectedPathParameters)
+-
+-    activeTab.url = 'cat/:cat/:bat/:cat/:bat'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    const expectedPathParameters2 = [
+-        { name: 'cat', value: '1' },
+-        { name: 'bat', value: '' },
+-    ]
+-
+-    assert.deepEqual(activeTab.pathParameters, expectedPathParameters2)
+-})
+-
+-test('Path Params Sync - Protocol:// should be not treated as a path param', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = 'https://google.com/:cat'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [
+-        { name: 'cat', value: '' },
+-    ])
+-})
+-
+-test('Path Params Sync - Two types of path params [ :cat, {cat} ]', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = 'https://google.com/:cat/{cat2}'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [
+-        { name: 'cat', value: '' },
+-        { name: 'cat2', value: '' },
+-    ])
+-})
+-
+-test('Path Params Sync - env vars should not be treated as {path} type path params', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = 'https://google.com/{cat}/{{cat2}}/{cat3}/{{ cat4 }}'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [
+-        { name: 'cat', value: '' },
+-        { name: 'cat3', value: '' },
+-    ])
+-})
+-
+-test('Path Params Sync - :port should not be treated as a path param', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = 'https://localhost:7410/:cat'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [
+-        { name: 'cat', value: '' },
+-    ])
+-})
+-
+-test('Path Params Sync - mac:addresses:should:not:be:treated as a path param', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = 'testing-domain/backend/device/aa:bb:cc:dd:ee:ff/data'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [])
+-})
+-
+-test('Path Params Sync - response tag should not be treated as a path param', () => {
+-    const activeTab: CollectionItem = {
+-        _id: 'test',
+-        _type: 'request',
+-        parentId: 'test',
+-        workspaceId: 'test',
+-        name: 'test',
+-        url: '',
+-        pathParameters: []
+-    }
+-
+-    activeTab.url = '{% response() %}'
+-
+-    assert.equal(onUrlChange(activeTab), true)
+-
+-    assert.deepEqual(activeTab.pathParameters, [])
+-})
+diff --git a/src/utils/sidebar-drop.spec.ts b/src/utils/sidebar-drop.spec.ts
+deleted file mode 100644
+index dd8ae59..0000000
+--- a/src/utils/sidebar-drop.spec.ts
++++ /dev/null
+@@ -1,101 +0,0 @@
+-// @vitest-environment happy-dom
+-
+-import { describe, test, expect } from 'vitest'
+-import { computeTargetIndex, isDropIntoOwnSubtree, resolveSidebarDropTarget } from './sidebar-drop'
+-
+-function buildSidebar() {
+-    document.body.innerHTML = `
+-        <div class="sidebar-list-container">
+-            <div class="sidebar-list">
+-                <div class="sidebar-item" data-id="A" data-type="request_group"></div>
+-                <div class="sidebar-list" data-parent-id="A">
+-                    <div class="sidebar-item" data-id="A1" data-parent-id="A" data-type="request"></div>
+-                    <div class="sidebar-item" data-id="A2" data-parent-id="A" data-type="request"></div>
+-                </div>
+-                <div class="sidebar-item" data-id="B" data-type="request"></div>
+-            </div>
+-        </div>
+-    `
+-    return {
+-        container: document.querySelector('.sidebar-list-container') as HTMLElement,
+-        nestedList: document.querySelector('.sidebar-list .sidebar-list') as HTMLElement,
+-        topLevelList: document.querySelector('.sidebar-list') as HTMLElement,
+-    }
+-}
+-
+-describe('computeTargetIndex', () => {
+-    test('dropping on the bottom half of a socket inserts after it', () => {
+-        const list = [{ _id: 'a' }, { _id: 'sock' }, { _id: 'c' }]
+-        const index = computeTargetIndex(list, { id: 'sock', type: 'socket', cursorPosition: 'bottom' })
+-        expect(index).toBe(2)
+-    })
+-
+-    test('dropping into the bottom half of a folder inserts at the start of its children', () => {
+-        const folderChildren = [{ _id: 'x' }, { _id: 'y' }]
+-        const index = computeTargetIndex(folderChildren, { id: 'folder', type: 'request_group', cursorPosition: 'bottom' })
+-        expect(index).toBe(0)
+-    })
+-
+-    test('dropping on the bottom of an enclosing list appends to the list', () => {
+-        const list = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]
+-        const index = computeTargetIndex(list, { id: undefined, type: 'sidebar-list', cursorPosition: 'bottom' })
+-        expect(index).toBe(3)
+-    })
+-
+-    test('dropping on the top half of an item inserts before it', () => {
+-        const list = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]
+-        const index = computeTargetIndex(list, { id: 'b', type: 'request', cursorPosition: 'top' })
+-        expect(index).toBe(1)
+-    })
+-})
+-
+-describe('isDropIntoOwnSubtree', () => {
+-    const tree = [
+-        { _id: 'folder', children: [
+-            { _id: 'sub', children: [{ _id: 'subChild' }] },
+-            { _id: 'child' },
+-        ] },
+-        { _id: 'other', children: [] },
+-    ]
+-
+-    test('dropping a folder into its own nested list is blocked', () => {
+-        expect(isDropIntoOwnSubtree(tree, 'folder', 'folder')).toBe(true)
+-    })
+-
+-    test('dropping a folder into a descendant folder\'s nested list is blocked', () => {
+-        expect(isDropIntoOwnSubtree(tree, 'folder', 'sub')).toBe(true)
+-    })
+-
+-    test('dropping a folder into another folder\'s nested list is allowed', () => {
+-        expect(isDropIntoOwnSubtree(tree, 'folder', 'other')).toBe(false)
+-    })
+-
+-    test('dropping an item into its own parent\'s nested list is allowed', () => {
+-        expect(isDropIntoOwnSubtree(tree, 'child', 'folder')).toBe(false)
+-    })
+-
+-    test('dropping at the root is allowed', () => {
+-        expect(isDropIntoOwnSubtree(tree, 'folder', undefined)).toBe(false)
+-    })
+-})
+-
+-describe('resolveSidebarDropTarget', () => {
+-    test('hovering the padding of a folder\'s nested list resolves to that folder as the parent', () => {
+-        const { nestedList } = buildSidebar()
+-        const resolved = resolveSidebarDropTarget(nestedList)
+-        expect(resolved).toMatchObject({ parentId: 'A', id: undefined, type: 'sidebar-list' })
+-    })
+-
+-    test('returns the element that should be decorated with drop styling', () => {
+-        const { nestedList } = buildSidebar()
+-        const resolved = resolveSidebarDropTarget(nestedList)
+-        expect(resolved?.element).toBe(nestedList)
+-    })
+-
+-    test('dropping on the container\'s empty padding resolves to root', () => {
+-        const { container, topLevelList } = buildSidebar()
+-        const resolved = resolveSidebarDropTarget(container)
+-        expect(resolved).toMatchObject({ parentId: undefined, id: undefined, type: 'sidebar-list' })
+-        expect(resolved?.element).toBe(topLevelList)
+-    })
+-})
+diff --git a/tests/App_test.ts b/tests/App_test.ts
+deleted file mode 100644
+index 7469382..0000000
+--- a/tests/App_test.ts
++++ /dev/null
+@@ -1,142 +0,0 @@
+-const { I } = inject()
+-
+-Feature('App')
+-
+-Before(() => {
+-    I.amOnPage('/')
+-})
+-
+-After(() => {
+-    I.usePlaywrightTo('clean up DB', async({ page }) => {
+-        await page.evaluate(() => {
+-            window.indexedDB.deleteDatabase('Restfox')
+-        })
+-    })
+-})
+-
+-Scenario('Check page title', () => {
+-    I.seeTitleEquals('Restfox')
+-})
+-
+-Scenario('Add requests', async() => {
+-    for(let i = 1; i <= 10; i++) {
+-        const requestName = `Request ${i}`
+-        I.createRequest(requestName)
+-        await I.isActiveSidebarItem(`GET${requestName}`)
+-        await I.isActiveTab(`GET ${requestName}`)
+-    }
+-})
+-
+-Scenario('Add GraphQL requests', async() => {
+-    const requestName = `GraphQL Request`
+-    I.createGraphQLRequest(requestName)
+-    await I.isActiveSidebarItem(`GQL${requestName}`)
+-    await I.isActiveTab(`POST ${requestName}`)
+-})
+-
+-Scenario('type url with query params', async() => {
+-    const queryTab = '[data-testid="request-panel-tab-Query"]'
+-
+-    I.createRequest('Request 1')
+-    I.typeInRequestPanelAddressBar('test?p1=v1&p2=v2')
+-    I.click({ pw: queryTab })
+-    let text = await I.grabTextFrom(queryTab)
+-    I.expectEqual(text.trim(), 'Query (2)')
+-
+-    const getInput = (row: number, column: number) => {
+-        return locate(`.request-panel-tabs-context > table:nth-of-type(1) > tr:nth-of-type(${row}) > td:nth-of-type(${column})`)
+-    }
+-
+-    const checkIfRowHasValues = async(row: number, values: string[]) => {
+-        for(let i = 1; i <= values.length; i++) {
+-            I.expectContain(await I.grabTextFrom(getInput(row, i)), values[i - 1])
+-        }
+-    }
+-
+-    await checkIfRowHasValues(1, ['p1', 'v1'])
+-    await checkIfRowHasValues(2, ['p2', 'v2'])
+-
+-    I.typeInRequestPanelAddressBar('', true)
+-    text = await I.grabTextFrom(queryTab)
+-    I.expectEqual(text.trim(), 'Query')
+-})
+-
+-Scenario('Send GET request', async() => {
+-    const host = 'https://httpbingo.org'
+-    const path = '/get'
+-    const queryString = '?hello=there'
+-
+-    I.createRequest('Request 1')
+-    I.typeInRequestPanelAddressBar(`${host}${path}${queryString}`)
+-    I.click('[data-testid="request-panel-address-bar__send-button"]')
+-    I.waitForElement('//*[@class="response-panel-tab"][text() = "Timeline "]', 10)
+-    I.click('//*[@class="response-panel-tab"][text() = "Timeline "]')
+-    const text = await I.grabTextFrom('[data-testid="response-panel-tab-Timeline__preview"]')
+-    I.expectContain(text, `* Preparing request to ${host}${path}${queryString}`)
+-    I.expectContain(text, `GET ${path}${queryString}`)
+-})
+-
+-Scenario('Test env var autocompletion', async() => {
+-    I.setDefaultEnvironment({
+-        cat: 'dog'
+-    })
+-
+-    I.createRequest('Env Auto Completion Test')
+-
+-    const addressBarInput = '.request-panel-address-bar .code-mirror-single-line .cm-content'
+-
+-    const clearAddressBar = async() => {
+-        I.typeInRequestPanelAddressBar('', true)
+-        I.expectEqual(await I.grabTextFrom(addressBarInput), 'Enter request URL')
+-    }
+-
+-    const checkAutocomplete = async(value: string, expected: string) => {
+-        I.typeInRequestPanelAddressBar(value)
+-        I.wait(0.5)
+-        I.pressKey('Enter')
+-        I.expectEqual(await I.grabTextFrom(addressBarInput), expected)
+-        await clearAddressBar()
+-    }
+-
+-    const checkAutocompleteInBetween = async(initialValue: string, moveCursorToAfter: string, addCharacter: string, expected: string) => {
+-        I.typeInRequestPanelAddressBar(initialValue)
+-        I.pressKey('Home')
+-        for(let i = 0; i < moveCursorToAfter.length; i++) {
+-            I.pressKey('ArrowRight')
+-        }
+-        I.type(addCharacter)
+-        I.wait(0.5)
+-        I.pressKey('Enter')
+-        I.expectEqual(await I.grabTextFrom(addressBarInput), expected)
+-        await clearAddressBar()
+-    }
+-
+-    await checkAutocomplete('other-content/c', 'other-content/{{cat}}')
+-    await checkAutocomplete('other-content/{{ca', 'other-content/{{cat}}')
+-    await checkAutocomplete('other-content/{{ ca', 'other-content/{{ cat }}')
+-    await checkAutocompleteInBetween('other-content/{{c}}/something', 'other-content/{{c', 'a', 'other-content/{{cat}}/something')
+-    await checkAutocompleteInBetween('other-content/{{ c }}/something', 'other-content/{{ c', 'a', 'other-content/{{ cat }}/something')
+-    await checkAutocompleteInBetween('{{ca}}', '{{ca', 't', '{{cat}}')
+-    await checkAutocompleteInBetween('ca}}', 'ca', 't', '{{cat}}')
+-})
+-
+-Scenario('Middle clicking a tab should not paste clipboard text into focused body', async ({ I }) => {
+-    const bodyTab = '[data-testid="request-panel-tab-Body"]';
+-
+-    I.createRequest('Tab1');
+-    I.click(bodyTab);
+-
+-    I.createGraphQLRequest('Tab2');
+-    I.fillRequestBody
+-
+-    await I.fillRequestBody('Tab2 text');
+-
+-    I.click('.code-mirror-editor .cm-content');
+-
+-    await I.middleClickTab('Tab1');
+-
+-    I.dontSee('Tab1', '.tab');
+-
+-    const currentText = await I.getRequestBodyText();
+-    I.expectEqual(currentText.trim() === 'Tab2 text', true);
+-});
+diff --git a/tests/codecept.conf.ts b/tests/codecept.conf.ts
+deleted file mode 100644
+index b40453f..0000000
+--- a/tests/codecept.conf.ts
++++ /dev/null
+@@ -1,26 +0,0 @@
+-import { setHeadlessWhen, setCommonPlugins } from '@codeceptjs/configure'
+-// turn on headless mode when running with HEADLESS=true environment variable
+-// export HEADLESS=true && npx codeceptjs run
+-setHeadlessWhen(process.env.HEADLESS)
+-
+-// enable all common plugins https://github.com/codeceptjs/configure#setcommonplugins
+-setCommonPlugins()
+-
+-export const config: CodeceptJS.MainConfig = {
+-    tests: './*_test.ts',
+-    output: './output',
+-    helpers: {
+-        Playwright: {
+-            browser: 'chromium',
+-            url: 'http://127.0.0.1:5173',
+-            show: false,
+-            waitForNavigation: 'load',
+-            waitForTimeout: 5000,
+-        },
+-        Expect: {}
+-    },
+-    include: {
+-        I: './steps_file'
+-    },
+-    name: 'tests'
+-}
+diff --git a/tests/package.json b/tests/package.json
+deleted file mode 100644
+index f72f0f8..0000000
+--- a/tests/package.json
++++ /dev/null
+@@ -1,22 +0,0 @@
+-{
+-    "name": "tests",
+-    "version": "1.0.0",
+-    "description": "e2e tests using codeceptjs",
+-    "main": "index.js",
+-    "scripts": {
+-        "test": "codeceptjs run",
+-        "allure-reports-generate": "allure generate ./output -o ./output/allure --clean"
+-    },
+-    "author": "kobenguyent",
+-    "license": "MIT",
+-    "dependencies": {
+-        "codeceptjs": "3.6.2",
+-        "playwright": "1.44.0",
+-        "@codeceptjs/allure-legacy": "1.0.2"
+-    },
+-    "devDependencies": {
+-        "@types/node": "20.12.10",
+-        "ts-node": "10.9.2",
+-        "typescript": "4.9.5"
+-    }
+-}
+diff --git a/tests/steps.d.ts b/tests/steps.d.ts
+deleted file mode 100644
+index fd0258d..0000000
+--- a/tests/steps.d.ts
++++ /dev/null
+@@ -1,11 +0,0 @@
+-/// <reference types='codeceptjs' />
+-type steps_file = typeof import('./steps_file');
+-
+-declare namespace CodeceptJS {
+-    interface SupportObject { I: I, current: any }
+-    interface Methods extends Playwright, ExpectHelper {}
+-    interface I extends ReturnType<steps_file>, WithTranslation<Methods> {}
+-    namespace Translation {
+-        interface Actions {}
+-    }
+-}
+diff --git a/tests/steps_file.ts b/tests/steps_file.ts
+deleted file mode 100644
+index 42d0f26..0000000
+--- a/tests/steps_file.ts
++++ /dev/null
+@@ -1,70 +0,0 @@
+-export = function() {
+-    return actor({
+-
+-        createRequest(requestName: string) {
+-            this.rightClick('.sidebar')
+-            this.waitForText('HTTP Request')
+-            this.click('HTTP Request')
+-            this.fillField('input[placeholder="My Request"]', requestName)
+-            this.click('Create')
+-        },
+-
+-        createGraphQLRequest(requestName: string) {
+-            this.rightClick('.sidebar')
+-            this.waitForText('GraphQL Request')
+-            this.click('GraphQL Request')
+-            this.fillField('input[placeholder="My GraphQL Request"]', requestName)
+-            this.click('Create')
+-        },
+-
+-        async isActiveSidebarItem(name: string) {
+-            const text = await this.grabTextFrom('.sidebar-item.sidebar-item-active')
+-            this.expectEqual(text.trim() === name, true)
+-        },
+-
+-        async isActiveTab(name: string) {
+-            const text = await this.grabTextFrom('.tab.tab-active')
+-            this.expectEqual(text.replace('⋮', '').trim() === name, true)
+-        },
+-
+-        typeInRequestPanelAddressBar(url: string, clear = false) {
+-            this.click({ pw: '[data-testid="request-panel-address-bar"]' })
+-
+-            if(clear) {
+-                this.pressKey(['CommandOrControl', 'A'])
+-                this.pressKey('Backspace')
+-            }
+-
+-            this.type(url)
+-        },
+-
+-        setDefaultEnvironment(obj: any) {
+-            this.click('.navbar-item > a')
+-            this.fillField('.code-mirror-editor .cm-content', JSON.stringify(obj))
+-            this.click('Done')
+-        },
+-
+-        async middleClickTab(name: string) {
+-            await this.usePlaywrightTo('middle click tab', async ({ page }) => {
+-                await page.locator('.tab').filter({ hasText: name }).click({ button: 'middle' });
+-            });
+-        },
+-
+-        async fillRequestBody(text: string) {
+-            this.click('.code-mirror-editor .cm-content')
+-            this.pressKey(['CommandOrControl', 'A'])
+-            this.pressKey('Backspace')
+-            this.type(text)
+-        },
+-
+-        async getRequestBodyText() {
+-            return await this.grabTextFrom('.code-mirror-editor .cm-content')
+-        },
+-
+-        async selectAllAndCopy() {
+-            this.click('.code-mirror-editor .cm-content')
+-            this.pressKey(['CommandOrControl', 'A'])
+-            this.pressKey(['CommandOrControl', 'C'])
+-        },
+-    })
+-}
+diff --git a/tests/tsconfig.json b/tests/tsconfig.json
+deleted file mode 100644
+index e8677dd..0000000
+--- a/tests/tsconfig.json
++++ /dev/null
+@@ -1,16 +0,0 @@
+-{
+-    "ts-node": {
+-        "files": true
+-    },
+-    "compilerOptions": {
+-        "target": "es2018",
+-        "lib": ["es2018", "DOM"],
+-        "esModuleInterop": true,
+-        "module": "commonjs",
+-        "strictNullChecks": false,
+-        "types": ["codeceptjs", "node"],
+-        "declaration": true,
+-        "skipLibCheck": true
+-    },
+-    "exclude": ["node_modules"]
+-}

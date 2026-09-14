@@ -1,0 +1,611 @@
+diff --git a/src/app.html b/src/app.html
+index afa0cf0..c397148 100644
+--- a/src/app.html
++++ b/src/app.html
+@@ -17,6 +17,22 @@
+ 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+ 		<meta name="apple-mobile-web-app-title" content="Loot Raiders" />
+ 
++		<script>
++			// Repair-Bench instrumentation: deterministic RNG so loot drops are reproducible.
++			(function () {
++				function mulberry32(a) {
++					return function () {
++						a |= 0;
++						a = (a + 0x6d2b79f5) | 0;
++						var t = Math.imul(a ^ (a >>> 15), 1 | a);
++						t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++						return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++					};
++				}
++				Math.random = mulberry32(0x5eed1);
++			})();
++		</script>
++
+ 		%sveltekit.head%
+ 	</head>
+ 	<body data-sveltekit-preload-data="hover">
+diff --git a/src/lib/components/hud/toast.svelte b/src/lib/components/hud/toast.svelte
+index edd967a..c5c3af3 100644
+--- a/src/lib/components/hud/toast.svelte
++++ b/src/lib/components/hud/toast.svelte
+@@ -51,6 +51,8 @@
+ 
+ <button
+ 	type="button"
++	data-testid="toast"
++	data-kind={kind}
+ 	onclick={() => onclose?.()}
+ 	in:fly={{ x: 6, duration: 380, easing: cubicOut }}
+ 	out:fade={{ duration: 300 }}
+diff --git a/src/lib/components/hud/toasts.svelte b/src/lib/components/hud/toasts.svelte
+index be5f8e5..50957f6 100644
+--- a/src/lib/components/hud/toasts.svelte
++++ b/src/lib/components/hud/toasts.svelte
+@@ -7,7 +7,7 @@
+ </script>
+ 
+ {#if !device.isCoarsePointer}
+-	<div class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-3">
++	<div class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-3" data-testid="toasts">
+ 		{#each notifications.toasts as toast (toast.id)}
+ 			<div animate:flip={{ duration: 250 }}>
+ 				<Toast
+diff --git a/src/lib/components/inventory/context-menu.svelte b/src/lib/components/inventory/context-menu.svelte
+index 595a74b..b3c24b9 100644
+--- a/src/lib/components/inventory/context-menu.svelte
++++ b/src/lib/components/inventory/context-menu.svelte
+@@ -34,6 +34,7 @@
+ 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+ 	<div
+ 		{@attach clickOutside(close)}
++		data-testid="ctx-menu"
+ 		class="fixed z-[100] flex w-32 flex-col rounded-sm border border-modal-border bg-modal pt-1 shadow-xl md:w-36 md:pt-1.5 lg:w-40 xl:w-44 2xl:w-48 3xl:w-56 pointer-coarse:pb-1"
+ 		style="top: {menuData.y}px; left: {menuData.x}px;"
+ 		oncontextmenu={(e) => e.preventDefault()}
+@@ -58,6 +59,7 @@
+ 		{#if moveTargetId && !batchMode}
+ 			<button
+ 				class="flex w-full px-2 py-1 text-left text-[10px] font-medium text-modal-foreground hover:bg-accent md:px-2.5 md:py-1.5 md:text-[11px] lg:px-3 lg:text-xs 2xl:text-[13px] 3xl:px-3.5 3xl:text-sm"
++				data-testid="ctx-move"
+ 				onclick={() => {
+ 					inventory.quickMove(menuData.slot.location);
+ 					close();
+@@ -70,6 +72,7 @@
+ 		{#if def.maxStack && menuData.slot.item.count > 1 && !batchMode}
+ 			<button
+ 				class="flex w-full px-2 py-1 text-left text-[10px] font-medium text-modal-foreground hover:bg-accent md:px-2.5 md:py-1.5 md:text-[11px] lg:px-3 lg:text-xs 2xl:text-[13px] 3xl:px-3.5 3xl:text-sm"
++				data-testid="ctx-split"
+ 				onclick={() => {
+ 					inventory.splitStack(menuData.slot.location);
+ 					close();
+@@ -84,6 +87,7 @@
+ 		<button
+ 			class="flex w-full px-2 py-1 text-left text-[10px] font-medium text-modal-foreground hover:bg-accent disabled:cursor-not-allowed disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent md:px-2.5 md:py-1.5 md:text-[11px] lg:px-3 lg:text-xs 2xl:text-[13px] 3xl:px-3.5 3xl:text-sm"
+ 			disabled={dropDisabled}
++			data-testid="ctx-drop"
+ 			onclick={() => {
+ 				if (batchMode) {
+ 					inventory.dropItems(batchTargets.dropLocations);
+@@ -101,6 +105,7 @@
+ 			<button
+ 				class="flex w-full px-2 py-1 text-left text-[10px] font-medium text-modal-foreground hover:bg-accent-alt disabled:cursor-not-allowed disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent md:px-2.5 md:py-1.5 md:text-[11px] lg:px-3 lg:text-xs 2xl:text-[13px] 3xl:px-3.5 3xl:text-sm"
+ 				disabled={recycleDisabled || batchTargets.recycleLocations.length === 0}
++				data-testid="ctx-recycle"
+ 				onclick={() => {
+ 					overlay.openRecycleModal(batchTargets.recycleLocations);
+ 					close();
+@@ -112,6 +117,7 @@
+ 			<button
+ 				class="flex w-full px-2 py-1 text-left text-[10px] font-medium text-modal-foreground hover:bg-accent-alt disabled:cursor-not-allowed disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent md:px-2.5 md:py-1.5 md:text-[11px] lg:px-3 lg:text-xs 2xl:text-[13px] 3xl:px-3.5 3xl:text-sm"
+ 				disabled={recycleDisabled}
++				data-testid="ctx-recycle"
+ 				onclick={() => {
+ 					overlay.openRecycleModal([menuData.slot.location]);
+ 					close();
+diff --git a/src/lib/components/inventory/drop-zone.svelte b/src/lib/components/inventory/drop-zone.svelte
+index 95711aa..9afddf9 100644
+--- a/src/lib/components/inventory/drop-zone.svelte
++++ b/src/lib/components/inventory/drop-zone.svelte
+@@ -13,7 +13,7 @@
+ 	const isHovered = $derived(isDragging && interaction.isHovered(trashLocation));
+ </script>
+ 
+-<div class="relative w-full" {@attach droppable(trashSlotState)}>
++<div class="relative w-full" data-testid="dropzone" {@attach droppable(trashSlotState)}>
+ 	<div
+ 		class="pointer-events-none absolute -inset-1 rounded-xl border-2 transition-colors duration-150
+ 		{isHovered
+diff --git a/src/lib/components/inventory/item-slot.svelte b/src/lib/components/inventory/item-slot.svelte
+index 46b2201..18e7300 100644
+--- a/src/lib/components/inventory/item-slot.svelte
++++ b/src/lib/components/inventory/item-slot.svelte
+@@ -31,6 +31,7 @@
+ <div
+ 	class="{className} h-full w-full"
+ 	data-tut-item={item.defId}
++	data-testid={`item-${item.defId}`}
+ 	{@attach droppable(slotState)}
+ 	{@attach !isAugment && draggable(slotState)}
+ >
+diff --git a/src/lib/components/inventory/recycle-modal.svelte b/src/lib/components/inventory/recycle-modal.svelte
+index cd7ad94..26b9bb5 100644
+--- a/src/lib/components/inventory/recycle-modal.svelte
++++ b/src/lib/components/inventory/recycle-modal.svelte
+@@ -59,6 +59,7 @@
+ 	<!-- svelte-ignore a11y_click_events_have_key_events -->
+ 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+ 	<div
++		data-testid="recycle-modal"
+ 		class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+ 		transition:fade={{ duration: 150 }}
+ 		onclick={handleClose}
+@@ -124,12 +125,14 @@
+ 			>
+ 				<button
+ 					class="flex h-8 flex-1 items-center justify-center rounded-full bg-secondary text-[9px] font-bold tracking-widest text-white transition-colors hover:bg-secondary-hover active:scale-[0.98] md:h-9 md:text-[10px] lg:h-10 lg:text-[11px] 2xl:h-11 2xl:text-[13px] 3xl:h-12 3xl:text-[15px]"
++					data-testid="recycle-cancel"
+ 					onclick={handleClose}
+ 				>
+ 					CANCEL
+ 				</button>
+ 				<button
+ 					class="flex h-8 flex-1 items-center justify-center rounded-full bg-primary text-[9px] font-bold tracking-widest text-primary-foreground transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 md:h-9 md:text-[10px] lg:h-10 lg:text-[11px] 2xl:h-11 2xl:text-[13px] 3xl:h-12 3xl:text-[15px]"
++					data-testid="recycle-confirm"
+ 					disabled={resources.length === 0}
+ 					onclick={handleConfirm}
+ 				>
+diff --git a/src/lib/components/inventory/slot.svelte b/src/lib/components/inventory/slot.svelte
+index 23da255..2504d4f 100644
+--- a/src/lib/components/inventory/slot.svelte
++++ b/src/lib/components/inventory/slot.svelte
+@@ -38,6 +38,7 @@
+ <div
+ 	class="{className}  relative overflow-hidden rounded-lg"
+ 	data-tut-slot={location.type === 'slot' ? `${location.storageId}-${location.index}` : null}
++	data-testid={location.type === 'slot' ? `slot-${location.storageId}-${location.index}` : undefined}
+ >
+ 	{@render gradientBorder()}
+ 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+diff --git a/src/lib/components/leaderboard/leaderboard-modal.svelte b/src/lib/components/leaderboard/leaderboard-modal.svelte
+index 9e66ccd..3ffbcdd 100644
+--- a/src/lib/components/leaderboard/leaderboard-modal.svelte
++++ b/src/lib/components/leaderboard/leaderboard-modal.svelte
+@@ -66,6 +66,7 @@
+ 	<!-- svelte-ignore a11y_click_events_have_key_events -->
+ 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+ 	<div
++		data-testid="lb-modal"
+ 		class="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+ 		transition:fade={{ duration: 150 }}
+ 		onclick={handleClose}
+@@ -92,6 +93,7 @@
+ 				<button
+ 					type="button"
+ 					aria-label="Close"
++					data-testid="lb-close"
+ 					class="flex size-8 items-center justify-center rounded-full border border-hairline bg-white/5 text-[#c6bcb0] transition-colors hover:border-accent/40 hover:text-accent active:scale-90"
+ 					onclick={handleClose}
+ 				>
+@@ -147,6 +149,7 @@
+ 					{#each displayRows as row (row.placeholder ? `empty-${row.rank}` : row.entry.playerId)}
+ 						{#if row.placeholder}
+ 							<div
++								data-testid="lb-row"
+ 								class="grid grid-cols-[34px_1fr_72px_50px] items-center gap-3 rounded-md border border-transparent bg-[rgba(24,28,34,0.32)] px-3.5 py-2.5 opacity-40 md:grid-cols-[48px_1fr_100px_68px]"
+ 							>
+ 								<span class="pl-1 font-mono text-[12px] text-fg-faint tabular-nums md:text-[15px]">
+@@ -180,6 +183,7 @@
+ 							{@const podium = row.isMine || row.rank <= 3}
+ 							<div
+ 								data-entry-id={row.entry.playerId}
++								data-testid="lb-row"
+ 								class="grid grid-cols-[34px_1fr_72px_50px] items-center gap-3 rounded-md px-3.5 py-1.5 transition-colors md:grid-cols-[48px_1fr_100px_68px] lg:py-2.5 {rowClass}"
+ 							>
+ 								<div class="flex items-center">
+diff --git a/src/lib/components/menu/game-over-stats.svelte b/src/lib/components/menu/game-over-stats.svelte
+index dde60f1..d55c3d3 100644
+--- a/src/lib/components/menu/game-over-stats.svelte
++++ b/src/lib/components/menu/game-over-stats.svelte
+@@ -149,6 +149,7 @@
+ {/snippet}
+ 
+ <div
++	data-testid="go-report"
+ 	in:fade|global={{ duration: 240 }}
+ 	class="relative w-[calc(100vw-1rem)] max-w-[420px] overflow-hidden rounded-md border border-accent/20 bg-gradient-to-b from-panel-top to-panel-bottom font-sans text-fg-body md:max-w-[680px] lg:max-w-[760px] 3xl:max-w-[840px] landscape-narrow:max-w-[540px] landscape-mid:max-w-[620px]"
+ >
+@@ -203,7 +204,8 @@
+ 			></span>
+ 
+ 			<span
+-				class="text-[80px] leading-[0.9] font-black tracking-[-0.06em] font-stretch-condensed md:text-[100px] lg:text-[130px] 3xl:text-[150px] landscape-narrow:text-[70px] landscape-mid:text-[80px] {toneStyle.text}"
++				data-testid="go-grade"
++			class="text-[80px] leading-[0.9] font-black tracking-[-0.06em] font-stretch-condensed md:text-[100px] lg:text-[130px] 3xl:text-[150px] landscape-narrow:text-[70px] landscape-mid:text-[80px] {toneStyle.text}"
+ 				style="font-family: ui-sans-serif, Impact, 'Arial Black', sans-serif; text-shadow: 0 0 24px {toneStyle.glow};"
+ 			>
+ 				{tier.grade}
+@@ -219,6 +221,7 @@
+ 		<div class="flex flex-col gap-0.5 lg:gap-2.5">
+ 			<div>
+ 				<h1
++					data-testid="go-title"
+ 					class="text-2xl leading-none font-black tracking-[-0.02em] text-fg uppercase md:text-3xl lg:text-[32px] 3xl:text-[36px]"
+ 				>
+ 					{tier.title}
+@@ -287,6 +290,7 @@
+ 			>
+ 				<input
+ 					id="leaderboard-nickname"
++					data-testid="go-nick-input"
+ 					type="text"
+ 					bind:value={nicknameInput}
+ 					autocomplete="off"
+@@ -312,6 +316,7 @@
+ 
+ 				<button
+ 					type="submit"
++					data-testid="go-nick-save"
+ 					disabled={!canSubmit}
+ 					class="m-1.5 flex items-center gap-2 rounded-md border-none bg-gradient-to-b from-primary-top to-primary-bottom px-4 font-sans text-[12px] font-bold tracking-[0.04em] text-primary-ink transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 md:px-5.5 md:text-[13px]"
+ 				>
+@@ -356,6 +361,7 @@
+ 	>
+ 		<button
+ 			type="button"
++			data-testid="go-restart"
+ 			onclick={restartGame}
+ 			class="group flex items-center justify-center gap-2.5 border-r border-hairline bg-row py-2 text-fg transition-colors hover:bg-white/5 active:scale-[0.99] md:py-2.5 lg:py-4"
+ 		>
+@@ -376,6 +382,7 @@
+ 		{:else}
+ 			<button
+ 				type="button"
++				data-testid="go-submit"
+ 				onclick={onSubmitClick}
+ 				class="flex items-center justify-center gap-2.5 bg-gradient-to-b from-primary-top to-primary-bottom py-2 text-primary-ink transition-[filter] hover:brightness-105 active:scale-[0.99] md:py-2.5 lg:py-4"
+ 			>
+diff --git a/src/lib/components/menu/menu-desktop.svelte b/src/lib/components/menu/menu-desktop.svelte
+index 675f423..e53a039 100644
+--- a/src/lib/components/menu/menu-desktop.svelte
++++ b/src/lib/components/menu/menu-desktop.svelte
+@@ -55,7 +55,7 @@
+ <div class="pointer-coarse:gap-1.2 flex flex-col gap-1.5 lg:gap-2 3xl:gap-4 4xl:gap-3.5">
+ 	{#if isIdle}
+ 		<button
+-			onclick={play}
++			onclick={play} data-testid="menu-play"
+ 			class="group flex w-full items-center gap-3 rounded-md bg-gradient-to-b from-primary-top to-primary-bottom px-5 py-4 text-left font-bold transition-all hover:brightness-105 active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4.5 3xl:gap-4 3xl:px-7 3xl:py-5 4xl:px-8 4xl:py-5.5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<Play
+@@ -72,7 +72,7 @@
+ 		</button>
+ 
+ 		<button
+-			onclick={openLeaderboard}
++			onclick={openLeaderboard} data-testid="menu-leaderboard"
+ 			class="group flex w-full items-center gap-3 rounded-md border border-hairline bg-row px-5 py-3.5 text-left transition-all hover:bg-accent-tint active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4 3xl:gap-4 3xl:px-7 3xl:py-4.5 4xl:px-8 4xl:py-5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<LeaderboardIcon
+@@ -97,7 +97,7 @@
+ 		</button>
+ 	{:else}
+ 		<button
+-			onclick={resume}
++			onclick={resume} data-testid="menu-resume"
+ 			class="group flex w-full items-center gap-3 rounded-md bg-gradient-to-b from-primary-top to-primary-bottom px-5 py-4 text-left font-bold transition-all hover:brightness-105 active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4.5 3xl:gap-4 3xl:px-7 3xl:py-5 4xl:px-8 4xl:py-5.5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<Play
+@@ -114,7 +114,7 @@
+ 		</button>
+ 
+ 		<button
+-			onclick={restart}
++			onclick={restart} data-testid="menu-restart"
+ 			class="group flex w-full items-center gap-3 rounded-md border border-hairline bg-row px-5 py-3.5 text-left transition-all hover:bg-accent-tint active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4 3xl:gap-4 3xl:px-7 3xl:py-4.5 4xl:px-8 4xl:py-5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<Restart
+@@ -127,7 +127,7 @@
+ 		</button>
+ 
+ 		<button
+-			onclick={exit}
++			onclick={exit} data-testid="menu-exit"
+ 			class="group flex w-full items-center gap-3 rounded-md border border-hairline bg-row px-5 py-3.5 text-left transition-all hover:bg-accent-tint active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4 3xl:gap-4 3xl:px-7 3xl:py-4.5 4xl:px-8 4xl:py-5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<Exit
+@@ -145,7 +145,7 @@
+ 
+ 	{#if isIdle}
+ 		<button
+-			onclick={howToPlay}
++			onclick={howToPlay} data-testid="menu-howto"
+ 			class="group flex w-full items-center gap-3 rounded-md border border-hairline bg-row px-5 py-3.5 text-left transition-all hover:bg-accent-tint active:scale-[0.99] 2xl:gap-3.5 2xl:px-6 2xl:py-4 3xl:gap-4 3xl:px-7 3xl:py-4.5 4xl:px-8 4xl:py-5 pointer-coarse:gap-2 pointer-coarse:px-3.5 pointer-coarse:py-2.5"
+ 		>
+ 			<Video
+diff --git a/src/lib/components/menu/menu-overlay.svelte b/src/lib/components/menu/menu-overlay.svelte
+index 839b3be..2d34153 100644
+--- a/src/lib/components/menu/menu-overlay.svelte
++++ b/src/lib/components/menu/menu-overlay.svelte
+@@ -17,6 +17,7 @@
+ 
+ {#if !gameLoop.inSession}
+ 	<div
++		data-testid="menu-overlay"
+ 		class="fixed inset-0 z-30"
+ 		transition:fade|global={{ duration: gameLoop.status === 'idle' ? 300 : 0 }}
+ 	>
+diff --git a/src/lib/components/quest/quest-bar.svelte b/src/lib/components/quest/quest-bar.svelte
+index de18d90..641c43e 100644
+--- a/src/lib/components/quest/quest-bar.svelte
++++ b/src/lib/components/quest/quest-bar.svelte
+@@ -86,6 +86,7 @@
+ <div
+ 	class="relative z-10 flex w-36 flex-col rounded-t-lg rounded-b-none md:w-40 lg:w-44 2xl:w-56 3xl:w-64 4xl:w-72"
+ 	data-tut="quest-bar"
++	data-testid="quest-bar"
+ >
+ 	{#if gameLoop.status !== 'idle'}
+ 		<div
+@@ -135,6 +136,7 @@
+ 				<div
+ 					class="stage-item flex w-full justify-center transition-opacity duration-500"
+ 					style="--i: {i}"
++					data-testid={`quest-item-${i}`}
+ 					class:opacity-60={item.matched}
+ 				>
+ 					{#if showAsWeaponLayout}
+diff --git a/src/lib/components/quest/quest-widget.svelte b/src/lib/components/quest/quest-widget.svelte
+index 6682c72..56f893a 100644
+--- a/src/lib/components/quest/quest-widget.svelte
++++ b/src/lib/components/quest/quest-widget.svelte
+@@ -17,6 +17,7 @@
+ 		type="button"
+ 		{onclick}
+ 		aria-label="Open quests"
++		data-testid="quest-widget-open"
+ 		class="group relative flex w-full items-center gap-2 rounded-2xl bg-[#0c101c]/80 px-2 py-1.5 ring-1 ring-white/5 backdrop-blur-md transition-transform active:scale-[0.98]"
+ 	>
+ 		{#if quest.totalQuestsCompleted > 0}
+diff --git a/src/lib/components/tutorial/coachmark.svelte b/src/lib/components/tutorial/coachmark.svelte
+index 6f0ce74..e61d839 100644
+--- a/src/lib/components/tutorial/coachmark.svelte
++++ b/src/lib/components/tutorial/coachmark.svelte
+@@ -188,7 +188,7 @@
+ 				{@render progress()}
+ 				{#if tutorial.isActionStep}
+ 					<button
+-						onclick={skip}
++						onclick={skip} data-testid="tut-skip"
+ 						class="shrink-0 font-mono text-[10px] font-medium tracking-[0.1em] text-accent uppercase transition-colors active:text-accent/70"
+ 					>
+ 						Skip step ›
+@@ -216,7 +216,7 @@
+ 
+ 				{#if !tutorial.isActionStep}
+ 					<button
+-						onclick={go}
++						onclick={go} data-testid="tut-cta"
+ 						class="shrink-0 self-center rounded-md bg-primary px-4 py-1.5 font-['Saira_Condensed'] text-sm font-extrabold tracking-wide whitespace-nowrap text-primary-foreground transition-all active:scale-[0.99]"
+ 					>
+ 						{tutorial.step.cta}
+@@ -226,7 +226,7 @@
+ 
+ 			<div class="mt-1 flex justify-end">
+ 				<button
+-					onclick={skipAll}
++					onclick={skipAll} data-testid="tut-skip-all"
+ 					class="shrink-0 font-mono text-[8px] font-medium tracking-[0.1em] text-[#8291a3] uppercase underline decoration-dotted underline-offset-2 transition-colors active:text-[#c3ccd8]"
+ 				>
+ 					Skip tutorial
+@@ -275,21 +275,21 @@
+ 				</p>
+ 				<div class="mt-2.5 flex w-full items-center justify-between gap-2">
+ 					<button
+-						onclick={skipAll}
++						onclick={skipAll} data-testid="tut-skip-all"
+ 						class="shrink-0 font-mono text-[10px] font-medium tracking-[0.1em] text-[#8291a3] uppercase underline decoration-dotted underline-offset-2 transition-colors hover:text-[#c3ccd8]"
+ 					>
+ 						Skip tutorial
+ 					</button>
+ 					{#if tutorial.isActionStep}
+ 						<button
+-							onclick={skip}
++							onclick={skip} data-testid="tut-skip"
+ 							class="shrink-0 font-mono text-[10px] font-medium tracking-[0.1em] text-accent uppercase transition-colors hover:text-accent/70"
+ 						>
+ 							Skip step ›
+ 						</button>
+ 					{:else}
+ 						<button
+-							onclick={go}
++							onclick={go} data-testid="tut-cta"
+ 							class="shrink-0 rounded-md bg-primary px-4 py-1.5 font-['Saira_Condensed'] text-sm font-extrabold tracking-wide text-primary-foreground transition-all hover:bg-primary-hover active:scale-[0.99]"
+ 						>
+ 							{tutorial.step.cta}
+@@ -303,7 +303,7 @@
+ 
+ {#snippet progress()}
+ 	<span class="shrink-0 font-mono text-[10px] font-medium tracking-[0.16em] text-accent uppercase"
+-		>Step {tutorial.stepNumber}/{tutorial.total}</span
++		 data-testid="tut-step">Step {tutorial.stepNumber}/{tutorial.total}</span
+ 	>
+ 	<div class="flex flex-1 items-center gap-[5px]">
+ 		{#each segments as i (i)}
+diff --git a/src/lib/store/game.svelte.ts b/src/lib/store/game.svelte.ts
+index 95d647f..d8e126f 100644
+--- a/src/lib/store/game.svelte.ts
++++ b/src/lib/store/game.svelte.ts
+@@ -1,4 +1,6 @@
+ import { setContext, getContext } from 'svelte';
++import { browser } from '$app/environment';
++import { formatTime } from '$lib/utils';
+ import { Inventory } from './inventory.svelte';
+ import { Interaction } from './interaction.svelte';
+ import { Overlay } from './overlay.svelte';
+@@ -51,5 +53,102 @@ export class Game {
+ }
+ 
+ const GAME_KEY = Symbol('GAME');
+-export const initGame = () => setContext(GAME_KEY, new Game());
++
++// Repair-Bench instrumentation: read-only probe bridge for black-box checkpoints.
++function registerProbes(game: Game): void {
++	let maxTimeLeft = 0;
++	$effect.root(() => {
++		$effect(() => {
++			const t = game.gameLoop.timeLeft;
++			if (t > maxTimeLeft) maxTimeLeft = t;
++		});
++	});
++
++	const read = () => {
++		const gl = game.gameLoop;
++		const inv = game.inventory;
++		const q = game.quest;
++		const loot = game.loot;
++		const tut = game.tutorial;
++		const storages: Record<string, ({ defId: string; count: number; match: boolean } | null)[]> = {};
++		for (const sid of ['lootBack', 'backpack', 'weapon', 'augment', 'shield'] as const) {
++			const size = inv.getStorageSize(sid);
++			const arr: ({ defId: string; count: number; match: boolean } | null)[] = [];
++			for (let i = 0; i < size; i++) {
++				const it = inv.getItem({ type: 'slot', storageId: sid, index: i });
++				arr.push(it ? { defId: it.defId, count: it.count, match: !!it.match } : null);
++			}
++			storages[sid] = arr;
++		}
++		let ftueSeen = false;
++		try {
++			ftueSeen = window.localStorage.getItem('lr_ftue_v1') === '1';
++		} catch {}
++		return {
++			status: gl.status,
++			timeLeft: gl.timeLeft,
++			elapsedTime: gl.elapsedTime,
++			shieldTimeBonus: gl.shieldTimeBonus,
++			questTimeBonus: gl.questTimeBonus,
++			maxTimeLeft,
++			chestsOpened: loot.chestsOpened,
++			lootPhase: loot.phase,
++			lootCooldown: loot.cooldown,
++			currentStage: q.currentStage,
++			stageName: q.stageDef.name,
++			questsTotal: q.total,
++			questsCompleted: q.completed,
++			totalQuestsCompleted: q.totalQuestsCompleted,
++			stageCompleted: q.stageCompleted,
++			stagesCleared: q.stagesCleared,
++			questItems: q.items.map((i) => ({ defId: i.defId, count: i.count, matched: i.matched })),
++			totalExtract: inv.totalExtract,
++			totalWeight: inv.totalWeight,
++			maxWeight: inv.maxWeight,
++			weightMultiplier: inv.weightMultiplier,
++			scoredExtract: inv.scoredExtract,
++			isOverweight: inv.isOverweight,
++			backpackSize: inv.getStorageSize('backpack'),
++			augmentDefId: inv.augmentItem?.defId ?? null,
++			shieldDefId: inv.shieldItem?.defId ?? null,
++			upgradePulse: game.augment.upgradePulse,
++			recyclePulse: inv.recyclePulse,
++			selectionCount: game.selection.ids.size,
++			storages,
++			toasts: game.notifications.toasts.map((t) => ({
++				kind: t.kind,
++				label: t.label,
++				message: t.message ?? null,
++				amount: t.amount ?? null
++			})),
++			overlay: {
++				leaderboard: game.overlay.leaderboard,
++				questSheet: game.overlay.questSheet,
++				recycleModal: game.overlay.recycleModal !== null,
++				contextMenu: game.overlay.contextMenu !== null,
++				augmentPanel: game.overlay.augmentPanel !== null
++			},
++			tutorial: {
++				active: tut.active,
++				index: tut.index,
++				stepId: tut.step?.id ?? null,
++				stepNumber: tut.stepNumber,
++				total: tut.total
++			},
++			nickname: game.leaderboard.nickname,
++			ftueSeen
++		};
++	};
++
++	(window as unknown as Record<string, unknown>).__lr = read;
++	(window as unknown as Record<string, unknown>).__lrGame = game;
++	(window as unknown as Record<string, unknown>).__lrFormat = formatTime;
++}
++
++export const initGame = () => {
++	const game = new Game();
++	setContext(GAME_KEY, game);
++	if (browser) registerProbes(game);
++	return game;
++};
+ export const getGameContext = () => getContext<Game>(GAME_KEY);
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 4be77b1..5e5cc4b 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -80,7 +80,8 @@
+ 									>Next</span
+ 								>
+ 								<span
+-									class="font-mono text-[7px] font-black whitespace-pre text-cyan-400 tabular-nums xl:text-[11px] 2xl:text-xs 3xl:text-[13px] 4xl:text-[14px]"
++									data-testid="hud-cooldown"
++								class="font-mono text-[7px] font-black whitespace-pre text-cyan-400 tabular-nums xl:text-[11px] 2xl:text-xs 3xl:text-[13px] 4xl:text-[14px]"
+ 								>
+ 									{Math.ceil(loot.cooldown).toString().padStart(2, ' ')}s
+ 								</span>
+@@ -91,6 +92,7 @@
+ 							<button
+ 								type="button"
+ 								data-tut="open-now"
++						data-testid="loot-open-now"
+ 								onclick={() => gameLoop.inSession && loot.next()}
+ 								aria-label="Open loot now"
+ 								class="group flex cursor-pointer items-center gap-1 transition-opacity hover:opacity-90 2xl:gap-1.5 4xl:gap-2 pointer-coarse:rounded-md pointer-coarse:bg-cyan-400/10 pointer-coarse:px-1.5 pointer-coarse:py-0.5 pointer-coarse:ring-1 pointer-coarse:ring-cyan-400/30 pointer-coarse:active:scale-95"
+@@ -221,6 +223,7 @@
+ 						audio.play('click');
+ 						gameLoop.pause();
+ 					}}
++					data-testid="hud-pause"
+ 					aria-label="Pause"
+ 					class="flex cursor-pointer items-center justify-center rounded-md bg-white/5 px-1.5 py-1 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-white/90 active:scale-95"
+ 				>
+@@ -240,6 +243,7 @@
+ 
+ 			<span
+ 				data-tut="timer"
++			data-testid="hud-timer"
+ 				class="relative inline-block font-mono text-[10px] font-bold tracking-widest transition-colors duration-300 xl:text-[11px] 2xl:text-xs 3xl:text-[13px] 4xl:text-[14px] {gameLoop.timeLeft <
+ 				10
+ 					? 'text-red-400'
+@@ -273,6 +277,7 @@
+ 						class="size-3 object-contain 2xl:size-3.5 3xl:size-4 4xl:size-5"
+ 					/>
+ 					<span
++						data-testid="hud-extract"
+ 						class="inline-block min-w-[6ch] text-center font-mono text-[10px] font-black tabular-nums transition-colors duration-300 xl:text-[11px] 2xl:text-xs 3xl:text-[13px] 4xl:text-[14px] {overweight
+ 							? 'text-amber-400'
+ 							: 'text-white'}"
+@@ -281,6 +286,7 @@
+ 					</span>
+ 					{#if overweight}
+ 						<span
++							data-testid="hud-penalty"
+ 							class="font-mono text-[8px] font-black text-red-400 tabular-nums xl:text-[9px] 2xl:text-[10px] 3xl:text-[11px] 4xl:text-[12px]"
+ 						>
+ 							−{penaltyPct}%
+@@ -292,6 +298,7 @@
+ 
+ 			<div class="flex items-center gap-1.5 2xl:gap-2 4xl:gap-2.5">
+ 				<div
++					data-testid="hud-weight"
+ 					class="relative flex items-center gap-1 overflow-hidden rounded bg-black/40 px-2 py-0.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] ring-1 2xl:gap-1.5 2xl:px-2.5 4xl:gap-2 4xl:px-3 {overweight
+ 						? 'ring-red-500/70'
+ 						: 'ring-white/10'}"

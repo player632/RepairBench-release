@@ -1,0 +1,162 @@
+diff --git a/src/lib/editor/CanvasNode.svelte b/src/lib/editor/CanvasNode.svelte
+index 59038e5..58f03f2 100644
+--- a/src/lib/editor/CanvasNode.svelte
++++ b/src/lib/editor/CanvasNode.svelte
+@@ -54,7 +54,7 @@
+   }
+ 
+   function click(event: MouseEvent) {
+-    if (preview) return;
++    if (!preview) return;
+     event.stopPropagation();
+     onPrototypeClick?.(node.id);
+   }
+diff --git a/src/lib/editor/Inspector.svelte b/src/lib/editor/Inspector.svelte
+index ccf3d40..a56b88a 100644
+--- a/src/lib/editor/Inspector.svelte
++++ b/src/lib/editor/Inspector.svelte
+@@ -19,7 +19,7 @@
+   const node = $derived(selected.length === 1 ? selected[0] : null);
+   const layerBlur = $derived(node?.effects?.find((effect) => effect.type === "layer-blur"));
+   const supportsCornerRadius = $derived(node?.type === "rectangle" || node?.type === "frame" || node?.type === "image");
+-  const frames = Object.values(session.document.nodes).filter((item) => item.type === "frame");
++  const frames = $derived(Object.values(session.document.nodes).filter((item) => item.type === "frame"));
+   const presets = [
+     { category: "Phone", items: [["iPhone 17", 402, 874], ["iPhone 16 & 17 Pro", 402, 874], ["iPhone 16", 393, 852], ["iPhone 16 & 17 Pro Max", 440, 956], ["iPhone 16 Plus", 430, 932], ["Android Compact", 412, 917]] },
+     { category: "Tablet", items: [["iPad mini", 744, 1133], ["iPad Pro 11\"", 834, 1194], ["Surface Pro", 912, 1368]] },
+diff --git a/src/lib/editor/LeftPanel.svelte b/src/lib/editor/LeftPanel.svelte
+index 16a46d3..a682106 100644
+--- a/src/lib/editor/LeftPanel.svelte
++++ b/src/lib/editor/LeftPanel.svelte
+@@ -22,7 +22,7 @@
+   let layerViewportHeight = $state(400);
+   const layerRowHeight = 31;
+   const layerOverscan = 8;
+-  const icons = $derived(searchIcons(query, 120, iconCatalog));
++  const icons = $derived(searchIcons(query, 120, $iconCatalog));
+   $effect(() => { if (session.leftTab === "assets" && !$iconCatalog) void ensureIconCatalog(); });
+   const flatLayers = $derived.by(() => {
+     const rows: Array<{ id: string; depth: number }> = [];
+@@ -34,7 +34,7 @@
+         node.childIds.forEach((childId) => visit(childId, depth + 1));
+       }
+     };
+-    [...session.document.rootIds].forEach((id) => visit(id, 0));
++    [...session.document.rootIds].reverse().forEach((id) => visit(id, 0));
+     return rows;
+   });
+   const layerWindow = $derived.by(() => {
+diff --git a/src/lib/editor/PrototypePreview.svelte b/src/lib/editor/PrototypePreview.svelte
+index baddd67..cead9af 100644
+--- a/src/lib/editor/PrototypePreview.svelte
++++ b/src/lib/editor/PrototypePreview.svelte
+@@ -10,14 +10,14 @@
+   const frame = $derived(currentFrameId ? session.document.nodes[currentFrameId] : null);
+ 
+   $effect(() => {
+-    if (!currentFrameId) currentFrameId = availableFrames[0]?.id ?? session.document.prototypeStartFrameId ?? null;
++    if (!currentFrameId) currentFrameId = session.document.prototypeStartFrameId ?? availableFrames[0]?.id ?? null;
+   });
+ 
+   function activate(id: string) {
+     const node = session.document.nodes[id];
+     const target = node?.interaction?.targetFrameId;
+     if (target && session.document.nodes[target]?.type === "frame") {
+-      if (currentFrameId) history = [...history, target];
++      if (currentFrameId) history = [...history, currentFrameId];
+       currentFrameId = target;
+     }
+   }
+diff --git a/src/lib/editor/Toolbar.svelte b/src/lib/editor/Toolbar.svelte
+index c2ac5d8..09207c4 100644
+--- a/src/lib/editor/Toolbar.svelte
++++ b/src/lib/editor/Toolbar.svelte
+@@ -36,6 +36,7 @@
+     viewport.x = point.x - world.x * next;
+     viewport.y = point.y - world.y * next;
+     viewport.zoom = next;
++    session.viewportChanged();
+   }
+ </script>
+ 
+@@ -56,7 +57,7 @@
+     <button data-testid="tool-frame" class:active={session.activeTool === "frame"} title="Frame (F)" onclick={() => choose("frame")}><Frame size={18} /></button>
+     <div class="split-button">
+       <button data-testid="tool-shape-main" class:active={shapeTools.some((tool) => tool.id === session.activeTool)} title={selectedShape.label} onclick={() => choose(selectedShape.id)}><selectedShape.icon size={18} /></button>
+-      <button data-testid="tool-shape-chevron" class="chevron" title="Shape tools" onclick={() => (shapeMenu = false)}>⌄</button>
++      <button data-testid="tool-shape-chevron" class="chevron" title="Shape tools" onclick={() => (shapeMenu = !shapeMenu)}>⌄</button>
+     </div>
+     <button data-testid="tool-text" class:active={session.activeTool === "text"} title="Text (T)" onclick={() => choose("text")}><Type size={19} /></button>
+     <span class="separator"></span>
+diff --git a/src/lib/editor/editor.svelte.ts b/src/lib/editor/editor.svelte.ts
+index 49c12d6..c21d8b1 100644
+--- a/src/lib/editor/editor.svelte.ts
++++ b/src/lib/editor/editor.svelte.ts
+@@ -670,7 +670,7 @@ export class EditorSession {
+         }
+         if (direction === "forward") {
+           for (let index = list.length - 2; index >= 0; index -= 1) {
+-            if (selectedIds.has(list[index]) && selectedIds.has(list[index + 1])) [list[index], list[index + 1]] = [list[index + 1], list[index]];
++            if (selectedIds.has(list[index]) && !selectedIds.has(list[index + 1])) [list[index], list[index + 1]] = [list[index + 1], list[index]];
+           }
+         } else {
+           for (let index = 1; index < list.length; index += 1) {
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index a312473..34015be 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -42,7 +42,7 @@
+     });
+     const normalized = query.trim().toLowerCase();
+     if (normalized) files = files.filter((file) => file.name.toLowerCase().includes(normalized) || projectName(file).toLowerCase().includes(normalized));
+-    return [...files].sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : a.updatedAt.localeCompare(b.updatedAt));
++    return [...files].sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
+   });
+   const visibleProjects = $derived.by(() => {
+     const normalized = query.trim().toLowerCase();
+@@ -152,7 +152,7 @@
+         return;
+       }
+       if (action === "rename") modal = { kind: "rename-file", id: file.id, value: file.name };
+-      if (action === "star") await repo.starFile(file.id, file.starred);
++      if (action === "star") await repo.starFile(file.id, !file.starred);
+       if (action === "duplicate") await repo.duplicateFile(file.id);
+       if (action === "trash") await repo.trashFile(file.id);
+       if (action === "restore") await repo.restoreItem("file", file.id);
+@@ -238,7 +238,7 @@
+       <div class="content-heading">
+         <div><p>Workspace</p><h1 data-testid="section-heading">{heading}</h1>{#if activeProject}<span>{visibleFiles.length} design{visibleFiles.length === 1 ? "" : "s"}</span>{/if}</div>
+         <div class="view-controls">
+-          <label>Sort <select data-testid="sort-select" value={sort}><option value="updated">Last updated</option><option value="name">Name</option></select></label>
++          <label>Sort <select data-testid="sort-select" bind:value={sort}><option value="updated">Last updated</option><option value="name">Name</option></select></label>
+           <div class="segmented"><button data-testid="view-grid" class:active={layout === "grid"} title="Grid view" onclick={() => (layout = "grid")}><Grid2X2 size={15} /></button><button data-testid="view-list" class:active={layout === "list"} title="List view" onclick={() => (layout = "list")}><List size={16} /></button></div>
+           {#if section === "projects"}<button class="primary compact" onclick={() => (modal = { kind: "project", value: "" })}><FolderPlus size={15} /> New project</button>{/if}
+         </div>
+diff --git a/src/routes/editor/[id]/+page.svelte b/src/routes/editor/[id]/+page.svelte
+index 6ec7816..8ef7603 100644
+--- a/src/routes/editor/[id]/+page.svelte
++++ b/src/routes/editor/[id]/+page.svelte
+@@ -1,5 +1,5 @@
+ <script lang="ts">
+-  import { onDestroy, onMount, tick, untrack } from "svelte";
++  import { onDestroy, onMount, tick } from "svelte";
+   import { goto } from "$app/navigation";
+   import { page as route } from "$app/state";
+   import { invoke } from "@tauri-apps/api/core";
+@@ -159,7 +159,7 @@
+   });
+ 
+   $effect(() => {
+-    const token = untrack(() => session?.changeToken ?? 0);
++    const token = session?.changeToken ?? 0;
+     if (!session || token === 0 || session.saveStatus === "saving" || session.saveStatus === "conflict") return;
+     if (saveTimer) clearTimeout(saveTimer);
+     saveTimer = setTimeout(() => void saveNow(), 420);
+@@ -467,6 +467,7 @@
+ 
+   function showNotice(message: string) {
+     notice = message;
++    if (noticeTimer) clearTimeout(noticeTimer);
+     noticeTimer = setTimeout(() => (notice = ""), 2600);
+   }
+ 

@@ -1,0 +1,134 @@
+diff --git a/projects/ngx-chess-board/src/lib/engine/coords/coords-provider.ts b/projects/ngx-chess-board/src/lib/engine/coords/coords-provider.ts
+index feecb2f..05513e1 100644
+--- a/projects/ngx-chess-board/src/lib/engine/coords/coords-provider.ts
++++ b/projects/ngx-chess-board/src/lib/engine/coords/coords-provider.ts
+@@ -16,6 +16,7 @@ export class CoordsProvider {
+ 
+     reverse() {
+         this.currentXCoords = this.currentXCoords.reverse();
++        this.currentYCoords = this.currentYCoords.reverse();
+     }
+ 
+     reset() {
+diff --git a/projects/ngx-chess-board/src/lib/engine/engine-facade.ts b/projects/ngx-chess-board/src/lib/engine/engine-facade.ts
+index 158eb53..d89d1ef 100644
+--- a/projects/ngx-chess-board/src/lib/engine/engine-facade.ts
++++ b/projects/ngx-chess-board/src/lib/engine/engine-facade.ts
+@@ -68,6 +68,7 @@ export class EngineFacade extends AbstractEngineFacade {
+             this.board.activePiece = null;
+             this.moveHistoryProvider.pop();
+             this.board.calculateFEN();
++            this.pgnProcessor.removeLast();
+         }
+     }
+ 
+@@ -383,7 +384,7 @@ export class EngineFacade extends AbstractEngineFacade {
+                         7
+                     );
+                     if (!this.freeMode) {
+-                        rightRook.point.col = this.board.reverted ? 5 : 4;
++                        rightRook.point.col = this.board.reverted ? 4 : 5;
+                     }
+                 }
+             }
+@@ -398,8 +399,8 @@ export class EngineFacade extends AbstractEngineFacade {
+         }
+ 
+         toMovePiece.point = newPoint;
+-        this.board.currentWhitePlayer = !this.board.currentWhitePlayer;
+         this.increaseFullMoveCount();
++        this.board.currentWhitePlayer = !this.board.currentWhitePlayer;
+ 
+         if (!this.checkForPawnPromote(toMovePiece, promotionIndex)) {
+             this.afterMoveActions();
+@@ -434,6 +435,7 @@ export class EngineFacade extends AbstractEngineFacade {
+     }
+ 
+     afterMoveActions(promotionIndex?: number) {
++        this.checkIfPawnFirstMove(this.board.activePiece);
+         this.checkIfRookMoved(this.board.activePiece);
+         this.checkIfKingMoved(this.board.activePiece);
+ 
+diff --git a/projects/ngx-chess-board/src/lib/engine/pgn/default-pgn-processor.ts b/projects/ngx-chess-board/src/lib/engine/pgn/default-pgn-processor.ts
+index f9b2d30..586d3a5 100644
+--- a/projects/ngx-chess-board/src/lib/engine/pgn/default-pgn-processor.ts
++++ b/projects/ngx-chess-board/src/lib/engine/pgn/default-pgn-processor.ts
+@@ -14,7 +14,7 @@ export class DefaultPgnProcessor extends AbstractPgnProcessor {
+         destPoint: Point,
+         destPiece?: Piece
+     ): void {
+-        this.currentIndex += 1;
++        this.currentIndex += 0.5;
+         let currentMove = '';
+         if(this.currentIndex % Math.floor(this.currentIndex) === 0) {
+             currentMove = this.currentIndex + '. ';
+diff --git a/projects/ngx-chess-board/src/lib/models/board.ts b/projects/ngx-chess-board/src/lib/models/board.ts
+index a389b7f..1b67195 100644
+--- a/projects/ngx-chess-board/src/lib/models/board.ts
++++ b/projects/ngx-chess-board/src/lib/models/board.ts
+@@ -79,6 +79,7 @@ export class Board {
+         this.enPassantPoint = null;
+         this.enPassantPiece = null;
+         this.fullMoveCount = 1;
++        this.calculateFEN();
+     }
+ 
+         reverse() {
+@@ -175,7 +176,7 @@ export class Board {
+         }
+ 
+         fen = fen.split('').sort().join('');
+-        return color === Color.WHITE ? fen : fen.toUpperCase();
++        return color === Color.BLACK ? fen : fen.toUpperCase();
+     }
+ 
+     getEnPassantFENString() {
+@@ -183,7 +184,7 @@ export class Board {
+             if (this.reverted) {
+                 return String.fromCharCode(104 - this.enPassantPoint.col) + (this.enPassantPoint.row + 1);
+             } else {
+-                return String.fromCharCode(104 - this.enPassantPoint.col) + (this.enPassantPoint.row + 1);
++                return String.fromCharCode(97 + this.enPassantPoint.col) + (Math.abs(this.enPassantPoint.row - 7) + 1);
+             }
+         } else {
+             return '-';
+diff --git a/projects/ngx-chess-board/src/lib/models/pieces/pawn.ts b/projects/ngx-chess-board/src/lib/models/pieces/pawn.ts
+index ff7c276..70f7d7e 100644
+--- a/projects/ngx-chess-board/src/lib/models/pieces/pawn.ts
++++ b/projects/ngx-chess-board/src/lib/models/pieces/pawn.ts
+@@ -108,7 +108,7 @@ export class Pawn extends Piece {
+                 (this.color === Color.WHITE ? Color.BLACK : Color.WHITE)
+         ) {
+             if (
+-                row === this.board.enPassantPoint.row &&
++                row === this.board.enPassantPiece.point.row &&
+                 Math.abs(this.board.enPassantPiece.point.col - col) === 1
+             ) {
+                 possiblePoints.push(this.board.enPassantPoint);
+diff --git a/projects/ngx-chess-board/src/lib/utils/move-utils.ts b/projects/ngx-chess-board/src/lib/utils/move-utils.ts
+index c8bddbc..25c5371 100644
+--- a/projects/ngx-chess-board/src/lib/utils/move-utils.ts
++++ b/projects/ngx-chess-board/src/lib/utils/move-utils.ts
+@@ -137,10 +137,10 @@ export class MoveUtils {
+ 
+     public static formatSingle(point: Point, reverted: boolean): string {
+         if (reverted) {
+-            const incrementX = 97;
++            const sourceX = 104 - point.col;
+             return (
+-                String.fromCharCode(point.col + incrementX) +
+-                (Math.abs(point.row - 7) + 1)
++                String.fromCharCode(sourceX) +
++                (point.row + 1)
+             );
+         } else {
+             const incrementX = 97;
+@@ -156,7 +156,7 @@ export class MoveUtils {
+             return 'P';
+         } else {
+             if (piece instanceof Knight) {
+-                return 'B';
++                return 'N';
+             } else {
+                 if (piece instanceof Bishop) {
+                     return 'B';

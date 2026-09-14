@@ -1,0 +1,1282 @@
+name: Build, Test and Release
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - "**"
+    tags: ["*"]
+
+jobs:
+  build-host_agents:
+    name: Build host_agent for ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            ext: .exe
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            ext: .exe
+
+    steps:
+      - &checkout_with_tags
+        uses: &checkout actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: &rust-cache Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - uses: ./.github/actions/rust-build
+        with:
+          target: ${{ matrix.target }}
+          bin-name: shuthost_host_agent
+
+      - name: Upload artifact
+        uses: &upload-artifact actions/upload-artifact@v7
+        with:
+          name: host_agent-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/shuthost_host_agent${{ matrix.ext || '' }}
+
+  build-coordinators:
+    name: Build Coordinator for ${{ matrix.target }}
+    needs: build-host_agents
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - *checkout_with_tags
+      - &setup-pnpm
+        name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: latest
+          package_json_file: frontend/package.json
+      - &latest-node-lts
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+      - name: Download all host_agent binaries
+        uses: &download-artifact actions/download-artifact@v8
+        with:
+          path: ./rehydrate
+
+      - uses: *rust-cache
+        with:
+          key: ${{ matrix.target }}
+
+      - &rehydrate-target-dir
+        name: Rehydrate target directory structure
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p target
+          for dir in ./rehydrate/host_agent-*; do
+            target=$(basename "$dir" | sed 's/^host_agent-//')
+            mkdir -p "target/$target/release"
+            binary_name="shuthost_host_agent"
+            if [[ "$target" == *-pc-windows-* ]]; then
+              binary_name="${binary_name}.exe"
+            fi
+            cp "$dir/$binary_name" "target/$target/release/$binary_name"
+            chmod +x "target/$target/release/$binary_name" || true
+          done
+
+      - uses: ./.github/actions/rust-build
+        with:
+          target: ${{ matrix.target }}
+          bin-name: shuthost_coordinator
+          additional-flags: --features include_agents
+
+      - name: Upload coordinator binary
+        uses: *upload-artifact
+        with:
+          name: coordinator-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/shuthost_coordinator
+
+  # Built separately so it doesn't block the main build pipeline.
+  # The Windows coordinator binary is for testing client scripts only, not for production use.
+  build-coordinator-windows:
+    name: Build Coordinator for x86_64-pc-windows-msvc
+    needs: build-host_agents
+    runs-on: windows-latest
+    steps:
+      - *checkout_with_tags
+      - *setup-pnpm
+      - *latest-node-lts
+      - name: Download all host_agent binaries
+        uses: *download-artifact
+        with:
+          path: ./rehydrate
+      - uses: *rust-cache
+        with:
+          key: x86_64-pc-windows-msvc
+      - *rehydrate-target-dir
+      - uses: ./.github/actions/rust-build
+        with:
+          target: x86_64-pc-windows-msvc
+          bin-name: shuthost_coordinator
+          additional-flags: --features include_agents
+      - name: Upload coordinator binary
+        uses: *upload-artifact
+        with:
+          name: coordinator-x86_64-pc-windows-msvc
+          path: target/x86_64-pc-windows-msvc/release/shuthost_coordinator.exe
+
+  test:
+    name: Run Tests
+    runs-on: macos-latest
+
+    steps:
+      - uses: *checkout
+
+      - *setup-pnpm
+
+      - *latest-node-lts
+
+      - run: rustup update stable
+
+      - uses: *rust-cache
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Run tests
+        run: cargo nextest run --workspace
+
+  test-service-installation-systemd:
+    name: Test Service Installation (systemd)
+    runs-on: ubuntu-latest
+    needs: [build-host_agents, build-coordinators]
+
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-gnu
+
+      - run: chmod +x shuthost_coordinator
+
+      - name: Test on Linux (systemd)
+        run: |
+          set -x
+          ./scripts/tests/coordinator_and_agent_service_installation.sh ./shuthost_coordinator root
+          sudo systemctl status shuthost_host_agent
+
+  test-service-installation-openrc:
+    name: Test Service Installation (openrc)
+    runs-on: ubuntu-latest
+    needs: [build-host_agents, build-coordinators]
+
+    container: &openrc-container
+      image: docker.io/heywoodlh/openrc:latest
+      options: --privileged --memory=2g
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-musl
+
+      - run: chmod +x shuthost_coordinator
+
+      - name: Prepare OpenRC container
+        run: &openrc-prepare |
+          apk update
+          apk --no-cache add curl openssl doas python3
+          echo 'permit nopass root' >> /etc/doas.conf
+
+      - name: Run test script
+        run: |
+          ./scripts/tests/coordinator_and_agent_service_installation.sh ./shuthost_coordinator root
+
+      - name: Check service status
+        run: |
+          rc-service shuthost_host_agent status
+
+  test-service-installation-launchd:
+    name: Test Service Installation (launchd)
+    runs-on: macos-latest
+    needs: [build-host_agents, build-coordinators]
+
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-aarch64-apple-darwin
+
+      - run: chmod +x shuthost_coordinator
+
+      - name: Test on macOS (launchd)
+        run: |
+          set -x
+          ./scripts/tests/coordinator_and_agent_service_installation.sh ./shuthost_coordinator "$(whoami)"
+
+      - name: Check service status
+        run: |
+          launchctl print system/com.github_9smtm6.shuthost_host_agent
+
+  test-service-installation:
+    name: Test Service Installation (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-service-installation-systemd
+      - test-service-installation-openrc
+      - test-service-installation-launchd
+    steps: &grouping
+      - run: echo "grouping job — nothing to run"
+
+  test-direct-control-unix:
+    name: Test Direct Control (${{ matrix.init }})
+    runs-on: ${{ matrix.runner }}
+    needs: [build-host_agents]
+    container: ${{ matrix.container }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - init: systemd
+            runner: ubuntu-latest
+            binary: host_agent-x86_64-unknown-linux-musl
+          - init: openrc
+            runner: ubuntu-latest
+            binary: host_agent-x86_64-unknown-linux-musl
+            container: *openrc-container
+          - init: launchd
+            runner: macos-latest
+            binary: host_agent-x86_64-apple-darwin
+          - init: self-extracting-shell
+            runner: ubuntu-latest
+            binary: host_agent-x86_64-unknown-linux-musl
+
+    steps:
+      - uses: *checkout
+
+      - name: Download host_agent binary
+        uses: *download-artifact
+        with:
+          name: ${{ matrix.binary }}
+
+      - name: Prepare OpenRC container
+        if: matrix.init == 'openrc'
+        run: *openrc-prepare
+
+      - name: Test direct control
+        run: |
+          chmod +x shuthost_host_agent
+          set -x
+          ./scripts/tests/install-and-run-direct-control.sh ./shuthost_host_agent --init-system=${{ matrix.init }}
+
+  test-direct-control-windows:
+    name: Test Direct Control (Windows)
+    runs-on: windows-latest
+    needs: [build-host_agents]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - uses: *checkout
+
+      - &disable-pwsh
+        name: Disable pwsh to detect PowerShell Core dependencies
+        run: |
+          $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+          if ($pwshPath) {
+            Rename-Item $pwshPath "$pwshPath.disabled" -Force
+            Write-Host "Disabled pwsh at $pwshPath"
+          } else {
+            Write-Host "pwsh not found in PATH, nothing to disable"
+          }
+          if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+            Write-Error "pwsh is still accessible in PATH after disabling"
+            exit 1
+          }
+          Write-Host "Verified: pwsh is not in PATH"
+
+      - name: Download host_agent binary
+        uses: *download-artifact
+        with:
+          name: host_agent-x86_64-pc-windows-msvc
+
+      - name: Test direct control
+        run: |
+          $env:RUST_BACKTRACE = 1
+
+          & ./shuthost_host_agent.exe install --init-system self-extracting-pwsh --shutdown-command="New-Item -ItemType File -Path `$env:TEMP\shutdown_executed" 
+
+          # Generate direct control (should be up to date with readme invocation)
+          powershell -ExecutionPolicy Bypass -File .\shuthost_host_agent_self_extracting.ps1 generate-direct-control -o "shuthost_direct_control.ps1"
+
+          Write-Host "Hoping for agent to be ready after 5s"
+          Start-Sleep -Seconds 5
+
+          # Test status command
+          try {
+            & ".\shuthost_direct_control.ps1" status
+            Write-Host "Status command executed successfully!"
+          } catch {
+            Write-Host "Status command failed"
+            exit 1
+          }
+
+          # Test shutdown
+          $output = & ".\shuthost_direct_control.ps1" shutdown
+
+          # Yield to system
+          Start-Sleep -Seconds 1
+
+          if ($output -match "Hopefully goodbye") {
+            Write-Host "Shutdown command sent successfully!"
+          } else {
+            Write-Host "Shutdown command not sent"
+            exit 1
+          }
+
+          if (Test-Path "$env:TEMP\shutdown_executed") {
+            Write-Host "Shutdown command executed successfully!"
+          } else {
+            Write-Host "Warning: Shutdown command file not found, but command was sent."
+          }
+
+          Write-Host "Direct host_agent installation and direct_control test completed successfully!"
+
+  test-direct-control:
+    name: Test Direct Control (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-direct-control-unix
+      - test-direct-control-windows
+    steps: *grouping
+
+  test-installer-update-linux:
+    name: Test Installer Update (Linux)
+    runs-on: ubuntu-latest
+    needs: [build-coordinators]
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-gnu
+
+      - name: Prepare coordinator binary
+        run: |
+          chmod +x shuthost_coordinator
+
+      - name: Run installer update test on host
+        run: |
+          ./scripts/tests/installer-update-nix.sh ./shuthost_coordinator
+
+  test-installer-update-alpine:
+    name: Test Installer Update (Alpine)
+    runs-on: ubuntu-latest
+    needs: [build-coordinators]
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-musl
+          path: ./rehydrate
+
+      - name: Prepare coordinator binary
+        run: |
+          chmod +x rehydrate/shuthost_coordinator
+
+      - name: Run Alpine update test using Docker
+        run: |
+          ./scripts/tests/run-update-alpine.sh ./rehydrate/shuthost_coordinator
+
+  test-installer-update-macos:
+    name: Test Installer Update (macOS)
+    runs-on: macos-latest
+    needs: [build-coordinators]
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-aarch64-apple-darwin
+
+      - name: Prepare coordinator binary
+        run: |
+          chmod +x shuthost_coordinator
+
+      - name: Test coordinator installer update
+        run: |
+          ./scripts/tests/installer-update-nix.sh ./shuthost_coordinator
+
+  test-installer-update:
+    name: Test Installer Update (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-installer-update-linux
+      - test-installer-update-alpine
+      - test-installer-update-macos
+    steps: *grouping
+
+  validate-file-snapshots:
+    name: Validate File Snapshots
+    runs-on: ubuntu-latest
+    needs: build-coordinators
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - setup: systemd
+            script: systemd.sh
+            binary: coordinator-x86_64-unknown-linux-gnu
+          - setup: openrc
+            script: openrc.sh
+            binary: coordinator-x86_64-unknown-linux-musl
+          - setup: compose_and_self_extracting
+            script: compose_and_self_extracting.sh
+            binary: coordinator-x86_64-unknown-linux-musl
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          pattern: ${{ matrix.binary }}
+
+      - run: chmod +x shuthost_coordinator
+
+      - name: Install podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Generate file snapshots
+        run: |
+          ./scripts/snapshot_files/${{ matrix.script }} shuthost_coordinator
+
+      - name: Validate file snapshots
+        run: |
+          if ! git diff --quiet ./scripts/snapshot_files/snapshots/; then
+            echo "install file snapshots have changed!"
+            git diff ./scripts/snapshot_files/snapshots/
+            exit 1
+          fi
+
+  test-client-scripts-macos:
+    name: Test Client Scripts on macOS
+    runs-on: macos-latest
+    needs: [build-coordinators]
+
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-aarch64-apple-darwin
+
+      - &start_controller
+        name: Start controller service (background)
+        run: |
+          chmod +x shuthost_coordinator
+          sudo ./shuthost_coordinator install $(whoami) --port 8080 --bind 127.0.0.1
+
+      - &wait_for_controller
+        name: Start controller service (background)
+        run: |
+          # Wait for coordinator to be ready (timeout 30s)
+          for i in $(seq 1 30); do
+            curl -fsSL http://localhost:8080/login && break || sleep 1
+          done
+          curl -fsSL http://localhost:8080/login || { echo "Controller service is not running"; exit 1; }
+
+      - name: Prepare
+        run: |
+          brew install curl openssl || true
+
+      - name: Install and run client
+        run: |
+          # Run installer and capture output
+          CLIENT_INSTALL_OUT=$(curl -fsSL http://localhost:8080/download/client_installer.sh | sh -s http://localhost:8080 2>&1 || true)
+          echo "--- installer output start ---"
+          echo "$CLIENT_INSTALL_OUT"
+          CLIENT_PATH=$(echo "$CLIENT_INSTALL_OUT" | grep -Eo '/[^ ]*shuthost_client_[^ ]*' | head -n1)
+          echo "Detected client path: $CLIENT_PATH"
+          if [ -z "$CLIENT_PATH" ]; then
+            echo "Client path not found in installer output"; exit 1
+          fi
+
+          # Parse the client config line from installer output and add to config
+          clientConfigLine=$(echo "$CLIENT_INSTALL_OUT" | grep '^".*" = { shared_secret = ".*" }$')
+          if [ -n "$clientConfigLine" ]; then
+            config_path="/Users/$(whoami)/.config/shuthost_coordinator/config.toml"
+            echo "Config file before modification:"
+            sudo cat "$config_path"
+            # Add the host if not present
+            if ! sudo grep -q 'testhost' "$config_path"; then
+              sudo sed -i '' '/^\[hosts\]$/a\'$'\n''testhost = { ip = "127.0.0.1", mac = "disableWOL", port = 9000, shared_secret = "testsecret" }' "$config_path"
+            fi
+            # Add the client under [clients]
+            sudo sed -i '' '/^\[clients\]$/a\'$'\n'"$clientConfigLine" "$config_path"
+            echo "Added client to config: $clientConfigLine"
+            echo "Config file after modification:"
+            sudo cat "$config_path"
+            # Wait for config reload
+            sleep 5
+          else
+            echo "Could not parse client config line from installer output"; exit 1
+          fi
+
+          # Run the client and capture output.
+          # The client is now registered, so the request should succeed.
+          # We want to test that the request is sent correctly and succeeds
+          OUTPUT=$($CLIENT_PATH take testhost --async 2>&1 || true)
+          echo "--- client output start ---"
+          echo "$OUTPUT"
+          echo "--- client output end ---"
+
+          # Ensure the request succeeded (no error messages)
+          if echo "$OUTPUT" | grep -iq "error\|failed"; then
+            echo 'Client request failed!';
+            exit 1
+          fi
+
+  test-client-scripts-ubuntu:
+    name: Test Client Scripts on Ubuntu
+    runs-on: ubuntu-latest
+    needs: [build-coordinators]
+
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-gnu
+
+      - *start_controller
+
+      - *wait_for_controller
+
+      - name: Install and run client
+        run: |
+          export PORT=8080
+          export CONFIG_PATH="/home/$(whoami)/.config/shuthost_coordinator/config.toml"
+          sh scripts/tests/test-client-scripts-linux.sh
+
+  test-client-scripts-alpine:
+    name: Test Client Scripts on Alpine (Docker)
+    runs-on: ubuntu-latest
+    needs: [build-coordinators]
+
+    container: *openrc-container
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-unknown-linux-musl
+
+      - name: Prepare OpenRC container
+        run: *openrc-prepare
+
+      - name: Install additional dependencies
+        run: |
+          apk add --no-cache busybox-extras
+
+      - name: Start controller service (background)
+        run: |
+          chmod +x shuthost_coordinator
+          doas ./shuthost_coordinator install $(whoami) --port 8080 --bind 127.0.0.1
+
+      - *wait_for_controller
+
+      - name: Install and run client
+        run: |
+          export PORT=8080
+          export CONFIG_PATH="/home/root/.config/shuthost_coordinator/config.toml"
+          sh scripts/tests/test-client-scripts-linux.sh
+
+  test-client-scripts-windows:
+    name: Test Client Scripts on Windows
+    runs-on: windows-latest
+    needs: [build-coordinator-windows]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-x86_64-pc-windows-msvc
+
+      - *disable-pwsh
+
+      - name: Windows - Start service in background && Install and run client
+        run: |
+          # Create a minimal config file for testing
+          @"
+          [server]
+          port = 8080
+          bind = "127.0.0.1"
+
+          [hosts]
+          testhost = { ip = "127.0.0.1", mac = "disableWOL", port = 9000, shared_secret = "testsecret" }
+
+          [clients]
+
+          "@ | Out-File -FilePath shuthost_coordinator.toml -Encoding UTF8
+
+          # Start the coordinator service
+          Start-Process -FilePath ".\shuthost_coordinator.exe" -ArgumentList @("control-service", "--config", "shuthost_coordinator.toml")
+          # Wait for coordinator to be ready (timeout 30s)
+          for ($i = 1; $i -le 30; $i++) {
+            try { Invoke-WebRequest -Uri http://localhost:8080/login -UseBasicParsing | Out-Null; break } catch { Start-Sleep 1 }
+          }
+          try { Invoke-WebRequest -Uri http://localhost:8080/login -UseBasicParsing | Out-Null } catch { Write-Error "Coordinator service is not running"; exit 1 }
+
+          # Run installer and capture output
+          # Use Start-Process with file redirection to avoid RemoteException when child process writes to stderr
+          curl.exe -sSLO 'http://localhost:8080/download/client_installer.ps1'
+          $outFile = [System.IO.Path]::GetTempFileName()
+          $errFile = [System.IO.Path]::GetTempFileName()
+          Start-Process powershell -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", ".\client_installer.ps1", "http://localhost:8080") -Wait -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+          $CLIENT_INSTALL_OUT = ((Get-Content $outFile -Raw) + "`n" + (Get-Content $errFile -Raw))
+          Remove-Item $outFile, $errFile -Force -ErrorAction SilentlyContinue
+          Write-Host "--- installer output start ---"
+          Write-Host $CLIENT_INSTALL_OUT
+          $CLIENT_PATH = [regex]::Match($CLIENT_INSTALL_OUT, '([A-Za-z]:\\[^ ]*shuthost_client_[^ ]*\.ps1)').Groups[1].Value
+          Write-Host "Detected client path: $CLIENT_PATH"
+          if (-not $CLIENT_PATH) {
+            Write-Error "Client path not found in installer output"; exit 1
+          }
+
+          # Parse the client config line from installer output and add to config
+          $clientConfigLine = $CLIENT_INSTALL_OUT -split "`n" | Where-Object { $_ -match '^".*" = \{ shared_secret = ".*" \}$' } | Select-Object -First 1
+          if ($clientConfigLine) {
+            Write-Host "Config file before modification:"
+            Get-Content shuthost_coordinator.toml
+            # Stop coordinator to avoid file-lock races, then add the client under [clients]
+            # I'll accept this on windows for now, since thats not a supported production platform.
+            Stop-Process -Name shuthost_coordinator -Force -ErrorAction SilentlyContinue
+            $content = Get-Content -Raw -Path shuthost_coordinator.toml
+            $newContent = $content -replace '(\[clients\])', "`$1`n$clientConfigLine"
+            [System.IO.File]::WriteAllText('shuthost_coordinator.toml', $newContent, [System.Text.Encoding]::UTF8)
+            Write-Host "Added client to config: $clientConfigLine"
+            Write-Host "Config file after modification:"
+            Get-Content shuthost_coordinator.toml
+            # Restart coordinator to reload config, since the file watcher doesnt work on windows
+            Start-Process -FilePath ".\shuthost_coordinator.exe" -ArgumentList @("control-service", "--config", "shuthost_coordinator.toml")
+            Start-Sleep 1
+          } else {
+            Write-Error "Could not parse client config line from installer output"; exit 1
+          }
+
+          # Run the client and capture output.
+          # The client is now registered, so the request should succeed.
+          # We want to test that the request is sent correctly and succeeds
+          $outFile2 = [System.IO.Path]::GetTempFileName()
+          $errFile2 = [System.IO.Path]::GetTempFileName()
+          Start-Process powershell -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", $CLIENT_PATH, "take", "testhost", "-Async") -Wait -NoNewWindow -RedirectStandardOutput $outFile2 -RedirectStandardError $errFile2
+          $OUTPUT = ((Get-Content $outFile2 -Raw) + "`n" + (Get-Content $errFile2 -Raw))
+          Remove-Item $outFile2, $errFile2 -Force -ErrorAction SilentlyContinue
+          Write-Host "--- client output start ---"
+          Write-Host $OUTPUT
+          Write-Host "--- client output end ---"
+
+          # Ensure the request succeeded (no error messages)
+          if ($OUTPUT -match "failed|error") {
+            Write-Error "Client request failed!"; exit 1
+          }
+
+  test-client-scripts:
+    name: Test Client Scripts (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-client-scripts-macos
+      - test-client-scripts-ubuntu
+      # - test-client-scripts-alpine
+      - test-client-scripts-windows
+    steps: *grouping
+
+  container-build:
+    name: Build & Push Alpine Containers (SHA only)
+    needs:
+      - build-coordinators
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: amd64
+            rustc_target: x86_64-unknown-linux-musl
+          - platform: arm64
+            rustc_target: aarch64-unknown-linux-musl
+    steps:
+      - uses: *checkout
+
+      - name: Download MUSL coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-${{ matrix.rustc_target }}
+          path: ./rehydrate
+
+      - name: Set up Docker Buildx
+        uses: &setup-buildx docker/setup-buildx-action@v4
+
+      - &docker_login
+        name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare coordinator binary
+        run: |
+          mkdir -p target/${{ matrix.rustc_target }}/release
+          cp ./rehydrate/shuthost_coordinator target/${{ matrix.rustc_target }}/release/shuthost_coordinator
+          chmod +x target/${{ matrix.rustc_target }}/release/shuthost_coordinator
+
+      - &release_image_name
+        id: release_image_name
+        name: Get release image base
+        run: |
+          repo_lowercase=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          image_base="ghcr.io/$repo_lowercase/shuthost-coordinator"
+          echo "image_base=$image_base" >> $GITHUB_OUTPUT
+          safe_ref=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
+          echo "safe_ref=$safe_ref" >> $GITHUB_OUTPUT
+
+      - name: Build & Push Multi-Arch Alpine Image (SHA only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile
+          platforms: linux/${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ steps.release_image_name.outputs.image_base }}:${{matrix.platform }}-${{ github.sha }}
+
+          build-args: |
+            RUSTC_TARGET=${{ matrix.rustc_target }}
+
+  container-merge:
+    name: Merge Multi-Arch Manifest
+    needs: container-build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - uses: *checkout
+
+      - *release_image_name
+
+      - *docker_login
+
+      - name: Create and Push Multi-Arch Manifest
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.release_image_name.outputs.image_base }}:${{ github.sha }} \
+            ${{ steps.release_image_name.outputs.image_base }}:amd64-${{ github.sha }} \
+            ${{ steps.release_image_name.outputs.image_base }}:arm64-${{ github.sha }}
+
+  container-test:
+    name: Test Container Image
+    needs: container-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: *checkout
+
+      - *release_image_name
+
+      - name: Pull image
+        run: |
+          docker pull ${{ steps.release_image_name.outputs.image_base }}:amd64-${{ github.sha }}
+
+      - name: Test image runs
+        run: |
+          docker run --rm ${{ steps.release_image_name.outputs.image_base }}:amd64-${{ github.sha }} shuthost_coordinator --help
+
+  container-readiness:
+    name: Container Readiness (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - container-merge
+      - container-test
+    steps: *grouping
+
+  test-coordinator-compatibility:
+    name: Test Coordinator Compatibility on Older OS Releases
+    needs: build-coordinators
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rustc_target: x86_64-apple-darwin
+            runner: macos-14
+          - rustc_target: aarch64-apple-darwin
+            runner: macos-14
+          - rustc_target: x86_64-apple-darwin
+            runner: macos-15
+          - rustc_target: aarch64-apple-darwin
+            runner: macos-15
+          - rustc_target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - rustc_target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            # this OS should get musl recommended instead
+          - rustc_target: x86_64-unknown-linux-musl
+            runner: ubuntu-22.04
+          - rustc_target: aarch64-unknown-linux-musl
+            runner: ubuntu-22.04-arm
+          - rustc_target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - rustc_target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: *checkout
+
+      - name: Download coordinator binary
+        uses: *download-artifact
+        with:
+          name: coordinator-${{ matrix.rustc_target }}
+          path: ./bin
+
+      - name: Test Coordinator Binary
+        run: |
+          chmod +x ./bin/shuthost_coordinator
+          ./bin/shuthost_coordinator --help
+
+  test-agent-compatibility:
+    name: Test Agent Compatibility on Older OS Releases
+    needs: build-host_agents
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rustc_target: x86_64-apple-darwin
+            runner: macos-14
+          - rustc_target: aarch64-apple-darwin
+            runner: macos-14
+          - rustc_target: x86_64-apple-darwin
+            runner: macos-15
+          - rustc_target: aarch64-apple-darwin
+            runner: macos-15
+          - rustc_target: x86_64-unknown-linux-musl
+            runner: ubuntu-22.04
+          - rustc_target: aarch64-unknown-linux-musl
+            runner: ubuntu-22.04-arm
+          - rustc_target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - rustc_target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - rustc_target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - rustc_target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    steps:
+      - uses: *checkout
+
+      - name: Download host_agent binary
+        uses: *download-artifact
+        with:
+          name: host_agent-${{ matrix.rustc_target }}
+          path: ./bin
+
+      - name: Test Host Agent Binary
+        shell: bash
+        run: |
+          BINARY=./bin/shuthost_host_agent
+          if [[ -f ./bin/shuthost_host_agent.exe ]]; then
+            BINARY=./bin/shuthost_host_agent.exe
+          fi
+          chmod +x "$BINARY" || true
+          "$BINARY" --help
+
+  test-binary-compatibility:
+    name: Test Binary Compatibility (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-coordinator-compatibility
+      - test-agent-compatibility
+    steps: *grouping
+
+  playwright-tests:
+    name: Run Playwright (Web GUI) tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: *checkout
+        with:
+          lfs: false
+          fetch-depth: 0
+      - *setup-pnpm
+      - *latest-node-lts
+      - name: Fetch LFS objects (exclude webp)
+        run: |
+          # fetch LFS objects but exclude large webp files to save bandwidth
+          git lfs pull --exclude="*.webp" || true
+
+      - name: Check LFS availability
+        run: |
+          AVAIL=$(./scripts/check_lfs_fetched.sh "frontend/tests/mobile-navigation.spec.ts-snapshots/mobile-navigation-Mobile-Dark.png")
+          echo "LFS_AVAILABLE=$AVAIL" >> $GITHUB_ENV
+          echo "LFS availability: $AVAIL"
+
+      - name: Install test fonts (Inter & Cascadia Code)
+        run: |
+          set -eux
+          # Ubuntu fonts; fail if they can't be installed.
+          sudo apt-get update
+          sudo apt-get install -y fonts-inter fonts-cascadia-code
+          # Verify via fc-list; if fc-list isn't present this will fail which
+          # is desired so the CI run fails when fonts are not available.
+          fc-list | grep -i inter >/dev/null 2>&1 || { echo "Inter font not found after install" >&2; exit 1; }
+          fc-list | grep -i cascadia >/dev/null 2>&1 || { echo "Cascadia Code not found after install" >&2; exit 1; }
+          sudo fc-cache -f -v
+
+      - name: Install node deps, Playwright Chromium and system deps
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+          pnpm run install-chromium-ci
+
+      - uses: *rust-cache
+
+      - name: Run Playwright tests
+        if: env.LFS_AVAILABLE == 'true'
+        env:
+          CI: true
+        run: |
+          cd frontend
+          pnpm exec playwright test
+
+      - name: Upload Playwright report + test-results (zip via Actions)
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: playwright-artifacts-${{ github.run_id }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          compression-level: 9
+
+  ci-only-tests:
+    name: CI-only Tests (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - test-client-scripts
+      - test-service-installation
+      - test-direct-control
+      - test-installer-update
+      - test-binary-compatibility
+    steps: *grouping
+
+  tests-aggregate:
+    name: Aggregated Tests (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - playwright-tests
+      - test
+      - validate-file-snapshots
+      - ci-only-tests
+    steps: *grouping
+
+  release-needs-flattened:
+    name: Release Needs (virtual)
+    runs-on: ubuntu-latest
+    needs:
+      - build-coordinators
+      # test-aggregate
+      - playwright-tests
+      - test
+      - validate-file-snapshots
+      ## ci-only-tests
+      ### test-service-installation
+      - test-service-installation-systemd
+      - test-service-installation-openrc
+      - test-service-installation-launchd
+      ### test-direct-control
+      - test-direct-control-unix
+      - test-direct-control-windows
+      ### test-installer-update
+      - test-installer-update-linux
+      - test-installer-update-macos
+      - test-installer-update-alpine
+      ### test-binary-compatibility
+      - test-coordinator-compatibility
+      - test-agent-compatibility
+      ### test-client-scripts
+      - test-client-scripts-macos
+      - test-client-scripts-ubuntu
+      - test-client-scripts-alpine
+      - test-client-scripts-windows
+      # container-readiness
+      - container-merge
+      - container-test
+    steps: *grouping
+
+  container-release-tag:
+    name: Tag & Push Container (tag)
+    needs:
+      - release-needs-flattened
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+    # No need for additional condition since the if already restricts to tags
+    steps:
+      - uses: *checkout
+
+      - *release_image_name
+
+      - *docker_login
+
+      - name: Set up Docker Buildx
+        uses: *setup-buildx
+
+      - name: Retag multi-arch image with tag name
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.release_image_name.outputs.image_base }}:${{ steps.release_image_name.outputs.safe_ref }} \
+            ${{ steps.release_image_name.outputs.image_base }}:${{ github.sha }}
+
+      - name: Retag multi-arch image as latest
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.release_image_name.outputs.image_base }}:latest \
+            ${{ steps.release_image_name.outputs.image_base }}:${{ github.sha }}
+
+  container-release-branch:
+    name: Tag & Push Container (branch nightly)
+    needs:
+      - release-needs-flattened
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    if: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
+    # No need for additional condition since the if already restricts to pushes not tags
+    steps:
+      - uses: *checkout
+
+      - *release_image_name
+
+      - *docker_login
+
+      - name: Set up Docker Buildx
+        uses: *setup-buildx
+
+      - name: Retag multi-arch image with branch name (nightly)
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.release_image_name.outputs.image_base }}:${{ steps.release_image_name.outputs.safe_ref }} \
+            ${{ steps.release_image_name.outputs.image_base }}:${{ github.sha }}
+
+  release-tag:
+    name: Upload Release Binaries (tag)
+    needs:
+      - release-needs-flattened
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    # No need for additional condition since the if already restricts to tags
+
+    steps:
+      - uses: *checkout
+
+      - &download_coordinator_binaries
+        name: Download all coordinator binaries
+        uses: *download-artifact
+        with:
+          pattern: coordinator-*
+          path: ./release-assets
+
+      - &download_agent_binaries
+        name: Download all host_agent binaries
+        uses: *download-artifact
+        with:
+          pattern: host_agent-*
+          path: ./release-assets
+
+      - name: Generate embedded installer scripts
+        run: |
+          . ./scripts/helpers.sh && generate_embedded_scripts
+
+      - &prepare_release_assets
+        name: Prepare release assets directory
+        run: |
+          # Move coordinator binaries to a common directory with target-based binary names
+          # this is required, as otherwise there'd be naming conflicts
+          mkdir -p release-assets/flat
+          for dir in release-assets/coordinator-*; do
+            target=$(basename "$dir" | sed 's/^coordinator-//')
+            # Skip Windows coordinator binary as it's only for testing client scripts
+            if [[ "$target" == x86_64-pc-windows-msvc ]]; then
+              continue
+            fi
+            if [ -f "$dir/shuthost_coordinator" ]; then
+              cp "$dir/shuthost_coordinator" "release-assets/flat/shuthost_coordinator-$target"
+              chmod +x "release-assets/flat/shuthost_coordinator-$target"
+            fi
+          done
+          for dir in release-assets/host_agent-*; do
+            target=$(basename "$dir" | sed 's/^host_agent-//')
+            if [[ "$target" == *-pc-windows-* ]]; then
+              if [ -f "$dir/shuthost_host_agent.exe" ]; then
+                cp "$dir/shuthost_host_agent.exe" "release-assets/flat/shuthost_host_agent-$target.exe"
+              fi
+            else
+              if [ -f "$dir/shuthost_host_agent" ]; then
+                cp "$dir/shuthost_host_agent" "release-assets/flat/shuthost_host_agent-$target"
+                chmod +x "release-assets/flat/shuthost_host_agent-$target" || true
+              fi
+            fi
+          done
+          # Create .tar.gz archives
+          for file in release-assets/flat/*; do
+            base=$(basename "$file")
+            if [[ "$base" == shuthost_coordinator-* ]]; then
+              inside_name="shuthost_coordinator"
+            elif [[ "$base" == shuthost_host_agent-* ]]; then
+              inside_name="shuthost_host_agent"
+              if [[ "$file" == *.exe ]]; then
+                inside_name="shuthost_host_agent.exe"
+              fi
+            fi
+            tar -czf "$file.tar.gz" -C "$(dirname "$file")" --transform "s|.*|$inside_name|" "$(basename "$file")" && rm "$file"
+          done
+          # Rename Windows tars to remove .exe from name
+          for tarfile in release-assets/flat/*.exe.tar.gz; do
+            mv "$tarfile" "${tarfile%.exe.tar.gz}.tar.gz"
+          done
+          # Add embedded installer scripts
+          cp target/scripts/enduser_installers/coordinator.sh release-assets/flat/shuthost_coordinator_installer.sh
+          cp target/scripts/enduser_installers/host_agent.sh release-assets/flat/shuthost_host_agent_installer.sh
+          cp scripts/enduser_installers/host_agent.ps1 release-assets/flat/shuthost_host_agent_installer.ps1
+
+      - *release_image_name
+
+      - name: Extract manual changes
+        id: extract_manual_changes
+        run: |
+          COMMIT_MSG=$(git log --format=%B -1 ${{ github.sha }})
+          if echo "$COMMIT_MSG" | grep -q "^## Changes not tracked in a PR:$"; then
+            MANUAL_CHANGES=$(echo "$COMMIT_MSG" | sed -n '/^## Changes not tracked in a PR:$/,$p' | tail -n +2)
+            echo "manual_changes<<EOF" >> $GITHUB_OUTPUT
+            echo "$MANUAL_CHANGES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload binaries to release (create one if not existing)
+        uses: &gh-release softprops/action-gh-release@v3
+        with:
+          fail_on_unmatched_files: true
+          files: ./release-assets/flat/*
+          tag_name: ${{ github.ref_name }}
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            📦 **Container Image** available at:
+
+            ```
+            ${{ steps.release_image_name.outputs.image_base }}:${{ github.ref_name }}
+            ```
+
+            Also available as `:latest` (as long as it's the latest release).
+
+            ## Changes without a PR:
+            ${{ steps.extract_manual_changes.outputs.manual_changes }}
+
+  release-branch:
+    name: Upload Release Binaries (branch)
+    needs:
+      - release-needs-flattened
+    if: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    # No need for additional condition since the if already restricts to pushes not tags
+
+    steps:
+      - uses: *checkout
+
+      - *download_coordinator_binaries
+
+      - *download_agent_binaries
+
+      - name: Generate embedded installer scripts
+        run: |
+          . ./scripts/helpers.sh && generate_embedded_scripts
+
+      - *prepare_release_assets
+
+      - *release_image_name
+
+      - name: Upload binaries to release (create one if not existing)
+        uses: *gh-release
+        with:
+          fail_on_unmatched_files: true
+          files: ./release-assets/flat/*
+          tag_name: nightly_release_${{ steps.release_image_name.outputs.safe_ref }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            ## Nightly Build
+
+            This release contains the latest artifacts for the `${{ github.ref_name }}` branch, updated on each push.
+
+            📦 **Container Image** available at:
+
+            ```
+            ${{ steps.release_image_name.outputs.image_base }}:${{ github.ref_name }}
+            ```

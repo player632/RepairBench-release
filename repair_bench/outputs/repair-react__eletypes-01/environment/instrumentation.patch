@@ -1,0 +1,108 @@
+diff --git a/src/components/common/EnglishModeWords.jsx b/src/components/common/EnglishModeWords.jsx
+index a9c4f70..e22c713 100644
+--- a/src/components/common/EnglishModeWords.jsx
++++ b/src/components/common/EnglishModeWords.jsx
+@@ -51,6 +51,8 @@ const EnglishModeWords = ({
+           return (
+             <span
+               key={globalIndex}
++              data-testid={'el-word-' + globalIndex}
++              data-word-index={globalIndex}
+               ref={wordSpanRefs[globalIndex]}
+               style={{
+                 opacity: isUltraZenMode ? getWordOpacity(globalIndex) : "1",
+diff --git a/src/components/features/TypeBox/Stats.jsx b/src/components/features/TypeBox/Stats.jsx
+index c6c46ec..22bfc7b 100644
+--- a/src/components/features/TypeBox/Stats.jsx
++++ b/src/components/features/TypeBox/Stats.jsx
+@@ -255,7 +255,7 @@ const Stats = ({
+   const renderAccuracy = () => (
+     <div style={{ marginTop: "16px" }}>
+       <h2 className="primary-stats-title">{t("acc_label")}</h2>
+-      <h1 className="primary-stats-value">{accuracy}%</h1>
++      <h1 className="primary-stats-value" data-testid="el-accuracy">{accuracy}%</h1>
+     </div>
+   );
+ 
+@@ -352,8 +352,8 @@ const Stats = ({
+     <>
+       {status !== "finished" && (
+         <>
+-          <h3>{isInfiniteMode ? "∞" : `${countDown} s`}</h3>
+-          <h3>{t("wpm_label")}: {Math.round(wpm)}</h3>
++          <h3 data-testid="el-countdown">{isInfiniteMode ? "∞" : `${countDown} s`}</h3>
++          <h3 data-testid="el-wpm">{t("wpm_label")}: {Math.round(wpm)}</h3>
+         </>
+       )}
+ 
+diff --git a/src/components/features/TypeBox/TypeBox.jsx b/src/components/features/TypeBox/TypeBox.jsx
+index c6ecd04..94523f9 100644
+--- a/src/components/features/TypeBox/TypeBox.jsx
++++ b/src/components/features/TypeBox/TypeBox.jsx
+@@ -5,6 +5,7 @@ import {
+   chineseWordsGenerator,
+ } from "../../../scripts/wordsGenerator";
+ import { customWordsGenerator } from "../../../scripts/customWords";
++import { addScore as probeAddScore } from "../../../services/scoreHistory"; // instrumentation
+ import { createRng, generateSeed } from "../../../scripts/seedUtils";
+ import RestartAltIcon from "@mui/icons-material/RestartAlt";
+ import UndoIcon from "@mui/icons-material/Undo";
+@@ -220,6 +221,34 @@ const TypeBox = ({
+     return wordsDict.map((e) => e.key);
+   }, [wordsDict]);
+ 
++  // instrumentation: read-only probe bridge for verification (window.__ELETYPES__)
++  useEffect(() => {
++    window.__ELETYPES__ = {
++      read: () => ({
++        status,
++        countDown,
++        countDownConstant,
++        elapsedSeconds,
++        wpm,
++        statsCharCount,
++        currWordIndex,
++        currCharIndex,
++        sessionSeed,
++        words,
++        wordsCorrectCount: wordsCorrect.size,
++        wordsInCorrectCount: wordsInCorrect.size,
++      }),
++      setWords: (list) => {
++        setWordsDict(list.map((w) => ({ key: w, val: w })));
++        return true;
++      },
++      saveScore: (args) => {
++        probeAddScore(args);
++        return true;
++      },
++    };
++  });
++
+   const wordSpanRefs = useMemo(
+     () =>
+       Array(words.length)
+@@ -931,6 +960,7 @@ const TypeBox = ({
+         <Grid container justifyContent="center" alignItems="center">
+           <Box display="flex" flexDirection="row">
+             <IconButton
++              data-testid="el-redo"
+               aria-label="redo"
+               color="secondary"
+               size="medium"
+@@ -950,6 +980,7 @@ const TypeBox = ({
+               </Tooltip>
+             </IconButton>
+             <IconButton
++              data-testid="el-restart"
+               aria-label="restart"
+               color="secondary"
+               size="medium"
+@@ -1476,6 +1507,7 @@ const TypeBox = ({
+         </div>
+         <input
+           key="hidden-input"
++          data-testid="el-input"
+           ref={textInputRef}
+           type="text"
+           className="hidden-input"

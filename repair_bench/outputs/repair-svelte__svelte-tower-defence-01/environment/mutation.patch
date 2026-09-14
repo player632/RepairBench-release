@@ -1,0 +1,150 @@
+diff --git a/src/lib/components/HealthBar.svelte b/src/lib/components/HealthBar.svelte
+index ebe1cc6..5d2131f 100644
+--- a/src/lib/components/HealthBar.svelte
++++ b/src/lib/components/HealthBar.svelte
+@@ -3,7 +3,7 @@
+ 
+ 	const { entity } = $props();
+ 
+-	const maxHealth = 500;
++	const maxHealth = 5000;
+ 	const segments = 5; // 5 segments of 100 each
+ 
+ 	// Calculate health percentage for width
+diff --git a/src/lib/config/collisionHandlers.ts b/src/lib/config/collisionHandlers.ts
+index 51315a5..60b1415 100644
+--- a/src/lib/config/collisionHandlers.ts
++++ b/src/lib/config/collisionHandlers.ts
+@@ -8,7 +8,7 @@ export const enemyCollider = (entity: Entity, other: Entity) => {
+ };
+ 
+ export const fireballCollider = (fireball, other) => {
+-	fireball.state.setState('Explode');
++	fireball.state.setState('Die');
+ };
+ 
+ export const projectileCollider = (projectile, other) => {
+@@ -24,7 +24,7 @@ export const projectileCollider = (projectile, other) => {
+ 
+ export const throneCollider = (entity, other) => {
+ 	if (other.type === 'loot') {
+-		lootTracker.receiveLoot(1);
++		lootTracker.receiveLoot(0);
+ 		soundManager.play('pickUp');
+ 	} else if (other.type === 'enemy') {
+ 		entity.takeDamage(other.stats.damage);
+diff --git a/src/lib/config/stages.ts b/src/lib/config/stages.ts
+index e61b66f..67a8f07 100644
+--- a/src/lib/config/stages.ts
++++ b/src/lib/config/stages.ts
+@@ -5,7 +5,7 @@ export const stages = [
+ 
+ 		eliteEnemies: ['RedBlobElite'],
+ 		spawnDelays: {
+-			common: 900,
++			common: 8000,
+ 			elite: 1400
+ 		},
+ 		statsAmplify: {
+diff --git a/src/lib/store/EntityManager.svelte.ts b/src/lib/store/EntityManager.svelte.ts
+index 8168582..77438ee 100644
+--- a/src/lib/store/EntityManager.svelte.ts
++++ b/src/lib/store/EntityManager.svelte.ts
+@@ -9,7 +9,7 @@ export class EntityManager {
+ 	livingEnemies = $derived(this.enemies.filter((entity) => entity.isInteractable));
+ 
+ 	towers = $derived(this.entities.filter((entity) => entity.type === 'tower'));
+-	topTowers = $derived(this.towers.filter((tower, index) => index <= 1));
++	topTowers = $derived(this.towers.filter((tower, index) => index < 1));
+ 	bottomTowers = $derived(this.towers.filter((tower, index) => index >= 2));
+ 	projectiles = $derived(this.entities.filter((entity) => entity.type === 'projectile'));
+ 
+diff --git a/src/lib/store/Game.svelte.ts b/src/lib/store/Game.svelte.ts
+index 8bae464..58c0370 100644
+--- a/src/lib/store/Game.svelte.ts
++++ b/src/lib/store/Game.svelte.ts
+@@ -40,9 +40,6 @@ export class Game {
+ 		entityManager.reset();
+ 		stageManager.reset();
+ 		soundManager.reset();
+-		lootTracker.reset();
+-
+-		gameLoop.resume();
+ 	};
+ }
+ 
+diff --git a/src/lib/store/LootTracker.svelte.ts b/src/lib/store/LootTracker.svelte.ts
+index f77b586..ad49a0d 100644
+--- a/src/lib/store/LootTracker.svelte.ts
++++ b/src/lib/store/LootTracker.svelte.ts
+@@ -29,7 +29,7 @@ export class LootTracker {
+ 			const { tower } = action.payload;
+ 			this.collectedLoot -= toSpend;
+ 
+-			tower.state.setState('Upgrade');
++			tower.state.setState('Guard');
+ 			this.playAnimation('TowerUpgrade');
+ 
+ 			cursor.setAnimation('TowerBuildCursor');
+@@ -47,9 +47,7 @@ export class LootTracker {
+ 				enemy.state.setState('Die');
+ 			});
+ 
+-			if (enemies.length > 0) {
+-				this.collectedLoot -= toSpend;
+-			}
++			this.collectedLoot -= toSpend;
+ 		}
+ 	}
+ 
+diff --git a/src/lib/store/StageManager.svelte.ts b/src/lib/store/StageManager.svelte.ts
+index 0bd0e0f..9fdc6e5 100644
+--- a/src/lib/store/StageManager.svelte.ts
++++ b/src/lib/store/StageManager.svelte.ts
+@@ -142,7 +142,7 @@ export class StageManager {
+ 		if (this.stageNumber < stages.length - 1) {
+ 			const gameLoop = managers.get('gameLoop');
+ 
+-			this.stageNumber++;
++			this.stageNumber += 2;
+ 			this.stageStartTime = gameLoop.elapsedTime;
+ 
+ 			this.commonSpawnCd = gameLoop.setCD(this.stageConfig.spawnDelays.common, true);
+diff --git a/src/lib/store/States/Enemy/Die.svelte.ts b/src/lib/store/States/Enemy/Die.svelte.ts
+index 5955461..ae16882 100644
+--- a/src/lib/store/States/Enemy/Die.svelte.ts
++++ b/src/lib/store/States/Enemy/Die.svelte.ts
+@@ -13,7 +13,6 @@ export class Die extends BaseState {
+ 		if (this.entity.animation.isComplete) {
+ 			const { entityManager, stageManager } = managers.get(['entityManager', 'stageManager']);
+ 			entityManager.destroy(this.entity.id);
+-			stageManager.spawnLoot(this.entity);
+ 		}
+ 	}
+ }
+diff --git a/src/lib/store/States/Tower/Upgrade.svelte.ts b/src/lib/store/States/Tower/Upgrade.svelte.ts
+index 92b5ac3..aa202cb 100644
+--- a/src/lib/store/States/Tower/Upgrade.svelte.ts
++++ b/src/lib/store/States/Tower/Upgrade.svelte.ts
+@@ -24,7 +24,7 @@ export class Upgrade extends BaseState {
+ 
+ 		this.entity.upgradeLevel += 1;
+ 
+-		const upgradeFn = this.entity.upgrades[this.entity.upgradeLevel];
++		const upgradeFn = this.entity.upgrades[0];
+ 		upgradeFn(this.entity);
+ 
+ 		this.entity.animation.onFrameChange = (frame) => {
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index c1a55b8..c5d9954 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -35,7 +35,7 @@
+ 	};
+ 
+ 	const handlePressKey = (e) => {
+-		if (e.key === 'Escape') {
++		if (e.key === 'Enter') {
+ 			if (gameLoop.pauseState) {
+ 				gameLoop.resume();
+ 			} else {

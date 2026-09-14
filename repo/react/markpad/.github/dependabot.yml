@@ -1,0 +1,72 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+      codemirror:
+        patterns:
+          - '@codemirror/*'
+          - 'codemirror'
+      tauri:
+        patterns:
+          - '@tauri-apps/*'
+      # Routine dev-tooling churn lands in one pull request instead of one per
+      # package: master requires up-to-date branches, so every extra pull
+      # request costs its own rebase-and-recheck cycle. Majors stay ungrouped —
+      # a group is only as mergeable as its riskiest member. Each dependency
+      # goes to its most specific matching group, so @types/react* stays with
+      # react above and @tauri-apps/cli with tauri.
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      tauri:
+        patterns:
+          - 'tauri'
+          - 'tauri-*'
+          - 'tauri-plugin-*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      # The init and analyze steps must stay on the same version, so they have
+      # to be bumped by a single pull request.
+      codeql:
+        patterns:
+          - 'github/codeql-action*'

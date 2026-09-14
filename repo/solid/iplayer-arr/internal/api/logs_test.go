@@ -1,0 +1,350 @@
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+// --- RingBuffer unit tests ---
+
+func TestRingBufferCapacityAndOrder(t *testing.T) {
+	rb := NewRingBuffer(3)
+
+	rb.Add(LogEntry{Level: "info", Message: "a"}, nil)
+	rb.Add(LogEntry{Level: "info", Message: "b"}, nil)
+	rb.Add(LogEntry{Level: "info", Message: "c"}, nil)
+
+	entries := rb.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	want := []string{"a", "b", "c"}
+	for i, e := range entries {
+		if e.Message != want[i] {
+			t.Errorf("entry[%d].Message = %q, want %q", i, e.Message, want[i])
+		}
+	}
+}
+
+func TestRingBufferOverflow(t *testing.T) {
+	rb := NewRingBuffer(3)
+
+	for i := 0; i < 5; i++ {
+		rb.Add(LogEntry{Level: "info", Message: fmt.Sprintf("msg-%d", i)}, nil)
+	}
+
+	entries := rb.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries after overflow, got %d", len(entries))
+	}
+	// Oldest entry should be msg-2 (msg-0 and msg-1 were evicted)
+	if entries[0].Message != "msg-2" {
+		t.Errorf("oldest entry = %q, want msg-2", entries[0].Message)
+	}
+	if entries[2].Message != "msg-4" {
+		t.Errorf("newest entry = %q, want msg-4", entries[2].Message)
+	}
+}
+
+func TestRingBufferEmpty(t *testing.T) {
+	rb := NewRingBuffer(10)
+	entries := rb.Entries()
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries on empty buffer, got %d", len(entries))
+	}
+}
+
+func TestRingBufferSingleCapacity(t *testing.T) {
+	rb := NewRingBuffer(1)
+
+	rb.Add(LogEntry{Level: "info", Message: "first"}, nil)
+	rb.Add(LogEntry{Level: "warn", Message: "second"}, nil)
+
+	entries := rb.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Message != "second" {
+		t.Errorf("expected 'second', got %q", entries[0].Message)
+	}
+}
+
+func TestRingBufferSSEBroadcast(t *testing.T) {
+	hub := NewHub()
+	ch := hub.Subscribe()
+	defer hub.Unsubscribe(ch)
+
+	rb := NewRingBuffer(10)
+	entry := LogEntry{Level: "info", Message: "hello broadcast"}
+	rb.Add(entry, hub)
+
+	select {
+	case ev := <-ch:
+		if ev.Type != "log:line" {
+			t.Errorf("event type = %q, want log:line", ev.Type)
+		}
+	default:
+		t.Error("expected SSE event but channel was empty")
+	}
+}
+
+// TestRingBufferBroadcastThrottle exercises audit item 37: a burst of
+// log lines should fan out at most `broadcastBudget` SSE events in a
+// single window. Every entry still lands in the ring (a reconnecting
+// dashboard can refetch via GET /api/logs), but the SSE consumer is
+// not flooded.
+func TestRingBufferBroadcastThrottle(t *testing.T) {
+	hub := NewHub()
+	ch := hub.Subscribe()
+	defer hub.Unsubscribe(ch)
+
+	rb := NewRingBuffer(200)
+	burst := broadcastBudget * 3
+	for i := 0; i < burst; i++ {
+		rb.Add(LogEntry{Level: "info", Message: fmt.Sprintf("burst-%d", i)}, hub)
+	}
+
+	delivered := 0
+drain:
+	for {
+		select {
+		case <-ch:
+			delivered++
+		case <-time.After(20 * time.Millisecond):
+			break drain
+		}
+	}
+
+	if delivered != broadcastBudget {
+		t.Errorf("delivered = %d, want %d (burst was %d events into one window)", delivered, broadcastBudget, burst)
+	}
+
+	// Ring must still hold every entry: throttling is a fan-out
+	// concern, not a retention one.
+	if got := len(rb.Entries()); got != burst {
+		t.Errorf("ring entries = %d, want %d (throttle dropped from buffer instead of broadcast)", got, burst)
+	}
+}
+
+// TestRingBufferUrgentBypassesBucket pins the v1.5.6 fix: error and
+// fatal level entries broadcast even when the token bucket is empty.
+// Pre-v1.5.6 the panic stack written via log.SetOutput(multiWriter)
+// (cmd/iplayer-arr/main.go) was rate-limited along with chatter, so
+// a startup burst (>20 lines/second) could silently drop the
+// operator's last clue before death.
+func TestRingBufferUrgentBypassesBucket(t *testing.T) {
+	hub := NewHub()
+	ch := hub.Subscribe()
+	defer hub.Unsubscribe(ch)
+
+	rb := NewRingBuffer(200)
+
+	// Exhaust the token bucket with an info burst (these get rate-limited).
+	for i := 0; i < broadcastBudget*2; i++ {
+		rb.Add(LogEntry{Level: "info", Message: fmt.Sprintf("chatter-%d", i)}, hub)
+	}
+
+	// Drain whatever the hub delivered so we can isolate the next batch.
+	drainHub := func() int {
+		n := 0
+		for {
+			select {
+			case <-ch:
+				n++
+			case <-time.After(20 * time.Millisecond):
+				return n
+			}
+		}
+	}
+	_ = drainHub()
+
+	// Now emit an error and a fatal. Bucket is empty, so a metered
+	// entry would NOT be broadcast. These MUST go through.
+	rb.Add(LogEntry{Level: "error", Message: "panic: divide by zero"}, hub)
+	rb.Add(LogEntry{Level: "fatal", Message: "goroutine 1 [running]:"}, hub)
+	rb.Add(LogEntry{Level: "info", Message: "should-be-dropped"}, hub)
+
+	delivered := drainHub()
+	if delivered != 2 {
+		t.Errorf("delivered = %d, want 2 (error + fatal must bypass bucket; info must stay metered)", delivered)
+	}
+}
+
+// TestIsUrgentLevel locks the bypass whitelist. `warn` stays metered
+// because a warn-flood is a known shape (single failing op in a tight
+// retry loop) and dropping the tail is right for that.
+func TestIsUrgentLevel(t *testing.T) {
+	urgent := []string{"error", "fatal", "ERROR", "Fatal"}
+	for _, level := range urgent {
+		if !isUrgentLevel(level) {
+			t.Errorf("isUrgentLevel(%q) = false, want true", level)
+		}
+	}
+	metered := []string{"info", "warn", "warning", "debug", "trace", ""}
+	for _, level := range metered {
+		if isUrgentLevel(level) {
+			t.Errorf("isUrgentLevel(%q) = true, want false", level)
+		}
+	}
+}
+
+// TestRingBufferBroadcastRefill verifies that the bucket refills at
+// the start of a new window so steady-state logging still streams.
+func TestRingBufferBroadcastRefill(t *testing.T) {
+	rb := NewRingBuffer(10)
+	base := time.Now()
+	// Drain the bucket entirely within window N.
+	for i := 0; i < broadcastBudget; i++ {
+		if !rb.takeBroadcastToken(base) {
+			t.Fatalf("token %d should be available", i)
+		}
+	}
+	if rb.takeBroadcastToken(base) {
+		t.Fatal("budget should be exhausted within the window")
+	}
+	// Step past the window boundary -- bucket refills.
+	if !rb.takeBroadcastToken(base.Add(broadcastWindow + time.Millisecond)) {
+		t.Fatal("budget should refill after the window expires")
+	}
+}
+
+// --- HTTP handler tests ---
+
+func makeLogsHandler(t *testing.T, entries []LogEntry) *Handler {
+	t.Helper()
+	h, _ := testAPI(t)
+	for _, e := range entries {
+		h.RingBuf.Add(e, nil)
+	}
+	return h
+}
+
+func TestHandleLogsNoFilter(t *testing.T) {
+	entries := []LogEntry{
+		{Level: "info", Message: "startup complete"},
+		{Level: "warn", Message: "disk space low"},
+		{Level: "error", Message: "connection refused"},
+	}
+	h := makeLogsHandler(t, entries)
+
+	req := authedRequest(http.MethodGet, "/api/logs?apikey=test-api-key", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []LogEntry
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("expected 3 entries, got %d", len(got))
+	}
+}
+
+func TestHandleLogsNoAuth(t *testing.T) {
+	entries := []LogEntry{
+		{Level: "info", Message: "startup complete"},
+	}
+	h := makeLogsHandler(t, entries)
+
+	req := authedRequest(http.MethodGet, "/api/logs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestHandleLogsFilterByLevel(t *testing.T) {
+	entries := []LogEntry{
+		{Level: "info", Message: "ok"},
+		{Level: "warn", Message: "watch out"},
+		{Level: "error", Message: "bad"},
+		{Level: "info", Message: "also ok"},
+	}
+	h := makeLogsHandler(t, entries)
+
+	req := authedRequest(http.MethodGet, "/api/logs?apikey=test-api-key&level=info", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []LogEntry
+	json.NewDecoder(w.Body).Decode(&got)
+	if len(got) != 2 {
+		t.Errorf("expected 2 info entries, got %d", len(got))
+	}
+}
+
+func TestHandleLogsFilterBySearchTerm(t *testing.T) {
+	entries := []LogEntry{
+		{Level: "info", Message: "download started for b039d07m"},
+		{Level: "info", Message: "connection OK"},
+		{Level: "error", Message: "download failed: timeout"},
+	}
+	h := makeLogsHandler(t, entries)
+
+	req := authedRequest(http.MethodGet, "/api/logs?apikey=test-api-key&q=download", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []LogEntry
+	json.NewDecoder(w.Body).Decode(&got)
+	if len(got) != 2 {
+		t.Errorf("expected 2 entries matching 'download', got %d", len(got))
+	}
+}
+
+func TestHandleLogsFilterCombined(t *testing.T) {
+	entries := []LogEntry{
+		{Level: "info", Message: "download started"},
+		{Level: "error", Message: "download failed"},
+		{Level: "info", Message: "unrelated"},
+	}
+	h := makeLogsHandler(t, entries)
+
+	req := authedRequest(http.MethodGet, "/api/logs?apikey=test-api-key&level=error&q=download", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []LogEntry
+	json.NewDecoder(w.Body).Decode(&got)
+	if len(got) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(got))
+	}
+	if got[0].Level != "error" {
+		t.Errorf("level = %q, want error", got[0].Level)
+	}
+}
+
+func TestHandleLogsEmpty(t *testing.T) {
+	h, _ := testAPI(t)
+
+	req := authedRequest(http.MethodGet, "/api/logs?apikey=test-api-key", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []LogEntry
+	json.NewDecoder(w.Body).Decode(&got)
+	if len(got) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(got))
+	}
+}

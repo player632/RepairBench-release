@@ -1,0 +1,160 @@
+diff --git a/projects/code-editor/src/lib/code-editor.ts b/projects/code-editor/src/lib/code-editor.ts
+index f04a8364537c9374bf458eca882fde3bd25dc932..1365046902da07a406dce27b4231c771c41c502d 100644
+--- a/projects/code-editor/src/lib/code-editor.ts
++++ b/projects/code-editor/src/lib/code-editor.ts
+@@ -290,7 +290,7 @@ export class CodeEditor implements OnChanges, OnInit, OnDestroy, ControlValueAcc
+   /** Sets editor's value. */
+   setValue(value: string) {
+     this.view.dispatch({
+-      changes: { from: 0, to: this.view.state.doc.length, insert: value },
++      changes: { from: 0, to: 0, insert: value },
+       annotations: [Transaction.addToHistory.of(false), External.of(true)],
+     });
+   }
+diff --git a/projects/code-editor/src/lib/diff-editor.ts b/projects/code-editor/src/lib/diff-editor.ts
+index 617f77874443f662592a2ea2ae06238ea7ceec2a..a255f86217fe39652c11393c1cc67baa6f2f2fca 100644
+--- a/projects/code-editor/src/lib/diff-editor.ts
++++ b/projects/code-editor/src/lib/diff-editor.ts
+@@ -268,7 +268,6 @@ export class DiffEditor implements OnChanges, OnInit, OnDestroy, ControlValueAcc
+     if (this.mergeView && value != null && typeof value === 'object') {
+       this.originalValue = value.original;
+       this.modifiedValue = value.modified;
+-      this.setValue('a', value.original);
+       this.setValue('b', value.modified);
+     }
+   }
+diff --git a/projects/dev-app/src/app/app.routes.ts b/projects/dev-app/src/app/app.routes.ts
+index 5c817713068b3aac3db0d68d85f93f728c36c672..3a006a537943809e16ee03510db2076f2cb8c966 100644
+--- a/projects/dev-app/src/app/app.routes.ts
++++ b/projects/dev-app/src/app/app.routes.ts
+@@ -8,7 +8,7 @@ export const routes: Routes = [
+     path: '',
+     component: Layout,
+     children: [
+-      { path: '', pathMatch: 'full', redirectTo: 'home' },
++      { path: '', pathMatch: 'full', redirectTo: 'diff' },
+       { path: 'home', component: Home },
+       { path: 'diff', component: Diff },
+     ],
+diff --git a/projects/dev-app/src/app/app.ts b/projects/dev-app/src/app/app.ts
+index 1a352b0734034d453cf7aeec53045098bd04136f..74cc6a8bc748515552cf7adbb14b464f9c5f43f9 100644
+--- a/projects/dev-app/src/app/app.ts
++++ b/projects/dev-app/src/app/app.ts
+@@ -6,6 +6,6 @@ import { RouterOutlet } from '@angular/router';
+   imports: [RouterOutlet],
+   templateUrl: './app.html',
+   styleUrl: './app.scss',
+-  encapsulation: ViewEncapsulation.None,
++  encapsulation: ViewEncapsulation.Emulated,
+ })
+ export class App {}
+diff --git a/projects/dev-app/src/app/diff/diff.html b/projects/dev-app/src/app/diff/diff.html
+index 71d72a1dac3fc984b9a6bf62ab9365f53fda04bb..8f04e7f8eca923431190c7e311b82b2c9c8d5766 100644
+--- a/projects/dev-app/src/app/diff/diff.html
++++ b/projects/dev-app/src/app/diff/diff.html
+@@ -8,7 +8,6 @@
+   [revertControls]="revertControls()"
+   [highlightChanges]="highlightChanges()"
+   [gutter]="gutter()"
+-  [disabled]="disabled()"
+ />
+ 
+ <button (click)="setOriginalValue()">change original value</button>
+diff --git a/projects/dev-app/src/app/diff/diff.ts b/projects/dev-app/src/app/diff/diff.ts
+index 3e258a8783014e550ca7c1ab29e67cb74db86c53..dc8459c6142df62d44507ee9019dcd41e4be3afd 100644
+--- a/projects/dev-app/src/app/diff/diff.ts
++++ b/projects/dev-app/src/app/diff/diff.ts
+@@ -55,7 +55,7 @@ five`);
+     if (this.orientation() === 'a-b') {
+       this.orientation.set('b-a');
+     } else {
+-      this.orientation.set('a-b');
++      this.orientation.set('b-a');
+     }
+   }
+ 
+diff --git a/projects/dev-app/src/app/home/home.html b/projects/dev-app/src/app/home/home.html
+index 247fe06a30edfcdadd0219519cd80dbf62385094..f6fb858dcf6c69c03d78e6debb40f1895df63b6e 100644
+--- a/projects/dev-app/src/app/home/home.html
++++ b/projects/dev-app/src/app/home/home.html
+@@ -29,7 +29,7 @@
+         [languages]="languages"
+       />
+ 
+-      @if (showOutput()) {
++      @if (!showOutput()) {
+         <textarea [style.height]="'500px'" [(ngModel)]="code"></textarea>
+       }
+     </div>
+diff --git a/projects/dev-app/src/app/home/home.scss b/projects/dev-app/src/app/home/home.scss
+index 10f8b45da10a7aa72d22aebe14f6376a3650cd61..210b799fce3244515d69443c8cb479a69d75a022 100644
+--- a/projects/dev-app/src/app/home/home.scss
++++ b/projects/dev-app/src/app/home/home.scss
+@@ -12,7 +12,7 @@
+ 
+ section {
+   display: grid;
+-  grid-template-columns: 300px 1fr;
++  grid-template-columns: 1fr 300px;
+   max-width: 1200px;
+   margin: 16px auto;
+ }
+diff --git a/projects/dev-app/src/app/home/home.ts b/projects/dev-app/src/app/home/home.ts
+index 9d0786cc36c1b5b03d9a25d438a74223a90e0a1a..f0654af1df686169ae8a4bdaff964689de561fac 100644
+--- a/projects/dev-app/src/app/home/home.ts
++++ b/projects/dev-app/src/app/home/home.ts
+@@ -108,7 +108,7 @@ export class Home implements OnInit, AfterViewInit {
+   }
+ 
+   getLangSample(lang: string) {
+-    fetch(`lang_samples/${lang}.txt`).then(async response => {
++    fetch(`/lang_samples/${lang}.txt`).then(async response => {
+       if (response.ok) {
+         const text = await response.text();
+         this.code.set(text);
+diff --git a/projects/dev-app/src/app/layout/layout.html b/projects/dev-app/src/app/layout/layout.html
+index 9388a35dc65d50f2f792b68d9f678d59c5efbcdf..70fd1567d7339651744c7ec19deaf430f4a92ca1 100644
+--- a/projects/dev-app/src/app/layout/layout.html
++++ b/projects/dev-app/src/app/layout/layout.html
+@@ -1,6 +1,4 @@
+ <mat-toolbar>
+-  <span>Codemirror 6 wrapper for Angular</span>
+-  <span class="spacer"></span>
+   <a mat-icon-button href="https://github.com/acrodata/code-editor" target="_blank">
+     <svg focusable="false" viewBox="0 0 51.8 50.4" xmlns="http://www.w3.org/2000/svg">
+       <path
+@@ -13,6 +11,7 @@
+       />
+     </svg>
+   </a>
+-</mat-toolbar>
++  <span>Codemirror 6 wrapper for Angular</span>
++  <span class="spacer"></span></mat-toolbar>
+ 
+ <router-outlet />
+diff --git a/projects/dev-app/src/app/layout/layout.ts b/projects/dev-app/src/app/layout/layout.ts
+index 600c7c23f99e0d6691e0c3925c51550308a29deb..ebc0c818808a83dd3b2d436d059ebd7faff2dd33 100644
+--- a/projects/dev-app/src/app/layout/layout.ts
++++ b/projects/dev-app/src/app/layout/layout.ts
+@@ -5,7 +5,7 @@ import { RouterOutlet } from '@angular/router';
+ 
+ @Component({
+   selector: 'app-layout',
+-  imports: [RouterOutlet, MatToolbarModule, MatButtonModule],
++  imports: [RouterOutlet, MatToolbarModule],
+   templateUrl: './layout.html',
+   styleUrl: './layout.scss',
+ })
+diff --git a/projects/dev-app/src/styles.scss b/projects/dev-app/src/styles.scss
+index e8ab743038fa370656aecb2162f770ef42012ae7..6a9a396e8fb5f4ce57be33e45479bebf05f204cc 100644
+--- a/projects/dev-app/src/styles.scss
++++ b/projects/dev-app/src/styles.scss
+@@ -3,7 +3,7 @@
+ @use '@ng-matero/extensions' as mtx;
+ 
+ html {
+-  color-scheme: light;
++  color-scheme: dark;
+ 
+   @include mat.theme((
+     color: mat.$azure-palette,

@@ -1,0 +1,419 @@
+import { createSignal, onMount, Show, For } from "solid-js";
+import type { ConfigResponse } from "../types";
+import { QUALITY_CEILING_OPTIONS } from "../types";
+import { api, probeApiKey } from "../api";
+import { apiKey, setApiKey } from "../apikey";
+import { addToast } from "../toast";
+import { getSonarrSetup } from "../lib/sonarr-setup";
+import { copyToClipboard } from "../lib/clipboard";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Select } from "../ui/Select";
+import { Icon } from "../ui/icons";
+
+const QUALITY_SELECT_OPTIONS = QUALITY_CEILING_OPTIONS.map((q) => ({
+  value: q,
+  label: q === "any" ? "Any (no cap)" : q,
+}));
+const WORKER_OPTIONS = ["1", "2", "3", "5", "10", "15", "20"];
+
+function maskKey(key: string): string {
+  if (key.length <= 8) return key;
+  return `${key.slice(0, 4)}••••••••${key.slice(-4)}`;
+}
+
+export default function Config() {
+  const [config, setConfig] = createSignal<ConfigResponse | null>(null);
+  const [copiedField, setCopiedField] = createSignal<string | null>(null);
+  const [keyRevealed, setKeyRevealed] = createSignal(false);
+  const [loadError, setLoadError] = createSignal<string | null>(null);
+  const [keyDraft, setKeyDraft] = createSignal("");
+  const [keyChecking, setKeyChecking] = createSignal(false);
+  const [keyError, setKeyError] = createSignal("");
+  const [editingKey, setEditingKey] = createSignal(false);
+  const sonarrSetup = () => getSonarrSetup(window.location);
+
+  onMount(async () => {
+    try {
+      await loadConfig();
+    } catch (e) {
+      // Most likely a missing or stale API key. api.ts has already
+      // raised the unauthorized event that reopens the setup wizard;
+      // render an explanation here instead of throwing into the
+      // ErrorBoundary and replacing the page with a crash card.
+      setLoadError(e instanceof Error ? e.message : "Failed to load configuration");
+    }
+  });
+
+  async function loadConfig() {
+    const cfg = await api.getConfig();
+    // Defensive: if the stored quality value isn't one of our current
+    // options, normalise it to "any" so the Select trigger doesn't
+    // render blank. The backend startup migration handles this too
+    // (cmd/iplayer-arr/main.go::migrateQualityConfig); this is a
+    // belt-and-braces fallback for upgrade ordering. GH#39.
+    const validQualities = QUALITY_CEILING_OPTIONS as readonly string[];
+    if (cfg.quality && !validQualities.includes(cfg.quality)) {
+      try {
+        await api.putConfig("quality", "any");
+        setConfig(await api.getConfig());
+        return;
+      } catch {
+        // Fall through and let the UI render with the legacy value so
+        // the user can still see and change it.
+      }
+    }
+    setConfig(cfg);
+  }
+
+  /**
+   * Validates a pasted key against the server before storing it, so a
+   * typo cannot silently lock the browser out of its own dashboard.
+   */
+  async function saveKey() {
+    const candidate = keyDraft().trim();
+    if (candidate === "") {
+      setKeyError("Enter the API key.");
+      return;
+    }
+    setKeyChecking(true);
+    setKeyError("");
+    try {
+      if (!(await probeApiKey(candidate))) {
+        setKeyError("That key was rejected by the server.");
+        return;
+      }
+      setApiKey(candidate);
+      setKeyDraft("");
+      setEditingKey(false);
+      setLoadError(null);
+      try {
+        await loadConfig();
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : "Failed to load configuration");
+      }
+      addToast("success", "API key saved");
+    } finally {
+      setKeyChecking(false);
+    }
+  }
+
+  async function copyField(value: string, key: string) {
+    const ok = await copyToClipboard(value);
+    if (!ok) return;
+    setCopiedField(key);
+    setTimeout(() => setCopiedField(null), 2000);
+  }
+
+  async function updateConfig(key: string, value: string) {
+    try {
+      await api.putConfig(key, value);
+      setConfig(await api.getConfig());
+      addToast("success", "Setting saved");
+    } catch (e) {
+      addToast("error", `Failed to save: ${e instanceof Error ? e.message : "unknown error"}`);
+    }
+  }
+
+  function CopyRow(p: { label: string; value: string; field: string; copyValue?: string }) {
+    return (
+      <div class="flex items-center justify-between gap-3 border-b border-border-subtle py-2 last:border-b-0">
+        <span class="text-sm text-text-secondary">{p.label}</span>
+        <span class="flex min-w-0 items-center gap-2">
+          <code class="truncate rounded bg-elevated px-2 py-1 font-mono text-xs text-text-primary">
+            {p.value}
+          </code>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => copyField(p.copyValue ?? p.value, p.field)}
+            aria-label={`Copy ${p.label}`}
+          >
+            <Show
+              when={copiedField() === p.field}
+              fallback={
+                <>
+                  <Icon name="copy" size={14} />
+                  Copy
+                </>
+              }
+            >
+              <Icon name="check" size={14} />
+              Copied
+            </Show>
+          </Button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div class="flex flex-col gap-4">
+      <h1 class="page-title">Configuration</h1>
+
+      <Card>
+        <Card.Header>API Key</Card.Header>
+        <Card.Body>
+          <Show when={apiKey() && !editingKey()}>
+            <div class="flex flex-wrap items-center gap-2">
+              <code
+                class="flex-1 min-w-0 truncate rounded bg-elevated px-3 py-2 font-mono text-sm text-text-primary"
+                aria-label="API key"
+              >
+                {keyRevealed() ? apiKey() : maskKey(apiKey())}
+              </code>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setKeyRevealed(!keyRevealed())}
+                title={keyRevealed() ? "Hide" : "Reveal"}
+              >
+                {keyRevealed() ? "Hide" : "Reveal"}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => copyField(apiKey(), "api-key")}
+              >
+                <Show
+                  when={copiedField() === "api-key"}
+                  fallback={
+                    <>
+                      <Icon name="copy" size={14} />
+                      Copy
+                    </>
+                  }
+                >
+                  <Icon name="check" size={14} />
+                  Copied
+                </Show>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setEditingKey(true)}>
+                Change
+              </Button>
+            </div>
+            <p class="mt-2 text-xs text-text-tertiary">
+              Held in this browser only. Paste the same value into Sonarr and Radarr
+              as the indexer and download-client key.
+            </p>
+          </Show>
+
+          <Show when={!apiKey() || editingKey()}>
+            <p class="mb-2 text-sm text-text-secondary">
+              Read it from the container with{" "}
+              <code class="rounded bg-elevated px-1 py-0.5 font-mono text-xs">
+                docker exec &lt;container&gt; cat /config/api_key
+              </code>
+              , or pin your own with the{" "}
+              <code class="rounded bg-elevated px-1 py-0.5 font-mono text-xs">API_KEY</code>{" "}
+              environment variable.
+            </p>
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                class="h-9 min-w-0 flex-1 rounded-md border border-border bg-elevated px-3 font-mono text-sm text-text-primary"
+                type="text"
+                autocomplete="off"
+                spellcheck={false}
+                aria-label="API key"
+                value={keyDraft()}
+                onInput={(e) => setKeyDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveKey();
+                }}
+              />
+              <Show when={editingKey()}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setEditingKey(false);
+                    setKeyDraft("");
+                    setKeyError("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Show>
+              <Button size="sm" loading={keyChecking()} onClick={saveKey}>
+                {keyChecking() ? "Checking..." : "Save"}
+              </Button>
+            </div>
+            <Show when={keyError()}>
+              <p class="mt-2 text-xs text-danger">{keyError()}</p>
+            </Show>
+          </Show>
+        </Card.Body>
+      </Card>
+
+      <Show when={loadError() && !config()}>
+        <Card>
+          <Card.Body>
+            <p class="text-sm text-danger">Could not load configuration: {loadError()}</p>
+            <p class="mt-1 text-xs text-text-secondary">
+              Check the API key above, then reload the page.
+            </p>
+          </Card.Body>
+        </Card>
+      </Show>
+
+      <Show
+        when={config()}
+        fallback={
+          <Show when={!loadError()}>
+            <Card>
+              <Card.Body>
+                <p class="text-sm text-text-secondary">Loading...</p>
+              </Card.Body>
+            </Card>
+          </Show>
+        }
+      >
+        <Card>
+          <Card.Header>Settings</Card.Header>
+          <Card.Body>
+            <div class="grid gap-x-4 gap-y-4 sm:grid-cols-[200px_1fr] sm:items-start">
+              <label
+                class="text-sm text-text-secondary sm:pt-2"
+                for="cfg-quality"
+              >
+                Maximum quality
+              </label>
+              <div class="flex flex-col gap-1">
+                <Select
+                  value={config()!.quality}
+                  onChange={(v) => updateConfig("quality", v)}
+                  options={QUALITY_SELECT_OPTIONS}
+                  ariaLabel="Maximum quality offered to Sonarr"
+                />
+                <p class="text-xs text-text-tertiary">
+                  Caps what the indexer advertises. Sonarr cannot request
+                  anything higher than this.
+                </p>
+              </div>
+
+              <label
+                class="text-sm text-text-secondary sm:pt-2"
+                for="cfg-workers"
+              >
+                Max workers
+              </label>
+              <div class="flex flex-col gap-1">
+                <select
+                  id="cfg-workers"
+                  class="h-9 w-32 rounded-md border border-border bg-elevated px-3 text-sm text-text-primary transition-colors hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                  value={config()!.max_workers}
+                  onChange={(e) => updateConfig("max_workers", e.currentTarget.value)}
+                >
+                  <Show when={!WORKER_OPTIONS.includes(config()!.max_workers)}>
+                    <option value={config()!.max_workers}>{config()!.max_workers}</option>
+                  </Show>
+                  <For each={WORKER_OPTIONS}>
+                    {(workers) => <option value={workers}>{workers}</option>}
+                  </For>
+                </select>
+                <p class="text-xs text-text-tertiary">
+                  Number of concurrent download workers. Changes apply after restart.
+                </p>
+              </div>
+
+              <label
+                class="text-sm text-text-secondary sm:pt-2"
+                for="cfg-dir"
+              >
+                Download dir
+              </label>
+              <input
+                id="cfg-dir"
+                class="h-9 w-full rounded-md border border-border bg-elevated px-3 text-sm text-text-tertiary"
+                type="text"
+                value={config()!.download_dir}
+                disabled
+                aria-disabled="true"
+              />
+
+              <label
+                class="text-sm text-text-secondary sm:pt-2"
+                for="cfg-cleanup"
+              >
+                Auto cleanup
+              </label>
+              <div class="flex flex-col gap-1">
+                <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                  <input
+                    id="cfg-cleanup"
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-border bg-elevated accent-accent"
+                    checked={config()!.auto_cleanup === "true"}
+                    onChange={(e) =>
+                      updateConfig(
+                        "auto_cleanup",
+                        e.currentTarget.checked ? "true" : "false",
+                      )
+                    }
+                  />
+                  Remove stale download folders
+                </label>
+                <p class="text-xs text-text-tertiary">
+                  When enabled, folders with no .mp4 files are cleaned up every 5 minutes.
+                </p>
+              </div>
+            </div>
+          </Card.Body>
+        </Card>
+
+        <Card>
+          <Card.Header>Newznab Indexer</Card.Header>
+          <Card.Body>
+            <p class="mb-2 text-sm text-text-secondary">
+              Settings &gt; Indexers &gt; + &gt; Newznab
+            </p>
+            <CopyRow
+              label="Indexer URL"
+              value={sonarrSetup().indexerUrl}
+              field="indexer-url"
+            />
+            <CopyRow
+              label="API key"
+              value={maskKey(apiKey())}
+              copyValue={apiKey()}
+              field="indexer-key"
+            />
+          </Card.Body>
+        </Card>
+
+        <Card>
+          <Card.Header>SABnzbd Download Client</Card.Header>
+          <Card.Body>
+            <p class="mb-2 text-sm text-text-secondary">
+              Settings &gt; Download Clients &gt; + &gt; SABnzbd
+            </p>
+            <CopyRow label="Host" value={sonarrSetup().sabHost} field="sab-host" />
+            <CopyRow label="Port" value={sonarrSetup().sabPort} field="sab-port" />
+            <CopyRow label="URL base" value={sonarrSetup().sabBase} field="sab-base" />
+            <CopyRow
+              label="Category"
+              value={sonarrSetup().sabCategory}
+              field="sab-cat"
+            />
+            <CopyRow
+              label="API key"
+              value={maskKey(apiKey())}
+              copyValue={apiKey()}
+              field="sab-key"
+            />
+          </Card.Body>
+        </Card>
+
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.dispatchEvent(new Event("rerun-wizard"))}
+          >
+            <Icon name="refresh" size={14} />
+            Re-run setup wizard
+          </Button>
+        </div>
+      </Show>
+    </div>
+  );
+}

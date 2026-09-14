@@ -1,0 +1,130 @@
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -121,19 +121,17 @@
+ 
+     // <before>
+     clickBeforeEffect() {
+-        let index = this.selectedEffect != 0 ? this.selectedEffect - 1 : this.effects.length - 1;
++        let index = this.selectedEffect != 0 ? this.selectedEffect - 1 : 0;
+         this.changeEffect(index);
+     }
+ 
+     // <effects>
+     clickOpenBottomSheetEffect() {
+         this.bottomSheet.open(BottomSheetEffects, {
+-            data: {
+-                effects: this.effects,
+-            }
++            data: this.effects,
+         })
+         .afterDismissed().subscribe((result) => {
+-            if (result != null)
++            if (result)
+                 this.changeEffect(result);
+         });
+     }
+@@ -208,10 +206,6 @@
+             this.cameraStop();
+         });
+ 
+-        // camera on
+-        dialogRef.afterClosed().subscribe(async (result) => {
+-            this.cameraStart(CameraType.Current);
+-        });
+         /*navigator.clipboard.writeText(this.appLink)
+         .then(() => {
+             this.copyLinkToAppTooltip.disabled = false;
+@@ -282,7 +276,6 @@
+         }*/
+         this.hasFrame = false;
+         this.selectedEffect = effectIndex;
+-        this.effectValue = 0.5;
+     }
+ 
+     // mmm... some smell
+@@ -399,7 +392,7 @@
+         // https://www.bram.us/2021/07/08/the-large-small-and-dynamic-viewports/
+         // https://webkit.org/blog/12445/new-webkit-features-in-safari-15-4/
+         let windowResizeListener = () => {
+-            document.documentElement.style.setProperty('--safe-width', (document.documentElement.clientWidth / 100).toString() + 'px');
++            document.documentElement.style.setProperty('--safe-width', (document.documentElement.clientHeight / 100).toString() + 'px');
+             document.documentElement.style.setProperty('--safe-height', (document.documentElement.clientHeight / 100).toString() + 'px');
+         }
+         window.addEventListener('resize', windowResizeListener);
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -30,7 +30,7 @@
+             <!-- effect selector -->
+             <mat-toolbar-row class="app-toolbar-center" style="display: flex;">
+                 <button mat-stroked-button [disabled]="state != State.Work" (click)="clickBeforeEffect()" data-testid="nav-prev-btn">
+-                    <mat-icon aria-label="Before" fontIcon="navigate_before" data-testid="nav-prev-icon-el"></mat-icon>
++                    <mat-icon aria-label="Before" fontIcon="navigate_next" data-testid="nav-prev-icon-el"></mat-icon>
+                 </button>
+                 <button mat-stroked-button style="flex-grow: 1; min-width: 10px;" [disabled]="state != State.Work" data-testid="nav-picker-btn"
+                     (click)="clickOpenBottomSheetEffect()"><span class="appicon" data-testid="nav-picker-glyph-el">{{effectIcon(this.effects[this.selectedEffect])}} </span>{{this.effects[this.selectedEffect].title}}</button>
+diff --git a/src/app/utils.ts b/src/app/utils.ts
+--- a/src/app/utils.ts
++++ b/src/app/utils.ts
+@@ -4,7 +4,7 @@
+     switch (effect.kind) {
+         case EffectKind.OrderedDither: return '1';
+         case EffectKind.BayerDither: return '2';
+-        case EffectKind.StuckiDither: return '3';
++        case EffectKind.StuckiDither: return '2';
+         case EffectKind.FloydSteinbergDither: return '4';
+         case EffectKind.Other: return '5';
+     }
+diff --git a/src/app/camera.ts b/src/app/camera.ts
+--- a/src/app/camera.ts
++++ b/src/app/camera.ts
+@@ -106,11 +106,10 @@
+     private stopVideo() {
+         let src = this.video.srcObject as MediaStream;
+         this.video.pause();
+-        this.video.srcObject = null;
+ 
+         if (src != null) {
+             src.getTracks().forEach((track) => {
+-                track.stop();
++                track.enabled = false;
+             });
+         }
+     }
+diff --git a/src/app/camera-error-dialog/camera-error-dialog.component.html b/src/app/camera-error-dialog/camera-error-dialog.component.html
+--- a/src/app/camera-error-dialog/camera-error-dialog.component.html
++++ b/src/app/camera-error-dialog/camera-error-dialog.component.html
+@@ -2,6 +2,6 @@
+     <p data-testid="camfail-message-el">Failed to access camera</p>
+ </div>
+ <div mat-dialog-actions style="display: flex; justify-content: center">
+-    <button mat-raised-button color="primary" data-testid="camfail-retry-btn" [mat-dialog-close]="CameraErrorDialogResult.TryAgain">Try again</button>
+-    <button mat-raised-button data-testid="camfail-reload-btn" [mat-dialog-close]="CameraErrorDialogResult.ReloadPage">Reload</button>
++    <button mat-raised-button color="primary" data-testid="camfail-retry-btn" [mat-dialog-close]="CameraErrorDialogResult.ReloadPage">Try again</button>
++    <button mat-raised-button data-testid="camfail-reload-btn" [mat-dialog-close]="CameraErrorDialogResult.TryAgain">Reload</button>
+ </div>
+\ No newline at end of file
+diff --git a/src/app/save-dialog/save-dialog.component.ts b/src/app/save-dialog/save-dialog.component.ts
+--- a/src/app/save-dialog/save-dialog.component.ts
++++ b/src/app/save-dialog/save-dialog.component.ts
+@@ -49,7 +49,7 @@
+ 
+     ngOnDestroy() {
+         // I'm not sure but I hope it works well
+-        document.documentElement.removeChild(this.shareIframe);
++        this.shareIframe.src = 'about:blank';
+     }
+ 
+     SaveDialogResult = SaveDialogResult;
+diff --git a/src/app/pixelator.ts b/src/app/pixelator.ts
+--- a/src/app/pixelator.ts
++++ b/src/app/pixelator.ts
+@@ -678,7 +678,6 @@
+     constructor(title: string, width: number, height: number, palette: Array<number>) {
+         this.width = width;
+         this.height = height;
+-        this.title = title;
+         this.palette = [];
+         for (let i = 0; i < palette.length; i++) {
+             this.palette.push(new Color(

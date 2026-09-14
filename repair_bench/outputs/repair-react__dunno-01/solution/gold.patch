@@ -1,0 +1,166 @@
+diff --git a/src/api/tmdb.ts b/src/api/tmdb.ts
+index b347d8f..e747fc2 100644
+--- a/src/api/tmdb.ts
++++ b/src/api/tmdb.ts
+@@ -157,7 +157,7 @@ export const getTitles: GetTitles = async (value) => {
+ };
+ 
+ export const getTitle: GetTitle = async (mediaType, titleId) => {
+-  const key = `${titleId}`;
++  const key = `${mediaType}_${titleId}`;
+   if (localStorage.getItem(key)) {
+     return JSON.parse(localStorage.getItem(key)!);
+   }
+diff --git a/src/components/home/List.tsx b/src/components/home/List.tsx
+index e907cb7..b005297 100644
+--- a/src/components/home/List.tsx
++++ b/src/components/home/List.tsx
+@@ -26,7 +26,7 @@ const List: React.VFC<Props> = ({ mediaType, category, id }) => {
+ 
+   useEffect(() => {
+     dispatch(fetchList(category, mediaType, page, id));
+-  }, [category, mediaType, id, dispatch]);
++  }, [category, mediaType, page, id, dispatch]);
+ 
+   const handleLoad = useCallback(() => {
+     dispatch(incrementPage(`${category}_${mediaType}`));
+diff --git a/src/components/layout/SearchBar.tsx b/src/components/layout/SearchBar.tsx
+index c1e5547..6667252 100644
+--- a/src/components/layout/SearchBar.tsx
++++ b/src/components/layout/SearchBar.tsx
+@@ -33,6 +33,7 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+       if (value) dispatch(fetchTitles(value));
+     }, 500);
+ 
++    return () => clearTimeout(timeout);
+   }, [value, dispatch]);
+ 
+   useEffect(() => {
+@@ -49,7 +50,7 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+ 
+     document.addEventListener('click', handleClick);
+     return () => document.removeEventListener('click', handleClick);
+-  }, []);
++  }, [isOpen, searchIcon, mobileSearchIcon, dispatch]);
+ 
+   return (
+     <>
+diff --git a/src/components/my-list/MyListPoster.tsx b/src/components/my-list/MyListPoster.tsx
+index 86a2f5c..9bed392 100644
+--- a/src/components/my-list/MyListPoster.tsx
++++ b/src/components/my-list/MyListPoster.tsx
+@@ -21,7 +21,10 @@ const MyListPoster: React.VFC<{
+       />
+       <Button
+         data-testid={`mylist-remove-${testIndex}`}
+-        onClick={() => dispatch(removeTitle(userId, firebaseId))}
++        onClick={(e) => {
++          e.preventDefault();
++          dispatch(removeTitle(userId, firebaseId));
++        }}
+       >
+         <XMark />
+       </Button>
+diff --git a/src/components/randomizer/Randomizer.tsx b/src/components/randomizer/Randomizer.tsx
+index 4abeb0e..afe08fb 100644
+--- a/src/components/randomizer/Randomizer.tsx
++++ b/src/components/randomizer/Randomizer.tsx
+@@ -57,7 +57,7 @@ const Randomizer = () => {
+         />
+       )}
+       <Column>
+-        <StyledLink data-testid='randomizer-poster-link' to={poster_path ? `${title ? 'tv' : 'movie'}/${id}` : `#`}>
++        <StyledLink data-testid='randomizer-poster-link' to={poster_path ? `${name ? 'tv' : 'movie'}/${id}` : `#`}>
+           <Img
+             data-testid='randomizer-poster'
+             alt={title || name}
+diff --git a/src/components/title/Title.tsx b/src/components/title/Title.tsx
+index 025b076..c3df8af 100644
+--- a/src/components/title/Title.tsx
++++ b/src/components/title/Title.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from 'react';
++import { useEffect } from 'react';
+ import { useLocation } from 'react-router-dom';
+ import { useDispatch } from 'react-redux';
+ import { useSelector } from '@/redux/store';
+@@ -32,11 +32,7 @@ const Title = () => {
+     };
+   }, [mediaType, titleId, dispatch]);
+ 
+-  const [heading, setHeading] = useState(title || name);
+-
+-  useEffect(() => {
+-    if (!heading) setHeading(title || name);
+-  }, [title, name, heading]);
++  const heading = title || name;
+ 
+   if (!error && !heading) return <Spinner />;
+   if (error) return <NotFound />;
+diff --git a/src/redux/slices/listSlice.ts b/src/redux/slices/listSlice.ts
+index d57c5f9..6a93ef6 100644
+--- a/src/redux/slices/listSlice.ts
++++ b/src/redux/slices/listSlice.ts
+@@ -63,7 +63,10 @@ const list = createSlice({
+   reducers: {
+     setList: (state, action: PayloadAction<List>) => {
+       state[action.payload.key] = {
+-        titles: action.payload.results,
++        titles: [
++          ...state[action.payload.key].titles,
++          ...action.payload.results,
++        ],
+         page: state[action.payload.key].page,
+         totalPages: action.payload.totalPages,
+       };
+diff --git a/src/redux/slices/myListSlice.ts b/src/redux/slices/myListSlice.ts
+index 597dc8c..938c967 100644
+--- a/src/redux/slices/myListSlice.ts
++++ b/src/redux/slices/myListSlice.ts
+@@ -33,7 +33,7 @@ const myList = createSlice({
+     },
+     deleteTitle: (state, action: PayloadAction<string>) => {
+       state.titles = state.titles.filter(
+-        (title: MyListTitle) => title.firebaseId === action.payload
++        (title: MyListTitle) => title.firebaseId !== action.payload
+       );
+     },
+   },
+diff --git a/src/redux/slices/randomizerSlice.ts b/src/redux/slices/randomizerSlice.ts
+index 3badd38..98fd366 100644
+--- a/src/redux/slices/randomizerSlice.ts
++++ b/src/redux/slices/randomizerSlice.ts
+@@ -52,6 +52,7 @@ const randomizer = createSlice({
+     },
+     getTitleSuccess: (state, action: PayloadAction<RandomTitle>) => {
+       state.title = action.payload;
++      state.mediaType = '';
+     },
+     getTitleFailure: (state, action: PayloadAction<string>) => {
+       state.loading = false;
+diff --git a/src/redux/slices/titleSlice.ts b/src/redux/slices/titleSlice.ts
+index 9c48781..00e50b6 100644
+--- a/src/redux/slices/titleSlice.ts
++++ b/src/redux/slices/titleSlice.ts
+@@ -87,7 +87,8 @@ export const checkTitle =
+   (userId: string, id: string, mediaType: string): AppThunk =>
+   async (dispatch) => {
+     try {
+-      await checkTitleFB(userId, id, mediaType);
++      const firebaseId = await checkTitleFB(userId, id, mediaType);
++      if (firebaseId) dispatch(setFirebaseId(firebaseId));
+     } catch (error) {
+       console.error(error);
+     }
+diff --git a/src/utils/sliceOverview.ts b/src/utils/sliceOverview.ts
+index f8d78b1..e732d9f 100644
+--- a/src/utils/sliceOverview.ts
++++ b/src/utils/sliceOverview.ts
+@@ -1,6 +1,6 @@
+ export default function sliceOverview(str: string) {
+   if (str.length > 300) {
+-    const shortString = str.slice(0, str.lastIndexOf('.', 30) + 1);
++    const shortString = str.slice(0, str.lastIndexOf('.', 300) + 1);
+     if (shortString === '') {
+       return `${str.slice(0, str.indexOf(',', 100))}...`;
+     }

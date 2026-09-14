@@ -1,0 +1,229 @@
+name: ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  prettier:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run Prettier
+        run: bunx prettier -w .
+      - name: Commit if changed
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "The following files were changed by prettier:"
+            git status --porcelain
+
+            git config user.name "github-actions[bot]"
+            git config user.email "${{ github.actor_id }}+github-actions@users.noreply.github.com"
+            git add .
+            git commit -m "chore: format code with prettier" -m 'skip ci'
+            git fetch origin "$HEAD_REF"
+            git rebase "origin/$HEAD_REF"
+            git push origin "HEAD:$HEAD_REF"
+          else
+            echo "No changes to commit"
+          fi
+
+  checks:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: ./go.mod
+      - name: Create dist
+        run: |
+          mkdir -p internal/api/dist
+          echo '<h1>Parse-DMARC API</h1>' > internal/api/dist/index.html
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+
+  simulate-prod:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      - name: Setup Cosign CLI
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  build-docker:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - name: Build docker
+        uses: meysam81/build-docker@21c3eacd4b1883d3efbeb1d7b174d339b4771323 # main
+        with:
+          build-args: |
+            VERSION=head-${{ github.sha }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ github.event.head_commit.timestamp }}
+            BUILT_BY=github-actions
+          cosign: true
+          dockerhub-username: ${{ vars.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          image-name: ghcr.io/${{ github.repository }}
+          image-extra-tags: |
+            dmarcguard/dmarcguard:latest
+            dmarcguard/dmarcguard:${{ github.run_id }}
+            dmarcguard/dmarcguard:${{ github.sha }}
+            ghcr.io/dmarcguardhq/dmarcguard:latest
+            ghcr.io/dmarcguardhq/dmarcguard:${{ github.run_id }}
+            ghcr.io/dmarcguardhq/dmarcguard:${{ github.sha }}
+            meysam81/parse-dmarc:latest
+            meysam81/parse-dmarc:${{ github.run_id }}
+            meysam81/parse-dmarc:${{ github.sha }}
+          kubescape: true
+
+  release-please:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release-please.outputs.releases_created }}
+      tag_name: ${{ steps.release-please.outputs.tag_name }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - id: release-please
+        name: Release please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-prod:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      issues: write
+      packages: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      - name: Setup Cosign CLI
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          BUILDKIT_MULTI_PLATFORM: "${{ vars.BUILDKIT_MULTI_PLATFORM }}"
+          DISABLE_SBOM: "${{ vars.DISABLE_SBOM }}"
+          GITHUB_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          NO_DIGEST: ${{ vars.NO_DIGEST }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-checksums: ./.goreleaser-dist/checksums.txt
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        if: env.NO_DIGEST != 'false'
+        with:
+          subject-checksums: ./.goreleaser-dist/digest.txt
+
+  # deploy-grafana:
+  #   needs: [release-please, build-prod]
+  #   if: needs.release-please.outputs.releases_created == 'true'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v6
+  #       with:
+  #         ref: ${{ needs.release-please.outputs.tag_name }}
+  #     - name: Validate dashboard JSON
+  #       run: |
+  #         python3 -c "import json; json.load(open('grafana/dashboard.json'))"
+  #         echo "Dashboard JSON is valid"
+  #     - name: Upload dashboard to Grafana.com
+  #       env:
+  #         GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+  #       run: |
+  #         curl -X POST \
+  #           -H "Authorization: Bearer $GRAFANA_API_KEY" \
+  #           -H "Content-Type: application/json" \
+  #           -d @grafana/dashboard.json \
+  #           "https://grafana.com/api/dashboards"

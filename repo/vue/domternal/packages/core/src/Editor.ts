@@ -1,0 +1,922 @@
+/**
+ * Editor - Main editor class wrapping ProseMirror
+ *
+ * Manages extensions, schema, commands, and the ProseMirror EditorView/State.
+ */
+import type { Transaction, PluginKey } from '@domternal/pm/state';
+import { EditorState, Plugin } from '@domternal/pm/state';
+import { EditorView } from '@domternal/pm/view';
+import { DOMSerializer, Fragment } from '@domternal/pm/model';
+import { Transform } from '@domternal/pm/transform';
+import type { Schema } from '@domternal/pm/model';
+
+import { EventEmitter } from './EventEmitter.js';
+import { ExtensionManager } from './ExtensionManager.js';
+import { CommandManager } from './CommandManager.js';
+import { createDocument, isDocumentEmpty } from './helpers/index.js';
+import { inlineStyles, type InlineStyleOverrides } from './utils/inlineStyles.js';
+import { warnOnDuplicateProseMirrorCopy } from './utils/prosemirrorSingleton.js';
+import { ExtensionConfigurationError } from './ExtensionConfigurationError.js';
+import { normalizeColor } from './helpers/normalizeColor.js';
+import {
+  focus as focusCommand,
+  blur as blurCommand,
+  setContent as setContentCommand,
+  clearContent as clearContentCommand,
+} from './commands/index.js';
+import type {
+  EditorOptions,
+  EditorPreset,
+  EditorEvents,
+  Content,
+  JSONContent,
+  FocusPosition,
+  SingleCommands,
+  ChainedCommands,
+  CanCommands,
+  Command,
+  ToolbarItem,
+  FloatingMenuItem,
+} from './types/index.js';
+
+/**
+ * Main editor class
+ *
+ * Wraps ProseMirror's EditorView and EditorState with a cleaner API.
+ *
+ * @example
+ * ```ts
+ * import { Editor } from '@domternal/core';
+ * import { Schema } from '@domternal/pm/model';
+ *
+ * const schema = new Schema({
+ *   nodes: { doc: { content: 'paragraph+' }, paragraph: { content: 'text*' }, text: {} }
+ * });
+ *
+ * const editor = new Editor({
+ *   schema,
+ *   element: document.getElementById('editor'),
+ *   content: '<p>Hello world</p>',
+ * });
+ *
+ * // Get content
+ * const json = editor.getJSON();
+ * const html = editor.getHTML();
+ *
+ * // Set content
+ * editor.commands.setContent('<p>New content</p>');
+ *
+ * // Cleanup
+ * editor.destroy();
+ * ```
+ */
+export class Editor extends EventEmitter<EditorEvents> {
+  /**
+   * Editor configuration options
+   */
+  private options: EditorOptions;
+
+  /**
+   * Manages extensions and schema
+   * @internal Exposed for CommandManager, not for public use
+   */
+  private _extensionManager!: ExtensionManager;
+
+  /**
+   * Gets the extension manager
+   * @internal For CommandManager use only
+   */
+  get extensionManager(): ExtensionManager {
+    return this._extensionManager;
+  }
+
+  /**
+   * Manages commands
+   */
+  private commandManager!: CommandManager;
+
+  /**
+   * ProseMirror EditorView instance
+   */
+  public view!: EditorView;
+
+  /**
+   * Whether the editor has been destroyed
+   */
+  private _isDestroyed = false;
+
+  /**
+   * Timer for autofocus (cleared on destroy to prevent memory leaks)
+   */
+  private _autofocusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * True while EditorView's constructor runs; see buildViewDispatch.
+   */
+  private _isViewConstructing = false;
+
+  /**
+   * The `.dm-editor` host this editor painted `dm-notion-mode` onto because
+   * of `preset: 'notion'`. Tracked so destroy() removes only a class the
+   * editor itself added, never one the consumer wrote.
+   */
+  private _presetClassHost: Element | null = null;
+
+  /**
+   * Creates a new Editor instance
+   *
+   * @param options - Editor configuration
+   * @throws Error if running in SSR environment (no window)
+   * @throws Error if schema is not provided
+   */
+  constructor(options: EditorOptions) {
+    super();
+
+    // SSR Guard - Editor requires browser environment
+    if (typeof window === 'undefined') {
+      throw new Error(
+        'Editor requires a browser environment. ' +
+          'For server-side rendering, use generateHTML() and generateJSON() helpers instead.'
+      );
+    }
+
+    // Validate: need either schema or extensions
+    if (!options.schema && (!options.extensions || options.extensions.length === 0)) {
+      throw new Error(
+        'Editor requires either schema or extensions. ' +
+          'Provide a ProseMirror schema directly, or use extensions like [Document, Paragraph, Text].'
+      );
+    }
+
+    /* Before anything is built from them: a second copy of any of these
+       makes every later failure look like a bug in the editor. Warning rather
+       than throwing, because two copies only break once an object crosses
+       between them, and an app deliberately running isolated editors in
+       separate bundles is not wrong yet. `@domternal-pro/extension-collaboration`
+       raises the same conflict to an error, because there it is already fatal. */
+    warnOnDuplicateProseMirrorCopy('prosemirror-model', Fragment, '@domternal/core');
+    warnOnDuplicateProseMirrorCopy('prosemirror-state', Plugin, '@domternal/core');
+    warnOnDuplicateProseMirrorCopy('prosemirror-view', EditorView, '@domternal/core');
+    warnOnDuplicateProseMirrorCopy('prosemirror-transform', Transform, '@domternal/core');
+    /* And the core itself. Two copies of the editor core are as fatal as two
+       copies of prosemirror-state, and for the same reason: `Gapcursor` from
+       one copy and `Gapcursor` from the other are different classes under one
+       plugin key. This catches the case where both copies build an editor;
+       `ExtensionManager` catches the sharper one, where a single editor is
+       handed an extension the other copy built. */
+    warnOnDuplicateProseMirrorCopy(
+      '@domternal/core',
+      ExtensionConfigurationError,
+      '@domternal/core'
+    );
+
+    this.options = {
+      editable: true,
+      ...options,
+    };
+
+    this.createEditor();
+  }
+
+  // === Getters ===
+
+  /**
+   * Gets the current EditorState
+   */
+  get state(): EditorState {
+    return this.view.state;
+  }
+
+  /**
+   * Gets the ProseMirror schema
+   */
+  get schema(): Schema {
+    return this._extensionManager.schema;
+  }
+
+  /**
+   * Checks if the editor is editable
+   */
+  get isEditable(): boolean {
+    // The view is unset while EditorView's constructor runs the initial draw
+    // (plugin decoration props may call this), so fall back to the option.
+    // The declared type says `view` is always set; mid-construction it is not.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    return this.view ? this.view.editable : (this.options.editable ?? true);
+  }
+
+  /**
+   * The resolved editing-experience preset.
+   *
+   * The `preset` option wins when provided (so an explicit 'classic' can
+   * opt out of everything). Otherwise a `dm-notion-mode` class on or above
+   * the view counts as 'notion': consumers that predate the option declare
+   * Notion mode with the theme class alone, and behavior must follow what
+   * the user actually sees. Resolved on every read, not cached, so a class
+   * toggled at runtime is picked up.
+   */
+  get preset(): EditorPreset {
+    if (this.options.preset) {
+      return this.options.preset;
+    }
+    // The view is unset while EditorView's constructor runs (see isEditable).
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (this.view?.dom.closest('.dm-notion-mode')) {
+      return 'notion';
+    }
+    return 'classic';
+  }
+
+  /**
+   * Paints `dm-notion-mode` on the `.dm-editor` host when the editor was
+   * created with `preset: 'notion'`. Runs during creation, and framework
+   * wrappers call it again after adopting the view's DOM: they construct
+   * the editor in a detached element, so the creation-time run cannot see
+   * the host yet. Idempotent; a no-op for any other preset. Only a class
+   * added here is removed again on destroy.
+   */
+  adoptPresetClass(): void {
+    if (this.options.preset !== 'notion' || this._presetClassHost) {
+      return;
+    }
+    const host = this.view.dom.closest('.dm-editor');
+    if (host && !host.classList.contains('dm-notion-mode')) {
+      host.classList.add('dm-notion-mode');
+      this._presetClassHost = host;
+    }
+  }
+
+  /**
+   * Checks if the editor content is empty
+   */
+  get isEmpty(): boolean {
+    return isDocumentEmpty(this.state.doc);
+  }
+
+  /**
+   * Checks if the editor has focus
+   */
+  get isFocused(): boolean {
+    return this.view.hasFocus();
+  }
+
+  /**
+   * Checks if the editor has been destroyed
+   */
+  get isDestroyed(): boolean {
+    return this._isDestroyed;
+  }
+
+  /**
+   * Gets single commands for immediate execution
+   * @example editor.commands.focus('end')
+   */
+  get commands(): SingleCommands {
+    return this.commandManager.commands;
+  }
+
+  /**
+   * Creates a command chain for batched execution
+   * @example editor.chain().focus().insertText('Hello').run()
+   */
+  chain(): ChainedCommands {
+    return this.commandManager.chain();
+  }
+
+  /**
+   * Checks if commands can be executed (dry-run)
+   * @example if (editor.can().toggleBold()) { ... }
+   */
+  can(): CanCommands {
+    return this.commandManager.can();
+  }
+
+  /**
+   * Gets extension storage
+   * Access via: editor.storage.extensionName.propertyName
+   */
+  get storage(): Record<string, unknown> {
+    return this._extensionManager.storage;
+  }
+
+  /**
+   * Toolbar items registered by all extensions.
+   */
+  get toolbarItems(): ToolbarItem[] {
+    return this._extensionManager.toolbarItems;
+  }
+
+  /**
+   * Floating-menu items registered by all extensions, rendered as the
+   * block-insert menu shown on empty paragraphs.
+   */
+  get floatingMenuItems(): FloatingMenuItem[] {
+    return this._extensionManager.floatingMenuItems;
+  }
+
+  // === Active State Methods ===
+
+  /**
+   * Checks if a node or mark is currently active
+   *
+   * For toolbar button states - returns true if:
+   * - For marks: the current selection has the mark applied
+   * - For nodes: the cursor is inside that node type
+   *
+   * @param nameOrAttributes - Extension name, or object with name and attributes
+   * @param attributes - Optional attributes to match (for node/mark specific states)
+   *
+   * @example
+   * editor.isActive('bold') // → true if bold mark is active
+   * editor.isActive('heading', { level: 2 }) // → true if in h2
+   * editor.isActive({ name: 'textAlign', attributes: { align: 'center' } })
+   */
+  isActive(
+    nameOrAttributes: string | { name: string; attributes?: Record<string, unknown> },
+    attributes?: Record<string, unknown>
+  ): boolean {
+    // Normalize arguments
+    const name = typeof nameOrAttributes === 'string' ? nameOrAttributes : nameOrAttributes.name;
+    const attrs = typeof nameOrAttributes === 'string' ? attributes : nameOrAttributes.attributes;
+
+    const { state } = this;
+    const { selection, schema } = state;
+    const { from, to, $from } = selection;
+
+    // Check if it's a mark
+    const markType = schema.marks[name];
+    if (markType) {
+      // For empty selection, check marks at cursor or stored marks
+      if (selection.empty) {
+        const storedMarks = state.storedMarks ?? $from.marks();
+        const hasMark = storedMarks.some((mark) => mark.type === markType);
+        if (!hasMark) return false;
+
+        // Check attributes if specified
+        if (attrs) {
+          const mark = storedMarks.find((m) => m.type === markType);
+          return mark ? this.matchAttributes(mark.attrs, attrs) : false;
+        }
+        return true;
+      }
+
+      // For range selection, check if all applicable text has the mark.
+      // Skip text that can't have this mark: inside blocks that don't allow it
+      // (e.g. code blocks) or carrying a mark that excludes it (e.g. inline code).
+      const check = { hasApplicableText: false, hasMark: true };
+      state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+        if (node.isText) {
+          if (parent && !parent.type.allowsMarkType(markType)) {
+            return; // skip text in mark-incompatible blocks
+          }
+          if (node.marks.some((m) => m.type.excludes(markType) && m.type !== markType)) {
+            return; // skip text with marks that exclude this mark type
+          }
+          check.hasApplicableText = true;
+          const nodeMark = node.marks.find((m) => m.type === markType);
+          if (!nodeMark) {
+            check.hasMark = false;
+            return false; // Stop iteration
+          }
+          if (attrs && !this.matchAttributes(nodeMark.attrs, attrs)) {
+            check.hasMark = false;
+            return false;
+          }
+        }
+        return true;
+      });
+      return check.hasApplicableText && check.hasMark;
+    }
+
+    // Check if it's a node
+    const nodeType = schema.nodes[name];
+    if (nodeType) {
+      // NodeSelection - check the selected node directly (atom/leaf nodes like image)
+      const selNode = (
+        selection as { node?: { type: typeof nodeType; attrs: Record<string, unknown> } }
+      ).node;
+      if (selNode?.type === nodeType) {
+        return attrs ? this.matchAttributes(selNode.attrs, attrs) : true;
+      }
+
+      // Check both $from and $to paths - the node must be an ancestor
+      // of both ends of the selection for it to be considered active.
+      const { $to } = selection;
+
+      // For list-group nodes, only the innermost list ancestor should be
+      // considered active. This prevents e.g. both bulletList and orderedList
+      // showing as active when a bullet list is nested inside an ordered list.
+      const isListNode = nodeType.spec.group?.split(' ').includes('list') ?? false;
+
+      const findInPath = ($pos: typeof $from): boolean => {
+        for (let depth = $pos.depth; depth >= 0; depth--) {
+          const node = $pos.node(depth);
+
+          if (isListNode) {
+            const inListGroup = node.type.spec.group?.split(' ').includes('list') ?? false;
+            if (inListGroup) {
+              // First (innermost) list ancestor - only match if it's the target type
+              if (node.type !== nodeType) return false;
+              return attrs ? this.matchAttributes(node.attrs, attrs) : true;
+            }
+          } else {
+            if (node.type === nodeType) {
+              return attrs ? this.matchAttributes(node.attrs, attrs) : true;
+            }
+          }
+        }
+        return false;
+      };
+
+      return findInPath($from) && findInPath($to);
+    }
+
+    return false;
+  }
+
+  /**
+   * Gets attributes of the currently active node or mark
+   *
+   * Returns empty object if the node/mark is not found or not active.
+   *
+   * @param name - Extension name (node or mark)
+   *
+   * @example
+   * editor.getAttributes('heading') // → { level: 2 }
+   * editor.getAttributes('link') // → { href: 'https://...', target: '_blank' }
+   */
+  getAttributes(name: string): Record<string, unknown> {
+    const { state } = this;
+    const { selection, schema } = state;
+    const { $from } = selection;
+
+    // Check if it's a mark
+    const markType = schema.marks[name];
+    if (markType) {
+      // Get marks at cursor position or stored marks
+      const marks = state.storedMarks ?? $from.marks();
+      const mark = marks.find((m) => m.type === markType);
+      return mark ? { ...mark.attrs } : {};
+    }
+
+    // Check if it's a node
+    const nodeType = schema.nodes[name];
+    if (nodeType) {
+      // Find node in selection path
+      for (let depth = $from.depth; depth >= 0; depth--) {
+        const node = $from.node(depth);
+        if (node.type === nodeType) {
+          return { ...node.attrs };
+        }
+      }
+      return {};
+    }
+
+    return {};
+  }
+
+  /**
+   * Helper to match attributes
+   * Returns true if target contains all key/value pairs from source
+   */
+  private matchAttributes(
+    target: Record<string, unknown>,
+    source: Record<string, unknown>
+  ): boolean {
+    for (const [key, value] of Object.entries(source)) {
+      if (target[key] !== value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // === Content Methods ===
+
+  /**
+   * Gets the document content as JSON
+   */
+  getJSON(): JSONContent {
+    return this.state.doc.toJSON() as JSONContent;
+  }
+
+  /**
+   * Gets the document content as HTML string
+   *
+   * @param options - Optional settings
+   * @param options.styled - When true (or an override object), applies inline CSS
+   *   styles so the HTML renders correctly outside the editor (email, CMS, etc.)
+   */
+  getHTML(options?: { styled?: boolean | InlineStyleOverrides }): string {
+    const fragment = DOMSerializer.fromSchema(this.schema).serializeFragment(
+      this.state.doc.content
+    );
+
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+
+    // Browser DOM normalizes hex colors to rgb() - convert back to hex within style attrs
+    const html = div.innerHTML.replace(
+      /style="([^"]*)"/g,
+      (_match, style: string) =>
+        'style="' +
+        style.replace(/rgba?\(\s*\d+[\s,]+\d+[\s,]+\d+[^)]*\)/g, (colorStr) =>
+          normalizeColor(colorStr)
+        ) +
+        '"'
+    );
+
+    if (options?.styled) {
+      const overrides = typeof options.styled === 'object' ? options.styled : undefined;
+      return inlineStyles(html, overrides);
+    }
+
+    return html;
+  }
+
+  /**
+   * Gets the document content as plain text
+   *
+   * @param options - Options for text extraction
+   * @param options.blockSeparator - String to insert between blocks (default: '\n\n')
+   */
+  getText(options: { blockSeparator?: string } = {}): string {
+    const { blockSeparator = '\n\n' } = options;
+    return this.state.doc.textBetween(0, this.state.doc.content.size, blockSeparator);
+  }
+
+  /**
+   * Executes a command with proper CommandProps
+   * @internal
+   */
+  private runCommand(command: Command): boolean {
+    const tr = this.state.tr;
+    return command({
+      editor: this,
+      state: this.state,
+      tr,
+      dispatch: (t) => {
+        this.view.dispatch(t);
+      },
+      chain: () => this.chain(),
+      can: () => this.can(),
+      commands: this.commands,
+    });
+  }
+
+  /**
+   * Sets the editor content
+   *
+   * @param content - JSON or HTML content
+   * @param emitUpdate - Whether to emit update event (default: true)
+   * @returns true if content was set successfully, false if content was invalid
+   */
+  setContent(content: Content, emitUpdate = true): boolean {
+    return this.runCommand(setContentCommand(content, { emitUpdate }));
+  }
+
+  /**
+   * Clears the editor content
+   *
+   * @param emitUpdate - Whether to emit update event (default: true)
+   * @returns true if content was cleared successfully
+   */
+  clearContent(emitUpdate = true): boolean {
+    return this.runCommand(clearContentCommand({ emitUpdate }));
+  }
+
+  // === Lifecycle Methods ===
+
+  /**
+   * Sets whether the editor is editable
+   *
+   * @param editable - Whether the editor should be editable
+   */
+  setEditable(editable: boolean): this {
+    this.options.editable = editable;
+
+    // Sync aria-readonly with editable state
+    if (editable) {
+      this.view.dom.removeAttribute('aria-readonly');
+    } else {
+      this.view.dom.setAttribute('aria-readonly', 'true');
+    }
+
+    // ProseMirror rechecks editable on each transaction
+    // Dispatch empty transaction to trigger re-evaluation
+    this.view.dispatch(this.state.tr);
+
+    return this;
+  }
+
+  /**
+   * Focuses the editor
+   *
+   * @param position - Where to place cursor (default: null = just focus)
+   */
+  focus(position: FocusPosition = null): this {
+    this.runCommand(focusCommand(position));
+    return this;
+  }
+
+  /**
+   * Removes focus from the editor
+   */
+  blur(): this {
+    this.runCommand(blurCommand());
+    return this;
+  }
+
+  // === Dynamic Plugin Management ===
+
+  /**
+   * Registers a ProseMirror plugin dynamically at runtime, after the editor
+   * has been created. Safe to call repeatedly with the same plugin key.
+   */
+  registerPlugin(plugin: Plugin): void {
+    // Prevent duplicate registration (same plugin key)
+    if (plugin.spec.key?.get(this.view.state)) return;
+
+    const newState = this.view.state.reconfigure({
+      plugins: [...this.view.state.plugins, plugin],
+    });
+    this.view.updateState(newState);
+  }
+
+  /**
+   * Unregisters a ProseMirror plugin by its PluginKey.
+   * Uses PluginKey.get() to identify the plugin to remove.
+   */
+  unregisterPlugin(key: PluginKey): void {
+    const pluginToRemove = key.get(this.view.state);
+    if (!pluginToRemove) return;
+
+    const newState = this.view.state.reconfigure({
+      plugins: this.view.state.plugins.filter((p) => p !== pluginToRemove),
+    });
+    this.view.updateState(newState);
+  }
+
+  /**
+   * Destroys the editor and cleans up resources
+   *
+   * After calling destroy(), the editor instance should not be used.
+   */
+  destroy(): void {
+    if (this._isDestroyed) {
+      return;
+    }
+
+    // Clear autofocus timer if pending
+    if (this._autofocusTimer) {
+      clearTimeout(this._autofocusTimer);
+      this._autofocusTimer = null;
+    }
+
+    this.emit('destroy');
+    this.options.onDestroy?.();
+
+    // Remove the preset class only if this editor painted it (see step 7.5)
+    if (this._presetClassHost) {
+      this._presetClassHost.classList.remove('dm-notion-mode');
+      this._presetClassHost = null;
+    }
+
+    // Destroy ProseMirror view
+    this.view.destroy();
+
+    // Destroy managers
+    this._extensionManager.destroy();
+
+    // Clear all event listeners
+    this.removeAllListeners();
+
+    this._isDestroyed = true;
+  }
+
+  // === Private Methods ===
+
+  /**
+   * Builds a clipboardSerializer that applies a transform function to HTML on copy/cut.
+   */
+  private buildClipboardSerializer(
+    transform: (html: string) => string,
+    schema: Schema
+  ): { clipboardSerializer: DOMSerializer } {
+    return {
+      clipboardSerializer: {
+        serializeFragment: (fragment: unknown, options?: Record<string, unknown>) => {
+          const base = DOMSerializer.fromSchema(schema);
+          const dom = base.serializeFragment(fragment as Fragment, options);
+          const wrapper = document.createElement('div');
+          wrapper.appendChild(dom);
+          wrapper.innerHTML = transform(wrapper.innerHTML);
+          const frag = document.createDocumentFragment();
+          while (wrapper.firstChild) frag.appendChild(wrapper.firstChild);
+          return frag;
+        },
+      } as unknown as DOMSerializer,
+    };
+  }
+
+  /**
+   * Creates the editor instance
+   */
+  private createEditor(): void {
+    // Wire the onError callback before extension setup: extension hook errors
+    // are isolated into 'error' events from step 2 onward (safeCall), and a
+    // listener registered any later misses construction-time errors.
+    this.on('error', (props) => {
+      this.options.onError?.(props);
+    });
+
+    // 1. Emit beforeCreate - extensions can modify options in Step 2
+    this.emit('beforeCreate', { editor: this });
+    this.options.onBeforeCreate?.({ editor: this });
+    // Note: Extension onBeforeCreate is called after ExtensionManager is created (step 2)
+
+    // 2. Initialize ExtensionManager with extensions or schema
+    this._extensionManager = new ExtensionManager(
+      {
+        extensions: this.options.extensions,
+        schema: this.options.schema,
+      },
+      this
+    );
+
+    // 2.1 Call onBeforeCreate on all extensions (now that they have editor reference)
+    this._extensionManager.callOnBeforeCreate();
+
+    this._extensionManager.validateSchema();
+
+    // 3. Create initial document from content (with graceful error handling)
+    let doc;
+    try {
+      doc = createDocument(this.options.content ?? null, this._extensionManager.schema);
+    } catch (error) {
+      // Emit content error event for invalid content
+      const contentError = error instanceof Error ? error : new Error(String(error));
+      this.emit('contentError', {
+        editor: this,
+        error: contentError,
+        content: this.options.content,
+      });
+      this.options.onContentError?.({
+        editor: this,
+        error: contentError,
+        content: this.options.content,
+      });
+
+      // Fall back to empty document
+      doc = createDocument(null, this._extensionManager.schema);
+    }
+
+    const plugins = this._extensionManager.plugins;
+
+    // 5. Create EditorState
+    const state = EditorState.create({
+      schema: this._extensionManager.schema,
+      doc,
+      plugins,
+    });
+
+    // 6. Resolve element - use provided or create detached div
+    const element = this.options.element ?? document.createElement('div');
+
+    // 7. Create EditorView
+    const nodeViews = this._extensionManager.nodeViews;
+    this._isViewConstructing = true;
+    this.view = new EditorView(element, {
+      state,
+      dispatchTransaction: Editor.buildViewDispatch(this),
+      editable: () => this.options.editable ?? true,
+      attributes: () => ({
+        role: 'textbox',
+        'aria-multiline': 'true',
+        'aria-label': this.options.ariaLabel ?? 'Rich text editor',
+        ...((this.options.editable ?? true) ? {} : { 'aria-readonly': 'true' }),
+      }),
+      ...(Object.keys(nodeViews).length > 0 ? { nodeViews } : {}),
+      // Clipboard transform - apply user-provided transform (e.g. inlineStyles) on copy/cut
+      ...(this.options.clipboardHTMLTransform
+        ? this.buildClipboardSerializer(
+            this.options.clipboardHTMLTransform,
+            this._extensionManager.schema
+          )
+        : {}),
+      // Handle focus/blur events
+      handleDOMEvents: {
+        focus: (_view, event) => {
+          this.emit('focus', { editor: this, event: event });
+          this.options.onFocus?.({ editor: this, event: event });
+          this._extensionManager.callOnFocus({ event });
+          return false;
+        },
+        blur: (_view, event) => {
+          this.emit('blur', { editor: this, event: event });
+          this.options.onBlur?.({ editor: this, event: event });
+          this._extensionManager.callOnBlur({ event });
+          return false;
+        },
+      },
+    });
+    this._isViewConstructing = false;
+
+    // 7.5. preset: 'notion' paints the theme class on the `.dm-editor` host,
+    // so one option covers styling and behavior; consumers stop writing the
+    // class by hand. Only a class this editor added is removed on destroy.
+    this.adoptPresetClass();
+
+    // 8. Emit mount event - view is now attached to DOM element
+    this.emit('mount', { editor: this, view: this.view });
+    this.options.onMount?.({ editor: this, view: this.view });
+
+    // 9. Initialize CommandManager
+    this.commandManager = new CommandManager(this);
+
+    // 10. Handle autofocus
+    if (this.options.autofocus) {
+      // Use setTimeout to ensure DOM is ready
+      // Store reference for cleanup on destroy
+      this._autofocusTimer = setTimeout(() => {
+        this._autofocusTimer = null;
+        if (!this._isDestroyed) {
+          this.focus(this.options.autofocus);
+        }
+      }, 0);
+    }
+
+    // 11. Emit create event and call extension onCreate hooks
+    this.emit('create', { editor: this });
+    this.options.onCreate?.({ editor: this });
+    this._extensionManager.callOnCreate();
+  }
+
+  /**
+   * Builds the dispatchTransaction prop. Plugin views can dispatch synchronously
+   * inside EditorView's constructor, before `editor.view` is assigned; ProseMirror
+   * binds the prop to the view, so the instance is captured early (plugin code
+   * such as appendTransaction may read `editor.view` during the apply) and the
+   * transaction is applied directly, like the default dispatch, skipping events:
+   * it is initial state, not an update.
+   */
+  private static buildViewDispatch(editor: Editor): (transaction: Transaction) => void {
+    return function (this: EditorView, transaction: Transaction): void {
+      if (editor._isViewConstructing) {
+        // The declared type says `view` is always set; mid-construction it is not.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        editor.view ??= this;
+        this.updateState(this.state.apply(transaction));
+        return;
+      }
+      editor.dispatchTransaction(transaction);
+    };
+  }
+
+  /**
+   * Handles ProseMirror transactions
+   */
+  private dispatchTransaction(transaction: Transaction): void {
+    if (this._isDestroyed) {
+      return;
+    }
+
+    // 1. Apply transaction to state
+    const newState = this.view.state.apply(transaction);
+
+    // 2. Update view
+    this.view.updateState(newState);
+
+    // 3. Emit transaction event (fires for EVERY transaction)
+    this.emit('transaction', { editor: this, transaction });
+    this.options.onTransaction?.({ editor: this, transaction });
+    this._extensionManager.callOnTransaction({ transaction });
+
+    // 4. Check if we should skip update event
+    const skipUpdate = transaction.getMeta('skipUpdate') as boolean | undefined;
+
+    // 5. Emit selectionUpdate if selection changed (without doc change)
+    if (!transaction.docChanged && transaction.selectionSet) {
+      this.emit('selectionUpdate', { editor: this, transaction });
+      this.options.onSelectionUpdate?.({ editor: this, transaction });
+      this._extensionManager.callOnSelectionUpdate();
+    }
+
+    // 6. Emit update if document changed
+    if (transaction.docChanged && !skipUpdate) {
+      this.emit('update', { editor: this, transaction });
+      this.options.onUpdate?.({ editor: this, transaction });
+      this._extensionManager.callOnUpdate();
+    }
+  }
+
+  /**
+   * Emit method - needed for CommandManager interface
+   */
+  override emit<E extends keyof EditorEvents>(
+    event: E,
+    ...args: EditorEvents[E] extends undefined ? [] : [EditorEvents[E]]
+  ): this {
+    return super.emit(event, ...args);
+  }
+}

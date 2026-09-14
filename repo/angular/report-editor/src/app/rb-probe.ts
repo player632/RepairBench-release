@@ -1,0 +1,1622 @@
+/* tslint:disable */
+/**
+ * RepairBench read-only observation bridge for repair-angular__report-editor-01
+ * (seed report-editor: YuhuaLi/report-editor@master, Angular 9.1.1, canvas spreadsheet).
+ *
+ * DISCIPLINE (same contract as the code-editor reference bridge):
+ *  - It reads the DOM the seed already renders: censuses, attributes, inline styles,
+ *    computed styles, text, resource timing, a passive console latch and a passive focus-call
+ *    latch. It reads NO Angular component field, NO Panel instance, NO canvas pixel and NO glyph.
+ *  - Its drivers perform ONLY writes a user could perform: element.click() on a toolbar
+ *    anchor / icon / colour swatch, a mousedown on the formula-bar input, and synthetic
+ *    keydown / keypress events on the grid canvas or on the contenteditable cell editor -
+ *    the very elements the seed binds (keydown), (keypress) and (mousedown) to. Every
+ *    driver returns a string receipt saying what it did, so a checkpoint can prove an
+ *    interaction happened instead of trusting a sleep.
+ *  - Every getter is wrapped: an unavailable reading degrades to the sentinel '-'
+ *    (or -1 for a count) instead of throwing, so a checkpoint can only ever fail on a
+ *    measured value and never on a bridge crash.
+ *  - It adds NO markup hook and NO data-testid, edits NO template and moves NO element.
+ *    src/main.ts gains exactly one line, `import './app/rb-probe';`, so the bridge is
+ *    installed before bootstrapModule() runs and its console latch sees boot errors.
+ *  - Numeric style readings are rounded to 2 decimals INSIDE the bridge and returned as
+ *    numbers, so no checkpoint depends on a browser's length serialisation.
+ */
+
+const W: any = window as any;
+const SENT = '-';
+const SENTN = -1;
+const SETTLE = 150;
+
+const SEL_PANEL = 'canvas.panel';
+const SEL_MASK = '.mask';
+const SEL_MASK_CONTENT = '.mask-content';
+const SEL_EDITCELL = '.editCell';
+const SEL_WRAPPER = 'app-cell-edit > div';
+const SEL_CELLEDIT = 'app-cell-edit';
+const SEL_HOST = 'app-editor-panel';
+const SEL_TOOLBAR = '.toolbar';
+const SEL_ICONFONT = '.toolbar .iconfont';
+const SEL_ALIGN = '.toolbar i.icon-zuoduiqi';
+const SEL_FONTICON = '.toolbar i.icon-zitiyanse';
+const SEL_BACKICON = '.toolbar i.icon-tianchong';
+const SEL_BAR = '.formula-bar';
+const SEL_BAR_LABEL = '.formula-bar label.bar-label';
+const SEL_BAR_INPUT = 'input[name="formularInput"]';
+const SEL_GRID = '.palette-color-grid';
+const SEL_SWATCH = '.palette-color-grid .inner-box';
+const SEL_COLORBOX = '.palette-color-grid .color-box';
+const SEL_REPO_A = 'a[href^="https://github.com/YuhuaLi/report-editor"]';
+const SEL_WRAPPER_DIV = '.panel-wrapper';
+const SEL_FILEINPUT = '.toolbar input[type="file"]';
+const SEL_BUTTONINPUT = '.toolbar input[type="button"]';
+const SEL_ACTION = 'canvas.action-panel';
+
+let errorCount = 0;
+let warnCount = 0;
+let pageErrorCount = 0;
+const errorTexts: string[] = [];
+
+// Passive focus-call latch state. Written ONLY by the HTMLElement.prototype.focus wrapper installed
+// below, read ONLY by the focusLatch*/editCellFocus*/focusCall* getters. See the wrapper for why an
+// explicit-focus census is needed at all next to document.activeElement.
+let focusLatchLive = false;
+let focusCallTotal = 0;
+const FOCUS_LOG_CAP = 64;
+const focusLog: string[] = [];
+const focusCounts = new WeakMap<any, number>();
+
+const receipts: any = {
+  paletteToggle: SENT,
+  enterCommit: SENT,
+  labelMove: SENT,
+  lastDriver: SENT,
+};
+
+(function installLatches(): void {
+  try {
+    const origError = console.error;
+    console.error = function (...args: any[]): void {
+      errorCount++;
+      try {
+        errorTexts.push(String(args && args.length ? args[0] : '').slice(0, 200));
+      } catch (e) {
+        /* latch never throws */
+      }
+      if (origError) {
+        origError.apply(console, args);
+      }
+    };
+  } catch (e) {
+    /* console not patchable here */
+  }
+  try {
+    const origWarn = console.warn;
+    console.warn = function (...args: any[]): void {
+      warnCount++;
+      if (origWarn) {
+        origWarn.apply(console, args);
+      }
+    };
+  } catch (e) {
+    /* console not patchable here */
+  }
+  try {
+    W.addEventListener('error', function (): void {
+      pageErrorCount++;
+    });
+  } catch (e) {
+    /* no window here */
+  }
+  try {
+    W.addEventListener('unhandledrejection', function (): void {
+      pageErrorCount++;
+    });
+  } catch (e) {
+    /* no window here */
+  }
+  // PASSIVE focus-call latch, same contract as the console latch above: wrap, count, then delegate
+  // to the native implementation with the same receiver, the same arguments and the same return
+  // value. It writes nothing to the DOM, moves no element, reorders no handler and never throws.
+  //
+  // WHY IT EXISTS (measured, not assumed). document.activeElement CANNOT attribute the cell editor's
+  // focus in this seed, because the seed has a SECOND, unconditional focus path into that very
+  // element: cell-edit.component.ts ngAfterViewInit emits the div through (afterInit), and
+  // editor-panel.component.ts:201 afterEditCellInit() answers with
+  //   range.selectNodeContents(event); range.collapse(false);
+  //   selection.removeAllRanges(); selection.addRange(range);
+  // a Selection write INTO the contenteditable div, which Blink resolves by focusing the editable
+  // host (SelectionModifier::SetFocusIfNeeded). It runs AFTER AutoFocusDirective.ngOnInit, so
+  // activeElement reads "DIV.editCell" whether or not the directive called focus(). That is exactly
+  // what the fully mutated face measured: F12's activeElement assert PASSED with the directive guard
+  //
+  // mut/checkpoint_results.json, F12 status "pass").
+  //
+  // Census of every focus-moving statement in the seed
+  // (grep -rn "\.focus()" src --include=*.ts --include=*.html -> 11 hits, plus the Selection write
+  // and the canvas `autofocus` attribute):
+  //   core/directive/autofous.directive.ts:12  this.elementRef.nativeElement.focus()  <- THE ONLY
+  //                                            statement that can target the .editCell div
+  //   core/directive/autofous.directive.ts:17  same call, commented out (dead)
+  //   editor-panel/panel.ts:108   init()              this.canvas.focus()
+  //   editor-panel/panel.ts:1625  onMouseDown()       commented out (dead)
+  //   editor-panel/panel.ts:1642  onMouseDown()       this.canvas.focus()
+  //   editor-panel/panel.ts:4116  editCellCompelte()  this.canvas.focus()
+  //   editor-panel/panel.ts:4260  toggleCombine()     this.canvas.focus()
+  //   editor-panel/panel.ts:4460  changeCellStyle()   this.canvas.focus()
+  //   editor-panel/panel.ts:4747  changeCellStyle()   this.canvas.focus()
+  //   editor-panel/editor-panel.component.ts:120  onBarInputFocus()  event.target.focus()
+  //                                               (the formula-bar input, reached only by its
+  //                                                (mousedown) - no driver here performs one on F12)
+  //   editor-panel/editor-panel.component.ts:157  insertImage()      this.canvas.focus()
+  // So "did THIS element receive an explicit focus() call" is a reading that the autofocus
+  // directive's guard - and nothing else in the seed - can move.
+  try {
+    const proto: any = W.HTMLElement ? W.HTMLElement.prototype : null;
+    const origFocus = proto ? proto.focus : null;
+    if (origFocus && typeof origFocus === 'function') {
+      proto.focus = function (...args: any[]): any {
+        try {
+          focusCallTotal++;
+          const n = (focusCounts.get(this) || 0) + 1;
+          focusCounts.set(this, n);
+          if (focusLog.length < FOCUS_LOG_CAP) {
+            focusLog.push(elDesc(this) + '#' + n);
+          }
+        } catch (e) {
+          /* latch never throws */
+        }
+        return origFocus.apply(this, args);
+      };
+      focusLatchLive = true;
+    }
+  } catch (e) {
+    /* HTMLElement.prototype not patchable here */
+  }
+})();
+
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function q(sel: string): any {
+  try {
+    return document.querySelector(sel);
+  } catch (e) {
+    return null;
+  }
+}
+
+function all(scope: any, sel?: string): any[] {
+  try {
+    if (sel === undefined) {
+      return Array.prototype.slice.call(document.querySelectorAll(String(scope)));
+    }
+    return scope ? Array.prototype.slice.call(scope.querySelectorAll(sel)) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function boolStr(v: boolean): string {
+  return v ? 'true' : 'false';
+}
+
+function joinPipe(list: any[]): string {
+  return list && list.length ? list.join('|') : SENT;
+}
+
+function txtOf(el: any): string {
+  try {
+    if (!el) {
+      return SENT;
+    }
+    return String(el.textContent == null ? '' : el.textContent).replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function attrOf(el: any, name: string): string {
+  try {
+    const v = el ? el.getAttribute(name) : null;
+    return v == null ? SENT : String(v);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function camel(prop: string): string {
+  return prop.replace(/-([a-z])/g, function (_m: string, c: string): string {
+    return c.toUpperCase();
+  });
+}
+
+function csOf(el: any, prop: string): string {
+  try {
+    if (!el) {
+      return SENT;
+    }
+    const cs = W.getComputedStyle(el);
+    if (!cs) {
+      return SENT;
+    }
+    let v = cs.getPropertyValue(prop);
+    if (v == null || v === '') {
+      v = cs[camel(prop)];
+    }
+    return v == null || v === '' ? SENT : String(v).replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function csNum(el: any, prop: string): number {
+  const v = csOf(el, prop);
+  if (v === SENT) {
+    return SENTN;
+  }
+  const n = parseFloat(v);
+  return isNaN(n) ? SENTN : r2(n);
+}
+
+function inlineNum(el: any, prop: string): number {
+  try {
+    if (!el || !el.style) {
+      return SENTN;
+    }
+    const raw = el.style[prop];
+    if (raw == null || raw === '') {
+      return SENTN;
+    }
+    const n = parseFloat(String(raw));
+    return isNaN(n) ? SENTN : r2(n);
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function inlineStr(el: any, prop: string): string {
+  try {
+    if (!el || !el.style) {
+      return SENT;
+    }
+    const raw = el.style[prop];
+    return raw == null || raw === '' ? SENT : String(raw);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>(function (res: any): void {
+    setTimeout(res, ms);
+  });
+}
+
+function keyInit(code: string, key: string, opts: any): any {
+  const init: any = { bubbles: true, cancelable: true, code: code, key: key };
+  if (opts) {
+    init.shiftKey = !!opts.shift;
+    init.ctrlKey = !!opts.ctrl;
+    init.altKey = !!opts.alt;
+    init.metaKey = !!opts.meta;
+  }
+  return init;
+}
+
+function dispatchKey(el: any, type: string, code: string, key: string, opts: any): string {
+  try {
+    if (!el) {
+      return 'no-target';
+    }
+    el.dispatchEvent(new KeyboardEvent(type, keyInit(code, key, opts)));
+    return 'dispatched';
+  } catch (e) {
+    return 'throw';
+  }
+}
+
+// ---------------------------------------------------------------- document shell
+
+function docTitle(): string {
+  try {
+    return String(document.title || SENT);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function htmlLang(): string {
+  return attrOf(document.documentElement, 'lang');
+}
+
+function baseHref(): string {
+  const b = q('base');
+  return b ? attrOf(b, 'href') : SENT;
+}
+
+function locationPathname(): string {
+  try {
+    return String(W.location.pathname);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function locationSearch(): string {
+  try {
+    return String(W.location.search || '');
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function locationHash(): string {
+  try {
+    return String(W.location.hash || '');
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function appRootChildTags(): string {
+  const root = q('app-root');
+  if (!root) {
+    return SENT;
+  }
+  try {
+    const kids: string[] = [];
+    for (let i = 0; i < root.children.length; i++) {
+      kids.push(root.children[i].tagName.toLowerCase());
+    }
+    return joinPipe(kids);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function hostCounts(): string {
+  return [all('app-root').length, all('app-editor').length, all(SEL_HOST).length].join('|');
+}
+
+// ---------------------------------------------------------------- panel + canvases
+
+function panelHostCount(): number {
+  return all(SEL_HOST).length;
+}
+
+function panelHostClass(): string {
+  return attrOf(q(SEL_HOST), 'class');
+}
+
+function canvasCount(): number {
+  return all('canvas').length;
+}
+
+function panelCanvasCount(): number {
+  return all(SEL_PANEL).length;
+}
+
+function actionCanvasCount(): number {
+  return all(SEL_ACTION).length;
+}
+
+function actionCanvasClassList(): string {
+  const out: string[] = [];
+  const els = all(SEL_ACTION);
+  for (let i = 0; i < els.length; i++) {
+    out.push(attrOf(els[i], 'class'));
+  }
+  return joinPipe(out);
+}
+
+function canvasTabIndex(): string {
+  return attrOf(q(SEL_PANEL), 'tabindex');
+}
+
+function canvasHasAutofocus(): string {
+  const el = q(SEL_PANEL);
+  try {
+    return el ? boolStr(el.hasAttribute('autofocus')) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function canvasClass(): string {
+  return attrOf(q(SEL_PANEL), 'class');
+}
+
+function actionPanelPointerEvents(): string {
+  return csOf(q(SEL_ACTION), 'pointer-events');
+}
+
+function actionPanelPosition(): string {
+  return csOf(q(SEL_ACTION), 'position');
+}
+
+function panelCanvasPointerEvents(): string {
+  return csOf(q(SEL_PANEL), 'pointer-events');
+}
+
+function panelWrapperOverflow(): string {
+  return csOf(q(SEL_WRAPPER_DIV), 'overflow');
+}
+
+function panelWrapperPosition(): string {
+  return csOf(q(SEL_WRAPPER_DIV), 'position');
+}
+
+// ---------------------------------------------------------------- toolbar census
+
+function toolbarAnchorCount(): number {
+  return all(SEL_TOOLBAR + ' a').length;
+}
+
+function toolbarButtonCount(): number {
+  return all(SEL_TOOLBAR + ' button').length;
+}
+
+function toolbarIconCount(): number {
+  return all(SEL_TOOLBAR + ' i.iconfont').length;
+}
+
+function toolbarSpanIconCount(): number {
+  return all(SEL_TOOLBAR + ' span.iconfont').length;
+}
+
+function toolbarIconfontTotal(): number {
+  return all(SEL_ICONFONT).length;
+}
+
+function toolbarIconClassList(): string {
+  const out: string[] = [];
+  const els = all(SEL_ICONFONT);
+  for (let i = 0; i < els.length; i++) {
+    out.push(attrOf(els[i], 'class'));
+  }
+  return joinPipe(out);
+}
+
+function alignIconClassList(): string {
+  const out: string[] = [];
+  const els = all(SEL_ALIGN);
+  for (let i = 0; i < els.length; i++) {
+    out.push(attrOf(els[i], 'class'));
+  }
+  return joinPipe(out);
+}
+
+function alignIconCount(): number {
+  return all(SEL_ALIGN).length;
+}
+
+function alignIconColors(): string {
+  const out: string[] = [];
+  const els = all(SEL_ALIGN);
+  for (let i = 0; i < els.length; i++) {
+    out.push(csOf(els[i], 'color'));
+  }
+  return joinPipe(out);
+}
+
+function boldIconWeight(): string {
+  const els = all(SEL_TOOLBAR + ' span.iconfont');
+  return csOf(els[0], 'font-weight');
+}
+
+function boldIconText(): string {
+  const els = all(SEL_TOOLBAR + ' span.iconfont');
+  return txtOf(els[0]);
+}
+
+function italicIconStyle(): string {
+  const els = all(SEL_TOOLBAR + ' span.iconfont');
+  return csOf(els[1], 'font-style');
+}
+
+function italicIconText(): string {
+  const els = all(SEL_TOOLBAR + ' span.iconfont');
+  return txtOf(els[1]);
+}
+
+function colorIconPair(): string {
+  return csOf(q(SEL_FONTICON), 'color') + '|' + csOf(q(SEL_BACKICON), 'color');
+}
+
+function iconFontFamily(): string {
+  const el = q(SEL_TOOLBAR + ' i.iconfont');
+  return csOf(el, 'font-family').replace(/["']/g, '');
+}
+
+function iconFontSize(): string {
+  return csOf(q(SEL_TOOLBAR + ' i.iconfont'), 'font-size');
+}
+
+function toolbarUserSelect(): string {
+  const el = q(SEL_TOOLBAR);
+  let v = csOf(el, 'user-select');
+  if (v === SENT) {
+    v = csOf(el, '-webkit-user-select');
+  }
+  return v;
+}
+
+function toolbarBackgroundColor(): string {
+  return csOf(q(SEL_TOOLBAR), 'background-color');
+}
+
+function toolbarText(): string {
+  return txtOf(q(SEL_TOOLBAR));
+}
+
+function fileInputCount(): number {
+  return all(SEL_FILEINPUT).length;
+}
+
+function fileInputAccept(): string {
+  return attrOf(q(SEL_FILEINPUT), 'accept');
+}
+
+function fileInputType(): string {
+  return attrOf(q(SEL_FILEINPUT), 'type');
+}
+
+function fileInputOpacity(): string {
+  return csOf(q(SEL_FILEINPUT), 'opacity');
+}
+
+function insertButtonCount(): number {
+  return all(SEL_BUTTONINPUT).length;
+}
+
+function insertButtonValue(): string {
+  const el = q(SEL_BUTTONINPUT);
+  try {
+    return el ? String(el.value) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function insertButtonType(): string {
+  return attrOf(q(SEL_BUTTONINPUT), 'type');
+}
+
+function insertButtonPointerEvents(): string {
+  return csOf(q(SEL_BUTTONINPUT), 'pointer-events');
+}
+
+// ---------------------------------------------------------------- selects
+
+function selectCount(): number {
+  return all(SEL_TOOLBAR + ' select').length;
+}
+
+function selectOptionCounts(): string {
+  const sels = all(SEL_TOOLBAR + ' select');
+  const out: string[] = [];
+  for (let i = 0; i < sels.length; i++) {
+    out.push(String(all(sels[i], 'option').length));
+  }
+  return joinPipe(out);
+}
+
+function selectValueList(): string {
+  const sels = all(SEL_TOOLBAR + ' select');
+  const out: string[] = [];
+  for (let i = 0; i < sels.length; i++) {
+    try {
+      out.push(String(sels[i].value));
+    } catch (e) {
+      out.push(SENT);
+    }
+  }
+  return joinPipe(out);
+}
+
+function selectOptionHeads(): string {
+  const sels = all(SEL_TOOLBAR + ' select');
+  const out: string[] = [];
+  for (let i = 0; i < sels.length; i++) {
+    const opts = all(sels[i], 'option');
+    out.push(txtOf(opts[0]));
+    out.push(txtOf(opts[1]));
+  }
+  return joinPipe(out);
+}
+
+function selectOptionTails(): string {
+  const sels = all(SEL_TOOLBAR + ' select');
+  const out: string[] = [];
+  for (let i = 0; i < sels.length; i++) {
+    const opts = all(sels[i], 'option');
+    out.push(txtOf(opts[opts.length - 1]));
+  }
+  return joinPipe(out);
+}
+
+// ---------------------------------------------------------------- formula bar
+
+function formulaBarCount(): number {
+  return all(SEL_BAR).length;
+}
+
+function formulaBarHeightPx(): number {
+  return csNum(q(SEL_BAR), 'height');
+}
+
+function formulaBarDisplay(): string {
+  return csOf(q(SEL_BAR), 'display');
+}
+
+function barLabelCount(): number {
+  return all(SEL_BAR_LABEL).length;
+}
+
+function barLabelText(): string {
+  return txtOf(q(SEL_BAR_LABEL));
+}
+
+function barLabelWidthPx(): number {
+  return csNum(q(SEL_BAR_LABEL), 'width');
+}
+
+function barLabelComputedAlign(): string {
+  return csOf(q(SEL_BAR_LABEL), 'text-align');
+}
+
+function barLabelColor(): string {
+  return csOf(q(SEL_BAR_LABEL), 'color');
+}
+
+function barLabelTextLength(): number {
+  const t = barLabelText();
+  return t === SENT ? SENTN : t.length;
+}
+
+function barLabelShape(): string {
+  const t = barLabelText();
+  if (t === SENT) {
+    return 'no-label';
+  }
+  return /^[A-Z]+[0-9]+$/.test(t) ? 'ok' : 'bad:' + t;
+}
+
+function formulaInputCount(): number {
+  return all(SEL_BAR_INPUT).length;
+}
+
+function formulaInputName(): string {
+  return attrOf(q(SEL_BAR_INPUT), 'name');
+}
+
+function formulaValue(): string {
+  const el = q(SEL_BAR_INPUT);
+  try {
+    return el ? String(el.value == null ? '' : el.value) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+// ---------------------------------------------------------------- colour palettes
+
+function paletteCount(): number {
+  return all(SEL_GRID).length;
+}
+
+function swatchCount(): number {
+  return all(SEL_SWATCH).length;
+}
+
+function colorBoxCount(): number {
+  return all(SEL_COLORBOX).length;
+}
+
+function paletteSwatchColorList(): string {
+  const els = all(SEL_SWATCH).slice(0, 9);
+  const out: string[] = [];
+  for (let i = 0; i < els.length; i++) {
+    out.push(csOf(els[i], 'background-color'));
+  }
+  return joinPipe(out);
+}
+
+function distinctSwatchColorCount(): number {
+  const els = all(SEL_SWATCH);
+  const seen: string[] = [];
+  for (let i = 0; i < els.length; i++) {
+    const c = csOf(els[i], 'background-color');
+    if (seen.indexOf(c) < 0) {
+      seen.push(c);
+    }
+  }
+  return seen.length;
+}
+
+function innerBoxWidthPx(): number {
+  return csNum(q(SEL_SWATCH), 'width');
+}
+
+function colorBoxWidthPx(): number {
+  return csNum(q(SEL_COLORBOX), 'width');
+}
+
+function paletteWrapperInlineStyle(): string {
+  const g = q(SEL_GRID);
+  try {
+    return g && g.parentElement ? String(g.parentElement.getAttribute('style') || SENT) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function paletteGridFontSize(): string {
+  return csOf(q(SEL_GRID), 'font-size');
+}
+
+// ---------------------------------------------------------------- edit overlay
+
+function maskCount(): number {
+  return all(SEL_MASK).length;
+}
+
+function maskContentCount(): number {
+  return all(SEL_MASK_CONTENT).length;
+}
+
+function editCellCount(): number {
+  return all(SEL_EDITCELL).length;
+}
+
+function cellEditHostCount(): number {
+  return all(SEL_CELLEDIT).length;
+}
+
+function maskInlineBox(): string {
+  const el = q(SEL_MASK);
+  return [inlineNum(el, 'left'), inlineNum(el, 'top'), inlineNum(el, 'right'), inlineNum(el, 'bottom')].join('|');
+}
+
+function maskInlineLeftPx(): number {
+  return inlineNum(q(SEL_MASK), 'left');
+}
+
+function maskInlineTopPx(): number {
+  return inlineNum(q(SEL_MASK), 'top');
+}
+
+function maskInlineRightPx(): number {
+  return inlineNum(q(SEL_MASK), 'right');
+}
+
+function maskInlineBottomPx(): number {
+  return inlineNum(q(SEL_MASK), 'bottom');
+}
+
+function maskPointerEvents(): string {
+  return csOf(q(SEL_MASK), 'pointer-events');
+}
+
+function maskOverflow(): string {
+  return csOf(q(SEL_MASK), 'overflow');
+}
+
+function editCellWrapperLeftPx(): number {
+  return inlineNum(q(SEL_WRAPPER), 'left');
+}
+
+function editCellWrapperTopPx(): number {
+  return inlineNum(q(SEL_WRAPPER), 'top');
+}
+
+function editCellWrapperWidthPx(): number {
+  return inlineNum(q(SEL_WRAPPER), 'width');
+}
+
+function editCellWrapperHeightPx(): number {
+  return inlineNum(q(SEL_WRAPPER), 'height');
+}
+
+function editCellWrapperPosition(): string {
+  return csOf(q(SEL_WRAPPER), 'position');
+}
+
+function editCellWrapperOverflow(): string {
+  return csOf(q(SEL_WRAPPER), 'overflow');
+}
+
+function editCellInlineWidthPx(): number {
+  return inlineNum(q(SEL_EDITCELL), 'width');
+}
+
+function editCellInlineHeightPx(): number {
+  return inlineNum(q(SEL_EDITCELL), 'height');
+}
+
+function editCellInlineBorderWidthPx(): number {
+  return inlineNum(q(SEL_EDITCELL), 'borderWidth');
+}
+
+function editCellWhiteSpace(): string {
+  return csOf(q(SEL_EDITCELL), 'white-space');
+}
+
+function editCellComputedOverflow(): string {
+  return csOf(q(SEL_EDITCELL), 'overflow');
+}
+
+function editCellComputedDisplay(): string {
+  return csOf(q(SEL_EDITCELL), 'display');
+}
+
+function editCellComputedVerticalAlign(): string {
+  return csOf(q(SEL_EDITCELL), 'vertical-align');
+}
+
+function editCellComputedTextAlign(): string {
+  return csOf(q(SEL_EDITCELL), 'text-align');
+}
+
+function editCellComputedFontFamily(): string {
+  return csOf(q(SEL_EDITCELL), 'font-family').replace(/["']/g, '');
+}
+
+function editCellComputedFontWeight(): string {
+  return csOf(q(SEL_EDITCELL), 'font-weight');
+}
+
+function editCellComputedFontStyle(): string {
+  return csOf(q(SEL_EDITCELL), 'font-style');
+}
+
+function editCellComputedColor(): string {
+  return csOf(q(SEL_EDITCELL), 'color');
+}
+
+function editCellComputedBackground(): string {
+  return csOf(q(SEL_EDITCELL), 'background-color');
+}
+
+function editCellComputedFontSizePx(): number {
+  return csNum(q(SEL_EDITCELL), 'font-size');
+}
+
+function editCellText(): string {
+  return txtOf(q(SEL_EDITCELL));
+}
+
+function editCellContenteditable(): string {
+  return attrOf(q(SEL_EDITCELL), 'contenteditable');
+}
+
+function editCellName(): string {
+  return attrOf(q(SEL_EDITCELL), 'name');
+}
+
+function editCellClass(): string {
+  return attrOf(q(SEL_EDITCELL), 'class');
+}
+
+function editCellPointerEvents(): string {
+  return csOf(q(SEL_EDITCELL), 'pointer-events');
+}
+
+// One descriptor grammar for every element reading in this bridge: TAG plus the first class token,
+// or TAG alone when the element carries no class, or the sentinel when there is no element.
+function elDesc(el: any): string {
+  try {
+    if (!el) {
+      return SENT;
+    }
+    const tag = String(el.tagName || '').toUpperCase();
+    const cls = String((el as any).className || '').replace(/\s+/g, ' ').trim().split(' ')[0];
+    return cls ? tag + '.' + cls : tag;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function activeElementDesc(): string {
+  try {
+    return elDesc(document.activeElement);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+// 'true' once the wrapper above is live. A checkpoint that reads a focus count MUST pair with this,
+// so that a dead latch can never masquerade as "the app never called focus()".
+function focusLatchInstalled(): string {
+  return boolStr(focusLatchLive);
+}
+
+function focusCallTotalRead(): number {
+  return focusCallTotal;
+}
+
+function elFocusCalls(el: any): number {
+  try {
+    if (!el) {
+      return SENTN;
+    }
+    return focusCounts.get(el) || 0;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+// Explicit focus() calls received by the contenteditable cell editor. -1 (not 0) when the element is
+// absent, so a missing overlay can never read as the directive's own "skipped the call".
+function editCellFocusCalls(): number {
+  return elFocusCalls(q(SEL_EDITCELL));
+}
+
+function editCellFocusCalled(): string {
+  const n = editCellFocusCalls();
+  return n === SENTN ? SENT : boolStr(n > 0);
+}
+
+function focusCallLog(): string {
+  return joinPipe(focusLog.slice());
+}
+
+// ---------------------------------------------------------------- global styles
+
+function bodyOverflow(): string {
+  return csOf(document.body, 'overflow');
+}
+
+function htmlOverflow(): string {
+  return csOf(document.documentElement, 'overflow');
+}
+
+function bodyMargin(): string {
+  return csOf(document.body, 'margin');
+}
+
+function bodyPadding(): string {
+  return csOf(document.body, 'padding');
+}
+
+function bodyWidth(): string {
+  return csOf(document.body, 'width');
+}
+
+// ---------------------------------------------------------------- offline surface
+
+function externalRefList(): string {
+  const out: string[] = [];
+  try {
+    const els = all('[href],[src]');
+    for (let i = 0; i < els.length; i++) {
+      const v = els[i].getAttribute('href') || els[i].getAttribute('src');
+      if (v && /^https?:\/\//i.test(String(v))) {
+        out.push(String(v));
+      }
+    }
+  } catch (e) {
+    return SENT;
+  }
+  return joinPipe(out);
+}
+
+function externalRefTagCount(): number {
+  const v = externalRefList();
+  return v === SENT ? SENTN : v.split('|').length;
+}
+
+function externalImgCount(): number {
+  let n = 0;
+  const els = all('img');
+  for (let i = 0; i < els.length; i++) {
+    const v = els[i].getAttribute('src');
+    if (v && /^https?:\/\//i.test(String(v))) {
+      n++;
+    }
+  }
+  return n;
+}
+
+function externalScriptCount(): number {
+  let n = 0;
+  const els = all('script');
+  for (let i = 0; i < els.length; i++) {
+    const v = els[i].getAttribute('src');
+    if (v && /^https?:\/\//i.test(String(v))) {
+      n++;
+    }
+  }
+  return n;
+}
+
+function externalLinkCount(): number {
+  let n = 0;
+  const els = all('link');
+  for (let i = 0; i < els.length; i++) {
+    const v = els[i].getAttribute('href');
+    if (v && /^https?:\/\//i.test(String(v))) {
+      n++;
+    }
+  }
+  return n;
+}
+
+function resEntries(): any[] {
+  try {
+    return W.performance && W.performance.getEntriesByType
+      ? W.performance.getEntriesByType('resource')
+      : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function resourceEntryCount(): number {
+  return resEntries().length;
+}
+
+function remoteResourceCount(): number {
+  try {
+    const origin = String(W.location.origin);
+    const es = resEntries();
+    let n = 0;
+    for (let i = 0; i < es.length; i++) {
+      const nm = String(es[i].name || '');
+      if (nm.indexOf(origin) !== 0 && nm.indexOf('data:') !== 0 && nm.indexOf('blob:') !== 0) {
+        n++;
+      }
+    }
+    return n;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function resourceFailCount(): number {
+  try {
+    const es = resEntries();
+    let n = 0;
+    for (let i = 0; i < es.length; i++) {
+      const s = es[i].responseStatus;
+      if (typeof s === 'number' && s >= 400) {
+        n++;
+      }
+    }
+    return n;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function resourceNameList(): string {
+  const es = resEntries();
+  const out: string[] = [];
+  for (let i = 0; i < es.length; i++) {
+    const nm = String(es[i].name || '');
+    out.push(nm.replace(/^https?:\/\/[^/]+/, ''));
+  }
+  return joinPipe(out);
+}
+
+function repoAnchorHref(): string {
+  return attrOf(q(SEL_REPO_A), 'href');
+}
+
+function repoAnchorText(): string {
+  return txtOf(q(SEL_REPO_A));
+}
+
+function repoAnchorTarget(): string {
+  return attrOf(q(SEL_REPO_A), 'target');
+}
+
+function repoAnchorBoxStyle(): string {
+  const a = q(SEL_REPO_A);
+  try {
+    return a && a.parentElement ? String(a.parentElement.getAttribute('style') || SENT) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function repoImgCount(): number {
+  const a = q(SEL_REPO_A);
+  return a ? all(a, 'img').length : SENTN;
+}
+
+function repoImgSrc(): string {
+  const a = q(SEL_REPO_A);
+  const img = a ? all(a, 'img')[0] : null;
+  return attrOf(img, 'src');
+}
+
+function repoImgInlineStyle(): string {
+  const a = q(SEL_REPO_A);
+  const img = a ? all(a, 'img')[0] : null;
+  return attrOf(img, 'style');
+}
+
+function repoImgComplete(): string {
+  const a = q(SEL_REPO_A);
+  const img = a ? all(a, 'img')[0] : null;
+  try {
+    return img ? boolStr(!!img.complete) : SENT;
+  } catch (e) {
+    return SENT;
+  }
+}
+
+function repoImgNaturalWidth(): number {
+  const a = q(SEL_REPO_A);
+  const img = a ? all(a, 'img')[0] : null;
+  try {
+    return img ? Number(img.naturalWidth) : SENTN;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function fontFaceFamilyList(): string {
+  try {
+    const faces: any[] = []; if (W.document.fonts && typeof (W.document.fonts as any).forEach === 'function') { (W.document.fonts as any).forEach(function (ff: any) { faces.push(ff); }); } // CORRECTED r24-18z22 R3: FontFaceSet exposes .size NOT .length, so Array.prototype.slice.call() ALWAYS yielded [] -> joinPipe([]) -> SENT '-'; iterate with forEach instead. One line on purpose: keeps this patch's unified-diff hunk counts valid.
+    const seen: string[] = [];
+    for (let i = 0; i < faces.length; i++) {
+      const fam = String(faces[i].family || '').replace(/["']/g, '');
+      if (fam && seen.indexOf(fam) < 0) {
+        seen.push(fam);
+      }
+    }
+    return joinPipe(seen);
+  } catch (e) {
+    return SENT;
+  }
+}
+
+// ---------------------------------------------------------------- residue / hygiene
+
+function consoleErrorCount(): number {
+  return errorCount;
+}
+
+function consoleWarnCount(): number {
+  return warnCount;
+}
+
+function consoleErrorHead(): string {
+  return errorTexts.length ? errorTexts[0] : '';
+}
+
+function pageErrorCountRead(): number {
+  return pageErrorCount;
+}
+
+function localStorageCount(): number {
+  try {
+    return W.localStorage ? W.localStorage.length : SENTN;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function sessionStorageCount(): number {
+  try {
+    return W.sessionStorage ? W.sessionStorage.length : SENTN;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function cookieLength(): number {
+  try {
+    return String(document.cookie || '').length;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function bridgeGlobalCount(): number {
+  try {
+    let n = 0;
+    for (const k in W) {
+      if (Object.prototype.hasOwnProperty.call(W, k) && String(k).indexOf('__RE') === 0) {
+        n++;
+      }
+    }
+    return n;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+function probeGetterCount(): number {
+  try {
+    return Object.keys(W.__RE__ || {}).length;
+  } catch (e) {
+    return SENTN;
+  }
+}
+
+// ---------------------------------------------------------------- drivers
+
+async function typeOnGrid(ch: string, code?: string): Promise<string> {
+  const c = code || 'Key' + String(ch).toUpperCase();
+  const r = dispatchKey(q(SEL_PANEL), 'keypress', c, ch, null);
+  receipts.lastDriver = 'typeOnGrid:' + ch + ':' + r;
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->mask=' + maskCount() + '|cell=' + editCellCount();
+}
+
+async function pressOnGrid(code: string, opts?: any): Promise<string> {
+  const r = dispatchKey(q(SEL_PANEL), 'keydown', code, code, opts);
+  receipts.lastDriver = 'pressOnGrid:' + code + ':' + r;
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->label=' + barLabelText();
+}
+
+async function pressInCell(code: string, opts?: any): Promise<string> {
+  const r = dispatchKey(q(SEL_EDITCELL), 'keydown', code, code, opts);
+  receipts.lastDriver = 'pressInCell:' + code + ':' + r;
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->mask=' + maskCount();
+}
+
+async function clickToolbarIcon(cls: string): Promise<string> {
+  return clickToolbarIconNth(cls, 0);
+}
+
+async function clickToolbarIconNth(cls: string, i: number): Promise<string> {
+  const els = all(SEL_TOOLBAR + ' .' + cls);
+  const el = els[i];
+  if (!el) {
+    receipts.lastDriver = 'clickToolbarIcon:missing:' + cls + ':' + i + ':' + els.length;
+    return receipts.lastDriver;
+  }
+  const target = el.closest ? el.closest('a') || el : el;
+  try {
+    target.click();
+  } catch (e) {
+    receipts.lastDriver = 'clickToolbarIcon:throw:' + cls;
+    return receipts.lastDriver;
+  }
+  receipts.lastDriver = 'clickToolbarIcon:' + cls + ':' + i;
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->align=' + alignIconColors() + '|palette=' + paletteCount();
+}
+
+async function clickSwatch(n: number): Promise<string> {
+  const els = all(SEL_SWATCH);
+  const el = els[n];
+  if (!el) {
+    receipts.lastDriver = 'clickSwatch:missing:' + n + ':' + els.length;
+    return receipts.lastDriver;
+  }
+  let color = SENT;
+  try {
+    color = csOf(el, 'background-color');
+  } catch (e) {
+    color = SENT;
+  }
+  try {
+    el.click();
+  } catch (e2) {
+    receipts.lastDriver = 'clickSwatch:throw:' + n;
+    return receipts.lastDriver;
+  }
+  receipts.lastDriver = 'clickSwatch:' + n + ':' + color;
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->palette=' + paletteCount();
+}
+
+async function barMousedownProbe(): Promise<string> {
+  const el = q(SEL_BAR_INPUT);
+  if (!el) {
+    receipts.lastDriver = 'barMousedown:no-input';
+    return receipts.lastDriver;
+  }
+  try {
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: W }));
+  } catch (e) {
+    receipts.lastDriver = 'barMousedown:throw';
+    return receipts.lastDriver;
+  }
+  receipts.lastDriver = 'barMousedown:ok';
+  await sleep(SETTLE);
+  return receipts.lastDriver + '->mask=' + maskCount() + '|cell=' + editCellCount();
+}
+
+async function paletteToggleProbe(): Promise<string> {
+  const before = paletteCount();
+  await clickToolbarIcon('icon-zitiyanse');
+  await sleep(120);
+  const s1 = paletteCount();
+  await clickToolbarIcon('icon-zitiyanse');
+  await sleep(120);
+  const s2 = paletteCount();
+  await clickToolbarIcon('icon-tianchong');
+  await sleep(120);
+  const s3 = paletteCount();
+  receipts.paletteToggle = s1 + '|' + s2 + '|' + s3;
+  return receipts.paletteToggle + ' (before=' + before + ',swatches=' + swatchCount() + ')';
+}
+
+async function enterCommitProbe(): Promise<string> {
+  await typeOnGrid('e');
+  await sleep(220);
+  const before = maskCount();
+  await pressInCell('Enter');
+  await sleep(280);
+  const after = maskCount();
+  receipts.enterCommit = before + '>' + after;
+  return receipts.enterCommit + ' (cell=' + editCellCount() + ')';
+}
+
+async function arrowRightLabelProbe(): Promise<string> {
+  const before = barLabelText();
+  await pressOnGrid('ArrowRight');
+  await sleep(240);
+  const after = barLabelText();
+  receipts.labelMove = before + '>' + after;
+  return receipts.labelMove;
+}
+
+function paletteToggleReceipt(): string {
+  return String(receipts.paletteToggle);
+}
+
+function enterCommitReceipt(): string {
+  return String(receipts.enterCommit);
+}
+
+function labelMoveReceipt(): string {
+  return String(receipts.labelMove);
+}
+
+function lastDriverReceipt(): string {
+  return String(receipts.lastDriver);
+}
+
+/**
+ * Direction-independent by construction: it never names a column letter, so it stays
+ * green whether generateColumnNum maps 1 -> "A" (clean) or 1 -> "B" (defect D01). It
+ * only asks that the label MOVED, that it still has the shape <letters><digits>, that the
+ * row digit did not change and that the letter count did not change.
+ */
+function labelChangedByArrowRight(): string {
+  const r = String(receipts.labelMove);
+  if (r === SENT || r.indexOf('>') < 0) {
+    return SENT;
+  }
+  const parts = r.split('>');
+  const before = parts[0];
+  const after = parts[1];
+  if (before === after) {
+    return 'no:same';
+  }
+  if (!/^[A-Z]+[0-9]+$/.test(after)) {
+    return 'no:shape:' + after;
+  }
+  if (before.replace(/^[A-Z]+/, '') !== after.replace(/^[A-Z]+/, '')) {
+    return 'no:rowdigit';
+  }
+  if (before.replace(/[0-9]+$/, '').length !== after.replace(/[0-9]+$/, '').length) {
+    return 'no:lettercount';
+  }
+  return 'yes';
+}
+
+function snapshot(): any {
+  return {
+    title: docTitle(),
+    path: locationPathname(),
+    hosts: hostCounts(),
+    canvases: canvasCount(),
+    toolbar: toolbarAnchorCount() + 'a/' + toolbarButtonCount() + 'button/' + toolbarIconfontTotal() + 'icon',
+    alignColors: alignIconColors(),
+    colorPair: colorIconPair(),
+    label: barLabelText(),
+    formula: formulaValue(),
+    palettes: paletteCount() + '/' + swatchCount(),
+    mask: maskCount() + '/' + editCellCount(),
+    maskBox: maskInlineBox(),
+    wrapper: editCellWrapperLeftPx() + ',' + editCellWrapperTopPx() + ',' + editCellWrapperWidthPx(),
+    editCell: editCellInlineWidthPx() + 'x' + editCellInlineHeightPx() + ' ' + editCellWhiteSpace(),
+    active: activeElementDesc(),
+    body: bodyOverflow(),
+    errors: errorCount + '/' + pageErrorCount,
+    remote: remoteResourceCount() + '/' + resourceFailCount(),
+  };
+}
+
+const api: any = {
+  sentinel: SENT,
+  version: 'rb-probe/report-editor/1',
+  // document shell
+  docTitle,
+  htmlLang,
+  baseHref,
+  locationPathname,
+  locationSearch,
+  locationHash,
+  appRootChildTags,
+  hostCounts,
+  // panel + canvases
+  panelHostCount,
+  panelHostClass,
+  canvasCount,
+  panelCanvasCount,
+  actionCanvasCount,
+  actionCanvasClassList,
+  canvasTabIndex,
+  canvasHasAutofocus,
+  canvasClass,
+  actionPanelPointerEvents,
+  actionPanelPosition,
+  panelCanvasPointerEvents,
+  panelWrapperOverflow,
+  panelWrapperPosition,
+  // toolbar
+  toolbarAnchorCount,
+  toolbarButtonCount,
+  toolbarIconCount,
+  toolbarSpanIconCount,
+  toolbarIconfontTotal,
+  toolbarIconClassList,
+  alignIconClassList,
+  alignIconCount,
+  alignIconColors,
+  boldIconWeight,
+  boldIconText,
+  italicIconStyle,
+  italicIconText,
+  colorIconPair,
+  iconFontFamily,
+  iconFontSize,
+  toolbarUserSelect,
+  toolbarBackgroundColor,
+  toolbarText,
+  fileInputCount,
+  fileInputAccept,
+  fileInputType,
+  fileInputOpacity,
+  insertButtonCount,
+  insertButtonValue,
+  insertButtonType,
+  insertButtonPointerEvents,
+  // selects
+  selectCount,
+  selectOptionCounts,
+  selectValueList,
+  selectOptionHeads,
+  selectOptionTails,
+  // formula bar
+  formulaBarCount,
+  formulaBarHeightPx,
+  formulaBarDisplay,
+  barLabelCount,
+  barLabelText,
+  barLabelWidthPx,
+  barLabelComputedAlign,
+  barLabelColor,
+  barLabelTextLength,
+  barLabelShape,
+  formulaInputCount,
+  formulaInputName,
+  formulaValue,
+  // palettes
+  paletteCount,
+  swatchCount,
+  colorBoxCount,
+  paletteSwatchColorList,
+  distinctSwatchColorCount,
+  innerBoxWidthPx,
+  colorBoxWidthPx,
+  paletteWrapperInlineStyle,
+  paletteGridFontSize,
+  // edit overlay
+  maskCount,
+  maskContentCount,
+  editCellCount,
+  cellEditHostCount,
+  maskInlineBox,
+  maskInlineLeftPx,
+  maskInlineTopPx,
+  maskInlineRightPx,
+  maskInlineBottomPx,
+  maskPointerEvents,
+  maskOverflow,
+  editCellWrapperLeftPx,
+  editCellWrapperTopPx,
+  editCellWrapperWidthPx,
+  editCellWrapperHeightPx,
+  editCellWrapperPosition,
+  editCellWrapperOverflow,
+  editCellInlineWidthPx,
+  editCellInlineHeightPx,
+  editCellInlineBorderWidthPx,
+  editCellWhiteSpace,
+  editCellComputedOverflow,
+  editCellComputedDisplay,
+  editCellComputedVerticalAlign,
+  editCellComputedTextAlign,
+  editCellComputedFontFamily,
+  editCellComputedFontWeight,
+  editCellComputedFontStyle,
+  editCellComputedColor,
+  editCellComputedBackground,
+  editCellComputedFontSizePx,
+  editCellText,
+  editCellContenteditable,
+  editCellName,
+  editCellClass,
+  editCellPointerEvents,
+  activeElementDesc,
+  focusLatchInstalled,
+  editCellFocusCalled,
+  editCellFocusCalls,
+  focusCallTotal: focusCallTotalRead,
+  focusCallLog,
+  // global styles
+  bodyOverflow,
+  htmlOverflow,
+  bodyMargin,
+  bodyPadding,
+  bodyWidth,
+  // offline surface
+  externalRefList,
+  externalRefTagCount,
+  externalImgCount,
+  externalScriptCount,
+  externalLinkCount,
+  resourceEntryCount,
+  remoteResourceCount,
+  resourceFailCount,
+  resourceNameList,
+  repoAnchorHref,
+  repoAnchorText,
+  repoAnchorTarget,
+  repoAnchorBoxStyle,
+  repoImgCount,
+  repoImgSrc,
+  repoImgInlineStyle,
+  repoImgComplete,
+  repoImgNaturalWidth,
+  fontFaceFamilyList,
+  // residue / hygiene
+  consoleErrorCount,
+  consoleWarnCount,
+  consoleErrorHead,
+  pageErrorCount: pageErrorCountRead,
+  localStorageCount,
+  sessionStorageCount,
+  cookieLength,
+  bridgeGlobalCount,
+  probeGetterCount,
+  // drivers (only writes a user could perform) + receipts
+  typeOnGrid,
+  pressOnGrid,
+  pressInCell,
+  clickToolbarIcon,
+  clickToolbarIconNth,
+  clickSwatch,
+  barMousedownProbe,
+  paletteToggleProbe,
+  enterCommitProbe,
+  arrowRightLabelProbe,
+  paletteToggleReceipt,
+  enterCommitReceipt,
+  labelMoveReceipt,
+  lastDriverReceipt,
+  labelChangedByArrowRight,
+  snapshot,
+};
+
+try {
+  W.__RE__ = api;
+} catch (e) {
+  /* nothing to publish to */
+}
+
+export type ReBridge = typeof api;

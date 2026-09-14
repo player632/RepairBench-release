@@ -1,0 +1,344 @@
+<html>
+
+<head>
+    <title>Organya</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+    <style>
+        body {
+            background-color: #d4d0c8;
+        }
+
+        body,
+        html {
+            height: 100%;
+            margin: 0;
+            padding: 0
+        }
+
+        #toolbar {
+            position: absolute;
+            flex-wrap: nowrap;
+            height: 40px;
+            display: flex;
+            top: 0;
+            left: 0;
+            right: 0;
+        }
+
+        #toolbar select {
+            min-width: 0;
+            max-width: 256px;
+            flex: 0 1 auto;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 40px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="toolbar" data-testid="rb-control-bar">
+        <select id="songs" data-testid="rb-song-list"></select>
+        <button onclick="playOrg()" data-testid="rb-transport-play">Play</button>
+        <button onclick="stopOrg()" data-testid="rb-transport-stop">Stop</button>
+    </div>
+    <div id="canvas-container" data-testid="rb-roll-container">
+        <canvas id="org-canvas" data-testid="rb-roll-surface"></canvas>
+    </div>
+
+    <!-- increment before each deploy -->
+    <script src="organya.js?cache_bust=5"></script>
+    <script src="organya-ui.js?cache_bust=4"></script>
+    <script>
+        (() => {
+            const songs = `Pixel/Cave Story/Access.org
+Pixel/Cave Story/Balcony.org
+Pixel/Cave Story/Balrog's Theme.org
+Pixel/Cave Story/Break Down.org
+Pixel/Cave Story/Cave Story.org
+Pixel/Cave Story/Cemetery.org
+Pixel/Cave Story/Charge.org
+Pixel/Cave Story/Eyes of Flame.org
+Pixel/Cave Story/Gameover.org
+Pixel/Cave Story/Geothermal.org
+Pixel/Cave Story/Gestation.org
+Pixel/Cave Story/Get Heart Tank!.org
+Pixel/Cave Story/Got Item!.org
+Pixel/Cave Story/Gravity.org
+Pixel/Cave Story/Halloween 2.org
+Pixel/Cave Story/Hero's End.org
+Pixel/Cave Story/Jenka 1.org
+Pixel/Cave Story/Jenka 2.org
+Pixel/Cave Story/Labyrinth Fight.org
+Pixel/Cave Story/Last Battle.org
+Pixel/Cave Story/Last Cave.org
+Pixel/Cave Story/Living Waterway.org
+Pixel/Cave Story/Meltdown 2.org
+Pixel/Cave Story/Meltdown.org
+Pixel/Cave Story/Mimiga Town.org
+Pixel/Cave Story/Mischievous Robot.org
+Pixel/Cave Story/Moonsong.org
+Pixel/Cave Story/On to Grasstown.org
+Pixel/Cave Story/Oppression.org
+Pixel/Cave Story/People of the Root.org
+Pixel/Cave Story/Pier Walk.org
+Pixel/Cave Story/Plant.org
+Pixel/Cave Story/Pulse.org
+Pixel/Cave Story/Quiet.org
+Pixel/Cave Story/Run!.org
+Pixel/Cave Story/Running Hell.org
+Pixel/Cave Story/Safety.org
+Pixel/Cave Story/Scorching Back.org
+Pixel/Cave Story/Seal Chamber.org
+Pixel/Cave Story/Snoopy Cake (Rockorg).org
+Pixel/Cave Story/The Way Back Home.org
+Pixel/Cave Story/Torokos Theme.org
+Pixel/Cave Story/Tyrant.org
+Pixel/Cave Story/Victory!.org
+Pixel/Cave Story/White.org
+Pixel/Cave Story/Wind Fortress.org
+Pixel/Cave Story/Zombie.org
+Pixel/Cave Story Beta/Cave Story Beta 2001-09-30.org
+Pixel/Cave Story Beta/Cave Story Beta 2001-12-09.org
+Pixel/Cave Story Beta/Cave Story Beta 2004-12-07.org
+Pixel/Cave Story Beta/Cemetery Beta 2002-12-17.org
+Pixel/Cave Story Beta/Eyes of Flame Beta 2002-10-24.org
+Pixel/Cave Story Beta/Eyes of Flame Beta 2002-12-17.org
+Pixel/Cave Story Beta/Eyes of Flame Beta 2004-12-14.org
+Pixel/Cave Story Beta/Eyes of Flame Beta 2004-12-15.org
+Pixel/Cave Story Beta/Gestation Beta 2001-09-30.org
+Pixel/Cave Story Beta/Gravity Beta 2001-09-30.org
+Pixel/Cave Story Beta/Gravity Beta 2002-01-20.org
+Pixel/Cave Story Beta/Gravity Beta 2002-07-20.org
+Pixel/Cave Story Beta/Hero's End Beta 2001-09-30.org
+Pixel/Cave Story Beta/Hero's End Beta 2001-12-09.org
+Pixel/Cave Story Beta/Hero's End Beta 2002-01-20.org
+Pixel/Cave Story Beta/Last Battle Beta.org
+Pixel/Cave Story Beta/Living Waterway Beta 2001-09-30.org
+Pixel/Cave Story Beta/Living Waterway Beta 2001-12-09.org
+Pixel/Cave Story Beta/Living Waterway Beta 2002-01-20.org
+Pixel/Cave Story Beta/Meltdown Beta 2001-09-30.org
+Pixel/Cave Story Beta/Meltdown Beta 2001-12-09.org
+Pixel/Cave Story Beta/Mimiga Town Beta 2003-02-10.org
+Pixel/Cave Story Beta/Mischievous Robot Beta 2002-06-07.org
+Pixel/Cave Story Beta/Mischievous Robot Beta 2002-07-01.org
+Pixel/Cave Story Beta/Moonsong Beta 2001-12-09.org
+Pixel/Cave Story Beta/Moonsong Beta 2002-01-20.org
+Pixel/Cave Story Beta/Oppression Beta 2001-12-09.org
+Pixel/Cave Story Beta/Oppression Beta 2002-02-28.org
+Pixel/Cave Story Beta/Pier Walk Beta 2001-09-30.org
+Pixel/Cave Story Beta/Plant Beta 2001-09-30.org
+Pixel/Cave Story Beta/Plant Beta 2001-12-09.org
+Pixel/Cave Story Beta/Plant Beta 2002-12-17.org
+Pixel/Cave Story Beta/Pulse Beta 2003-02-10.org
+Pixel/Cave Story Beta/Quiet Beta 2004-02-19.org
+Pixel/Cave Story Beta/Safety Beta 2001-09-30.org
+Pixel/Cave Story Beta/Safety Beta 2001-12-09.org
+Pixel/Cave Story Beta/Safety Beta 2002-06-07.org
+Pixel/Cave Story Beta/Safety Beta 2002-07-01.org
+Pixel/Cave Story Beta/Safety Beta 2002-07-20.org
+Pixel/Cave Story Beta/White Beta 2002-01-20.org
+Pixel/Cave Story Beta/White Beta 2002-02-14.org
+Pixel/Cave Story Beta/White Beta 2002-02-28.org
+Pixel/Cave Story Beta/Wind Fortress Beta 2002-07-05.org
+Pixel/Cave Story Beta/Wind Fortress Beta 2002-07-09.org
+Pixel/Cave Story Beta/Wind Fortress Beta 2002-07-20.org
+Pixel/Cave Story Beta/Wind Fortress Beta 2002-10-24.org
+makkoi/maimai.org
+nurv/happy00.org
+Rxo/snowfalling.org
+Rxo/town0.org`.split("\n");
+
+            const songListEl = document.getElementById("songs");
+            for (let song of songs) {
+                song = song.trim();
+                const opt = document.createElement("option");
+                opt.value = song;
+                opt.textContent = song;
+                opt.setAttribute("data-testid", "rb-song-option");
+
+                songListEl.appendChild(opt);
+            }
+
+            const canvasContainer = document.getElementById("canvas-container");
+            const orgCanvas = document.getElementById("org-canvas");
+            orgCanvas.width = canvasContainer.clientHeight;
+            orgCanvas.height = canvasContainer.clientWidth;
+            const ui = new OrganyaUI(orgCanvas);
+
+            window.addEventListener("resize", () => {
+                orgCanvas.width = canvasContainer.clientWidth;
+                orgCanvas.height = canvasContainer.clientHeight;
+                ui.draw();
+            })
+
+            let currentOrg = null;
+            window.stopOrg = () => {
+                if (currentOrg != null) {
+                    currentOrg.stop();
+                    currentOrg = null;
+                }
+            }
+
+            window.playOrg = async () => {
+                stopOrg();
+
+                console.log("fetching song...");
+                const res = await fetch(songListEl.options[songListEl.selectedIndex].value);
+                const data = await res.arrayBuffer();
+                await initOrganya();
+
+                currentOrg = new Organya(data);
+                ui.setOrganya(currentOrg);
+                currentOrg.play();
+            }
+
+            // ---- repair-bench instrumentation: read-only verification facade, PAGE half ----
+            // Additive probe block appended inside the entry document's own bootstrap closure, so
+            // it can read the closure-locals (the song dropdown, the drawing surface, its container
+            // and the renderer instance) that no outside script can reach. It edits 0 seed logic
+            // line. Every handle below is a pure read returning one scalar; the drivers that need
+            // to hand an event to the page are named rig* and are called from a checkpoint's setup
+            // only, freezing their readings at that moment.
+            {
+                const rb = (typeof window.__rb_org === "object" && window.__rb_org) ? window.__rb_org : {};
+                const rbStr = (v) => (v === null || v === undefined ? "" : String(v));
+                const rbEl = (id) => document.getElementById(id);
+                const rbDef = (name, fallback, fn) => {
+                    Object.defineProperty(rb, name, {
+                        value: function () {
+                            try {
+                                const v = fn.apply(null, arguments);
+                                return v === undefined ? fallback : v;
+                            } catch (e) { return fallback; }
+                        },
+                        writable: false, enumerable: false, configurable: false
+                    });
+                };
+                const rbList = () => rbEl("songs");
+                const rbBox = () => rbEl("org-canvas");
+                const rbWrap = () => rbEl("canvas-container");
+
+                // --- document / control bar ---
+                rbDef("docTitle", "", () => document.title);
+                rbDef("toolbarExists", false, () => !!rbEl("toolbar"));
+                rbDef("toolbarChildCount", -1, () => rbEl("toolbar").children.length);
+                rbDef("toolbarButtonCount", -1, () => rbEl("toolbar").querySelectorAll("button").length);
+                rbDef("toolbarButtonTexts", "", () => Array.prototype.map.call(rbEl("toolbar").querySelectorAll("button"), (b) => rbStr(b.textContent).trim()).join("|"));
+                rbDef("pauseButtonExists", null, () => Array.prototype.some.call(rbEl("toolbar").querySelectorAll("button"), (b) => /pause/i.test(rbStr(b.textContent))));
+                rbDef("listExists", false, () => !!rbList());
+                rbDef("listTagName", "", () => rbStr(rbList().tagName).toLowerCase());
+                rbDef("listSelectedIndex", -1, () => rbList().selectedIndex);
+                rbDef("playHandlerIsFunction", false, () => typeof window.playOrg === "function");
+                rbDef("stopHandlerIsFunction", false, () => typeof window.stopOrg === "function");
+                rbDef("currentInstanceIsNull", null, () => currentOrg === null);
+                rbDef("engineCtorExposed", false, () => typeof window.Organya === "function");
+                rbDef("rendererCtorExposed", false, () => typeof window.OrganyaUI === "function");
+                rbDef("loaderExposed", false, () => typeof window.initOrganya === "function");
+
+                // --- song dropdown ---
+                rbDef("optionCount", -1, () => rbList().options.length);
+                rbDef("optionTextAt", "", (i) => rbStr(rbList().options[i | 0].textContent));
+                rbDef("optionValueAt", "", (i) => rbStr(rbList().options[i | 0].value));
+                rbDef("optionTestIdCount", -1, () => rbList().querySelectorAll("option[data-testid]").length);
+                rbDef("optionIndexOfText", -1, (t) => {
+                    const o = rbList().options;
+                    for (let i = 0; i < o.length; i++) if (rbStr(o[i].textContent) === rbStr(t)) return i;
+                    return -1;
+                });
+                rbDef("optionValuePrefixedCount", -1, (pre) => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value).indexOf(rbStr(pre)) === 0).length);
+                rbDef("optionValueEmptyCount", -1, () => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value) === "").length);
+                rbDef("optionValueDistinctCount", -1, () => new Set(Array.prototype.map.call(rbList().options, (o) => rbStr(o.value))).size);
+                rbDef("optionTextAndValueAgreeCount", -1, (pre) => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value) === rbStr(pre) + rbStr(o.textContent)).length);
+                rbDef("optionTextIsSorted", null, () => {
+                    const t = Array.prototype.map.call(rbList().options, (o) => rbStr(o.textContent));
+                    for (let i = 1; i < t.length; i++) if (t[i - 1] > t[i]) return false;
+                    return true;
+                });
+
+                // --- drawing surface geometry (relative readings: no absolute layout figure is
+                //     asserted anywhere, so nothing here depends on a scrollbar or a font metric) ---
+                rbDef("boxExists", false, () => !!rbBox());
+                rbDef("boxTagName", "", () => rbStr(rbBox().tagName).toLowerCase());
+                rbDef("boxWidth", -1, () => rbBox().width);
+                rbDef("boxHeight", -1, () => rbBox().height);
+                rbDef("wrapClientWidth", -1, () => rbWrap().clientWidth);
+                rbDef("wrapClientHeight", -1, () => rbWrap().clientHeight);
+                rbDef("boxWidthIsWrapWidth", null, () => rbBox().width === rbWrap().clientWidth);
+                rbDef("boxHeightIsWrapHeight", null, () => rbBox().height === rbWrap().clientHeight);
+                rbDef("boxWidthIsWrapHeight", null, () => rbBox().width === rbWrap().clientHeight);
+                rbDef("boxHeightIsWrapWidth", null, () => rbBox().height === rbWrap().clientWidth);
+                rbDef("boxAreaIsPositive", null, () => rbBox().width > 0 && rbBox().height > 0);
+                rbDef("boxIsNotSquare", null, () => rbBox().width !== rbBox().height);
+                rbDef("wrapIsLandscape", null, () => rbWrap().clientWidth > rbWrap().clientHeight);
+                rbDef("wrapWidthIsOverOneThousand", null, () => rbWrap().clientWidth > 1152);
+                rbDef("wrapHeightIsUnderOneThousand", null, () => rbWrap().clientHeight < 1152);
+                rbDef("rigResize", false, () => { window.dispatchEvent(new Event("resize")); return true; });
+
+                // --- the page's own renderer instance (a closure-local in the seed) ---
+                rbDef("uiExists", false, () => !!ui);
+                rbDef("uiIsRenderer", null, () => ui instanceof window.OrganyaUI);
+                rbDef("uiBoxIsPageBox", null, () => ui.canvas === rbBox());
+                rbDef("uiScrollYIsNumber", null, () => typeof ui.scrollY === "number" && isFinite(ui.scrollY));
+                rbDef("uiScrollY", null, () => (typeof ui.scrollY === "number" && isFinite(ui.scrollY) ? Math.round(ui.scrollY * 10000) / 10000 : null));
+                rbDef("uiScrollIsNegative", null, () => ui.scrollY < 0);
+                rbDef("uiScrollIsZero", null, () => ui.scrollY === 0);
+                rbDef("uiScrollIsPositive", null, () => ui.scrollY > 0);
+                rbDef("uiRequestedIsBoolean", null, () => typeof ui.requested === "boolean");
+                rbDef("uiHasInstance", null, () => ui.organya !== null);
+                rbDef("uiImageCount", -1, () => [ui.noteImg, ui.pianoRoll, ui.number].filter((im) => im && typeof im.src === "string").length);
+                rbDef("uiImageCompleteCount", -1, () => [ui.noteImg, ui.pianoRoll, ui.number].filter((im) => im && im.complete === true).length);
+                rbDef("uiImageSrcsAreRelative", null, () => [ui.noteImg, ui.pianoRoll, ui.number].every((im) => {
+                    const s = rbStr(im.getAttribute ? im.getAttribute("src") : im.src);
+                    return s !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.charAt(0) !== "/";
+                }));
+                rbDef("uiScrollEqualsLiveSizedProbeInit", null, () => {
+                    const f = rb.frozenLiveSizedInitScroll();
+                    return typeof f === "number" && typeof ui.scrollY === "number" ? ui.scrollY === f : null;
+                });
+                rbDef("liveSizedProbeInitIsNotNegative", null, () => {
+                    const f = rb.frozenLiveSizedInitScroll();
+                    return typeof f === "number" ? f >= 0 : null;
+                });
+                rbDef("liveSizedProbeInitEqualsSquareProbeInit", null, () => {
+                    const a = rb.frozenLiveSizedInitScroll(), b = rb.frozenSquareInitScroll();
+                    return (typeof a === "number" && typeof b === "number") ? a === b : null;
+                });
+
+                // --- offline self-sufficiency + state isolation sentinels ---
+                rbDef("scriptSrcCount", -1, () => document.querySelectorAll("script[src]").length);
+                rbDef("scriptSrcsAreRelative", null, () => Array.prototype.every.call(document.querySelectorAll("script[src]"), (s) => {
+                    const u = rbStr(s.getAttribute("src"));
+                    return u !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(u) && u.charAt(0) !== "/";
+                }));
+                rbDef("outboundRefCount", -1, () => {
+                    const here = location.origin;
+                    return Array.prototype.filter.call(document.querySelectorAll("link[href], script[src], img[src], iframe[src], source[src]"), (e) => {
+                        const u = rbStr(e.getAttribute("href") || e.getAttribute("src"));
+                        if (!u || !/^[a-z][a-z0-9+.-]*:/i.test(u)) return false;
+                        try { return new URL(u, location.href).origin !== here; } catch (err) { return false; }
+                    }).length;
+                });
+                rbDef("dataUriRefCount", -1, () => Array.prototype.filter.call(document.querySelectorAll("link[href], script[src], img[src]"), (e) => /^(data|blob):/i.test(rbStr(e.getAttribute("href") || e.getAttribute("src")))).length);
+                rbDef("localStorageKeyCount", -1, () => window.localStorage.length);
+                rbDef("sessionStorageKeyCount", -1, () => window.sessionStorage.length);
+                rbDef("localStorageKeys", "", () => Object.keys(window.localStorage).sort().join("|"));
+                rbDef("urlIsEntryDocument", null, () => /\/(index\.html)?$/.test(location.pathname));
+                rbDef("urlHasNoQueryOrHash", null, () => location.search === "" && location.hash === "");
+                rbDef("rbGlobalIsEnumerable", null, () => Object.getOwnPropertyDescriptor(window, "__rb_org").enumerable === true);
+                rbDef("rbGlobalIsWritable", null, () => Object.getOwnPropertyDescriptor(window, "__rb_org").writable === true);
+                rbDef("rbGlobalIsObject", null, () => typeof window.__rb_org === "object" && window.__rb_org !== null);
+                rbDef("probeTestIdTotal", -1, () => document.querySelectorAll("[data-testid]").length);
+
+                if (!window.__rb_org) Object.defineProperty(window, "__rb_org", { value: rb, writable: false, enumerable: false, configurable: false });
+            }
+        })();
+    </script>
+</body>
+
+</html>

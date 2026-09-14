@@ -1,0 +1,221 @@
+diff --git a/src/components/shared/shelf-card.tsx b/src/components/shared/shelf-card.tsx
+index 2d9fc2e25..eb6ce6fec 100644
+--- a/src/components/shared/shelf-card.tsx
++++ b/src/components/shared/shelf-card.tsx
+@@ -181,6 +181,7 @@ export function ShelfCard({ item, className }: Props) {
+   const body = (
+     <>
+       <div
++        data-testid="rb-thumb-wrap"
+         className={cn(
+           "relative w-full",
+           isVideo ? "aspect-video" : "aspect-square",
+diff --git a/src/components/shared/shelf-carousel.tsx b/src/components/shared/shelf-carousel.tsx
+index 96ebbcda0..87894428e 100644
+--- a/src/components/shared/shelf-carousel.tsx
++++ b/src/components/shared/shelf-carousel.tsx
+@@ -7,9 +7,17 @@ type Props = {
+   shelf: Shelf;
+   /** Optional control rendered at the right of the shelf header (e.g. "Show all"). */
+   action?: ReactNode;
++  /**
++   * 🔴 instrumentation only. Optional probe name for the carousel's own
++   * `<section>`; defaults to the generic `rb-shelf` so every pre-existing
++   * call site renders exactly as before. The search "all" tab passes
++   * `rb-section-<filter>` so a checkpoint can scope one per-type section
++   * without relying on DOM order.
++   */
++  testId?: string;
+ };
+ 
+-export function ShelfCarousel({ shelf, action }: Props) {
++export function ShelfCarousel({ shelf, action, testId }: Props) {
+   const scrollRef = useRef<HTMLDivElement>(null);
+ 
+   // Make the carousel scroll horizontally with:
+@@ -115,9 +123,15 @@ export function ShelfCarousel({ shelf, action }: Props) {
+   }, []);
+ 
+   return (
+-    <section className="shelf-hover-scrollbar flex flex-col gap-3">
++    <section
++      data-testid={testId ?? "rb-shelf"}
++      className="shelf-hover-scrollbar flex flex-col gap-3"
++    >
+       <div className="flex items-baseline justify-between gap-3 px-1">
+-        <h2 className="truncate text-xl font-semibold tracking-tight">
++        <h2
++          data-testid="rb-shelf-title"
++          className="truncate text-xl font-semibold tracking-tight"
++        >
+           {shelf.title}
+         </h2>
+         {action ? (
+@@ -141,6 +155,7 @@ export function ShelfCarousel({ shelf, action }: Props) {
+           return (
+             <div
+               key={`${item.kind}:${item.id}`}
++              data-testid={`rb-card-${item.id}`}
+               className={cn(
+                 "shrink-0",
+                 isVideo
+diff --git a/src/components/shared/thumbnail.tsx b/src/components/shared/thumbnail.tsx
+index 78c92c36b..1649fee00 100644
+--- a/src/components/shared/thumbnail.tsx
++++ b/src/components/shared/thumbnail.tsx
+@@ -190,6 +190,7 @@ export function Thumbnail({
+               put while the hi-res cross-fades in on top. */}
+           <img
+             {...sharedImgProps}
++            data-testid="rb-thumb-lowres"
+             src={lowRes!}
+             alt=""
+             aria-hidden="true"
+@@ -197,6 +198,7 @@ export function Thumbnail({
+           />
+           <img
+             {...sharedImgProps}
++            data-testid="rb-thumb-hires"
+             src={target!}
+             alt={alt}
+             onLoad={(e) => {
+diff --git a/src/components/shared/track-list.tsx b/src/components/shared/track-list.tsx
+index ba16d5177..80842a0a0 100644
+--- a/src/components/shared/track-list.tsx
++++ b/src/components/shared/track-list.tsx
+@@ -442,6 +442,7 @@ const TrackRow = memo(function TrackRow({
+ }: RowProps) {
+   const row = (
+     <li
++      data-testid="rb-track-row"
+       data-videoid={t.id}
+       data-selected={selected || undefined}
+       style={{ gridTemplateColumns: gridTemplate }}
+@@ -605,7 +606,10 @@ const TrackRow = memo(function TrackRow({
+         </div>
+       ) : null}
+ 
+-      <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
++      <span
++        data-testid={`rb-dur-${t.id}`}
++        className="shrink-0 text-right text-xs tabular-nums text-muted-foreground"
++      >
+         {showPlays ? formatPlays(t.playCount) : formatDuration(t.duration)}
+       </span>
+ 
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 39132464d..34bfb70f8 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -175,6 +175,7 @@ function HomePage() {
+ 
+   return (
+     <div
++      data-testid="rb-home"
+       ref={pageRef}
+       className="flex flex-col px-6 pb-6"
+       style={{ paddingTop: FADE_EDGE - 12 }}
+@@ -186,7 +187,7 @@ function HomePage() {
+         titles={loadedTitles}
+       />
+ 
+-      <div className="flex flex-col gap-8 pt-3">
++      <div data-testid="rb-home-shelves" className="flex flex-col gap-8 pt-3">
+         {error ? (
+           <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+             <AlertCircleIcon className="size-5 shrink-0 text-destructive" />
+diff --git a/src/routes/search.tsx b/src/routes/search.tsx
+index de3793756..3d93dfecd 100644
+--- a/src/routes/search.tsx
++++ b/src/routes/search.tsx
+@@ -346,7 +346,7 @@ function AllResults({ data }: { data: SearchResults }) {
+   }
+ 
+   return (
+-    <div className="flex flex-col gap-8">
++    <div data-testid="rb-all-results" className="flex flex-col gap-8">
+       {topResult ? (
+         <TopResultHero item={topResult} action={data.topResultAction} />
+       ) : null}
+@@ -372,7 +372,11 @@ function AllResults({ data }: { data: SearchResults }) {
+ 
+         if (s.display === "list") {
+           return (
+-            <section key={s.filter} className="flex flex-col gap-3">
++            <section
++              key={s.filter}
++              data-testid={`rb-section-${s.filter}`}
++              className="flex flex-col gap-3"
++            >
+               <div className="flex items-baseline justify-between gap-3 px-1">
+                 <h2 className="truncate text-xl font-semibold tracking-tight">
+                   {s.title}
+@@ -389,7 +393,14 @@ function AllResults({ data }: { data: SearchResults }) {
+           title: s.title,
+           items: s.items,
+         };
+-        return <ShelfCarousel key={s.filter} shelf={shelf} action={showAll} />;
++        return (
++          <ShelfCarousel
++            key={s.filter}
++            shelf={shelf}
++            action={showAll}
++            testId={`rb-section-${s.filter}`}
++          />
++        );
+       })}
+     </div>
+   );
+@@ -491,7 +502,10 @@ function TopResultHero({
+           />
+         </div>
+         <div className="flex min-w-0 flex-col gap-1">
+-          <span className="truncate text-3xl font-bold tracking-tight">
++          <span
++            data-testid="rb-top-title"
++            className="truncate text-3xl font-bold tracking-tight"
++          >
+             {item.title}
+           </span>
+           {item.subtitle ? (
+@@ -505,6 +519,7 @@ function TopResultHero({
+       {action ? (
+         <button
+           type="button"
++          data-testid="rb-top-action"
+           onClick={runAction}
+           disabled={pending}
+           aria-label={action.label}
+@@ -528,8 +543,13 @@ function TopResultHero({
+   );
+ 
+   return (
+-    <section className="flex flex-col gap-3">
+-      <h2 className="px-1 text-xl font-semibold tracking-tight">Top result</h2>
++    <section data-testid="rb-top-result" className="flex flex-col gap-3">
++      <h2
++        data-testid="rb-top-heading"
++        className="px-1 text-xl font-semibold tracking-tight"
++      >
++        Top result
++      </h2>
+       {item.kind === "song" || item.kind === "video" ? (
+         <TrackContextMenu item={item}>{card}</TrackContextMenu>
+       ) : (
+@@ -818,6 +838,7 @@ function SearchField({
+       >
+         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+         <Input
++          data-testid="rb-search-input"
+           ref={inputRef}
+           placeholder="Search songs, albums, artists…"
+           className="pl-9 pr-9"
+@@ -859,7 +880,7 @@ function SearchField({
+         >
+           <ul className="py-1">
+             {suggestions.map((h, i) => (
+-              <li key={h}>
++              <li key={h} data-testid="rb-suggestion">
+                 <button
+                   type="button"
+                   className={cn(

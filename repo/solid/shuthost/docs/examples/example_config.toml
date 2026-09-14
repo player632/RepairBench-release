@@ -1,0 +1,259 @@
+# ShutHost Coordinator Configuration Example
+#
+# This file demonstrates all possible configuration options for the ShutHost coordinator.
+# This configuration will be used by the installer.
+# Additional options are shown as commented examples. Uncomment and modify as needed.
+#
+# Ensure only you can read this file with `chmod 600 $(whoami) <config location>`
+# Note: If you installed the coordinator using the binary installer (not Docker), it will automatically set the correct permissions on this file.
+# The configuration contains shared secrets for the clients and the hosts, which allow anyone on your LAN or even the Internet to issue shutdown commands.
+#
+# The configuration is in TOML format. Lines starting with '#' are comments and are ignored.
+#
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+# The [server] table configures the HTTP server that serves the WebUI and API.
+[server]
+
+# The TCP port on which the coordinator will listen for incoming connections.
+# This is the port you'll access the WebUI at (e.g., http://localhost:8080).
+# Default: 8080
+port = 8080
+
+# The IP address or hostname to bind the server to.
+# Use "0.0.0.0" to listen on all interfaces, or "127.0.0.1" for localhost only.
+# When using a reverse proxy, bind to localhost and let the proxy handle external access.
+# Default: "127.0.0.1"
+bind = "127.0.0.1"
+
+# When `false`, disables the periodic GitHub release check.
+# Default: true
+# check_for_updates = true
+
+# =============================================================================
+# TLS CONFIGURATION
+# =============================================================================
+# The [server.tls] table configures TLS/HTTPS support.
+# If omitted, the server will serve plain HTTP (not recommended for production, unless you're using a reverse proxy with unencrypted traffic between reverse proxy and coordinator being not interceptable).
+# Paths are interpreted relative to this config file when not absolute.
+# [server.tls]
+
+# Path to the TLS certificate file (PEM format).
+# If both cert_path and key_path are provided and exist, they will be used for TLS.
+# Default: "./tls_cert.pem"
+# cert_path = "./tls_cert.pem"
+
+# Path to the TLS private key file (PEM format).
+# Must be paired with cert_path.
+# Default: "./tls_key.pem"
+# key_path = "./tls_key.pem"
+
+# Whether to generate and persist a self-signed certificate if no cert/key files are found.
+# The generated cert will be saved to cert_path and key_path for reuse across restarts.
+# Set to false if you don't want self-signed certs (e.g., when using a reverse proxy).
+# Default: true
+# persist_self_signed = true
+
+# Whether TLS is enabled. Set to false to disable TLS even if cert/key are configured.
+# Default: true
+# enable = true
+
+# =============================================================================
+# AUTHENTICATION CONFIGURATION
+# =============================================================================
+# The [server.auth] table configures authentication for the WebUI.
+# The default if none is configured is no authentication!
+# Only one authentication mode can be active at a time.
+
+# TOKEN-BASED AUTHENTICATION
+# Simple token authentication.
+# If token is omitted or set to null, a random token will be generated and logged on startup.
+# The token persists across restarts when a database is configured, otherwise it's regenerated each startup.
+# For security, the token is only logged during initial generation, not when loaded from database.
+[server.auth.token]
+# token = "your-secure-token-here"  # Uncomment and set to avoid auto-generation
+# COOKIE SECRET (optional, applies to all auth modes except "external")
+# A base64-encoded 32-byte key used for signing session cookies.
+# If omitted, a random key is generated on startup and persisted to database if available.
+# Generate a secure key with: openssl rand -base64 32
+# cookie_secret = "base64-encoded-32-byte-key-here"
+
+# # ALTERNATIVE: OPENID CONNECT (OIDC) AUTHENTICATION
+# # OIDC authentication using authorization code flow with PKCE as a confidential client.
+# # The OIDC provider must support both PKCE and OIDC discovery.
+# # See https://github.com/9SMTM6/shuthost/blob/main/docs/examples/oidc-kanidm.md for an example setup with Kanidm.
+# # This allows integration with identity providers like Keycloak, Auth0, Google, etc.
+# # Requires TLS to be enabled (either here or via reverse proxy).
+# [server.auth.oidc]
+# issuer = "https://your-oidc-provider.com/realms/your-realm"
+# # Default: "shuthost"
+# # client_id = "shuthost"
+# client_secret = "your-client-secret"
+# # Default: ["openid", "profile"]
+# # scopes = ["openid", "profile"]
+# # COOKIE SECRET (optional, applies to all auth modes except "external")
+# # A base64-encoded 32-byte key used for signing session cookies.
+# # If omitted, a random key is generated on startup and persisted to database if available.
+# # Generate a secure key with: openssl rand -base64 32
+# # cookie_secret = "base64-encoded-32-byte-key-here"
+
+# # EXTERNAL AUTHENTICATION
+# # Use when authentication is handled by a reverse proxy or external provider.
+# # The coordinator will trust the proxy to authenticate requests.
+# # You must configure your proxy to protect all routes except the listed exceptions.
+# # The exceptions_version tracks which set of exceptions you've configured.
+# [server.auth.external]
+# exceptions_version = 0
+
+# # =============================================================================
+# # RUNTIME CONFIGURATION
+# # =============================================================================
+# # The [server.runtime] table tunes coordinator timeouts and poll rates.
+# # All values take effect only after a coordinator restart.
+# [server.runtime]
+# # Default seconds to wait for a host to come online after sending WoL packets.
+# # Can be overridden per host with `wake_timeout_secs` in [hosts.<name>].
+# # Default: 120
+# default_wake_timeout_secs = 120
+# # Default seconds to wait for a host to go offline after sending a shutdown command.
+# # Can be overridden per host with `shutdown_timeout_secs` in [hosts.<name>].
+# # Default: 20
+# default_shutdown_timeout_secs = 20
+# # Interval in seconds between background host-status poll cycles.
+# # Shorter values mean faster detection of spontaneous state changes at the cost of more traffic.
+# # Default: 2
+# status_poll_interval_secs = 2
+# # Interval in milliseconds between state checks during an active wake or shutdown transition.
+# # Default: 200
+# transition_poll_interval_ms = 200
+# # Seconds a diverged enforced-host state must be stable before the enforcer
+# # re-triggers a wake / shutdown. Prevents rapid hammering during transitions.
+# # Only relevant when `enforce_state = true` on one or more hosts.
+# # Default: 5
+# enforce_stabilization_threshold_secs = 5
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# The [db] table configures optional SQLite database persistence.
+# Enabled by default in the installer for state persistence across restarts.
+[db]
+
+# Path to the SQLite database file.
+# Relative paths are resolved relative to this config file.
+# Default: "./shuthost.db"
+# path = "./shuthost.db"
+
+# Whether the database is enabled.
+# Set to false to disable persistence even if this table is present.
+# Default: true
+# enable = true
+
+# =============================================================================
+# HOST CONFIGURATION
+# =============================================================================
+# The [hosts] table defines the hosts that can be controlled by the coordinator.
+# Each host needs a corresponding host agent installed and running.
+# Keys are host identifiers (used in URLs and logs), values are host configurations.
+#
+# The host agent installer will print the exact configuration line you need to add here.
+# Simply copy and paste it into this file.
+[hosts]
+# [hosts.my-host-name] 
+#     # IP address of the host where the agent is running.
+#     # This should be reachable from the coordinator.
+#     ip = "192.168.1.100"
+#     # MAC address of the network interface used for Wake-on-LAN.
+#     # Required for waking the host. The installer uses "ip link show" or "ifconfig" on the host to find it.
+#     mac = "AA:BB:CC:DD:EE:FF"
+#     # TCP port the host agent listens on.
+#     # This must match the port configured in the host agent's config.
+#     # Default agent port is 9090, but can be changed.
+#     port = 9090
+#     # Shared secret for HMAC authentication between coordinator and agent.
+#     # This must match the secret in the host agent's config.
+#     # The installer generates one of these.
+#     # Could be generated yourself with e.g., openssl rand -hex 32.
+#     shared_secret = "your-generated-secret"
+#     # When `true`, the coordinator will periodically enforce the desired host state
+#     # (derived from the current lease set) by sending wake or shutdown commands even
+#     # if no lease change occurred. Defaults to `false` (edge-triggered only).
+#     # For more details on the `enforce_state` field, see the [enforce_state behavior example](https://github.com/9SMTM6/shuthost/blob/main/docs/examples/enforce_state_behavior.md).
+#     enforce_state = false
+#     # Maximum seconds to wait for the host to come online after sending WoL packets.
+#     # When omitted, the coordinator's `default_wake_timeout_secs` is used.
+#     wake_timeout_secs = 120
+#     # Maximum seconds to wait for the host to go offline after sending a shutdown command.
+#     # When omitted, the coordinator's `default_shutdown_timeout_secs` is used.
+#     shutdown_timeout_secs = 20
+#     # Hooks let you run custom actions at key points in the host lifecycle.
+#     # Two hook points are available: `pre_startup` (before WoL) and `post_shutdown` (after confirmed offline).
+#     # Both run on the coordinator machine, block until complete or timed out, and are fail-open:
+#     # errors are logged as warnings but operation proceeds regardless.
+#     # Two action types are supported (mutually exclusive): "http" and "exec".
+#     # Exec hooks: Useful mostly for native (non-container) deployments.
+#     #   Warning: Docker/Alpine containers ship only BusyBox sh (ash) and other posix tools; e.g. bash is not available, and
+#     #   glibc-linked linux binaries also won't work. Use POSIX-compatible commands only (e.g. wget, nc, echo, with no gnu exclusive extensions).
+#     # HTTP hooks: send an HTTP request and wait for the response before continuing.
+#     # [pre_startup] the coordinator proceeds to WoL immediately after receiving the HTTP response.
+#     #   The built-in WoL resend loop should handle most initialisation gaps
+#     pre_startup.type = "exec"
+#     pre_startup.program = "/usr/local/bin/power-on.sh"
+#     pre_startup.args = ["outlet-3"]      # optional; exec hook only; list of arguments
+#     pre_startup.timeout_secs = 30        # optional; on both hook types; defaults to 30 s
+#     pre_startup.delay_secs = 5           # optional; on both hook types; default 0s = no wait; wait before executing the hook
+#     # [post_shutdown] This hook is executed after the host is confirmed offline.
+#     #   Not executed when shutdown times out or the agent is unreachable.
+#     post_shutdown.type = "http"
+#     post_shutdown.url = "http://192.168.1.50/relay/0?turn=off"   # e.g. Shelly Gen1
+#     post_shutdown.method = "POST"        # optional; defaults to POST
+#     post_shutdown.body = '{"on":false}'  # optional; raw string body for POST requests
+
+# # =============================================================================
+# # NOTIFICATIONS CONFIGURATION
+# # =============================================================================
+# # Configures webhook endpoints that POST a signed JSON payload on host events.
+# # For a full walkthrough including payload shapes and filter options, see:
+# #   https://github.com/9SMTM6/shuthost/blob/main/docs/examples/webhooks.md
+# [[notifications.webhooks]]
+# # The URL to HTTP POST the JSON payload to.
+# url = "https://example.com/webhook"
+# # Optional HMAC-SHA256 signing secret.
+# # When set, each POST includes an `X-ShutHost-Signature: sha256=<hex>` header.
+# secret = "your-webhook-secret"
+# # Optional extra HTTP headers (e.g. for bearer-token auth).
+# headers = { Authorization = "Bearer your-token-here" }
+# # Which events fire this webhook.
+# # Absent (omitted): fires for `unscheduled` and `operation_failed` on all hosts.
+# #   Since `online_for` needs a time, it is not included by default.
+# # List: fires only for the listed filters.
+# #
+# # Simple strings match all hosts; inline tables allow host scoping and are
+# # required for `online_for` (which needs a `duration_secs`).
+# # Both forms can be mixed in a single list:
+# events = [
+#     # Simple: match all hosts
+#     "unscheduled",
+#     # Structured: same event, scoped to specific hosts
+#     { type = "operation_failed", hosts = ["my-host", "other-host"] },
+#     # online_for has no string shorthand -- duration_secs is always required
+#     { type = "online_for", duration_secs = 300 },
+#     { type = "online_for", duration_secs = 3600, hosts = ["my-host"] },
+# ]
+
+# =============================================================================
+# CLIENT CONFIGURATION
+# =============================================================================
+# The [clients] table defines machine-to-machine clients that can control hosts via API.
+# These are typically used for automated scripts (e.g., backup systems).
+#
+# The client installer will print the exact configuration line you need to add here.
+# Simply copy and paste it into this file.
+[clients]
+# [clients."my-client-name"]
+#     # Shared secret for HMAC authentication between coordinator and agent.
+#     # This must match the secret in the host agent's config.
+#     # The installer generates one of these.
+#     # Could be generated yourself with e.g., openssl rand -hex 32.
+#     shared_secret = "your-generated-secret"

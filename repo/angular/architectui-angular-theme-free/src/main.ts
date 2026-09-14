@@ -1,0 +1,14 @@
+import { enableProdMode } from '@angular/core';
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+
+import { AppModule } from './app/app.module';
+import './rb-probe';
+import { environment } from './environments/environment';
+
+if (environment.production) {
+  enableProdMode();
+}
+
+// Angular 22 is zoneless by default - no provideZoneChangeDetection() needed
+platformBrowserDynamic().bootstrapModule(AppModule)
+  .catch(err => console.error(err));

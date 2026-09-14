@@ -1,0 +1,1325 @@
+diff --git a/src/components/AsideMenuItem.vue b/src/components/AsideMenuItem.vue
+--- a/src/components/AsideMenuItem.vue
++++ b/src/components/AsideMenuItem.vue
+@@ -33,6 +33,32 @@
+ 
+ const hasDropdown = computed(() => !!props.item.menu)
+ 
++// INSTRUMENTATION (repair-bench, read-only): data-testid slug + a per-item probe entry so the
++// aside dropdown state and the colour-driven class list are assertable without pixel checks.
++const rbSlug = computed(() => (props.item.label || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-'))
++const rbTestId = computed(() => 'rb-aside-' + rbSlug.value)
++window.__rb = window.__rb || {}
++window.__rb.asideItems = window.__rb.asideItems || {}
++window.__rb.asideItems[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    label: () => safe(() => props.item.label ?? null),
++    to: () => safe(() => props.item.to ?? null),
++    href: () => safe(() => props.item.href ?? null),
++    hasColor: () => safe(() => !!hasColor.value),
++    hasDropdown: () => safe(() => !!hasDropdown.value),
++    dropdownOpen: () => safe(() => isDropdownActive.value),
++    classText: () => safe(() => (Array.isArray(componentClass.value) ? componentClass.value.flat().join(' ') : String(componentClass.value))),
++  }
++})()
++
+ const menuClick = (event) => {
+   emit('menu-click', event, props.item)
+ 
+@@ -47,6 +73,7 @@
+     <component
+       :is="item.to ? RouterLink : 'a'"
+       v-slot="vSlot"
++      :data-testid="rbTestId"
+       :to="item.to ?? null"
+       :href="item.href ?? null"
+       :target="item.target ?? null"
+@@ -80,6 +107,7 @@
+     </component>
+     <AsideMenuList
+       v-if="hasDropdown"
++      data-testid="rb-aside-dropdown"
+       :menu="item.menu"
+       :class="['aside-menu-dropdown', isDropdownActive ? 'block dark:bg-slate-800/50' : 'hidden']"
+       is-dropdown-list
+diff --git a/src/components/AsideMenuLayer.vue b/src/components/AsideMenuLayer.vue
+--- a/src/components/AsideMenuLayer.vue
++++ b/src/components/AsideMenuLayer.vue
+@@ -26,6 +26,7 @@
+ <template>
+   <aside
+     id="aside"
++    data-testid="rb-aside"
+     class="fixed top-0 z-40 flex h-screen w-60 overflow-hidden transition-(--transition-position) lg:py-2 lg:pl-2"
+   >
+     <div class="aside flex flex-1 flex-col overflow-hidden lg:rounded-2xl dark:bg-slate-900">
+diff --git a/src/components/CardBoxClient.vue b/src/components/CardBoxClient.vue
+--- a/src/components/CardBoxClient.vue
++++ b/src/components/CardBoxClient.vue
+@@ -56,10 +56,38 @@
+ })
+ 
+ const pillText = computed(() => props.text ?? `${props.progress}%`)
++
++// INSTRUMENTATION (repair-bench, read-only): client-card registry keyed by the client name, so
++// the progress->pill mapping is assertable as a scalar instead of a Tailwind class guess.
++const rbSlug = computed(() => String(props.name || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '-'))
++const rbTestId = computed(() => 'rb-client-card-' + rbSlug.value)
++window.__rb = window.__rb || {}
++window.__rb.clients = window.__rb.clients || {}
++window.__rb.clients[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    name: () => safe(() => props.name ?? null),
++    login: () => safe(() => props.login ?? null),
++    date: () => safe(() => props.date ?? null),
++    progress: () => safe(() => props.progress ?? null),
++    textProp: () => safe(() => props.text ?? null),
++    typeProp: () => safe(() => props.type ?? null),
++    pillType: () => safe(() => pillType.value),
++    pillText: () => safe(() => pillText.value),
++    pillIcon: () => safe(() => (pillIcon.value ? 'icon' : 'none')),
++  }
++})()
+ </script>
+ 
+ <template>
+-  <CardBox class="mb-6 last:mb-0">
++  <CardBox class="mb-6 last:mb-0" :data-testid="rbTestId">
+     <BaseLevel>
+       <BaseLevel type="justify-start">
+         <UserAvatar class="mr-6 h-12 w-12" :username="name" />
+@@ -70,7 +98,7 @@
+           <p class="text-gray-500 dark:text-slate-400">{{ date }} @ {{ login }}</p>
+         </div>
+       </BaseLevel>
+-      <PillTag :color="pillType" :label="pillText" :icon="pillIcon" />
++      <PillTag data-testid="rb-client-pill" :color="pillType" :label="pillText" :icon="pillIcon" />
+     </BaseLevel>
+   </CardBox>
+ </template>
+diff --git a/src/components/CardBoxModal.vue b/src/components/CardBoxModal.vue
+--- a/src/components/CardBoxModal.vue
++++ b/src/components/CardBoxModal.vue
+@@ -35,6 +35,32 @@
+   set: (value) => emit('update:modelValue', value),
+ })
+ 
++// INSTRUMENTATION (repair-bench, read-only): modal registry keyed by the title slug, so an
++// assertion can tell the two modals on one page apart and read the open flag from the component
++// itself (the overlay only exists in the DOM while open).
++const rbSlug = computed(() => String(props.title || 'modal').toLowerCase().replace(/[^a-z0-9]+/g, '-'))
++window.__rb = window.__rb || {}
++window.__rb.modals = window.__rb.modals || {}
++window.__rb.modals[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    title: () => safe(() => props.title ?? null),
++    open: () => safe(() => !!value.value),
++    isForm: () => safe(() => !!props.isForm),
++    hasCancel: () => safe(() => !!props.hasCancel),
++    buttonLabel: () => safe(() => props.buttonLabel ?? null),
++    buttonColor: () => safe(() => props.button ?? null),
++    isProcessing: () => safe(() => !!props.isProcessing),
++  }
++})()
++
+ const confirmCancel = (mode) => {
+   if (mode === 'cancel' || (mode === 'confirm' && !props.isForm)) {
+     value.value = false
+@@ -63,7 +89,7 @@
+ </script>
+ 
+ <template>
+-  <OverlayLayer v-if="value" @overlay-click="cancel">
++  <OverlayLayer v-if="value" data-testid="rb-modal" @overlay-click="cancel">
+     <CardBox
+       class="z-50 max-h-[calc(100dvh-(--spacing(40)))] w-11/12 animate-fade-in shadow-lg md:w-3/5 lg:w-2/5 xl:w-4/12"
+       is-modal
+@@ -71,7 +97,7 @@
+       :is-form="isForm"
+       @submit.prevent="confirm"
+     >
+-      <CardBoxModalHeader :title="title" :has-cancel="hasCancel" @cancel="cancel" />
++      <CardBoxModalHeader data-testid="rb-modal-header" :title="title" :has-cancel="hasCancel" @cancel="cancel" />
+ 
+       <slot v-if="hasCustomLayout" />
+ 
+@@ -83,6 +109,7 @@
+         <CardBoxComponentFooter>
+           <BaseButtons>
+             <BaseButton
++              data-testid="rb-modal-confirm"
+               :label="buttonLabel"
+               :color="button"
+               @click="isForm ? null : confirm()"
+@@ -90,7 +117,7 @@
+               :disabled="isProcessing"
+               :class="{ 'opacity-25': isProcessing }"
+             />
+-            <BaseButton v-if="hasCancel" label="Cancel" :color="button" outline @click="cancel" />
++            <BaseButton v-if="hasCancel" data-testid="rb-modal-cancel" label="Cancel" :color="button" outline @click="cancel" />
+           </BaseButtons>
+         </CardBoxComponentFooter>
+       </template>
+diff --git a/src/components/CardBoxTransaction.vue b/src/components/CardBoxTransaction.vue
+--- a/src/components/CardBoxTransaction.vue
++++ b/src/components/CardBoxTransaction.vue
+@@ -56,13 +56,40 @@
+     type: 'info',
+   }
+ })
++
++// INSTRUMENTATION (repair-bench, read-only): transaction registry keyed by the account number, so
++// the type->icon/colour mapping is assertable as a scalar.
++const rbSlug = computed(() => String(props.account || 'transaction').replace(/[^a-z0-9]+/g, '-'))
++const rbTestId = computed(() => 'rb-transaction-card-' + rbSlug.value)
++window.__rb = window.__rb || {}
++window.__rb.transactions = window.__rb.transactions || {}
++window.__rb.transactions[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    account: () => safe(() => props.account ?? null),
++    amount: () => safe(() => props.amount ?? null),
++    date: () => safe(() => props.date ?? null),
++    business: () => safe(() => props.business ?? null),
++    name: () => safe(() => props.name ?? null),
++    type: () => safe(() => props.type ?? null),
++    iconKind: () => safe(() => icon.value.type),
++    iconPath: () => safe(() => (icon.value.icon ? 'path' : 'none')),
++  }
++})()
+ </script>
+ 
+ <template>
+-  <CardBox class="mb-6 last:mb-0">
++  <CardBox class="mb-6 last:mb-0" :data-testid="rbTestId">
+     <BaseLevel>
+       <BaseLevel type="justify-start">
+-        <IconRounded :icon="icon.icon" :color="icon.type" class="md:mr-6" />
++        <IconRounded data-testid="rb-transaction-icon" :icon="icon.icon" :color="icon.type" class="md:mr-6" />
+         <div class="space-y-1 text-center md:mr-6 md:text-left">
+           <h4 class="text-xl">${{ amount }}</h4>
+           <p class="text-gray-500 dark:text-slate-400">
+@@ -75,7 +102,7 @@
+           {{ name }}
+         </p>
+         <div>
+-          <PillTag :color="icon.type" :label="type" small />
++          <PillTag data-testid="rb-transaction-pill" :color="icon.type" :label="type" small />
+         </div>
+       </div>
+     </BaseLevel>
+diff --git a/src/components/CardBoxWidget.vue b/src/components/CardBoxWidget.vue
+--- a/src/components/CardBoxWidget.vue
++++ b/src/components/CardBoxWidget.vue
+@@ -1,4 +1,5 @@
+ <script setup>
++import { computed } from 'vue'
+ import { mdiCog } from '@mdi/js'
+ import CardBox from '@/components/CardBox.vue'
+ import NumberDynamic from '@/components/NumberDynamic.vue'
+@@ -7,7 +8,7 @@
+ import PillTagTrend from '@/components/PillTagTrend.vue'
+ import BaseButton from '@/components/BaseButton.vue'
+ 
+-defineProps({
++const props = defineProps({
+   number: {
+     type: Number,
+     default: 0,
+@@ -20,10 +21,37 @@
+   trend: String,
+   trendType: String,
+ })
++
++// INSTRUMENTATION (repair-bench, read-only): widget registry keyed by the authored label, plus the
++// data-testid slug used in the template. Getters only, fail-close.
++const rbSlug = computed(() => String(props.label || 'widget').toLowerCase().replace(/[^a-z0-9]+/g, '-'))
++const rbTestId = computed(() => 'rb-widget-' + rbSlug.value)
++window.__rb = window.__rb || {}
++window.__rb.widgets = window.__rb.widgets || {}
++window.__rb.widgets[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    label: () => safe(() => props.label ?? null),
++    number: () => safe(() => props.number ?? null),
++    prefix: () => safe(() => props.prefix ?? ''),
++    suffix: () => safe(() => props.suffix ?? ''),
++    trend: () => safe(() => props.trend ?? null),
++    trendType: () => safe(() => props.trendType ?? null),
++    color: () => safe(() => props.color ?? null),
++    icon: () => safe(() => props.icon ?? null),
++  }
++})()
+ </script>
+ 
+ <template>
+-  <CardBox>
++  <CardBox :data-testid="rbTestId">
+     <BaseLevel v-if="trend" class="mb-3" mobile>
+       <PillTagTrend :trend="trend" :trend-type="trendType" small />
+       <BaseButton :icon="mdiCog" icon-w="w-4" icon-h="h-4" color="lightDark" small />
+diff --git a/src/components/Charts/LineChart.vue b/src/components/Charts/LineChart.vue
+--- a/src/components/Charts/LineChart.vue
++++ b/src/components/Charts/LineChart.vue
+@@ -47,6 +47,39 @@
+   })
+ })
+ 
++// INSTRUMENTATION (repair-bench, read-only): publishes getters over the live Chart.js instance so
++// the canvas-only surface (labels, dataset count, palette channels, point counts) is assertable
++// without reading pixels. Registered once per mount; never writes chart or app state.
++window.__rb = window.__rb || {}
++window.__rb.chart = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    live: () => safe(() => !!chart),
++    type: () => safe(() => chart.config.type),
++    labelCount: () => safe(() => chart.data.labels.length),
++    labels: () => safe(() => chart.data.labels.join(',')),
++    firstLabel: () => safe(() => chart.data.labels[0]),
++    lastLabel: () => safe(() => chart.data.labels[chart.data.labels.length - 1]),
++    datasetCount: () => safe(() => chart.data.datasets.length),
++    colors: () => safe(() => chart.data.datasets.map((d) => d.borderColor).join(',')),
++    distinctColors: () => safe(() => new Set(chart.data.datasets.map((d) => d.borderColor)).size),
++    pointColors: () => safe(() => chart.data.datasets.map((d) => d.pointBackgroundColor).join(',')),
++    pointCounts: () => safe(() => chart.data.datasets.map((d) => d.data.length).join(',')),
++    allNumeric: () => safe(() => chart.data.datasets.every((d) => d.data.every((v) => typeof v === 'number'))),
++    borderWidths: () => safe(() => chart.data.datasets.map((d) => d.borderWidth).join(',')),
++    tensions: () => safe(() => chart.data.datasets.map((d) => d.tension).join(',')),
++    fill: () => safe(() => chart.data.datasets.map((d) => String(!!d.fill)).join(',')),
++    canvasW: () => safe(() => (root.value ? root.value.width : null)),
++    canvasH: () => safe(() => (root.value ? root.value.height : null)),
++  }
++})()
++
+ const chartData = computed(() => props.data)
+ 
+ watch(chartData, (data) => {
+@@ -58,5 +91,5 @@
+ </script>
+ 
+ <template>
+-  <canvas ref="root" />
++  <canvas ref="root" data-testid="rb-chart-canvas" />
+ </template>
+diff --git a/src/components/FormCheckRadio.vue b/src/components/FormCheckRadio.vue
+--- a/src/components/FormCheckRadio.vue
++++ b/src/components/FormCheckRadio.vue
+@@ -45,6 +45,7 @@
+ 
+ <template>
+   <label
++    :data-testid="'rb-check-' + name"
+     class="relative inline-flex cursor-pointer items-center jb-custom-check"
+     :class="{ 'cursor-not-allowed': disabled }"
+   >
+diff --git a/src/components/FormControl.vue b/src/components/FormControl.vue
+--- a/src/components/FormControl.vue
++++ b/src/components/FormControl.vue
+@@ -57,6 +57,36 @@
+ 
+ const mainStore = useMainStore()
+ 
++// INSTRUMENTATION (repair-bench, read-only): a stable data-testid derived from the control's own
++// name/id/type, plus a scalar probe of the resolved control type. No behaviour change.
++const rbTestId = computed(() =>
++  'rb-control-' + String(props.name || props.id || props.type || 'text').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
++)
++window.__rb = window.__rb || {}
++window.__rb.controls = window.__rb.controls || []
++window.__rb.controls.push((
++  function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++    return {
++      testid: () => rbTestId.value,
++      name: () => safe(() => props.name ?? null),
++      type: () => safe(() => props.type ?? null),
++      computedType: () => safe(() => computedType.value),
++      ctrlKFocus: () => safe(() => !!props.ctrlKFocus),
++      placeholder: () => safe(() => props.placeholder ?? null),
++      value: () => safe(() => (props.modelValue === null || props.modelValue === undefined ? '' : String(props.modelValue))),
++      iconH: () => safe(() => controlIconH.value),
++      classText: () => safe(() => inputElClass.value.join(' ')),
++    }
++  }
++)())
++
+ const selectEl = ref(null)
+ 
+ const textareaEl = ref(null)
+@@ -100,7 +130,7 @@
+ </script>
+ 
+ <template>
+-  <div class="relative">
++  <div class="relative" :data-testid="rbTestId">
+     <select
+       v-if="computedType === 'select'"
+       :id="id"
+diff --git a/src/components/NavBar.vue b/src/components/NavBar.vue
+--- a/src/components/NavBar.vue
++++ b/src/components/NavBar.vue
+@@ -25,6 +25,7 @@
+ 
+ <template>
+   <nav
++    data-testid="rb-navbar"
+     class="fixed inset-x-0 top-0 z-30 h-14 w-screen bg-gray-50 transition-(--transition-position) lg:w-auto dark:bg-slate-800"
+   >
+     <div class="flex lg:items-stretch" :class="containerMaxW">
+diff --git a/src/components/NavBarItem.vue b/src/components/NavBarItem.vue
+--- a/src/components/NavBarItem.vue
++++ b/src/components/NavBarItem.vue
+@@ -84,6 +84,51 @@
+ })
+ 
+ const darkModeStore = useDarkModeStore()
++
++// INSTRUMENTATION (repair-bench, read-only): a per-item probe registry plus the data-testid slug
++// used by the template below. Keyed by the item's own label, so the checkpoint vocabulary stays
++// stable if a menu is reordered. The upstream menu legitimately holds two logout entries (a top
++// level 'Log out' and a nested 'Log Out' inside the user dropdown) which share the slug 'log-out';
++// no checkpoint reads that key - the dropdown is addressed through rb-nav-dropdown scoped inside
++// rb-nav-current-user.
++const rbSlug = computed(() =>
++  props.item.isCurrentUser
++    ? 'current-user'
++    : (props.item.label || 'divider').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
++)
++const rbTestId = computed(() =>
++  props.item.isCurrentUser
++    ? 'rb-nav-current-user'
++    : props.item.label
++      ? 'rb-nav-' + rbSlug.value
++      : 'rb-nav-divider',
++)
++window.__rb = window.__rb || {}
++window.__rb.navItems = window.__rb.navItems || {}
++window.__rb.navItems[rbSlug.value] = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    slug: () => rbSlug.value,
++    testid: () => rbTestId.value,
++    label: () => safe(() => itemLabel.value),
++    dropdownOpen: () => safe(() => isDropdownActive.value),
++    hasMenu: () => safe(() => !!props.item.menu),
++    menuEntries: () => safe(() => (props.item.menu || []).length),
++    href: () => safe(() => props.item.href ?? null),
++    target: () => safe(() => props.item.target ?? null),
++    isToggle: () => safe(() => !!props.item.isToggleLightDark),
++    isLogout: () => safe(() => !!props.item.isLogout),
++    isDivider: () => safe(() => !!props.item.isDivider),
++    isCurrentUser: () => safe(() => !!props.item.isCurrentUser),
++    tag: () => safe(() => (props.item.href ? 'a' : props.item.to ? 'routerlink' : 'div')),
++  }
++})()
+ </script>
+ 
+ <template>
+@@ -92,6 +137,7 @@
+     :is="is"
+     v-else
+     ref="root"
++    :data-testid="rbTestId"
+     class="relative block cursor-pointer items-center lg:flex"
+     :class="componentClass"
+     :to="item.to ?? null"
+@@ -129,6 +175,7 @@
+     </div>
+     <div
+       v-if="item.menu"
++      data-testid="rb-nav-dropdown"
+       class="border-b border-gray-100 text-sm lg:absolute lg:top-full lg:left-0 lg:z-20 lg:min-w-full lg:rounded-lg lg:border lg:bg-white lg:shadow-lg dark:border-slate-700 lg:dark:bg-slate-800"
+       :class="{ 'lg:hidden': !isDropdownActive }"
+     >
+diff --git a/src/components/NumberDynamic.vue b/src/components/NumberDynamic.vue
+--- a/src/components/NumberDynamic.vue
++++ b/src/components/NumberDynamic.vue
+@@ -53,5 +53,5 @@
+ </script>
+ 
+ <template>
+-  <div>{{ prefix }}{{ newValueFormatted }}{{ suffix }}</div>
++  <div data-testid="rb-number-dynamic">{{ prefix }}{{ newValueFormatted }}{{ suffix }}</div>
+ </template>
+diff --git a/src/components/SectionBannerStarOnGitHub.vue b/src/components/SectionBannerStarOnGitHub.vue
+--- a/src/components/SectionBannerStarOnGitHub.vue
++++ b/src/components/SectionBannerStarOnGitHub.vue
+@@ -10,6 +10,7 @@
+     <h1 class="mb-6 text-3xl text-white">Like the project? Please star on <b>GitHub</b> ;-)</h1>
+     <div>
+       <BaseButton
++        data-testid="rb-star-banner"
+         href="https://github.com/justboil/admin-one-vue-tailwind"
+         :icon="mdiGithub"
+         label="GitHub"
+diff --git a/src/components/TableSampleClients.vue b/src/components/TableSampleClients.vue
+--- a/src/components/TableSampleClients.vue
++++ b/src/components/TableSampleClients.vue
+@@ -9,7 +9,7 @@
+ import BaseButton from '@/components/BaseButton.vue'
+ import UserAvatar from '@/components/UserAvatar.vue'
+ 
+-defineProps({
++const props = defineProps({
+   checkable: Boolean,
+ })
+ 
+@@ -57,6 +57,40 @@
+   return newArr
+ }
+ 
++// INSTRUMENTATION (repair-bench, read-only): pagination / selection / modal state of this table as
++// scalars. Every getter is fail-close; nothing writes component state.
++window.__rb = window.__rb || {}
++window.__rb.table = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    checkable: () => safe(() => !!props.checkable),
++    perPage: () => safe(() => perPage.value),
++    currentPage: () => safe(() => currentPage.value),
++    currentPageHuman: () => safe(() => currentPageHuman.value),
++    numPages: () => safe(() => numPages.value),
++    pagesList: () => safe(() => pagesList.value.join(',')),
++    totalItems: () => safe(() => items.value.length),
++    rowsCount: () => safe(() => itemsPaginated.value.length),
++    rowNames: () => safe(() => itemsPaginated.value.map((r) => r.name).join('|')),
++    rowIds: () => safe(() => itemsPaginated.value.map((r) => r.id).join(',')),
++    rowProgress: () => safe(() => itemsPaginated.value.map((r) => r.progress).join(',')),
++    firstRowId: () => safe(() => (itemsPaginated.value.length ? itemsPaginated.value[0].id : null)),
++    domRowCount: () => safe(() => document.querySelectorAll('[data-testid="rb-table-row"]').length),
++    domPageButtonCount: () => safe(() => document.querySelectorAll('[data-testid="rb-table-page"]').length),
++    modalActive: () => safe(() => isModalActive.value),
++    modalDangerActive: () => safe(() => isModalDangerActive.value),
++    checkedCount: () => safe(() => checkedRows.value.length),
++    checkedIds: () => safe(() => checkedRows.value.map((r) => r.id).join(',')),
++  }
++})()
++
+ const checked = (isChecked, client) => {
+   if (isChecked) {
+     checkedRows.value.push(client)
+@@ -77,7 +111,7 @@
+     <p>This is sample modal</p>
+   </CardBoxModal>
+ 
+-  <table>
++  <table data-testid="rb-table">
+     <thead>
+       <tr>
+         <th v-if="checkable" />
+@@ -91,8 +125,8 @@
+       </tr>
+     </thead>
+     <tbody>
+-      <tr v-for="client in itemsPaginated" :key="client.id">
+-        <TableCheckboxCell v-if="checkable" @checked="checked($event, client)" />
++      <tr v-for="client in itemsPaginated" :key="client.id" data-testid="rb-table-row">
++        <TableCheckboxCell v-if="checkable" data-testid="rb-row-check" @checked="checked($event, client)" />
+         <td class="border-b-0 before:hidden lg:w-6">
+           <UserAvatar :username="client.name" class="mx-auto h-24 w-24 lg:h-6 lg:w-6" />
+         </td>
+@@ -117,8 +151,9 @@
+         </td>
+         <td class="whitespace-nowrap before:hidden lg:w-1">
+           <BaseButtons type="justify-start lg:justify-end" no-wrap>
+-            <BaseButton color="info" :icon="mdiEye" small @click="isModalActive = true" />
++            <BaseButton data-testid="rb-row-view" color="info" :icon="mdiEye" small @click="isModalActive = true" />
+             <BaseButton
++              data-testid="rb-row-delete"
+               color="danger"
+               :icon="mdiTrashCan"
+               small
+@@ -133,6 +168,7 @@
+     <BaseLevel>
+       <BaseButtons>
+         <BaseButton
++          data-testid="rb-table-page"
+           v-for="page in pagesList"
+           :key="page"
+           :active="page === currentPage"
+@@ -142,7 +178,7 @@
+           @click="currentPage = page"
+         />
+       </BaseButtons>
+-      <small>Page {{ currentPageHuman }} of {{ numPages }}</small>
++      <small data-testid="rb-table-page-info">Page {{ currentPageHuman }} of {{ numPages }}</small>
+     </BaseLevel>
+   </div>
+ </template>
+diff --git a/src/components/UserAvatar.vue b/src/components/UserAvatar.vue
+--- a/src/components/UserAvatar.vue
++++ b/src/components/UserAvatar.vue
+@@ -29,8 +29,9 @@
+ </script>
+ 
+ <template>
+-  <div>
++  <div data-testid="rb-avatar">
+     <img
++      data-testid="rb-avatar-img"
+       :src="avatar"
+       :alt="username"
+       class="block h-auto w-full max-w-full rounded-full bg-gray-100 dark:bg-slate-800"
+diff --git a/src/components/UserCard.vue b/src/components/UserCard.vue
+--- a/src/components/UserCard.vue
++++ b/src/components/UserCard.vue
+@@ -13,10 +13,29 @@
+ const userName = computed(() => mainStore.userName)
+ 
+ const userSwitchVal = ref(false)
++
++// INSTRUMENTATION (repair-bench, read-only): the greeting name this card renders and its own
++// switch model, as scalars. Getters only, fail-close.
++window.__rb = window.__rb || {}
++window.__rb.userCard = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    userName: () => safe(() => String(userName.value)),
++    switchModel: () => safe(() => !!userSwitchVal.value),
++    greeting: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-usercard-root\"] h1"); return el ? String(el.textContent == null ? '' : el.textContent).trim() : null }),
++    avatarSrc: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-usercard-root\"] [data-testid=\"rb-avatar-img\"]"); if (!el) { return null } var v = el.getAttribute("src"); return v == null ? '' : String(v) }),
++  }
++})()
+ </script>
+ 
+ <template>
+-  <CardBox>
++  <CardBox data-testid="rb-usercard-root">
+     <BaseLevel type="justify-around lg:justify-center">
+       <UserAvatarCurrentUser class="lg:mx-12" />
+       <div class="space-y-3 text-center md:text-left lg:mx-12">
+@@ -30,7 +49,7 @@
+           />
+         </div>
+         <h1 class="text-2xl">
+-          Howdy, <b>{{ userName }}</b
++          Howdy, <b data-testid="rb-usercard-name">{{ userName }}</b
+           >!
+         </h1>
+         <p>Last login <b>12 mins ago</b> from <b>127.0.0.1</b></p>
+diff --git a/src/layouts/LayoutAuthenticated.vue b/src/layouts/LayoutAuthenticated.vue
+--- a/src/layouts/LayoutAuthenticated.vue
++++ b/src/layouts/LayoutAuthenticated.vue
+@@ -19,6 +19,36 @@
+ 
+ const router = useRouter()
+ 
++// INSTRUMENTATION (repair-bench, read-only): the navbar search field is the single FormControl
++// in the app that opts into the ctrl+k focus hook (LayoutAuthenticated.vue is its only host),
++// so focus state is exposed here as scalars. Addressed by the placeholder the app itself sets,
++// not by an instrumentation-invented selector, so a renamed/removed control reads as null
++// instead of silently passing. Getters only, fail-close, no listener registered here.
++window.__rb = window.__rb || {}
++window.__rb.search = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const SEL = 'input[placeholder="Search (ctrl+k)"]'
++  const el = () => document.querySelector(SEL)
++  return {
++    present: () => safe(() => !!el()),
++    focused: () => safe(() => !!el() && document.activeElement === el()),
++    value: () => safe(() => (el() ? String(el().value) : null)),
++    activeTag: () => safe(() => (document.activeElement ? String(document.activeElement.tagName) : null)),
++    activePlaceholder: () =>
++      safe(() =>
++        document.activeElement && document.activeElement.getAttribute
++          ? String(document.activeElement.getAttribute('placeholder') || '')
++          : '',
++      ),
++  }
++})()
++
+ const isAsideMobileExpanded = ref(false)
+ const isAsideLgActive = ref(false)
+ 
+@@ -27,6 +57,32 @@
+   isAsideLgActive.value = false
+ })
+ 
++// INSTRUMENTATION (repair-bench, read-only): window.__rb.layout covers the theme/aside surface
++// this layout owns (the dark-mode store, the two html/body class writes it performs, and the two
++// aside refs the router hook resets). Getters only, fail-close, no listener, no state write.
++window.__rb = window.__rb || {}
++window.__rb.layout = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    darkEnabled: () => safe(() => darkModeStore.isEnabled),
++    darkInProgress: () => safe(() => darkModeStore.isInProgress),
++    darkStored: () => safe(() => localStorage.getItem('darkMode')),
++    htmlHasDark: () => safe(() => document.documentElement.classList.contains('dark')),
++    htmlHasDarkCompat: () => safe(() => document.documentElement.classList.contains('dark-scrollbars-compat')),
++    bodyHasDarkScrollbars: () => safe(() => document.body.classList.contains('dark-scrollbars')),
++    asideMobileExpanded: () => safe(() => isAsideMobileExpanded.value),
++    asideLgActive: () => safe(() => isAsideLgActive.value),
++    asidePadding: () => safe(() => layoutAsidePadding),
++  }
++})()
++
+ const menuClick = (event, item) => {
+   if (item.isToggleLightDark) {
+     darkModeStore.set(null, true)
+@@ -40,6 +96,7 @@
+ 
+ <template>
+   <div
++    data-testid="rb-layout-authenticated"
+     :class="{
+       'overflow-hidden lg:overflow-visible': isAsideMobileExpanded,
+     }"
+diff --git a/src/layouts/LayoutGuest.vue b/src/layouts/LayoutGuest.vue
+--- a/src/layouts/LayoutGuest.vue
++++ b/src/layouts/LayoutGuest.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <div class="bg-gray-50 dark:bg-slate-800 dark:text-slate-100">
++  <div class="bg-gray-50 dark:bg-slate-800 dark:text-slate-100" data-testid="rb-layout-guest">
+     <slot />
+   </div>
+ </template>
+diff --git a/src/main.js b/src/main.js
+--- a/src/main.js
++++ b/src/main.js
+@@ -4,6 +4,10 @@
+ import App from './App.vue'
+ import router from './router'
+ import { useMainStore } from '@/stores/main.js'
++// INSTRUMENTATION (repair-bench): read-only probe import. window.__rb.boot READS the dark-mode
++// store; it never initialises it. The commented-out darkModeStore.init() further down stays
++// commented - restoring persisted dark mode on boot would be an application-behaviour change.
++import { useDarkModeStore } from '@/stores/darkMode'
+ 
+ import './css/main.css'
+ 
+@@ -16,6 +20,70 @@
+ // Init main store
+ const mainStore = useMainStore(pinia)
+ 
++// INSTRUMENTATION (repair-bench, read-only probe bridge). Publishes window.__rb.boot ONCE, after
++// the app has mounted and before the sample-data fetches. Getters only: nothing here writes
++// application state, adds a listener or changes a render path, and every getter is fail-close
++// (try/catch -> null) so an unrendered page reads as 'not ready' rather than throwing inside a
++// checkpoint. Component-level areas (__rb.layout / __rb.table / __rb.chart / __rb.navItems / ...)
++// are published by the components themselves.
++window.__rb = window.__rb || {}
++window.__rb.boot = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const dark = () => safe(() => useDarkModeStore(pinia))
++  const styleTokens = () =>
++    Array.prototype.filter
++      .call(document.documentElement.classList, (t) => t.indexOf('style') === 0)
++      .join(',')
++  return {
++    published: true,
++    hash: () => safe(() => location.hash),
++    path: () => safe(() => location.pathname),
++    title: () => safe(() => document.title),
++    appMounted: () =>
++      safe(() => !!document.querySelector('#app') && document.querySelector('#app').childElementCount > 0),
++    userName: () => safe(() => mainStore.userName),
++    userEmail: () => safe(() => mainStore.userEmail),
++    userAvatar: () => safe(() => mainStore.userAvatar),
++    clientsCount: () => safe(() => mainStore.clients.length),
++    historyCount: () => safe(() => mainStore.history.length),
++    clientName: (i) => safe(() => mainStore.clients[i].name),
++    clientLogin: (i) => safe(() => mainStore.clients[i].login),
++    clientProgress: (i) => safe(() => mainStore.clients[i].progress),
++    historyType: (i) => safe(() => mainStore.history[i].type),
++    historyAccount: (i) => safe(() => mainStore.history[i].account),
++    fieldFocusRegistered: () => safe(() => mainStore.isFieldFocusRegistered),
++    darkEnabled: () => safe(() => dark().isEnabled),
++    darkInProgress: () => safe(() => dark().isInProgress),
++    darkStored: () => safe(() => localStorage.getItem('darkMode')),
++    htmlClass: () => safe(() => document.documentElement.className),
++    bodyClass: () => safe(() => document.body.className),
++    htmlStyleTokens: () => safe(styleTokens),
++    lsKeys: () => safe(() => Object.keys(localStorage).sort().join(',')),
++    ssKeys: () => safe(() => Object.keys(sessionStorage).sort().join(',')),
++    cookie: () => safe(() => document.cookie),
++    dunderKeys: () => safe(() => Object.keys(window).filter((k) => k.indexOf('__') === 0).sort().join(',')),
++    externalResources: () =>
++      safe(() =>
++        performance
++          .getEntriesByType('resource')
++          .filter((r) => String(r.name).indexOf(location.origin) !== 0)
++          .map((r) => String(r.name))
++          .join('|'),
++      ),
++    resourceCount: () => safe(() => performance.getEntriesByType('resource').length),
++    imageCount: () => safe(() => document.images.length),
++    imagesLoaded: () =>
++      safe(() => Array.prototype.filter.call(document.images, (im) => im.complete && im.naturalWidth > 0).length),
++    rbAreas: () => safe(() => Object.keys(window.__rb).sort().join(',')),
++  }
++})()
++
+ // Fetch sample data
+ mainStore.fetchSampleClients()
+ mainStore.fetchSampleHistory()
+diff --git a/src/views/ErrorView.vue b/src/views/ErrorView.vue
+--- a/src/views/ErrorView.vue
++++ b/src/views/ErrorView.vue
+@@ -18,7 +18,7 @@
+ 
+         <template #footer>
+           <BaseButtons>
+-            <BaseButton label="Done" to="/dashboard" color="danger" />
++            <BaseButton data-testid="rb-error-done" label="Done" to="/dashboard" color="danger" />
+           </BaseButtons>
+         </template>
+       </CardBox>
+diff --git a/src/views/FormsView.vue b/src/views/FormsView.vue
+--- a/src/views/FormsView.vue
++++ b/src/views/FormsView.vue
+@@ -47,6 +47,49 @@
+ 
+ const formStatusOptions = ['info', 'success', 'danger', 'warning']
+ 
++// INSTRUMENTATION (repair-bench, read-only): the status-banner state machine and the authored
++// form model of this view, as scalars. Getters only, fail-close, no state writes.
++window.__rb = window.__rb || {}
++window.__rb.forms = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    statusOptions: () => safe(() => formStatusOptions.join(',')),
++    statusOptionCount: () => safe(() => formStatusOptions.length),
++    statusCurrent: () => safe(() => formStatusCurrent.value),
++    statusOption: () => safe(() => { var v = formStatusOptions[formStatusCurrent.value]; return v === undefined ? null : String(v) }),
++    statusWithHeader: () => safe(() => !!formStatusWithHeader.value),
++    statusLabel: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-status-label\"]"); return el ? String(el.textContent == null ? '' : el.textContent).trim() : null }),
++    statusBarClass: () =>
++      safe(() => {
++        var bar = document.querySelector('[data-testid="rb-status-bar"]')
++        if (!bar || !bar.firstElementChild) { return null }
++        return String(bar.firstElementChild.className)
++      }),
++    statusTriggerPresent: () => safe(() => !!document.querySelector('[data-testid="rb-status-trigger"]')),
++    formName: () => safe(() => String(form.name)),
++    formEmail: () => safe(() => String(form.email)),
++    formPhone: () => safe(() => String(form.phone)),
++    formSubject: () => safe(() => String(form.subject)),
++    formQuestion: () => safe(() => String(form.question)),
++    departmentId: () => safe(() => (form.department ? form.department.id : null)),
++    departmentLabel: () => safe(() => (form.department ? String(form.department.label) : null)),
++    selectOptionCount: () => safe(() => selectOptions.length),
++    selectOptionLabels: () => safe(() => selectOptions.map((o) => o.label).join('|')),
++    checkboxModel: () => safe(() => customElementsForm.checkbox.join(',')),
++    radioModel: () => safe(() => String(customElementsForm.radio)),
++    switchModel: () => safe(() => customElementsForm.switch.join(',')),
++    controlCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-control-\"]").length),
++    checkCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-check-\"]").length),
++  }
++})()
++
+ const formStatusSubmit = () => {
+   formStatusCurrent.value = formStatusOptions[formStatusCurrent.value + 1]
+     ? formStatusCurrent.value + 1
+@@ -59,6 +102,7 @@
+     <SectionMain>
+       <SectionTitleLineWithButton :icon="mdiBallotOutline" title="Forms example" main>
+         <BaseButton
++          data-testid="rb-star-forms"
+           href="https://github.com/justboil/admin-one-vue-tailwind"
+           target="_blank"
+           :icon="mdiGithub"
+@@ -139,17 +183,19 @@
+       <SectionTitle>Form with status example</SectionTitle>
+ 
+       <CardBox
++        data-testid="rb-status-form"
+         class="shadow-2xl md:mx-auto md:w-7/12 lg:w-5/12 xl:w-4/12"
+         is-form
+         is-hoverable
+         @submit.prevent="formStatusSubmit"
+       >
+         <NotificationBarInCard
++          data-testid="rb-status-bar"
+           :color="formStatusOptions[formStatusCurrent]"
+           :is-placed-with-header="formStatusWithHeader"
+         >
+           <span
+-            ><b class="capitalize">{{ formStatusOptions[formStatusCurrent] }}</b> state</span
++            ><b data-testid="rb-status-label" class="capitalize">{{ formStatusOptions[formStatusCurrent] }}</b> state</span
+           >
+         </NotificationBarInCard>
+         <FormField label="Fields">
+@@ -162,7 +208,7 @@
+         </FormField>
+ 
+         <template #footer>
+-          <BaseButton label="Trigger" type="submit" color="info" />
++          <BaseButton data-testid="rb-status-trigger" label="Trigger" type="submit" color="info" />
+         </template>
+       </CardBox>
+     </SectionMain>
+diff --git a/src/views/HomeView.vue b/src/views/HomeView.vue
+--- a/src/views/HomeView.vue
++++ b/src/views/HomeView.vue
+@@ -36,6 +36,51 @@
+ 
+ const mainStore = useMainStore()
+ 
++// INSTRUMENTATION (repair-bench, read-only): dashboard-level scalars - the animated widget
++// counters as rendered TEXT, the solid-button colour classes, and the card/avatar counts.
++// Getters only, fail-close, no state writes and no listener registered here.
++window.__rb = window.__rb || {}
++window.__rb.home = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const widgetText = (slug) =>
++    safe(() => {
++      var el = document.querySelector('[data-testid="rb-widget-' + slug + '"] [data-testid="rb-number-dynamic"]')
++      return el ? String(el.textContent == null ? '' : el.textContent).trim() : null
++    })
++  const cls = (sel) =>
++    safe(() => {
++      var el = document.querySelector(sel)
++      return el ? String(el.className) : null
++    })
++  return {
++    hash: () => safe(() => location.hash),
++    clientsText: () => widgetText('clients'),
++    salesText: () => widgetText('sales'),
++    performanceText: () => widgetText('performance'),
++    widgetCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-widget-\"]").length),
++    clientsNumber: () => safe(() => ((window.__rb.widgets || {})['clients'] || {}).number()),
++    salesNumber: () => safe(() => ((window.__rb.widgets || {})['sales'] || {}).number()),
++    performanceNumber: () => safe(() => ((window.__rb.widgets || {})['performance'] || {}).number()),
++    starClass: () => cls('[data-testid="rb-star-home"]'),
++    starHref: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-star-home\"]"); if (!el) { return null } var v = el.getAttribute("href"); return v == null ? '' : String(v) }),
++    starTarget: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-star-home\"]"); if (!el) { return null } var v = el.getAttribute("target"); return v == null ? '' : String(v) }),
++    starTag: () => safe(() => { var el = document.querySelector('[data-testid="rb-star-home"]'); return el ? String(el.tagName).toLowerCase() : null }),
++    reloadPresent: () => safe(() => !!document.querySelector('[data-testid="rb-chart-reload"]')),
++    clientCards: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-client-card-\"]").length),
++    transactionCards: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-transaction-card-\"]").length),
++    avatars: () => safe(() => document.querySelectorAll("[data-testid=\"rb-avatar\"]").length),
++    clientBarCount: () => safe(() => clientBarItems.value.length),
++    transactionBarCount: () => safe(() => transactionBarItems.value.length),
++    chartDataPresent: () => safe(() => !!chartData.value),
++  }
++})()
++
+ const clientBarItems = computed(() => mainStore.clients.slice(0, 4))
+ 
+ const transactionBarItems = computed(() => mainStore.history)
+@@ -46,6 +91,7 @@
+     <SectionMain>
+       <SectionTitleLineWithButton :icon="mdiChartTimelineVariant" title="Overview" main>
+         <BaseButton
++          data-testid="rb-star-home"
+           href="https://github.com/justboil/admin-one-vue-tailwind"
+           target="_blank"
+           :icon="mdiGithub"
+@@ -86,7 +132,7 @@
+       </div>
+ 
+       <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+-        <div class="flex flex-col justify-between">
++        <div class="flex flex-col justify-between" data-testid="rb-transaction-list">
+           <CardBoxTransaction
+             v-for="(transaction, index) in transactionBarItems"
+             :key="index"
+@@ -98,7 +144,7 @@
+             :account="transaction.account"
+           />
+         </div>
+-        <div class="flex flex-col justify-between">
++        <div class="flex flex-col justify-between" data-testid="rb-client-list">
+           <CardBoxClient
+             v-for="client in clientBarItems"
+             :key="client.id"
+@@ -113,7 +159,7 @@
+       <SectionBannerStarOnGitHub class="mt-6 mb-6" />
+ 
+       <SectionTitleLineWithButton :icon="mdiChartPie" title="Trends overview">
+-        <BaseButton :icon="mdiReload" color="whiteDark" @click="fillChartData" />
++        <BaseButton data-testid="rb-chart-reload" :icon="mdiReload" color="whiteDark" @click="fillChartData" />
+       </SectionTitleLineWithButton>
+ 
+       <CardBox class="mb-6">
+diff --git a/src/views/LoginView.vue b/src/views/LoginView.vue
+--- a/src/views/LoginView.vue
++++ b/src/views/LoginView.vue
+@@ -19,6 +19,35 @@
+ 
+ const router = useRouter()
+ 
++// INSTRUMENTATION (repair-bench, read-only): login form scalars. Getters only, fail-close.
++window.__rb = window.__rb || {}
++window.__rb.login = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const val = (sel) => {
++    var el = document.querySelector(sel)
++    return el ? String(el.value) : null
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    loginValue: () => safe(() => val('[data-testid="rb-control-login"] input')),
++    passValue: () => safe(() => val('[data-testid="rb-control-password"] input')),
++    rememberChecked: () =>
++      safe(() => {
++        var el = document.querySelector('[data-testid="rb-check-remember"] input')
++        return el ? !!el.checked : null
++      }),
++    submitPresent: () => safe(() => !!document.querySelector('[data-testid="rb-login-submit"]')),
++    backHref: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-login-back\"]"); if (!el) { return null } var v = el.getAttribute("href"); return v == null ? '' : String(v) }),
++    submitClass: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-login-submit\"]"); return el ? String(el.className) : null }),
++  }
++})()
++
+ const submit = () => {
+   router.push('/dashboard')
+ }
+@@ -56,8 +85,8 @@
+ 
+         <template #footer>
+           <BaseButtons>
+-            <BaseButton type="submit" color="info" label="Login" />
+-            <BaseButton to="/dashboard" color="info" outline label="Back" />
++            <BaseButton data-testid="rb-login-submit" type="submit" color="info" label="Login" />
++            <BaseButton data-testid="rb-login-back" to="/dashboard" color="info" outline label="Back" />
+           </BaseButtons>
+         </template>
+       </CardBox>
+diff --git a/src/views/ProfileView.vue b/src/views/ProfileView.vue
+--- a/src/views/ProfileView.vue
++++ b/src/views/ProfileView.vue
+@@ -27,6 +27,39 @@
+   password_confirmation: '',
+ })
+ 
++// INSTRUMENTATION (repair-bench, read-only): the two profile forms' DOM values plus the store
++// identity they write into, as scalars. Getters only, fail-close, no state writes.
++window.__rb = window.__rb || {}
++window.__rb.profile = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const val = (sel) => {
++    var el = document.querySelector(sel)
++    return el ? String(el.value) : null
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    storeName: () => safe(() => String(mainStore.userName)),
++    storeEmail: () => safe(() => String(mainStore.userEmail)),
++    storeAvatar: () => safe(() => String(mainStore.userAvatar)),
++    nameInput: () => safe(() => val('[data-testid="rb-control-username"] input')),
++    emailInput: () => safe(() => val('[data-testid="rb-control-email"] input')),
++    passCurrentInput: () => safe(() => val('[data-testid="rb-control-password-current"] input')),
++    passInput: () => safe(() => val('[data-testid="rb-control-password"] input')),
++    passConfirmInput: () => safe(() => val('[data-testid="rb-control-password-confirmation"] input')),
++    userCardName: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-usercard-name\"]"); return el ? String(el.textContent == null ? '' : el.textContent).trim() : null }),
++    submitCount: () => safe(() => document.querySelectorAll("[data-testid=\"rb-profile-submit\"],[data-testid=\"rb-pass-submit\"]").length),
++    optionsClass: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-profile-options\"]"); return el ? String(el.className) : null }),
++    submitClass: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-profile-submit\"]"); return el ? String(el.className) : null }),
++    avatarSrc: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-usercard-root\"] [data-testid=\"rb-avatar-img\"]"); if (!el) { return null } var v = el.getAttribute("src"); return v == null ? '' : String(v) }),
++  }
++})()
++
+ const submitProfile = () => {
+   mainStore.setUser(profileForm)
+ }
+@@ -41,6 +74,7 @@
+     <SectionMain>
+       <SectionTitleLineWithButton :icon="mdiAccount" title="Profile" main>
+         <BaseButton
++          data-testid="rb-star-profile"
+           href="https://github.com/justboil/admin-one-vue-tailwind"
+           target="_blank"
+           :icon="mdiGithub"
+@@ -81,8 +115,8 @@
+ 
+           <template #footer>
+             <BaseButtons>
+-              <BaseButton color="info" type="submit" label="Submit" />
+-              <BaseButton color="info" label="Options" outline />
++              <BaseButton data-testid="rb-profile-submit" color="info" type="submit" label="Submit" />
++              <BaseButton data-testid="rb-profile-options" color="info" label="Options" outline />
+             </BaseButtons>
+           </template>
+         </CardBox>
+@@ -125,8 +159,8 @@
+ 
+           <template #footer>
+             <BaseButtons>
+-              <BaseButton type="submit" color="info" label="Submit" />
+-              <BaseButton color="info" label="Options" outline />
++              <BaseButton data-testid="rb-pass-submit" type="submit" color="info" label="Submit" />
++              <BaseButton data-testid="rb-pass-options" color="info" label="Options" outline />
+             </BaseButtons>
+           </template>
+         </CardBox>
+diff --git a/src/views/ResponsiveView.vue b/src/views/ResponsiveView.vue
+--- a/src/views/ResponsiveView.vue
++++ b/src/views/ResponsiveView.vue
+@@ -14,6 +14,7 @@
+       >
+         <img
+           src="/vendor/screenshot-placeholder.svg?view=mobile"
++          data-testid="rb-screenshot-mobile"
+           class="block"
+         />
+       </div>
+@@ -27,6 +28,7 @@
+       >
+         <img
+           src="/vendor/screenshot-placeholder.svg?view=1024"
++          data-testid="rb-screenshot-1024"
+           class="block"
+         />
+       </div>
+@@ -38,6 +40,7 @@
+       >
+         <img
+           src="/vendor/screenshot-placeholder.svg?view=1024-menu-open"
++          data-testid="rb-screenshot-1024-menu-open"
+           class="block"
+         />
+       </div>
+@@ -51,6 +54,7 @@
+       >
+         <img
+           src="/vendor/screenshot-placeholder.svg?view=widescreen"
++          data-testid="rb-screenshot-widescreen"
+           class="block"
+         />
+       </div>
+diff --git a/src/views/StyleView.vue b/src/views/StyleView.vue
+--- a/src/views/StyleView.vue
++++ b/src/views/StyleView.vue
+@@ -12,6 +12,38 @@
+ 
+ darkModeStore.set(false)
+ 
++// INSTRUMENTATION (repair-bench, read-only): exposes the <html> style-token set, the authored
++// style list and the dark-mode reset this view performs, as scalars. Getters only, fail-close.
++window.__rb = window.__rb || {}
++window.__rb.style = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  const tokens = () =>
++    Array.prototype.filter
++      .call(document.documentElement.classList, (t) => t.indexOf('style') === 0)
++      .join(',')
++  return {
++    hash: () => safe(() => location.hash),
++    styleCount: () => safe(() => styles.length),
++    styleNames: () => safe(() => styles.join(',')),
++    htmlTokens: () => safe(tokens),
++    htmlTokenCount: () => safe(() => tokens().split(',').filter((t) => t.length).length),
++    htmlClass: () => safe(() => String(document.documentElement.className)),
++    darkEnabled: () => safe(() => darkModeStore.isEnabled),
++    cardCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-style-card-\"]").length),
++    screenshotCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-screenshot\"]").length),
++    screenshotsLoaded: () =>
++      safe(() =>
++        Array.prototype.filter.call(document.querySelectorAll('[data-testid^="rb-screenshot"]'), (im) => im.complete && im.naturalWidth > 0).length,
++      ),
++  }
++})()
++
+ const router = useRouter()
+ 
+ const handleStyleChange = (slug) => {
+@@ -40,6 +72,7 @@
+           <CardBox
+             v-for="style in styles"
+             :key="style"
++            :data-testid="'rb-style-card-' + style"
+             class="cursor-pointer bg-gray-50"
+             is-hoverable
+             @click="handleStyleChange(style)"
+@@ -47,12 +80,13 @@
+             <div class="mb-3 md:mb-6">
+               <img
+                 :src="`/vendor/screenshot-placeholder.svg?style=${style}`"
++                data-testid="rb-screenshot-style"
+                 width="1280"
+                 height="720"
+               />
+             </div>
+ 
+-            <h1 class="text-xl font-black capitalize md:text-2xl">
++            <h1 :data-testid="'rb-style-name-' + style" class="text-xl font-black capitalize md:text-2xl">
+               {{ style }}
+             </h1>
+             <h2 class="text-lg md:text-xl">& Dark mode</h2>
+diff --git a/src/views/TablesView.vue b/src/views/TablesView.vue
+--- a/src/views/TablesView.vue
++++ b/src/views/TablesView.vue
+@@ -15,6 +15,7 @@
+     <SectionMain>
+       <SectionTitleLineWithButton :icon="mdiTableBorder" title="Tables" main>
+         <BaseButton
++          data-testid="rb-star-tables"
+           href="https://github.com/justboil/admin-one-vue-tailwind"
+           target="_blank"
+           :icon="mdiGithub"
+@@ -28,7 +29,7 @@
+         <b>Responsive table.</b> Collapses on mobile
+       </NotificationBar>
+ 
+-      <CardBox class="mb-6" has-table>
++      <CardBox data-testid="rb-view-tables" class="mb-6" has-table>
+         <TableSampleClients checkable />
+       </CardBox>
+ 
+diff --git a/src/views/UiView.vue b/src/views/UiView.vue
+--- a/src/views/UiView.vue
++++ b/src/views/UiView.vue
+@@ -28,6 +28,31 @@
+ import CardBoxComponentTitle from '@/components/CardBoxComponentTitle.vue'
+ import PillTag from '@/components/PillTag.vue'
+ 
++// INSTRUMENTATION (repair-bench, read-only): UI-kit view scalars. Getters only, fail-close.
++window.__rb = window.__rb || {}
++window.__rb.ui = (function () {
++  const safe = (fn) => {
++    try {
++      return fn()
++    } catch (e) {
++      return null
++    }
++  }
++  return {
++    hash: () => safe(() => location.hash),
++    darkEnabled: () => safe(() => darkModeStore.isEnabled),
++    darkStored: () => safe(() => localStorage.getItem('darkMode')),
++    htmlHasDark: () => safe(() => document.documentElement.classList.contains('dark')),
++    modalOne: () => safe(() => !!modalOneActive.value),
++    modalTwo: () => safe(() => !!modalTwoActive.value),
++    modalThree: () => safe(() => !!modalThreeActive.value),
++    modalSlugs: () => safe(() => Object.keys(window.__rb.modals || {}).sort().join(',')),
++    toggleClass: () => safe(() => { var el = document.querySelector("[data-testid=\"rb-ui-dark-toggle\"]"); return el ? String(el.className) : null }),
++    checkCount: () => safe(() => document.querySelectorAll("[data-testid^=\"rb-check-\"]").length),
++    buttonCount: () => safe(() => document.querySelectorAll('button').length),
++  }
++})()
++
+ const modalOneActive = ref(false)
+ 
+ const modalTwoActive = ref(false)
+@@ -88,7 +113,7 @@
+     <SectionMain>
+       <CardBox class="shadow-2xl md:mx-auto md:w-7/12 lg:w-5/12 xl:w-4/12">
+         <div class="py-24 text-center text-gray-500 lg:py-12 dark:text-slate-400">
+-          <BaseButton label="Toggle" color="contrast" @click="darkModeStore.set(null, true)" />
++          <BaseButton data-testid="rb-ui-dark-toggle" label="Toggle" color="contrast" @click="darkModeStore.set(null, true)" />
+         </div>
+       </CardBox>
+     </SectionMain>

@@ -1,0 +1,599 @@
+diff --git a/src/AppContext.tsx b/src/AppContext.tsx
+index 7c02c60..04c4f2f 100644
+--- a/src/AppContext.tsx
++++ b/src/AppContext.tsx
+@@ -13,6 +13,7 @@ import {
+ } from 'solid-js';
+ import { createStore } from 'solid-js/store';
+ import { Meta, Title } from '@solidjs/meta';
++import { bindApp } from './rb-probe';
+ 
+ // en dictionary is loaded by default
+ import { dict as en_dict } from '../lang/en/en';
+@@ -206,12 +207,16 @@ export const AppContextProvider: ParentComponent = (props) => {
+     },
+   };
+ 
++  // RB instrumentation: publish the context's OWN live accessors to the read-only observation
++  // bridge. Nothing here writes a setting, re-renders a branch or changes a rule.
++  bindApp({ state, settings, locale, dict, t });
++
+   return (
+     <Suspense>
+       <AppContext.Provider value={state}>
+         <Title>{t('global.title')}</Title>
+         <Meta name="lang" content={locale()} />
+-        <div dir={state.dir}>{props.children}</div>
++        <div dir={state.dir} data-rb-appdir="">{props.children}</div>
+       </AppContext.Provider>
+     </Suspense>
+   );
+diff --git a/src/components/Footer.tsx b/src/components/Footer.tsx
+index 7c9e67b..1ea2e60 100644
+--- a/src/components/Footer.tsx
++++ b/src/components/Footer.tsx
+@@ -35,6 +35,7 @@ const Footer: Component = () => {
+ 
+   return (
+     <div
++      data-rb-footer=""
+       dir={ctx.dir}
+       class="py-10 mt-5 bg-solid-lightgray dark:bg-solid-darkLighterBg rounded-tr-3xl rounded-tl-3xl mx-2"
+     >
+diff --git a/src/components/Nav/LanguageSelector.tsx b/src/components/Nav/LanguageSelector.tsx
+index 40c38f0..fe18518 100644
+--- a/src/components/Nav/LanguageSelector.tsx
++++ b/src/components/Nav/LanguageSelector.tsx
+@@ -2,6 +2,7 @@ import { ParentComponent } from 'solid-js';
+ 
+ export const LanguageSelector: ParentComponent<{ ref: HTMLButtonElement }> = (props) => (
+   <button
++    data-rb-lang=""
+     aria-label="Select Language"
+     ref={props.ref}
+     class="dark:brightness-150 focus:color-red-500 bg-no-repeat bg-center bg-translate bg-24 hover:border-gray-500 cursor-pointer dark:border-gray-600 dark:hover:border-gray-500 px-6 pl-4 ml-2 rounded-md h-10 border border-solid-100 pt-4 text-sm my-3 w-full"
+diff --git a/src/components/Nav/MenuLink.tsx b/src/components/Nav/MenuLink.tsx
+index 6606009..4231d2c 100644
+--- a/src/components/Nav/MenuLink.tsx
++++ b/src/components/Nav/MenuLink.tsx
+@@ -87,6 +87,7 @@ export const MenuLink: ParentComponent<MenuLinkProps> = (props) => {
+   return (
+     <li ref={wrapperEl}>
+       <A
++        data-rb-navlink=""
+         href={props.path}
+         target={props.external ? '_blank' : undefined}
+         class="inline-flex items-center transition text-[15px] dark:hover:bg-solid-darkLighterBg sm:text-base m-0 sm:m-1 px-3 sm:px-4 py-3 rounded pointer-fine:hover:text-white pointer-fine:hover:bg-solid-medium whitespace-nowrap"
+diff --git a/src/components/Nav/ModeToggle.tsx b/src/components/Nav/ModeToggle.tsx
+index 45b644c..11d4c23 100644
+--- a/src/components/Nav/ModeToggle.tsx
++++ b/src/components/Nav/ModeToggle.tsx
+@@ -10,6 +10,7 @@ export const ModeToggle: VoidComponent = () => {
+ 
+   return (
+     <button
++      data-rb-theme=""
+       type="button"
+       onClick={() => context.setDark(!context.isDark)}
+       class="text-solid-medium dark:brightness-150 focus:color-red-500 bg-no-repeat bg-center hover:border-gray-500 cursor-pointer dark:border-gray-600 dark:hover:border-gray-500 px-3 ml-2 rounded-md h-10 border border-solid-100"
+@@ -20,7 +21,7 @@ export const ModeToggle: VoidComponent = () => {
+       title={title()}
+     >
+       <Icon path={context.isDark ? sun : moon} class="h-6" />
+-      <span class="text-xs sr-only">{title()}</span>
++      <span class="text-xs sr-only" data-rb-themelabel="">{title()}</span>
+     </button>
+   );
+ };
+diff --git a/src/components/Nav/index.tsx b/src/components/Nav/index.tsx
+index c27d924..0bd728e 100644
+--- a/src/components/Nav/index.tsx
++++ b/src/components/Nav/index.tsx
+@@ -26,6 +26,7 @@ import { LinkTypes, MenuLink } from './MenuLink';
+ import { LanguageSelector } from './LanguageSelector';
+ import { ModeToggle } from './ModeToggle';
+ import { entries } from '@solid-primitives/utils';
++import { bindNav } from '../../rb-probe';
+ 
+ const langs: Record<Locale, string> = {
+   en: 'English',
+@@ -122,6 +123,9 @@ const Nav: ParentComponent<{ showLogo?: boolean; filled?: boolean }> = (props) =
+     ),
+   );
+ 
++  // RB instrumentation: publish the navigation's OWN live accessors to the read-only bridge.
++  bindNav({ showLangs, subnav, ctx, navList, showLogo, locked, isRTL });
++
+   const onClickLogo = () => {
+     if (window.location.pathname === '/') {
+       window.scrollTo({ top: 0 });
+@@ -260,6 +264,8 @@ const Nav: ParentComponent<{ showLogo?: boolean; filled?: boolean }> = (props) =
+           <div class="absolute w-full md:w-96 mt-2 md:ml-12 md:mr-5 border dark:border-solid-darkbg rounded-md transition-composite bg-white dark:bg-solid-darkLighterBg shadow-md">
+             {entries(langs).map(([lang, label]) => (
+               <button
++                data-rb-langopt=""
++                data-rb-langcode={lang}
+                 class="first:rounded-t hover:bg-solid-light hover:text-white last:rounded-b border-r p-3 text-sm border-b text-center dark:border-solid-darkbg/70 w-3/6"
+                 classList={{
+                   'bg-solid-medium text-white': lang == ctx.locale,
+@@ -277,6 +283,7 @@ const Nav: ParentComponent<{ showLogo?: boolean; filled?: boolean }> = (props) =
+         </Dismiss>
+         <Show when={subnav() && subnav()!.links.length !== 0}>
+           <div
++            data-rb-subnav=""
+             ref={subnavEl}
+             onmouseenter={closeSubnav.clear}
+             onmouseleave={closeSubnav}
+@@ -295,6 +302,7 @@ const Nav: ParentComponent<{ showLogo?: boolean; filled?: boolean }> = (props) =
+                     }
+                   >
+                     <A
++                      data-rb-subnavitem=""
+                       onClick={() => setSubnav(null)}
+                       class="px-6 py-5 w-full block"
+                       href={link.path}
+diff --git a/src/components/Newsletter.tsx b/src/components/Newsletter.tsx
+index 3bbea23..8ff23c3 100644
+--- a/src/components/Newsletter.tsx
++++ b/src/components/Newsletter.tsx
+@@ -43,6 +43,7 @@ export const Newsletter: Component<NewsletterProps> = (props) => {
+   let emailRef: HTMLInputElement;
+   return (
+     <form
++      data-rb-newsletter=""
+       class={`bg-solid flex flex-col md:flex-row w-full items-center space-x-4 ${props.className}`}
+       onSubmit={(e) => {
+         void submit(e);
+diff --git a/src/main.tsx b/src/main.tsx
+index 9b481ee..9936f8c 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -3,6 +3,7 @@ import './assets/main.css';
+ 
+ // import { registerSW } from 'virtual:pwa-register';
+ import { installNetFence } from './rbNetFence';
++import './rb-probe';
+ import { App } from './App';
+ 
+ // repair-bench adaptation (environment/adaptation.patch): install the same-origin request fence
+diff --git a/src/pages/Resources.tsx b/src/pages/Resources.tsx
+index 7d0bb91..db231bb 100644
+--- a/src/pages/Resources.tsx
++++ b/src/pages/Resources.tsx
+@@ -14,6 +14,7 @@ import Footer from '../components/Footer';
+ import { parseKeyword } from '../utils/parseKeyword';
+ import { rememberSearch } from '../utils/rememberSearch';
+ import { useRouteReadyState } from '../utils/routeReadyState';
++import { bindResources } from '../rb-probe';
+ import type { ResourcesDataProps } from './Resources.data';
+ import { type PackageType, type Resource, ResourceType, ResourceTypeIcons } from './Resources/Ecosystem';
+ 
+@@ -26,8 +27,9 @@ const AResource: Component<Resource> = (props) => {
+   const [publishTimeAgo, { difference }] = createTimeAgo(published);
+ 
+   return (
+-    <li class="py-6 border-b text-left dark:border-solid-darkLighterBg hover:bg-gray-50 dark:hover:bg-gray-700 duration-100">
++    <li class="py-6 border-b text-left dark:border-solid-darkLighterBg hover:bg-gray-50 dark:hover:bg-gray-700 duration-100" data-rb-item="">
+       <a
++        data-rb-itemlink=""
+         class="relative grid grid-cols-10 md:grid-cols-12 grid-flow-col gap-2 text-solid"
+         target="_blank"
+         href={props.link}
+@@ -67,16 +69,19 @@ const AResource: Component<Resource> = (props) => {
+               </a>
+             </div>
+             <Show when={props.published_at}>
+-              <div class="rtl:text-right text-xs text-gray-400 block">
++              <div class="rtl:text-right text-xs text-gray-400 block" data-rb-published="">
+                 {t('resources.published')} {published.toDateString()}
+                 <Show when={difference() / DAY < 60}>
+-                  <span class="text-gray-300"> - {publishTimeAgo()}</span>
++                  <span class="text-gray-300" data-rb-timeago=""> - {publishTimeAgo()}</span>
+                 </Show>
+               </div>
+             </Show>
+           </Show>
+         </div>
+-        <div class="absolute top-[-18px] right-0 text-[14px] md:text-base md:static col-span-1 flex items-center text-solid-light">
++        <div
++          class="absolute top-[-18px] right-0 text-[14px] md:text-base md:static col-span-1 flex items-center text-solid-light"
++          data-rb-official={props.official ? '' : undefined}
++        >
+           <Show when={props.official}>
+             <Icon class="relative top-[-2px] w-4 md:top-0 md:w-7 mr-2" path={shieldCheck} />
+             {t('resources.official')}
+@@ -138,6 +143,11 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+   const [toggleFilters, setToggleFilters] = createSignal(false);
+   const [stickyBarActive, setStickyBarActive] = createSignal(false);
+   const floatingPosScrollY = 220;
++
++  // RB instrumentation: publish the page's OWN live accessors (the keyword signal, the search
++  // memo, the filter store and its two getters) to the read-only observation bridge. Nothing here
++  // writes a signal, mutates the store or changes a render branch.
++  bindResources({ keyword, resources, filtered, data, fs, toggleFilters, stickyBarActive });
+   let menuButton!: HTMLButtonElement;
+   let firstLoad = true;
+ 
+@@ -169,10 +179,12 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+         <div class="py-5 md:col-span-5 lg:col-span-3 md:overflow-auto md:p-5 md:sticky md:top-20 rounded md:h-[calc(100vh-80px)]">
+           <div
+             class="text-xs bg-gray-100 dark:bg-solid-darkLighterBg p-4 rounded"
++            data-rb-cta=""
+             innerHTML={t('resources.cta')}
+           />
+-          <div class="hidden md:block">
++          <div class="hidden md:block" data-rb-panel="desktop">
+             <input
++              data-rb-search="desktop"
+               class="my-5 rounded border-solid w-full border-gray-400 border bg-transparent p-3 placeholder-opacity-50 placeholder-gray-500 dark:placeholder-white"
+               placeholder={t('resources.search')}
+               value={keyword()}
+@@ -186,6 +198,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+             <div class="flex flex-col space-y-2">
+               {Object.values(ResourceType).map((type) => (
+                 <button
++                  data-rb-type={type}
+                   disabled={!filtered.counts[type]}
+                   onClick={() => {
+                     filtersClickScrollToTop();
+@@ -214,7 +227,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+                       />
+                     </figure>
+                   </div>
+-                  <div class="col-span-3 rtl:text-right lg:col-span-3">
++                  <div class="col-span-3 rtl:text-right lg:col-span-3" data-rb-typelabel="">
+                     {t(`resources.types_list.${type}`)}
+                   </div>
+                   <div class="col-span-1 text-center flex-end text-gray-400 text-xs">
+@@ -239,6 +252,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+           <div class="h-[45px] px-5 flex justify-between gap-1">
+             <div use:intersectionObserver class="absolute top-[-62px] h-0" />
+             <input
++              data-rb-search="sheet"
+               class="rounded border border-solid h-full w-full border-gray-400 p-3 placeholder-opacity-50 placeholder-gray-500 dark:bg-gray-500 dark:placeholder-gray-200"
+               placeholder={t('resources.search')}
+               value={keyword()}
+@@ -269,6 +283,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+           }}
+         >
+           <div
++            data-rb-panel="sheet"
+             class={
+               'fixed top-14 left-0 z-20 py-5 w-full rounded-t-2xl overflow-auto  p-10 shadow-top-2xl border-2 border-gray-100 dark:bg-solid-gray bg-white transition-transform duration-300 lg:border-0 lg:shadow-none lg:p-0 lg:flex-col lg:top-12 lg:sticky lg:flex '
+             }
+@@ -280,6 +295,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+             <div class="flex flex-col space-y-2">
+               {Object.values(ResourceType).map((type) => (
+                 <button
++                  data-rb-type={type}
+                   disabled={!filtered.counts[type]}
+                   onClick={() => {
+                     filtersClickScrollToTop();
+@@ -308,7 +324,7 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+                       />
+                     </figure>
+                   </div>
+-                  <div class="col-span-3 rtl:text-right lg:col-span-3">
++                  <div class="col-span-3 rtl:text-right lg:col-span-3" data-rb-typelabel="">
+                     {t(`resources.types_list.${type}`)}
+                   </div>
+                   <div class="col-span-1 text-center flex-end text-gray-400 text-xs">
+@@ -325,9 +341,9 @@ const Resources: Component<{ data: ResourcesDataProps }> = (props) => {
+         <div class="md:col-span-7 lg:col-span-9">
+           <Show
+             when={filtered.list.length !== 0}
+-            fallback={<div class="p-10 text-center">No resources found.</div>}
++            fallback={<div class="p-10 text-center" data-rb-empty="">No resources found.</div>}
+           >
+-            <ul>
++            <ul data-rb-list="">
+               <For each={filtered.list}>{(resource) => <AResource {...resource} />}</For>
+             </ul>
+           </Show>
+diff --git a/src/rb-probe.ts b/src/rb-probe.ts
+new file mode 100644
+index 0000000..eee4002
+--- /dev/null
++++ b/src/rb-probe.ts
+@@ -0,0 +1,301 @@
++// rb-probe.ts - observation bridge for the repair-bench verifier (INSTRUMENTATION ONLY).
++//
++// Neutrality contract: this file only READS the app. It never writes a signal, never changes a
++// render branch, never mutates a store, and it is imported for its side effect (installing
++// window.__SS__) before the app renders. Every gesture helper reproduces exactly one real user
++// gesture - element.click() on a type-filter button / theme button / language option, a native
++// "input" event on the search field for typing, and mouseenter/mouseleave on a nav item for the
++// hover menu - so a checkpoint drives the same code path a user drives.
++//
++// Why a bridge instead of raw locators: the resource list is 245 sibling <li> elements with no
++// ids, the type-filter control is rendered TWICE (a desktop panel and a dismissible sheet that
++// share one handler), and the language picker is rendered twice for the same reason. The bridge
++// therefore selects on structure this same instrumentation patch adds (data-rb-list /
++// data-rb-item / data-rb-type / data-rb-panel / data-rb-search / data-rb-theme / data-rb-lang /
++// data-rb-langopt / data-rb-navlink / data-rb-subnav / data-rb-empty / data-rb-timeago /
++// data-rb-official / data-rb-published), and it reads the list's truth from the app's OWN store
++// and signals (bound by bindResources / bindNav / bindApp below) rather than from repainted
++// markup, so a checkpoint that asks "what is the first entry" cannot be answered by a defect
++// that only relabels it.
++//
++// Reference computations living here, and why each is only partial:
++//   1. monotonicity of the rendered order. The bridge reports whether the app's own list is
++//      non-increasing (or non-decreasing) in the publication stamp the app itself carries. It
++//      never decides which order is correct and never recomputes a ranking: the expected
++//      direction and every expected value live in tests/dsl.json, which is not part of the
++//      answering environment.
++//   2. nothing else. In particular the bridge never reimplements a search: it never scores a
++//      keyword, never fuzzy-matches, never filters by type. It reads the memo and the store the
++//      page already maintains.
++//
++// Latch protocol (R22-2): a checkpoint that has to observe "a value had NOT moved yet at time T"
++// cannot be a single read, because the runner polls a failing assert until its budget expires and
++// would therefore accept the first converged sample. Such a checkpoint arms a DEFERRED one-shot
++// evaluation in setup (window.__SS_L[K] = {done:false,...} -> setTimeout -> {done:true, value}),
++// asserts done === true first, and only then reads the frozen scalar. Every other reader below is
++// a pure, repeatable read with no side effect, so polling is safe.
++
++const errors: any[] = [];
++let res: any = null;
++let nav: any = null;
++let app: any = null;
++
++const installErrorTrap = () => {
++  window.addEventListener("error", (event: any) => {
++    errors.push({ kind: "error", message: String((event && event.message) || "unknown"), stack: String((event && event.error && event.error.stack) || "").split("\n").slice(0, 4).join(" @ ") });
++  });
++  window.addEventListener("unhandledrejection", (event: any) => {
++    errors.push({ kind: "unhandledrejection", message: String((event && event.reason) || "unknown") });
++  });
++  return true;
++};
++installErrorTrap();
++
++/** Called once from the ecosystem page by the instrumentation patch. Stores live accessors only. */
++export const bindResources = (handle: any) => { res = handle; return true; };
++/** Called once from the site navigation by the instrumentation patch. Stores live accessors only. */
++export const bindNav = (handle: any) => { nav = handle; return true; };
++/** Called once from the application context provider by the instrumentation patch. */
++export const bindApp = (handle: any) => { app = handle; return true; };
++
++const q = (sel: any, root?: any) => (root || document).querySelector(sel);
++const qa = (sel: any, root?: any) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
++const txt = (el: any) => (el ? String(el.textContent || "").replace(/\s+/g, " ").trim() : null);
++const join = (xs: any[]) => xs.join("|");
++const sorted = (xs: any[]) => xs.slice().sort();
++
++/** the app's own final list (store getter), never the repainted markup */
++const list = (): any[] => {
++  try { const l = res && res.filtered ? res.filtered.list : null; return Array.isArray(l) ? l : []; } catch (e) { return []; }
++};
++const items = (): any[] => qa("[data-rb-item]", q("[data-rb-list]") ? q("[data-rb-list]").parentElement : null);
++const domItems = (): any[] => {
++  const ul = q("[data-rb-list]");
++  return ul ? qa(":scope > li[data-rb-item]", ul) : [];
++};
++const panel = (which: string) => q(`[data-rb-panel="${which}"]`);
++const typeButtons = (which: string) => qa(`[data-rb-type]`, panel(which) || null);
++const typeButton = (which: string, type: string) =>
++  typeButtons(which).filter((b: any) => b.getAttribute("data-rb-type") === type)[0] || null;
++
++// ---------------------------------------------------------------- errors
++const errorCount = () => errors.length;
++const errorFirst = () => (errors.length ? errors[0].kind + ": " + errors[0].message : null);
++
++// ---------------------------------------------------------------- list truth (store-driven)
++const listLen = () => list().length;
++const domListLen = () => domItems().length;
++const titleAt = (i: number) => { const x = list()[i]; return x ? String(x.title || "") : null; };
++const typeAt = (i: number) => { const x = list()[i]; return x ? String(x.type || "") : null; };
++const pubAt = (i: number) => { const x = list()[i]; return x && typeof x.published_at === "number" ? x.published_at : null; };
++const firstTitle = () => titleAt(0);
++const lastTitle = () => { const l = list(); return l.length ? String(l[l.length - 1].title || "") : null; };
++const firstThreeTitles = () => join(list().slice(0, 3).map((x) => String(x.title || "")));
++const stamps = () => list().map((x) => (typeof x.published_at === "number" ? x.published_at : 0));
++/** does the app's own list run non-increasing in its own publication stamps? */
++const orderDescending = () => { const s = stamps(); for (let i = 1; i < s.length; i++) if (s[i] > s[i - 1]) return false; return s.length > 1; };
++/** does it run non-decreasing? (the mirror reading, kept so a checkpoint can name the direction) */
++const orderAscending = () => { const s = stamps(); for (let i = 1; i < s.length; i++) if (s[i] < s[i - 1]) return false; return s.length > 1; };
++const allType = (t: string) => { const l = list(); return l.length > 0 && l.every((x) => String(x.type || "") === t); };
++const distinctTypes = () => join(sorted(Array.from(new Set(list().map((x) => String(x.type || ""))))));
++const officialCount = () => qa("[data-rb-official]").length;
++const timeAgoCount = () => qa("[data-rb-timeago]").length;
++const timeAgoOnFirst = () => { const it = domItems()[0]; return it ? !!q("[data-rb-timeago]", it) : false; };
++const publishedOnFirst = () => { const it = domItems()[0]; return it ? txt(q("[data-rb-published]", it)) : null; };
++const firstItemLinkAttrs = () => {
++  const it = domItems()[0]; const a = it ? q("a[data-rb-itemlink]", it) : null;
++  return a ? join([a.getAttribute("target"), a.getAttribute("rel")]) : null;
++};
++const emptyNotice = () => { const e = q("[data-rb-empty]"); return e ? txt(e) : null; };
++const listRendered = () => !!q("[data-rb-list]");
++
++// ---------------------------------------------------------------- filters / counts (store-driven)
++const countsJson = () => {
++  try {
++    const c = (res && res.filtered ? res.filtered.counts : null) || {};
++    return JSON.stringify(Object.keys(c).sort().reduce((m: any, k: string) => ((m[k] = c[k]), m), {}));
++  } catch (e) { return "ERR"; }
++};
++const countFor = (t: string) => { try { const c = res.filtered.counts; return c && c[t] ? c[t] : 0; } catch (e) { return -1; } };
++const enabledTypes = () => { try { return join(sorted((res.filtered.enabledTypes || []).map((x: any) => String(x)))); } catch (e) { return "ERR"; } };
++const enabledCount = () => { try { return (res.filtered.enabledTypes || []).length; } catch (e) { return -1; } };
++const typeSelected = (t: string) => { try { return (res.filtered.enabledTypes || []).indexOf(t as any) !== -1; } catch (e) { return false; } };
++const typeButtonDisabled = (t: string) => { const b = typeButton("desktop", t); return b ? b.disabled === true : null; };
++const typeButtonMarked = (t: string) => { const b = typeButton("desktop", t); return b ? /bg-gray-100/.test(b.className) : null; };
++const typeLabels = () => join(typeButtons("desktop").map((b: any) => txt(q("[data-rb-typelabel]", b))));
++const typeButtonCount = () => typeButtons("desktop").length;
++
++// ---------------------------------------------------------------- search field / url
++const keyword = () => { try { return String(res.keyword() || ""); } catch (e) { return "ERR"; } };
++const searchValue = (which: string) => { const i = q(`[data-rb-search="${which}"]`) as any; return i ? String(i.value) : null; };
++const searchPlaceholder = (which: string) => { const i = q(`[data-rb-search="${which}"]`) as any; return i ? String(i.placeholder || "") : null; };
++const urlPath = () => window.location.pathname;
++const urlSearch = () => window.location.search;
++const urlParam = (k: string) => new URLSearchParams(window.location.search).get(k);
++const ctaText = () => txt(q("[data-rb-cta]"));
++
++// ---------------------------------------------------------------- theme / locale / direction
++const isDark = () => { try { return app.state.isDark === true; } catch (e) { return false; } };
++const htmlDarkClass = () => document.documentElement.classList.contains("dark");
++/** the theme control is rendered twice (a collapsed tablet copy and the desktop copy): pick the laid-out one */
++const themeButton = () => qa("[data-rb-theme]").filter((b: any) => !!(b.offsetWidth || b.offsetHeight || b.getClientRects().length))[0] || null;
++const themeTitle = () => { const b = themeButton() as any; return b ? String(b.getAttribute("title") || "") : null; };
++const themePresent = () => !!themeButton();
++const themeEnabled = () => { const b = themeButton() as any; return b ? b.disabled !== true : null; };
++const themeSrOnly = () => { const b = themeButton(); return b ? txt(q("[data-rb-themelabel]", b)) : null; };
++const locale = () => { try { return String(app.state.locale || ""); } catch (e) { return "ERR"; } };
++const htmlLang = () => String(document.documentElement.lang || "");
++const dir = () => { try { return String(app.state.dir || ""); } catch (e) { return "ERR"; } };
++const domDir = () => { const d = q("[data-rb-appdir]"); return d ? String(d.getAttribute("dir") || "") : null; };
++const docTitle = () => String(document.title || "");
++const settingsCookie = () => {
++  const m = document.cookie.split("; ").filter((c) => c.indexOf("storage-cl-0=") === 0);
++  return m.length ? decodeURIComponent(m[0].slice("storage-cl-0=".length)) : null;
++};
++
++// ---------------------------------------------------------------- navigation
++const navLabels = () => join(qa("[data-rb-navlink]").map((a: any) => txt(a)));
++const navCount = () => qa("[data-rb-navlink]").length;
++const langMenuOpen = () => { try { return nav.showLangs() === true; } catch (e) { return false; } };
++const langOptions = () => qa('[data-rb-langopt]');
++const langOptionCount = () => langOptions().length;
++const langOptionLabels = () => join(langOptions().map((b: any) => txt(b)));
++const langMarked = () => join(langOptions().filter((b: any) => /bg-solid-medium/.test(b.className)).map((b: any) => txt(b)));
++const langMarkedCount = () => langOptions().filter((b: any) => /bg-solid-medium/.test(b.className)).length;
++const langMarkedCodes = () => join(sorted(langOptions().filter((b: any) => /bg-solid-medium/.test(b.className)).map((b: any) => String(b.getAttribute("data-rb-langcode") || ""))));
++const langButton = () => qa("[data-rb-lang]").filter((b: any) => !!(b.offsetWidth || b.offsetHeight || b.getClientRects().length))[0] || null;
++const langButtonPresent = () => !!langButton();
++const subnavOpen = () => { try { return !!nav.subnav(); } catch (e) { return false; } };
++const subnavTitles = () => join(qa("[data-rb-subnavitem]").map((a: any) => txt(a)));
++const scrollY = () => Math.round(window.scrollY || 0);
++const footerPresent = () => !!q("[data-rb-footer]");
++const newsletterPresent = () => !!q("[data-rb-newsletter]");
++
++// ---------------------------------------------------------------- residue channels
++const residueCount = () => {
++  let n = 0;
++  try { n += window.localStorage.length; } catch (e) {}
++  try { n += window.sessionStorage.length; } catch (e) {}
++  return n;
++};
++const residueChannels = () => {
++  const c: string[] = [];
++  try { if (window.localStorage.length) c.push("local"); } catch (e) {}
++  try { if (window.sessionStorage.length) c.push("session"); } catch (e) {}
++  return join(c);
++};
++
++// ---------------------------------------------------------------- latches (R22-2)
++const L: any = ((window as any).__SS_L = (window as any).__SS_L || {});
++/** arms a deferred one-shot sample of the list length / keyword / url taken `ms` from now */
++const armListLatch = (k: string, ms: number) => {
++  L[k] = { done: false, armed_at: Date.now(), delay_ms: ms, listLen: null, keyword: null, urlSearch: null, domListLen: null };
++  window.setTimeout(() => {
++    const rec = L[k];
++    if (!rec || rec.done) return;
++    rec.listLen = listLen(); rec.domListLen = domListLen(); rec.keyword = keyword(); rec.urlSearch = urlSearch();
++    rec.fired_at = Date.now(); rec.elapsed_ms = rec.fired_at - rec.armed_at; rec.done = true;
++  }, ms);
++  return true;
++};
++const latchDone = (k: string) => (L[k] ? L[k].done === true : false);
++const latchListLen = (k: string) => (L[k] && L[k].done ? L[k].listLen : null);
++const latchDomListLen = (k: string) => (L[k] && L[k].done ? L[k].domListLen : null);
++const latchKeyword = (k: string) => (L[k] && L[k].done ? L[k].keyword : null);
++const latchUrlSearch = (k: string) => (L[k] && L[k].done ? L[k].urlSearch : null);
++const latchElapsed = (k: string) => (L[k] && L[k].done ? L[k].elapsed_ms : null);
++/** arms a deferred one-shot sample of the hover menu, for a "did NOT close yet" reading */
++const armSubnavLatch = (k: string, ms: number) => {
++  L[k] = { done: false, armed_at: Date.now(), delay_ms: ms, open: null };
++  window.setTimeout(() => { const rec = L[k]; if (!rec || rec.done) return; rec.open = subnavOpen(); rec.done = true; }, ms);
++  return true;
++};
++const latchSubnavOpen = (k: string) => (L[k] && L[k].done ? L[k].open === true : null);
++
++// ---------------------------------------------------------------- ready()
++/** the page is ready when the route has settled AND the list the store drives is on screen */
++const ready = () => {
++  try {
++    if (res) return listRendered() || !!q("[data-rb-empty]");
++    return !!q("[data-rb-navlink]");
++  } catch (e) { return false; }
++};
++
++// ---------------------------------------------------------------- gestures (one real gesture each)
++const clickType = (t: string) => { const b = typeButton("desktop", t); if (!b) return false; b.click(); return true; };
++const typeSearch = (v: string) => {
++  const i = q('[data-rb-search="desktop"]') as any;
++  if (!i) return false;
++  i.focus();
++  i.value = v;
++  i.dispatchEvent(new Event("input", { bubbles: true }));
++  return true;
++};
++const commitSearch = (v: string) => {
++  const i = q('[data-rb-search="desktop"]') as any;
++  if (!i) return false;
++  i.focus(); i.value = v;
++  i.dispatchEvent(new Event("input", { bubbles: true }));
++  i.dispatchEvent(new Event("change", { bubbles: true }));
++  return true;
++};
++const clearSearch = () => typeSearch("");
++const clickTheme = () => { const b = themeButton() as any; if (!b) return false; b.click(); return true; };
++/** The language menu is a `solid-dismiss` <Dismiss menuButton={[langBtnTablet, langBtnDesktop]}>.
++ *  solid-dismiss attaches only "mousedown" and "focus" on mount
++ *  (node_modules/solid-dismiss/dist/source/local/menuButton.js:263-264) and adds the "click"
++ *  listener from INSIDE those two handlers (same file :88 onMouseDownMenuButton, :178
++ *  onFocusMenuButton), so a bare element.click() can never toggle showLangs.
++  *
++ *  langMenuOpen false / langOptionCount 0 on BOTH the clean and the mutation face; gestureB =
++ *  mousedown(bubbles) then click -> langMenuOpen true / langOptionCount 20 synchronously on both.
++ *  This is the shape a real user produces (mousedown always precedes click), so the bridge
++ *  reproduces the user rather than working around the component. */
++const openLangMenu = () => {
++  const b = langButton() as any;
++  if (!b) return false;
++  b.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
++  b.click();
++  return true;
++};
++const pickLang = (code: string) => {
++  const b = langOptions().filter((x: any) => String(x.getAttribute("data-rb-langcode") || "") === code)[0] as any;
++  if (!b) return false;
++  b.click(); return true;
++};
++const hoverNav = (label: string) => {
++  const a = qa("[data-rb-navlink]").filter((x: any) => txt(x) === label)[0] as any;
++  if (!a) return false;
++  a.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
++  return true;
++};
++const unhoverNav = (label: string) => {
++  const a = qa("[data-rb-navlink]").filter((x: any) => txt(x) === label)[0] as any;
++  if (!a) return false;
++  a.dispatchEvent(new MouseEvent("mouseleave", { bubbles: false }));
++  return true;
++};
++const scrollToY = (y: number) => { window.scrollTo({ top: y, behavior: "instant" as ScrollBehavior }); return Math.round(window.scrollY || 0); };
++
++const api = {
++  version: "rb-probe/solid-site/1.0",
++  bound: () => join([res ? "resources" : "-", nav ? "nav" : "-", app ? "app" : "-"].filter((x) => x !== "-")),
++  errorCount, errorFirst,
++  listLen, domListLen, titleAt, typeAt, pubAt, firstTitle, lastTitle, firstThreeTitles,
++  orderDescending, orderAscending, allType, distinctTypes, officialCount, timeAgoCount, timeAgoOnFirst,
++  publishedOnFirst, firstItemLinkAttrs, emptyNotice, listRendered,
++  countsJson, countFor, enabledTypes, enabledCount, typeSelected, typeButtonDisabled, typeButtonMarked,
++  typeLabels, typeButtonCount,
++  keyword, searchValue, searchPlaceholder, urlPath, urlSearch, urlParam, ctaText,
++  isDark, htmlDarkClass, themeTitle, themePresent, themeEnabled, themeSrOnly, locale, htmlLang, dir, domDir,
++  docTitle, settingsCookie,
++  navLabels, navCount, langMenuOpen, langOptionCount, langOptionLabels, langMarked, langMarkedCount,
++  langMarkedCodes, langButtonPresent, subnavOpen, subnavTitles, scrollY, footerPresent, newsletterPresent,
++  residueCount, residueChannels,
++  armListLatch, armSubnavLatch, latchDone, latchListLen, latchDomListLen, latchKeyword, latchUrlSearch,
++  latchElapsed, latchSubnavOpen,
++  ready,
++  clickType, typeSearch, commitSearch, clearSearch, clickTheme, openLangMenu, pickLang, hoverNav, unhoverNav, scrollToY,
++};
++(window as any).__SS__ = api;
++export default api;

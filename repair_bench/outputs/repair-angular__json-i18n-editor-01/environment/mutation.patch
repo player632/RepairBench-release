@@ -1,0 +1,139 @@
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 9c87541..13526cf 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -67,7 +67,7 @@
+     *ngFor="let item of scroll.viewPortItems"
+     [item]="item"
+     [hideSourceLanguage]="hideSourceLanguage"
+-    [rtlLanguage]="login.language === 'ar'"
++    [rtlLanguage]="login.language === 'ur'"
+     [attr.data-testid]="'row-' + item.category + '-' + item.name"
+     class="full-row"
+   ></app-row-component>
+@@ -84,7 +84,7 @@
+   >
+     <input
+       [(ngModel)]="filterText"
+-      (keyup.esc)="filterText = ''"
++      (keyup.esc)="filterText2 = ''"
+       data-testid="search-source"
+       [ngClass]="{ 'input-changed': filterText !== ''}"
+       type="text"
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index b349901..6dad37b 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -115,7 +115,6 @@ export class AppComponent {
+ 
+   toggleHideColumn(): void {
+     this.hideSourceLanguage = !this.hideSourceLanguage;
+-    this.filterText = '';
+   }
+ 
+   changeView(lol: ViewType): void {
+@@ -141,7 +140,6 @@ export class AppComponent {
+     this.filterText2 = '';
+     this.viewType = 'modified';
+     this.selectedPage = 'none';
+-    this.reviewedOnce = true;
+   }
+ 
+   /**
+@@ -156,7 +154,7 @@ export class AppComponent {
+     });
+ 
+     this.mainObject.forEach((element) => {
+-      toSave[element.category][element.name] = element.editedText.replace('\n', '');
++      toSave[element.category][element.name] = element.translation.replace('\n', '');
+     });
+     console.log('Saving data:');
+     console.log(toSave);
+@@ -221,9 +219,6 @@ export class AppComponent {
+   loginErrorNotify(): void {
+     this.login.pass = '';
+     this.loginError = true;
+-    setTimeout(() => {
+-      this.loginError = false;
+-    }, 1000);
+     this.waitingForServer = false;
+   }
+ 
+diff --git a/src/app/pipes/search.pipe.ts b/src/app/pipes/search.pipe.ts
+index 21eae0d..a30c887 100644
+--- a/src/app/pipes/search.pipe.ts
++++ b/src/app/pipes/search.pipe.ts
+@@ -18,7 +18,7 @@ export class MySearchPipe implements PipeTransform {
+     }
+ 
+     return data.filter((element) => {
+-      return (original ? element.text : element.translation).toLowerCase().includes(searchText.toLowerCase());
++      return (original ? element.text : element.translation).toLowerCase().includes(searchText);
+     });
+   }
+ 
+diff --git a/src/app/pipes/show-once.pipe.ts b/src/app/pipes/show-once.pipe.ts
+index c753f31..5f110d5 100644
+--- a/src/app/pipes/show-once.pipe.ts
++++ b/src/app/pipes/show-once.pipe.ts
+@@ -17,7 +17,6 @@ export class ShowOncePipe implements PipeTransform {
+ 
+     data.forEach((element) => {
+       element.showCategory = element.category !== lastCategory;
+-      lastCategory = element.category;
+     });
+ 
+     return data;
+diff --git a/src/app/pipes/view.pipe.ts b/src/app/pipes/view.pipe.ts
+index cecf00c..d454fb4 100644
+--- a/src/app/pipes/view.pipe.ts
++++ b/src/app/pipes/view.pipe.ts
+@@ -20,7 +20,7 @@ export class ViewPipe implements PipeTransform {
+         break;
+       case 'untranslated':
+         return data.filter((element) => {
+-          return element.translation === '';
++          return element.translation !== '';
+         });
+         break;
+       case 'modified':
+diff --git a/src/app/quill/quill.service.ts b/src/app/quill/quill.service.ts
+index cb4a808..c8a7e9b 100644
+--- a/src/app/quill/quill.service.ts
++++ b/src/app/quill/quill.service.ts
+@@ -44,9 +44,6 @@ export class HelperService {
+       }
+ 
+       if (op.hasOwnProperty('delete')) {
+-        // keep the text
+-        op.retain = op.delete;
+-        delete op.delete;
+         // but color it red and struckthrough
+         op.attributes = {
+           background: '#e8cccc',  // COLOR red
+diff --git a/src/app/row/row.component.html b/src/app/row/row.component.html
+index 7ac66c3..a66f60e 100644
+--- a/src/app/row/row.component.html
++++ b/src/app/row/row.component.html
+@@ -29,7 +29,6 @@
+     (keyup)="findDiff()"
+     class="editor"
+     data-testid="cell-editor"
+-    [ngClass]="{ changed: isModified }"
+   ></div>
+ 
+ </div>
+diff --git a/src/app/row/row.component.ts b/src/app/row/row.component.ts
+index 5c61395..6d6c8cf 100644
+--- a/src/app/row/row.component.ts
++++ b/src/app/row/row.component.ts
+@@ -48,8 +48,7 @@ export class RowComponent implements AfterViewInit {
+   ngAfterViewInit() {
+     const customOptions = defaultOptions;
+     customOptions.modules.keyboard.bindings = this.keyBindings;
+-    const readOnly = JSON.parse(JSON.stringify(defaultOptions));
+-    readOnly.readOnly = true;
++    const readOnly = defaultOptions;
+ 
+     this.editor1 = new QuillRef.Quill(this.editorNode1.nativeElement, readOnly);
+     this.editor2 = new QuillRef.Quill(this.editorNode2.nativeElement, defaultOptions);

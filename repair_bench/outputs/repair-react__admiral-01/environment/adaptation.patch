@@ -1,0 +1,177 @@
+diff --git a/pages/components/upload.tsx b/pages/components/upload.tsx
+index 7cc1ba4..1a542e0 100644
+--- a/pages/components/upload.tsx
++++ b/pages/components/upload.tsx
+@@ -1,4 +1,12 @@
+ import React, { useReducer } from 'react'
++
++// RepairBench adaptation (offline self-sufficiency): the two pre-populated
++// UploadFile records below used https://loremflickr.com/200/200 as their
++// thumbnail. With allow_internet=false that request fails, so the demo list
++// renders two broken images. Re-pointed at an image that already ships in this
++// repository's public/images/ (copied into dist/ by the build): same-origin,
++// zero network, identical field shape.
++const FIXTURE_IMAGE_URL = '/images/admiral-logo-light.svg'
+ import { FiUpload, FiImage } from 'react-icons/fi'
+ import { Page, Upload, Button } from '../../admiral'
+ import { UploadFile } from '../../admiral/ui/Upload/interfaces'
+@@ -40,14 +48,14 @@ export default function UploadPage() {
+                 uid: '-1',
+                 name: 'test_image.JPG',
+                 type: 'image/jpg',
+-                url: 'https://loremflickr.com/200/200',
++                url: FIXTURE_IMAGE_URL,
+             },
+             {
+                 uid: '1',
+                 name: 'test_image.JPG',
+                 type: 'image/jpg',
+                 status: 'error',
+-                url: 'https://loremflickr.com/200/200',
++                url: FIXTURE_IMAGE_URL,
+             },
+         ],
+     )
+diff --git a/src/mocks/data/users.ts b/src/mocks/data/users.ts
+index 20209bf..e50b9f2 100644
+--- a/src/mocks/data/users.ts
++++ b/src/mocks/data/users.ts
+@@ -62,7 +62,7 @@ export class UserList {
+                 id: i,
+                 key: i,
+                 name: `User ${i}`,
+-                age: Math.floor(Math.random() * (100 - 1 + 1)) + 1,
++                age: Math.floor(fixtureRandom() * (100 - 1 + 1)) + 1,
+                 address: `London Park no. ${i}`,
+                 email: 'test@test.com',
+                 registered_at: getRegisteredDate(i),
+@@ -133,7 +133,7 @@ export class UserList {
+         const newId = data.id || ++this.id
+         const newUser = {
+             name: '',
+-            age: Math.floor(Math.random() * (100 - 1 + 1)) + 1,
++            age: Math.floor(fixtureRandom() * (100 - 1 + 1)) + 1,
+             email: '',
+             password: '12345',
+             group: ['project_manager'],
+@@ -343,12 +343,43 @@ const citiesByCountry: Record<string, OptionType[]> = {
+ }
+ 
+ function randomFromValues<T>(values: T[]) {
+-    const random = Math.floor(Math.random() * values.length)
++    const random = Math.floor(fixtureRandom() * values.length)
+     return values[random]
+ }
+ 
++// ---------------------------------------------------------------------------
++// RepairBench adaptation (offline determinism, fixture layer only).
++//
++// Upstream generated this mock data set with Math.random() and anchored
++// `registered_at` to `new Date()`, so every page load produced a different
++// list (different ages / groups / roles / active flags) and a different set of
++// registration dates depending on the day the app happened to be opened. The
++// demo still behaves identically - same 24 records, same fields, same
++// "age is a uniform integer in [1,100]", same "group/role/active are a uniform
++// pick from the same option arrays", same "one record per day, most recent
++// first" - but the draws now come from a seeded mulberry32 stream anchored to a
++// fixed local epoch, so the fixture is byte-identical on every load and on
++// every machine. No application logic is touched: this file is the mock
++// backend's seed data, not part of the framework under test.
++// ---------------------------------------------------------------------------
++const FIXTURE_SEED_START = 0x5eed1a7e
++let fixtureSeed = FIXTURE_SEED_START
++
++function fixtureRandom() {
++    fixtureSeed = (fixtureSeed + 0x6d2b79f5) | 0
++    let t = fixtureSeed
++    t = Math.imul(t ^ (t >>> 15), t | 1)
++    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
++}
++
++// Fixed local-time epoch (17 May 2024). `getFormattedDate` below reads
++// getDate/getMonth/getFullYear, so the anchor is built from local components
++// rather than an ISO string to stay timezone-independent.
++const FIXTURE_EPOCH = new Date(2024, 4, 17)
++
+ function getRegisteredDate(idx: number) {
+-    const currentDate = new Date()
++    const currentDate = new Date(FIXTURE_EPOCH.getTime())
+     currentDate.setDate(currentDate.getDate() - idx)
+     return getFormattedDate(currentDate)
+ }
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index dd16299..6c9e9d3 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -7,6 +7,27 @@ import { UploadFile, OptionType } from '../../admiral'
+ const userList = new UserList()
+ const theme = new Theme()
+ 
++// ---------------------------------------------------------------------------
++// RepairBench adaptation (offline self-sufficiency + determinism).
++//
++// 1. Image placeholders. Upstream pointed the mock identity avatar, the mock
++//    editor-upload result and every uploaded-file record at
++//    https://loremflickr.com/... - a third-party photo service. The task runs
++//    with allow_internet=false, so those requests would fail at runtime and the
++//    affected surfaces (identity card, upload previews, editor image insert)
++//    would render broken. They are re-pointed at an image that already ships in
++//    this repository's public/ directory and is therefore copied into dist/ by
++//    the build: same-origin, zero network, no new bytes added to the tree.
++//    Nothing about the shape of the response changes (still a string URL in the
++//    same field), so every consumer keeps working.
++// 2. Session token. Upstream minted `${Math.random()}` per login, so the value
++//    stored in localStorage differed on every run. The mock now returns one
++//    fixed fixture token; the auth contract is unchanged (a non-empty string is
++//    stored under the same key) and the fixture is reproducible.
++// ---------------------------------------------------------------------------
++const FIXTURE_IMAGE_URL = '/images/admiral-logo-light.svg'
++const FIXTURE_SESSION_TOKEN = 'df-admiral-fixture-session-token'
++
+ export const handlers = [
+     // users
+     http.get('/api/users', async ({ request }) => {
+@@ -145,7 +166,7 @@ export const handlers = [
+ 
+         await delay(160)
+         return HttpResponse.json(
+-            { data: { user: data.user, token: `${Math.random()}` } },
++            { data: { user: data.user, token: FIXTURE_SESSION_TOKEN } },
+             { status: 201 },
+         )
+     }),
+@@ -164,7 +185,7 @@ export const handlers = [
+                 id: '1',
+                 fullName: 'Dev Family',
+                 email: 'admiral@dev.family',
+-                avatar: 'https://loremflickr.com/200/200',
++                avatar: FIXTURE_IMAGE_URL,
+             },
+             { status: 201 },
+         )
+@@ -185,13 +206,13 @@ export const handlers = [
+ 
+         await delay(160)
+         return HttpResponse.json(
+-            { data: { user: data.user, token: `${Math.random()}` } },
++            { data: { user: data.user, token: FIXTURE_SESSION_TOKEN } },
+             { status: 201 },
+         )
+     }),
+     http.post('/api/editorUpload', async () => {
+         await delay(160)
+-        return HttpResponse.json({ location: 'https://loremflickr.com/500/500' })
++        return HttpResponse.json({ location: FIXTURE_IMAGE_URL })
+     }),
+ 
+     http.post('/api/editor-upload', async ({ request }) => {
+@@ -229,7 +250,7 @@ function toObj(data: Record<string, any>): Record<any, any> {
+                     size: v.size,
+                     type: v.type,
+                     uid: v.uid,
+-                    url: 'https://loremflickr.com/200/200',
++                    url: FIXTURE_IMAGE_URL,
+                 })
+             } else {
+                 acc[1].push(v)

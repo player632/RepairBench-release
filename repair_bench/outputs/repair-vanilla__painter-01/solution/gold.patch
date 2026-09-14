@@ -1,0 +1,161 @@
+diff --git a/index.html b/index.html
+index 6debfec..16776cb 100644
+--- a/index.html
++++ b/index.html
+@@ -260,12 +260,12 @@
+                     console.log("color move");
+                     console.log(tinycolor.toHexString())
+                     if ($("#fill_color").hasClass("active")) {
+-                        $("#font_color").attr("data-color", tinycolor.toHexString());
+-                        $("#font_color span").eq(0).css("background", tinycolor.toHexString());
+-
+-                    } else if ($("#font_color").hasClass("active")) {
+                         $("#fill_color").attr("data-color", tinycolor.toHexString());
+                         $("#fill_color span").eq(0).css("background", tinycolor.toHexString());
++
++                    } else if ($("#font_color").hasClass("active")) {
++                        $("#font_color").attr("data-color", tinycolor.toHexString());
++                        $("#font_color span").eq(0).css("background", tinycolor.toHexString());
+                     }
+ 
+                 },
+diff --git a/js/core.js b/js/core.js
+index 876f077..1885dff 100644
+--- a/js/core.js
++++ b/js/core.js
+@@ -6,7 +6,7 @@ Array.prototype.indexOf = function(val) {
+ };
+ Array.prototype.remove = function(val) {
+ 	var index = this.indexOf(val);
+-	if (index > 0) {
++	if (index > -1) {
+ 		this.splice(index, 1);
+ 	}
+ };
+\ No newline at end of file
+diff --git a/js/draw.tool.circle.js b/js/draw.tool.circle.js
+index 571a6ed..229f4d3 100644
+--- a/js/draw.tool.circle.js
++++ b/js/draw.tool.circle.js
+@@ -26,6 +26,7 @@
+             var y = svgPoint.y;
+ 
+             var radius = Math.pow((x - startPoint.x), 2) + Math.pow((y - startPoint.y), 2);
++            radius = Math.sqrt(radius);
+             element.radius(radius);
+         }
+         return false;
+diff --git a/js/draw.tool.ellipse.js b/js/draw.tool.ellipse.js
+index effc508..5094a8f 100644
+--- a/js/draw.tool.ellipse.js
++++ b/js/draw.tool.ellipse.js
+@@ -28,7 +28,7 @@
+ 
+             var rx = Math.abs(svgPoint.x - startPoint.x);
+             var ry = Math.abs(svgPoint.y - startPoint.y);
+-            element.rx(rx).ry(rx);
++            element.rx(rx).ry(ry);
+         }
+         return false;
+     };
+diff --git a/js/draw.tool.pencil.js b/js/draw.tool.pencil.js
+index 5e72743..f44e374 100644
+--- a/js/draw.tool.pencil.js
++++ b/js/draw.tool.pencil.js
+@@ -59,7 +59,7 @@
+         parent = parentEle;
+         svgDoc = parent.doc();
+         DrawTool.init(svgDoc, listener);
+-        plotPrefix = defaultPlotPrefix;
++        plotPrefix = prefix || defaultPlotPrefix;
+         this.stop = function() {
+             DrawTool.stop(svgDoc, listener);
+         };
+diff --git a/js/draw.tool.polyline.js b/js/draw.tool.polyline.js
+index f03b947..a2aca2e 100644
+--- a/js/draw.tool.polyline.js
++++ b/js/draw.tool.polyline.js
+@@ -57,6 +57,7 @@
+             var x = svgPoint.x;
+             var y = svgPoint.y;
+             points.push([x, y]);
++            element.plot(points);
+ 
+         }
+         return false;
+diff --git a/js/draw.tool.rect.js b/js/draw.tool.rect.js
+index 8ab9023..7fa080d 100644
+--- a/js/draw.tool.rect.js
++++ b/js/draw.tool.rect.js
+@@ -29,6 +29,10 @@
+             var newHeight = y - startPoint.y;
+             var startX = startPoint.x;
+             var startY = startPoint.y;
++            if (newWidth < 0) {
++                startX += newWidth;
++            }
++
+             if (newHeight < 0) {
+                 startY += newHeight;
+             }
+diff --git a/js/global.status.js b/js/global.status.js
+index 3a5fdda..faed502 100644
+--- a/js/global.status.js
++++ b/js/global.status.js
+@@ -20,7 +20,7 @@ var GlobalStatus = {
+ 		return $("#fill_color").attr("data-color");
+ 	},
+ 	getLineSize: function() {
+-		return $("#lineSize dd").attr("data-line-size");
++		return $("#lineSize dd.active").attr("data-line-size");
+ 	},
+ 	getFillOpacity: function() {
+ 		var fillOpacity = "0.0";
+diff --git a/js/handle.border.js b/js/handle.border.js
+index 0f347d4..04411f4 100644
+--- a/js/handle.border.js
++++ b/js/handle.border.js
+@@ -188,7 +188,7 @@
+ 	};
+ 
+ 	HandleBorder.prototype.hide = function() {
+-		this.handleBorderGroup.remove();
++		this.handleBorderGroup.hide();
+ 	};
+ 
+ 	this.HandleBorder = HandleBorder;
+diff --git a/js/handle.border.listener.js b/js/handle.border.listener.js
+index b90fd44..21e256b 100644
+--- a/js/handle.border.listener.js
++++ b/js/handle.border.listener.js
+@@ -59,6 +59,7 @@
+ 		var currPoint = data.detail.currPoint;
+ 		var dx = currPoint.x - lastPoint.x;
+ 		left(dx);
++		lastPoint = currPoint;
+ 	}
+ 
+ 	function rightCenterDragStart(data) {
+diff --git a/js/svg.doc.extension.js b/js/svg.doc.extension.js
+index b821bca..35b0e3c 100644
+--- a/js/svg.doc.extension.js
++++ b/js/svg.doc.extension.js
+@@ -57,15 +57,16 @@
+                 if (GlobalStatus.isPreFilled()) {
+                     if ($("#fill_color").hasClass("active")) {
+                         _ele.fill(GlobalStatus.getFillColor());
++                        _ele.style("fill-opacity", GlobalStatus.getFillOpacity());
+                     } else {
+                         _ele.style("stroke", GlobalStatus.getFontColor());
+                     }
+ 
+                 } else if (GlobalStatus.isPicked()) {
+                     if (_ele.attr("picked")) {
+-                        _ele.fire("pick");
+-                    } else {
+                         _ele.fire("unPick");
++                    } else {
++                        _ele.fire("pick");
+                     }
+ 
+                 } else if (GlobalStatus.isRecycle()) {

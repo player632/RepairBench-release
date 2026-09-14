@@ -1,0 +1,195 @@
+diff --git a/src/app/components/tab-group/tab-group.component.ts b/src/app/components/tab-group/tab-group.component.ts
+index 28022c2..2921425 100644
+--- a/src/app/components/tab-group/tab-group.component.ts
++++ b/src/app/components/tab-group/tab-group.component.ts
+@@ -36,8 +36,8 @@ export class TabGroupComponent {
+     this.readFile(file).then(characterString => {
+       // The json is invalid when the user consumed an amber larva or giant mushroom. This happens because the int duration field gets the value Infinity.
+       const character = JSON.parse(characterString.replace(/Infinity/g, '"%Infinity%"'));
+-      this.characterService.setCharacter(character, index);
+       this.characterService.store();
++      this.characterService.setCharacter(character, index);
+     });
+   }
+ 
+@@ -80,7 +80,7 @@ export class TabGroupComponent {
+   private save(): void {
+     const character = this.characterService.$character.value;
+     const index = this.characterService.$index.value;
+-    const blob = new Blob([JSON.stringify(character).replace(/"%Infinity%"/g, 'Infinity')], {
++    const blob = new Blob([JSON.stringify(character)], {
+       type: 'application/octet-stream'
+     });
+     const link = document.createElement('a');
+diff --git a/src/app/pages/character/character.component.ts b/src/app/pages/character/character.component.ts
+index aae5bc0..c84e532 100644
+--- a/src/app/pages/character/character.component.ts
++++ b/src/app/pages/character/character.component.ts
+@@ -113,13 +113,6 @@ export class CharacterComponent implements OnInit {
+   onEnableSoulsChange(event: Event): void {
+     const target = event.target as HTMLInputElement;
+     this.character.hasUnlockedSouls = target.checked;
+-    // Reset the souls when disabling souls generally
+-    if (!target.checked) {
+-      this.hasAzeosUnlocked = false;
+-      this.hasOmorothUnlocked = false;
+-      this.hasScarabUnlocked = false;
+-      this.character.collectedSouls = [];
+-    }
+ 
+     this.characterService.store();
+   }
+diff --git a/src/app/pages/items/components/equipment/equipment.component.ts b/src/app/pages/items/components/equipment/equipment.component.ts
+index 8166e53..789b70e 100644
+--- a/src/app/pages/items/components/equipment/equipment.component.ts
++++ b/src/app/pages/items/components/equipment/equipment.component.ts
+@@ -25,7 +25,7 @@ export class EquipmentComponent implements OnInit {
+   ngOnInit(): void {
+     this.characterService.$character
+       .pipe(untilDestroyed(this))
+-      .subscribe(character => (this.equipmentSlots = character.inventory.slice(51, 58 + 1)));
++      .subscribe(character => (this.equipmentSlots = character.inventory.slice(51, 58)));
+ 
+     this.dragNDropService.$indexToHide
+       .pipe(untilDestroyed(this))
+diff --git a/src/app/pages/items/components/inventory/inventory.component.ts b/src/app/pages/items/components/inventory/inventory.component.ts
+index e82df72..da03568 100644
+--- a/src/app/pages/items/components/inventory/inventory.component.ts
++++ b/src/app/pages/items/components/inventory/inventory.component.ts
+@@ -62,9 +62,6 @@ export class InventoryComponent implements OnInit {
+    * Removes the currently selected item from the inventor and clears the selection IF there is no focused input-element
+    */
+   removeSelectedItem(): void {
+-    // if there is any input-element that has focus we don't want to remove the item, since pressing Delete or Backspace would be intendet for editing the value of the input
+-    if (document.activeElement.tagName === 'INPUT') return;
+-
+     if (this.indexToSelect !== -1) {
+       this.characterService.removeItemFromInventory(this.indexToSelect);
+       this.selectedItemService.setSelectedItem(-1);
+diff --git a/src/app/pages/skill-page/components/skill-list/skill-list.component.ts b/src/app/pages/skill-page/components/skill-list/skill-list.component.ts
+index c7017b7..1d7ad59 100644
+--- a/src/app/pages/skill-page/components/skill-list/skill-list.component.ts
++++ b/src/app/pages/skill-page/components/skill-list/skill-list.component.ts
+@@ -1,4 +1,4 @@
+-import { Component, OnInit } from '@angular/core';
++import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
+ import { UntilDestroy, untilDestroyed } from '@ngneat/until-destroy';
+ 
+ import { SkillTalentService } from 'src/app/services/skill-talent.service';
+@@ -9,7 +9,8 @@ import { CharacterService } from '~services';
+ @Component({
+   selector: 'app-skill-list',
+   templateUrl: './skill-list.component.html',
+-  styleUrls: ['./skill-list.component.scss']
++  styleUrls: ['./skill-list.component.scss'],
++  changeDetection: ChangeDetectionStrategy.OnPush
+ })
+ export class SkillListComponent implements OnInit {
+   skills: Skill[];
+diff --git a/src/app/pages/skill-page/components/talent-tree/talent-tree.component.ts b/src/app/pages/skill-page/components/talent-tree/talent-tree.component.ts
+index 3e6c182..650de7b 100644
+--- a/src/app/pages/skill-page/components/talent-tree/talent-tree.component.ts
++++ b/src/app/pages/skill-page/components/talent-tree/talent-tree.component.ts
+@@ -86,7 +86,7 @@ export class TalentTreeComponent implements OnInit {
+     const secondMaxed = this.selectedSkillTalentTree.points[1] !== 5;
+     const thirdMaxed = this.selectedSkillTalentTree.points[2] !== 5;
+     this.blocked[3] = secondMaxed;
+-    this.blocked[4] = secondMaxed && thirdMaxed;
++    this.blocked[4] = secondMaxed || thirdMaxed;
+     this.blocked[5] = thirdMaxed;
+ 
+     const fourthMaxed = this.selectedSkillTalentTree.points[3] !== 5;
+diff --git a/src/app/pipes/inventory.pipe.ts b/src/app/pipes/inventory.pipe.ts
+index 172d302..ecd1b49 100644
+--- a/src/app/pipes/inventory.pipe.ts
++++ b/src/app/pipes/inventory.pipe.ts
+@@ -8,14 +8,25 @@ import { CharacterService } from '~services';
+   name: 'inventory'
+ })
+ export class InventoryPipe implements PipeTransform {
++  private lastInventory: InventorySlot[] | null = null;
++  private lastResult: InventorySlot[] = [];
++
+   constructor(private characterService: CharacterService) {}
+ 
+   transform(inventory: InventorySlot[], bag: Bag): InventorySlot[] {
++    // The component hands over a fresh array whenever another character is
++    // loaded, so the reference alone tells us whether the slice must be rebuilt.
++    if (this.lastInventory === inventory) {
++      return this.lastResult;
++    }
+     // Get the bagSize and show the inventory based on the bag size.
+     const bagSize = this.characterService.getBagSize(bag);
+     // The inventory variable does not include the toolbar (the first 10 items)
+     // So we need to take the base size (30) and extract the toolbar
+     // After that we add the bagSize and have our inventory size
+-    return inventory.slice(0, 30 - 10 + bagSize);
++    const result = inventory.slice(0, 30 - 10 + bagSize);
++    this.lastInventory = inventory;
++    this.lastResult = result;
++    return result;
+   }
+ }
+diff --git a/src/app/services/character.service.ts b/src/app/services/character.service.ts
+index 7ba9cb6..65416a4 100644
+--- a/src/app/services/character.service.ts
++++ b/src/app/services/character.service.ts
+@@ -38,7 +38,7 @@ export class CharacterService {
+ 
+     // Skill are added later to the file, when earned the first xp
+     // Create them if they dont exist
+-    for (let i = 0; i < 12; i++) {
++    for (let i = 0; i < 11; i++) {
+       const skill = character.skills.find(skill => skill.skillID === i);
+       if (skill == null) {
+         character.skills.push({ skillID: i, value: 0 });
+diff --git a/src/app/services/condition-data.service.ts b/src/app/services/condition-data.service.ts
+index 83a4d96..94ee7bd 100644
+--- a/src/app/services/condition-data.service.ts
++++ b/src/app/services/condition-data.service.ts
+@@ -47,8 +47,8 @@ export class ConditionDataService {
+         let reinforcementBonusString;
+         if (mode === 'item') {
+           result = conditionStringTemplate
+-            .replace('{0:1}', tenthValueString)
+-            .replace('{0:2}', valueString)
++            .replace('{0:1}', valueString)
++            .replace('{0:2}', tenthValueString)
+             .replace('{0:3}', tenthValueString);
+           reinforcementBonusString = reinforcementBonusStringTemplate
+             .replace('{0:1}', tenthReinforcementBonusValueString)
+diff --git a/src/app/services/drag-n-drop.service.ts b/src/app/services/drag-n-drop.service.ts
+index 0a80e7b..57b17ae 100644
+--- a/src/app/services/drag-n-drop.service.ts
++++ b/src/app/services/drag-n-drop.service.ts
+@@ -55,17 +55,6 @@ export class DragNDropService {
+       amount = event.previousContainer.data.amount;
+       variation = event.previousContainer.data.variation;
+       variationUpdateCount = event.previousContainer.data.variationUpdateCount;
+-
+-      // swap the items. If the dropped slot is empty, the old slot will be empty. If the dropped has an item, the old slot will be that item
+-      const oldObjectID = event.container.data.objectID;
+-      const oldAmount = event.container.data.amount;
+-      const oldVariation = event.container.data.variation;
+-      const oldVariationUpdateCount = event.container.data.variationUpdateCount;
+-
+-      event.previousContainer.data.objectID = oldObjectID;
+-      event.previousContainer.data.amount = oldAmount;
+-      event.previousContainer.data.variation = oldVariation;
+-      event.previousContainer.data.variationUpdateCount = oldVariationUpdateCount;
+     } else {
+       // If the item came from the item-browser, get the data from the item as ItemData
+       objectID = event.item.data.objectID;
+diff --git a/src/app/services/item-set.service.ts b/src/app/services/item-set.service.ts
+index 2d5c52b..3ba7440 100644
+--- a/src/app/services/item-set.service.ts
++++ b/src/app/services/item-set.service.ts
+@@ -42,7 +42,7 @@ export class ItemSetService {
+       }
+     }
+     // Now for the items that are not equipped, thus not highlighted
+-    let difference = setBonus.pieces.filter(x => !tmp.includes(x));
++    let difference = setBonus.pieces.filter(x => tmp.includes(x));
+     for (let objectId of difference) {
+       const name = this.itemDataService.getItemDetail(objectId).name;
+       pieces.push({ name, isHighlighted: false });

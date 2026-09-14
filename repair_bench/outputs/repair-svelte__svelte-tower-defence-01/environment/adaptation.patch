@@ -1,0 +1,92 @@
+diff --git a/package.json b/package.json
+index cdc77e7..197cf54 100644
+--- a/package.json
++++ b/package.json
+@@ -13,6 +13,7 @@
+ 	},
+ 	"devDependencies": {
+ 		"@sveltejs/adapter-auto": "^3.0.0",
++		"@sveltejs/adapter-static": "^3.0.10",
+ 		"@sveltejs/kit": "^2.0.0",
+ 		"@sveltejs/vite-plugin-svelte": "^4.0.0-next.6",
+ 		"@types/eslint": "^9.6.0",
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 87bcb5c..4fa864c 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -1,10 +1 @@
+-<script>
+-	import { dev } from '$app/environment';
+-	import { inject } from '@vercel/analytics';
+-	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+-
+-	injectSpeedInsights();
+-	inject({ mode: dev ? 'development' : 'production' });
+-</script>
+-
+ <slot />
+diff --git a/src/routes/+layout.ts b/src/routes/+layout.ts
+new file mode 100644
+index 0000000..189f71e
+--- /dev/null
++++ b/src/routes/+layout.ts
+@@ -0,0 +1 @@
++export const prerender = true;
+diff --git a/svelte.config.js b/svelte.config.js
+index 58c1c83..04814b3 100644
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,4 +1,4 @@
+-import adapter from '@sveltejs/adapter-vercel';
++import adapter from '@sveltejs/adapter-static';
+ // import path from 'path';
+ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+ 
+diff --git a/src/lib/store/SoundManager.svelte.ts b/src/lib/store/SoundManager.svelte.ts
+index 15fd244..b9e5c58 100644
+--- a/src/lib/store/SoundManager.svelte.ts
++++ b/src/lib/store/SoundManager.svelte.ts
+@@ -28,35 +28,17 @@ export class SoundManager {
+ 
+ 	preload = async () => {
+ 		const loadSound = (name, url) => {
+-			return new Promise((resolve, reject) => {
+-				const audio = new Audio(url);
+-
+-				const onLoad = () => {
+-					this.sounds[name] = audio;
+-					this.sounds[name].volume = name === 'bgSound' ? MUSIC_VOLUME : SFX_VOLUME;
+-					this.sounds[name].loop = name === 'bgSound';
+-					this.loadedCount += 1;
+-					audio.removeEventListener('canplaythrough', onLoad);
+-					resolve();
+-				};
+-
+-				const onError = (error) => {
+-					audio.removeEventListener('error', onError);
+-					reject(error);
+-				};
+-
+-				audio.addEventListener('canplaythrough', onLoad);
+-				audio.addEventListener('error', onError);
+-				audio.load();
+-			});
++			const audio = new Audio(url);
++			audio.volume = name === 'bgSound' ? MUSIC_VOLUME : SFX_VOLUME;
++			audio.loop = name === 'bgSound';
++			this.sounds[name] = audio;
++			this.loadedCount += 1;
++			audio.load();
+ 		};
+ 
+ 		try {
+-			await loadSound('bgSound', sounds.bgSound);
+-			const effectPromises = Object.entries(sounds.effects).map(([name, url]) =>
+-				loadSound(name, url)
+-			);
+-			await Promise.all(effectPromises);
++			loadSound('bgSound', sounds.bgSound);
++			Object.entries(sounds.effects).forEach(([name, url]) => loadSound(name, url));
+ 			this.preloaded = true;
+ 			console.log('Sounds preloaded successfully.');
+ 		} catch (error) {

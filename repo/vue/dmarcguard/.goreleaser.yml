@@ -1,0 +1,132 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+env:
+  - GITHUB_TOKEN
+  - HOMEBREW_TAP_GITHUB_TOKEN
+  - COSIGN_EXPERIMENTAL=true
+
+before:
+  hooks:
+    - go mod download
+    - go mod verify
+    - bun install --frozen-lockfile
+    - bun run build
+    - rm -rf internal/api/dist
+    - mv dist internal/api/
+
+builds:
+  - binary: parse-dmarc
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - "-trimpath"
+    ldflags:
+      - "-s"
+      - "-w"
+      - "-extldflags '-static'"
+      - "-X main.version={{.Version}}"
+      - "-X main.commit={{.Commit}}"
+      - "-X main.date={{.Date}}"
+      - "-X main.builtBy=goreleaser"
+    ignore:
+      - goarch: arm
+        goos: windows
+      - goarch: arm64
+        goos: windows
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - formats:
+          - zip
+        goos: windows
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- tolower .Os }}_
+      {{- if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+dist: .goreleaser-dist
+
+dockers_v2:
+  - id: parse-dmarc
+    images:
+      - meysam81/parse-dmarc
+      - dmarcguard/dmarcguard
+      - ghcr.io/dmarcguardhq/dmarcguard
+    dockerfile: Dockerfile.goreleaser
+    tags:
+      - "{{ if not .IsSnapshot }}v{{ .Version }}{{ end }}"
+      - "{{ if not .IsSnapshot }}v{{ .Major }}{{ end }}"
+      - "{{ if not .IsSnapshot }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .IsSnapshot }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ .FullCommit }}"
+      - "{{ if .IsNightly }}latest{{ end }}"
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.description": "🛡️ A lightweight, self-hosted DMARC report parser with a beautiful Vue.js dashboard. Single-binary deployment with IMAP integration, SQLite storage, and RFC 7489 compliance. Built with Go and Vue 3 - no external dependencies required."
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "io.modelcontextprotocol.server.name": "io.github.meysam81/parse-dmarc"
+
+docker_signs:
+  - id: default
+    cmd: cosign
+    args:
+      - "sign"
+      - "--yes"
+      - "${artifact}"
+    output: true
+
+docker_digest:
+  name_template: "digest.txt"
+  disable: "{{ .Env.NO_DIGEST }}"
+
+homebrew_casks:
+  - name: parse-dmarc
+    description: Single-binary, zero-dependency DMARC parser with a modern web dashboard.
+    homepage: https://github.com/meysam81/parse-dmarc
+    license: Apache-2.0
+    commit_msg_template: Brew formula update for {{ .ProjectName }} version {{ .Tag }}
+    repository:
+      name: homebrew-tap
+      owner: meysam81
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/parse-dmarc"]
+          end
+          puts "✨ parse-dmarc installed successfully!"
+          puts ""
+          puts "📝 Tip: You can enable shell completion by running:"
+          puts "   parse-dmarc completion bash  # for bash"
+          puts "   parse-dmarc completion zsh   # for zsh"
+          puts "   parse-dmarc completion fish  # for fish"
+          puts ""
+          puts "📚 For more information and usage instructions, visit:"
+          puts "   https://github.com/meysam81/parse-dmarc"
+
+report_sizes: true
+
+milestones:
+  - close: true
+    fail_on_error: false
+    name_template: "{{ .Tag }}"
+
+announce:
+  skip: "{{gt .Patch 0}}"
+
+checksum:
+  algorithm: sha256
+  name_template: checksums.txt

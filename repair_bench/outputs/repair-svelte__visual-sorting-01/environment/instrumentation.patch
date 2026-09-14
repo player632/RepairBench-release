@@ -1,0 +1,420 @@
+diff --git a/package-lock.json b/package-lock.json
+index a8aaace..41d809b 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -2920,17 +2920,6 @@
+       "integrity": "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==",
+       "dev": true
+     },
+-    "node_modules/@types/node": {
+-      "version": "20.10.5",
+-      "resolved": "https://registry.npmjs.org/@types/node/-/node-20.10.5.tgz",
+-      "integrity": "sha512-nNPsNE65wjMxEKI93yOP+NPGGBJz/PoN3kZsVLee0XMiJolxSekEVD8wRwBUBqkwc7UWop0edW50yrCQW4CyRw==",
+-      "dev": true,
+-      "optional": true,
+-      "peer": true,
+-      "dependencies": {
+-        "undici-types": "~5.26.4"
+-      }
+-    },
+     "node_modules/@types/pug": {
+       "version": "2.0.10",
+       "resolved": "https://registry.npmjs.org/@types/pug/-/pug-2.0.10.tgz",
+@@ -7875,14 +7864,6 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
+-    "node_modules/undici-types": {
+-      "version": "5.26.5",
+-      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-5.26.5.tgz",
+-      "integrity": "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==",
+-      "dev": true,
+-      "optional": true,
+-      "peer": true
+-    },
+     "node_modules/unicode-canonical-property-names-ecmascript": {
+       "version": "2.0.1",
+       "resolved": "https://registry.npmjs.org/unicode-canonical-property-names-ecmascript/-/unicode-canonical-property-names-ecmascript-2.0.1.tgz",
+diff --git a/src/app.html b/src/app.html
+index 4781e95..e56bdf7 100644
+--- a/src/app.html
++++ b/src/app.html
+@@ -1,5 +1,5 @@
+ <!doctype html>
+-<html lang="en" data-theme="dim">
++<html lang="en" data-theme="dim" data-testid="app-html">
+   <head>
+     <meta charset="utf-8" />
+     <link rel="icon" href="%sveltekit.assets%/favicon.ico" sizes="32x32" />
+diff --git a/src/lib/components/AlgorithmSelector.svelte b/src/lib/components/AlgorithmSelector.svelte
+index d5cf69d..1247d60 100644
+--- a/src/lib/components/AlgorithmSelector.svelte
++++ b/src/lib/components/AlgorithmSelector.svelte
+@@ -23,6 +23,8 @@
+             <li>
+               <button
+                 class={algo.name === selectedAlgorithm?.name ? 'active' : ''}
++                data-testid={`algo-${algo.name.toLowerCase().replace(/ /g, '-')}`}
++                data-active={algo.name === selectedAlgorithm?.name ? 'true' : 'false'}
+                 on:click={click(algo)}
+               >
+                 <span class="flex items-center gap-2">
+diff --git a/src/lib/components/ControlButtons.svelte b/src/lib/components/ControlButtons.svelte
+index 38a84a4..9e47a34 100644
+--- a/src/lib/components/ControlButtons.svelte
++++ b/src/lib/components/ControlButtons.svelte
+@@ -73,20 +73,23 @@
+         ? 'btn-secondary'
+         : 'btn-primary'} lg:btn-lg lg:w-24"
+       title={$running ? 'Stop (Space)' : 'Start (Space)'}
++      data-testid="btn-run"
++      data-active={$running ? 'true' : 'false'}
+       on:click={start}>{$running ? 'Stop' : 'Start'}</button
+     >
+     <button
+       class="btn join-item lg:btn-lg lg:w-24"
+       title="Step (→)"
++      data-testid="btn-step"
+       on:click={step}>Step</button
+     >
+   </div>
+-  <button class="btn lg:btn-lg" title="Shuffle (R)" on:click={shuffleClick}
++  <button class="btn lg:btn-lg" title="Shuffle (R)" data-testid="btn-shuffle" on:click={shuffleClick}
+     >Shuffle</button
+   >
+ </div>
+ <div class="flex gap-1">
+-  <button class="btn flex-grow" on:click={reapply}
++  <button class="btn flex-grow" data-testid="btn-pattern-reapply" on:click={reapply}
+     >↻ {patternLabels[selectedPattern]}</button
+   >
+   <details
+@@ -95,6 +98,7 @@
+   >
+     <summary
+       class="btn"
++      data-testid="pattern-dropdown"
+       on:click|stopPropagation={handleMenuOutsideClick(
+         patternRef,
+         'patternSelect'
+@@ -108,6 +112,7 @@
+           <button
+             class={p === selectedPattern ? 'btn-active' : ''}
+             data-pattern-select
++            data-testid={`pattern-opt-${p}`}
+             on:click={pick(p)}
+           >
+             <span class="flex items-center gap-2">
+diff --git a/src/lib/components/HeaderSoundControl.svelte b/src/lib/components/HeaderSoundControl.svelte
+index cf13d2f..259cb02 100644
+--- a/src/lib/components/HeaderSoundControl.svelte
++++ b/src/lib/components/HeaderSoundControl.svelte
+@@ -85,6 +85,8 @@
+       <button
+         class={!oscillatorType ? 'btn-active' : ''}
+         data-sound-select
++        data-testid="sound-opt-none"
++        data-active={!oscillatorType ? 'true' : 'false'}
+         on:click={() => changeSound(null)}>None</button
+       >
+     </li>
+@@ -93,6 +95,8 @@
+         <button
+           class={osc === oscillatorType ? 'btn-active' : ''}
+           data-sound-select
++          data-testid={`sound-opt-${osc}`}
++          data-active={osc === oscillatorType ? 'true' : 'false'}
+           on:click={() => changeSound(osc)}>{getOscillatorName(osc)}</button
+         >
+       </li>
+diff --git a/src/lib/components/HeaderStats.svelte b/src/lib/components/HeaderStats.svelte
+index d2cf7e9..d641caa 100644
+--- a/src/lib/components/HeaderStats.svelte
++++ b/src/lib/components/HeaderStats.svelte
+@@ -16,7 +16,8 @@
+       {#if p.label}
+         <span
+           class="text-[0.6rem] uppercase tracking-wider opacity-60 truncate max-w-[7rem]"
+-          title={p.label}>{p.label}</span
++          title={p.label}
++          data-testid={`panel-label-${i}`}>{p.label}</span
+         >
+       {/if}
+       <div class="flex items-center gap-2 lg:gap-3">
+@@ -27,7 +28,7 @@
+           <span class="opacity-50 text-[0.55rem] uppercase tracking-wider"
+             >Cmp</span
+           >
+-          <span class="tabular-nums">{fmt(p.stats.comparisons)}</span>
++          <span class="tabular-nums" data-testid={`cmp-value-${i}`} data-active={p.stats.comparisons > 0 ? 'true' : 'false'}>{fmt(p.stats.comparisons)}</span>
+         </div>
+         <div
+           class="tooltip tooltip-bottom flex flex-col items-end leading-tight"
+@@ -36,7 +37,7 @@
+           <span class="opacity-50 text-[0.55rem] uppercase tracking-wider"
+             >Swp</span
+           >
+-          <span class="tabular-nums">{fmt(p.stats.swaps)}</span>
++          <span class="tabular-nums" data-testid={`swp-value-${i}`} data-active={p.stats.swaps > 0 ? 'true' : 'false'}>{fmt(p.stats.swaps)}</span>
+         </div>
+         <div
+           class="tooltip tooltip-bottom flex flex-col items-end leading-tight"
+@@ -45,7 +46,7 @@
+           <span class="opacity-50 text-[0.55rem] uppercase tracking-wider"
+             >Acc</span
+           >
+-          <span class="tabular-nums">{fmt(p.stats.accesses)}</span>
++          <span class="tabular-nums" data-testid={`acc-value-${i}`} data-active={p.stats.accesses > 0 ? 'true' : 'false'}>{fmt(p.stats.accesses)}</span>
+         </div>
+       </div>
+     </div>
+diff --git a/src/lib/components/HeaderThemeControl.svelte b/src/lib/components/HeaderThemeControl.svelte
+index 62275c6..c15620d 100644
+--- a/src/lib/components/HeaderThemeControl.svelte
++++ b/src/lib/components/HeaderThemeControl.svelte
+@@ -63,6 +63,7 @@
+         <button
+           data-act-class="btn-active"
+           data-set-theme={theme}
++          data-testid={`theme-opt-${theme}`}
+           on:click={selectTheme}
+           >{theme.charAt(0).toUpperCase() + theme.slice(1)}</button
+         >
+diff --git a/src/lib/components/HelpDialog.svelte b/src/lib/components/HelpDialog.svelte
+index fdb73ed..d828c72 100644
+--- a/src/lib/components/HelpDialog.svelte
++++ b/src/lib/components/HelpDialog.svelte
+@@ -1,8 +1,15 @@
+ <script lang="ts">
+   let ref: HTMLDialogElement;
++  let shown = false;
+ 
+-  export const open = () => ref?.showModal();
+-  export const close = () => ref?.close();
++  export const open = () => {
++    shown = true;
++    ref?.showModal();
++  };
++  export const close = () => {
++    shown = false;
++    ref?.close();
++  };
+ 
+   const shortcuts: { keys: string[]; label: string }[] = [
+     { keys: ['Space'], label: 'Start / Stop' },
+@@ -15,7 +22,8 @@
+   ];
+ </script>
+ 
+-<dialog bind:this={ref} class="modal modal-bottom sm:modal-middle">
++<dialog bind:this={ref} class="modal modal-bottom sm:modal-middle" data-testid="help-dialog" on:close={() => (shown = false)}>
++  {#if shown}<span data-testid="help-open-flag" />{/if}
+   <div class="modal-box">
+     <h3 class="text-lg font-bold mb-4">Keyboard shortcuts</h3>
+     <table class="table table-sm">
+diff --git a/src/lib/components/RangeArraySize.svelte b/src/lib/components/RangeArraySize.svelte
+index 935e50d..37147f7 100644
+--- a/src/lib/components/RangeArraySize.svelte
++++ b/src/lib/components/RangeArraySize.svelte
+@@ -4,10 +4,10 @@
+   import { running } from '../../states';
+ </script>
+ 
+-<label class="form-control w-full mb-2">
++<label class="form-control w-full mb-2" data-testid="size-picker-range">
+   <div class="label">
+     <span class="label-text">Array size</span>
+-    <span class="label-text-alt">{size} bars</span>
++    <span class="label-text-alt" data-testid="size-label">{size} bars</span>
+   </div>
+   <input
+     id="size"
+@@ -17,6 +17,7 @@
+     max="1024"
+     min="2"
+     type="range"
++    data-testid="size-input"
+     bind:value={size}
+   />
+ </label>
+diff --git a/src/lib/components/RangeArraySizePowerOfTwo.svelte b/src/lib/components/RangeArraySizePowerOfTwo.svelte
+index b6d4e00..7d66edc 100644
+--- a/src/lib/components/RangeArraySizePowerOfTwo.svelte
++++ b/src/lib/components/RangeArraySizePowerOfTwo.svelte
+@@ -13,10 +13,10 @@
+   }
+ </script>
+ 
+-<label class="form-control w-full mb-2">
++<label class="form-control w-full mb-2" data-testid="size-picker-pow2">
+   <div class="label">
+     <span class="label-text">Array size</span>
+-    <span class="label-text-alt">{size} bars</span>
++    <span class="label-text-alt" data-testid="size-label">{size} bars</span>
+   </div>
+   <div class="join">
+     {#each steps as value}
+@@ -27,6 +27,8 @@
+         disabled={$running}
+         type="radio"
+         {value}
++        data-testid={`size-pow2-${value}`}
++        data-active={value === size ? 'true' : 'false'}
+         bind:group={size}
+       />
+     {/each}
+diff --git a/src/lib/components/RangeDelay.svelte b/src/lib/components/RangeDelay.svelte
+index e7adcef..da573c1 100644
+--- a/src/lib/components/RangeDelay.svelte
++++ b/src/lib/components/RangeDelay.svelte
+@@ -29,10 +29,10 @@
+   $: realDelay = getRealDelay(delay);
+ </script>
+ 
+-<label class="form-control w-full">
++<label class="form-control w-full" data-testid="delay-picker">
+   <div class="label">
+     <span class="label-text">Delay</span>
+-    <span class="label-text-alt">{realDelay} ms</span>
++    <span class="label-text-alt" data-testid="delay-label">{realDelay} ms</span>
+   </div>
+   <input
+     id="delay"
+@@ -42,6 +42,7 @@
+     min="0"
+     step="0.1"
+     type="range"
++    data-testid="delay-input"
+     bind:value={delay}
+   />
+ </label>
+diff --git a/src/lib/components/WhatsNewModal.svelte b/src/lib/components/WhatsNewModal.svelte
+index 4bf363f..4312f7f 100644
+--- a/src/lib/components/WhatsNewModal.svelte
++++ b/src/lib/components/WhatsNewModal.svelte
+@@ -7,18 +7,21 @@
+   const VERSION_KEY = 'whats-new-2026-05';
+ 
+   let ref: HTMLDialogElement;
++  let shown = false;
+ 
+   onMount(() => {
+     if (localStorage.getItem(VERSION_KEY)) return;
+     // Small delay so the rest of the UI is rendered first.
+     setTimeout(() => {
+       ref?.showModal();
++      shown = true;
+       trackEvent('modal-shown', { modal: 'whats-new', version: VERSION_KEY });
+     }, 800);
+   });
+ 
+   const dismiss = (action: 'gotIt' | 'backdrop') => {
+     localStorage.setItem(VERSION_KEY, '1');
++    shown = false;
+     trackEvent('modal-action-whats-new', { action });
+     ref?.close();
+   };
+@@ -27,8 +30,11 @@
+ <dialog
+   bind:this={ref}
+   class="modal modal-bottom sm:modal-middle"
++  data-testid="modal-whatsnew"
++  on:close={() => (shown = false)}
+   on:close={() => localStorage.setItem(VERSION_KEY, '1')}
+ >
++  {#if shown}<span data-testid="modal-open-flag" />{/if}
+   <div class="modal-box max-w-lg">
+     <h3 class="text-lg font-bold mb-1">✨ What's new</h3>
+     <p class="text-sm opacity-70 mb-4">
+@@ -75,7 +81,7 @@
+     </ul>
+     <div class="modal-action">
+       <form method="dialog">
+-        <button class="btn btn-primary" on:click={() => dismiss('gotIt')}
++        <button class="btn btn-primary" data-testid="btn-whatsnew-close" on:click={() => dismiss('gotIt')}
+           >Got it</button
+         >
+       </form>
+diff --git a/src/lib/components/mobile/MobileAlgorithmSelector.svelte b/src/lib/components/mobile/MobileAlgorithmSelector.svelte
+index c6f7d69..b3031c4 100644
+--- a/src/lib/components/mobile/MobileAlgorithmSelector.svelte
++++ b/src/lib/components/mobile/MobileAlgorithmSelector.svelte
+@@ -1,6 +1,7 @@
+ <script lang="ts">
+   export let selectAlgorithm: (algo: AlgorithmDefinition) => void;
+   export let selectedAlgorithm: AlgorithmDefinition;
++  export let testid = 'algo-m';
+ 
+   import { algorithms } from '../../sort-algorithms/algorithms';
+   import type { AlgorithmDefinition } from '../../sort-algorithms/types';
+@@ -17,6 +18,7 @@
+ <div class="mb-2 md:mb-0">
+   <select
+     class="select select-bordered w-full"
++    data-testid={testid}
+     on:change={(e) => change(e.currentTarget.value)}
+   >
+     {#each algorithms as algos, group}
+@@ -31,4 +33,4 @@
+       {/each}
+     {/each}
+   </select>
+-</div>
++</div>
+\ No newline at end of file
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 84bc75d..fafe5b6 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -387,6 +387,8 @@
+           <button
+             class="btn btn-sm btn-ghost absolute top-2 right-2 z-10 gap-1.5"
+             aria-label="Toggle compare layout"
++            data-testid="btn-compare-layout"
++            data-layout={compareLayout}
+             title="Switch layout (side-by-side / stacked)"
+             on:click={toggleCompareLayout}
+           >
+@@ -433,10 +435,12 @@
+             class="hidden md:flex md:flex-col md:justify-center md:gap-4 md:mr-5 md:w-[30.5rem] card bg-base-300 rounded-box p-3"
+           >
+             <MobileAlgorithmSelector
++              testid="mobile-algo-a"
+               selectAlgorithm={(a) => selectAlgorithm(a, 'A')}
+               selectedAlgorithm={algorithmA}
+             />
+             <MobileAlgorithmSelector
++              testid="mobile-algo-b"
+               selectAlgorithm={(a) => selectAlgorithm(a, 'B')}
+               selectedAlgorithm={algorithmB}
+             />
+@@ -445,12 +449,14 @@
+           <div class="md:hidden flex flex-row gap-2 mb-2">
+             <div class="flex-1 min-w-0">
+               <MobileAlgorithmSelector
++              testid="mobile-algo-a-m"
+                 selectAlgorithm={(a) => selectAlgorithm(a, 'A')}
+                 selectedAlgorithm={algorithmA}
+               />
+             </div>
+             <div class="flex-1 min-w-0">
+               <MobileAlgorithmSelector
++              testid="mobile-algo-b-m"
+                 selectAlgorithm={(a) => selectAlgorithm(a, 'B')}
+                 selectedAlgorithm={algorithmB}
+               />
+@@ -465,6 +471,7 @@
+           </div>
+           <div class="md:hidden">
+             <MobileAlgorithmSelector
++              testid="mobile-algo-a"
+               selectAlgorithm={(a) => selectAlgorithm(a, 'A')}
+               selectedAlgorithm={algorithmA}
+             />
+@@ -497,4 +504,4 @@
+   <KoFiSupportModal />
+   <HelpDialog bind:this={helpDialog} />
+   <WhatsNewModal />
+-</main>
++</main>
+\ No newline at end of file

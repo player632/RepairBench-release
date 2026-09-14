@@ -1,0 +1,133 @@
+diff --git a/src/App.svelte b/src/App.svelte
+index 9280ad8..28e7367 100644
+--- a/src/App.svelte
++++ b/src/App.svelte
+@@ -33,8 +33,14 @@
+ 	const hash = window.location.hash.slice(1).split("/");
+ 	const modeVal: GameMode = !isNaN(GameMode[hash[0]])
+ 		? GameMode[hash[0]]
+-		: modeData.default;
++		: +localStorage.getItem("mode") || modeData.default;
+ 	mode.set(modeVal);
++	// If this is a link to a specific word make sure that that is the word
++	if (!isNaN(+hash[1]) && +hash[1] < getWordNumber(modeVal)) {
++		modeData.modes[modeVal].seed =
++			(+hash[1] - 1) * modeData.modes[modeVal].unit + modeData.modes[modeVal].start;
++		modeData.modes[modeVal].historical = true;
++	}
+ 	mode.subscribe((m) => {
+ 		localStorage.setItem("mode", `${m}`);
+ 		window.location.hash = GameMode[m];
+@@ -49,7 +55,7 @@
+ 		letterStates.set(new LetterStates(state.board));
+ 	});
+ 
+-	saveState(state);
++	$: saveState(state);
+ 	function saveState(state: GameState) {
+ 		if (modeData.modes[$mode].historical) {
+ 			localStorage.setItem(`state-${$mode}-h`, state.toString());
+diff --git a/src/components/Game.svelte b/src/components/Game.svelte
+index cbfc73a..7d03af7 100644
+--- a/src/components/Game.svelte
++++ b/src/components/Game.svelte
+@@ -81,6 +81,7 @@
+ 			game.board.state[game.guesses] = game.guess(word);
+ 			++game.guesses;
+ 			$letterStates.update(game.lastState, game.lastWord);
++			$letterStates = $letterStates;
+ 			if (game.lastWord === word) win();
+ 			else if (game.guesses === ROWS) lose();
+ 		} else {
+@@ -126,12 +127,13 @@
+ 		game = new GameState($mode, localStorage.getItem(`state-${$mode}`));
+ 		word = words.words[seededRandomInt(0, words.words.length, modeData.modes[$mode].seed)];
+ 		$letterStates = new LetterStates();
++		showStats = false;
+ 		showRefresh = false;
+ 		timer.reset($mode);
+ 	}
+ 
+ 	function setShowStatsTrue() {
+-		if (game.active) showStats = true;
++		if (!game.active) showStats = true;
+ 	}
+ 
+ 	function onSwipe(e: Swipe) {
+diff --git a/src/components/board/Board.svelte b/src/components/board/Board.svelte
+index 15c5f30..d7a76d3 100644
+--- a/src/components/board/Board.svelte
++++ b/src/components/board/Board.svelte
+@@ -31,7 +31,7 @@
+ 	let word = "";
+ 
+ 	function context(cx: number, cy: number, num: number, val: string) {
+-		if (guesses > num) {
++		if (guesses >= num) {
+ 			x = cx;
+ 			y = cy;
+ 			showCtx = true;
+diff --git a/src/components/settings/Settings.svelte b/src/components/settings/Settings.svelte
+index 423cf5b..ebe43a1 100644
+--- a/src/components/settings/Settings.svelte
++++ b/src/components/settings/Settings.svelte
+@@ -46,7 +46,7 @@
+ 				</svelte:fragment>
+ 			</Setting>
+ 		</div>
+-		<Setting testid="setting-dark" type="switch" value={$settings.dark}>
++		<Setting testid="setting-dark" type="switch" bind:value={$settings.dark}>
+ 			<svelte:fragment slot="title">Dark Theme</svelte:fragment>
+ 		</Setting>
+ 		<Setting testid="setting-colorblind" type="switch" bind:value={$settings.colorblind}>
+diff --git a/src/components/widgets/Historical.svelte b/src/components/widgets/Historical.svelte
+index 0b103f2..4ca4bfd 100644
+--- a/src/components/widgets/Historical.svelte
++++ b/src/components/widgets/Historical.svelte
+@@ -57,7 +57,7 @@
+ 			$mode,
+ 			(newWordNum - 1) * currentModeData.unit + currentModeData.start
+ 		);
+-		mode.set(newMode);
++		mode.set(newMode, true);
+ 
+ 		e.currentTarget.dispatchEvent(custom_event("close", null, { bubbles: true }));
+ 		showSettings = false;
+diff --git a/src/components/widgets/Share.svelte b/src/components/widgets/Share.svelte
+index bb6944a..642524d 100644
+--- a/src/components/widgets/Share.svelte
++++ b/src/components/widgets/Share.svelte
+@@ -10,7 +10,7 @@
+ 
+ 	function copyStats() {
+ 		navigator.clipboard.writeText(
+-			`${modeData.modes[mode].name} Wordle+ #${state.wordNumber} ${
++			`${modeData.modes[$mode].name} Wordle+ #${state.wordNumber} ${
+ 				failed(state) ? "X" : state.guesses
+ 			}/${state.board.words.length}\n\n    ${state.board.state
+ 				.slice(0, state.guesses)
+diff --git a/src/components/widgets/Toaster.svelte b/src/components/widgets/Toaster.svelte
+index 4bd612d..941d755 100644
+--- a/src/components/widgets/Toaster.svelte
++++ b/src/components/widgets/Toaster.svelte
+@@ -3,7 +3,7 @@
+ 
+ 	export function pop(text: string, duration = 1) {
+ 		toast = [text, ...toast];
+-		setTimeout(() => (toast = toast.slice(1)), duration * 1000);
++		setTimeout(() => (toast = toast.slice(0, toast.length - 1)), duration * 1000);
+ 	}
+ 	let toast: string[] = [];
+ </script>
+diff --git a/src/utils.ts b/src/utils.ts
+index 2d905ed..e409a4d 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -316,6 +316,7 @@ export class GameState extends Storable {
+ 		const parsed = JSON.parse(str) as GameState;
+ 		if (parsed.wordNumber !== getWordNumber(this.#mode)) return;
+ 		this.active = parsed.active;
++		this.guesses = parsed.guesses;
+ 		this.validHard = parsed.validHard;
+ 		this.time = parsed.time;
+ 		this.wordNumber = parsed.wordNumber;

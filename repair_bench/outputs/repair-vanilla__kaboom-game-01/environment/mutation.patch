@@ -1,0 +1,135 @@
+diff --git a/index.html b/index.html
+index cfb3575..02ac78b 100644
+--- a/index.html
++++ b/index.html
+@@ -38,13 +38,13 @@
+                             <div class="input-group-prepend">
+                                 <div class="input-group-text">height</div>
+                             </div>
+-                            <input onchange="updateMax()" id="height" type="number" class="form-control" min="1" max="30" value="10" data-testid="rb-input-height">
++                            <input id="height" type="number" class="form-control" min="1" max="30" value="10" data-testid="rb-input-height">
+                         </div>
+                         <div class="input-group mt-2">
+                             <div class="input-group-prepend">
+                                 <div class="input-group-text">mines</div>
+                             </div>
+-                            <input id="numMines" type="number" class="form-control" min="1" max="899" value="20" data-testid="rb-input-mines">
++                            <input id="numMines" type="text" class="form-control" min="1" max="899" value="20" data-testid="rb-input-mines">
+                         </div>
+                     </form>
+                 </div>
+@@ -56,10 +56,10 @@
+                 </div>
+                 <div class="col-lg-6 mt-2">
+                     <div>
+-                        <label class="form-check-label" data-testid="rb-opt-debug-label">
++                        <div class="form-check-label" data-testid="rb-opt-debug-label">
+                             <input id="debug" type="checkbox" data-testid="rb-opt-debug">
+                             Debug mode
+-                        </label>
++                        </div>
+                     </div>
+                     <div>
+                         <label class="form-check-label" data-testid="rb-opt-allowOutside-label">
+diff --git a/index.js b/index.js
+index f34a115..4dfdcae 100644
+--- a/index.js
++++ b/index.js
+@@ -80,7 +80,7 @@ class Game {
+ 
+   cellClick(e, x, y) {
+     e.preventDefault();
+-    if (!this.safeMode) {
++    if (this.safeMode) {
+       this.reveal(x, y);
+     }
+   }
+@@ -217,7 +217,7 @@ class Game {
+     this.hintElement.classList.remove('hidden');
+     this.hintElement.innerText = message;
+     setTimeout(() => {
+-      this.hintElement.classList.add('hidden');
++      this.hintElement.classList.remove('hidden');
+     }, 1000);
+   }
+ 
+@@ -258,7 +258,7 @@ class Game {
+ 
+     this.map.labels[y][x] = n;
+     this.numRevealed++;
+-    if (this.numRevealed + this.numMines === this.width * this.height) {
++    if (this.numRevealed === this.width * this.height) {
+       this.state = State.WIN;
+       this.mineGrid = mineGrid;
+       return;
+@@ -333,6 +333,7 @@ class Game {
+     }
+     if (this.unsure[y][x]) {
+       this.unsure[y][x] = false;
++      return;
+     } else if (this.flags[y][x]) {
+       this.flags[y][x] = false;
+       this.unsure[y][x] = true;
+@@ -435,7 +436,7 @@ class Game {
+ }
+ 
+ function* neighbors(x, y, width, height) {
+-  for (let y0 = Math.max(y - 1, 0); y0 < Math.min(y + 2, height) ; y0++) {
++  for (let y0 = Math.max(y - 1, 0); y0 < y + 1 ; y0++) {
+     for (let x0 = Math.max(x - 1, 0); x0 < Math.min(x + 2, width); x0++) {
+         if (y0 !== y || x0 !== x) {
+           yield [x0, y0];
+@@ -865,7 +866,7 @@ function undo() {
+   game.undo();
+ }
+ 
+-const SETTINGS = ['debug', 'allowOutside', 'safeMode', 'countdownMode'];
++const SETTINGS = ['debug', 'allowOutside', 'safeMode'];
+ 
+ function updateSettings() {
+   for (const name of SETTINGS) {
+diff --git a/sat.js b/sat.js
+index 25d77e6..7d8f7cb 100644
+--- a/sat.js
++++ b/sat.js
+@@ -88,7 +88,6 @@ class Sat {
+   solveWith(func) {
+     const saved = this.clauses;
+     try {
+-      this.clauses = this.clauses.slice();
+       func();
+       return this.solve();
+     } finally {
+diff --git a/style.css b/style.css
+index 1e1a71e..13f929d 100644
+--- a/style.css
++++ b/style.css
+@@ -10,8 +10,6 @@
+     width: 30px;
+     height: 30px;
+     border: 1px solid #999;
+-    user-select: none;
+-    -webkit-user-select: none;
+     -webkit-touch-callout: none;
+ 
+     position: relative;
+@@ -112,10 +110,6 @@
+     background: url(sprites.svg) -31px -1px;
+ }
+ 
+-.cell.unsure::after {
+-    content: "?";
+-    font-weight: bold;
+-}
+ 
+ .cell.bomb::after {
+     content: "";
+@@ -138,8 +132,3 @@ h2 {
+     margin-top: 1em;
+ }
+ 
+-#hint.hidden {
+-    opacity: 0;
+-    transition-property: opacity;
+-    transition-duration: 1s;
+-}

@@ -1,0 +1,1908 @@
+diff --git a/index.html b/index.html
+index c699ccd..0cce298 100644
+--- a/index.html
++++ b/index.html
+@@ -10,7 +10,7 @@
+ <meta name="description" content="Smart Text Editor is a vanilla JavaScript PWA that allows you to work on your coding projects from any device, in any browser, even if you don't have Internet access.">
+ <meta property="og:title" content="Smart Text Editor">
+ <meta property="og:description" content="The text editor that requires only a browser and a keyboard!">
+-<meta property="og:image" content="https://stedit.app/resources/share-1200.png">
++<meta property="og:image" content="./img/share-1200.png">
+ <meta property="og:url" content="https://stedit.app">
+ <meta name="twitter:card" content="summary_large_image">
+ <meta id="theme_color" name="theme-color" content="#1e1e1e">
+@@ -26,13 +26,19 @@
+ <link rel="alternate icon" type="image/png" sizes="32x32" href="./img/icon-32.png">
+ <link rel="apple-touch-icon" sizes="180x180" href="./img/app-apple-touch-180.png">
+ <link rel="apple-touch-icon" sizes="1024x1024" href="./img/app-apple-touch-1024.png">
+-<link rel="preconnect" href="https://fonts.gstatic.com">
+-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cousine&family=Rubik&display=swap">
+-<link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/npm/@stedit/num-text/styles/vanilla-layout.css">
+-<link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/npm/@stedit/num-text/styles/vanilla-appearance.css">
+-<link rel="preload" as="fetch" crossorigin href="https://cdn.jsdelivr.net/npm/@stedit/num-text/styles/vanilla-highlighting.css">
+-<script src="https://cdn.jsdelivr.net/npm/@stedit/num-text/dist/index.js"></script>
+-<script src="https://cdn.jsdelivr.net/npm/@stedit/menu-drop@1.1.0/dist/index.js"></script>
++<!-- RepairBench adaptation: the webfont stylesheet and its preconnect were remote
++     (fonts.googleapis.com / fonts.gstatic.com). src/index.scss:18-19 already declares local
++     fallbacks for both stacks (-apple-system / ui-monospace), so this is cosmetic only. -->
++<link rel="preload" as="fetch" crossorigin href="./vendor/num-text/styles/vanilla-layout.css">
++<link rel="preload" as="fetch" crossorigin href="./vendor/num-text/styles/vanilla-appearance.css">
++<link rel="preload" as="fetch" crossorigin href="./vendor/num-text/styles/vanilla-highlighting.css">
++<!-- RepairBench adaptation: both custom-element bundles were remote (cdn.jsdelivr.net). They are
++     vendored from the app's own dependencies (@stedit/num-text 1.0.1, @stedit/menu-drop 1.1.0 - the
++     version the URL pinned). Each package resolves its own stylesheets as ../styles/* relative to
++     document.currentScript.src (num-text dist/index.js:85-97, menu-drop dist/index.js:269), so the
++     dist/ + styles/ sibling layout is load-bearing for both. -->
++<script src="./vendor/num-text/dist/index.js"></script>
++<script src="./vendor/menu-drop/dist/index.js"></script>
+ 
+ <script>
+   if (window.self === window.top){
+diff --git a/public/offline/out.html b/public/offline/out.html
+new file mode 100644
+index 0000000..ba9f1d7
+--- /dev/null
++++ b/public/offline/out.html
+@@ -0,0 +1,13 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++<meta charset="UTF-8">
++<title>Outbound link stub</title>
++</head>
++<body>
++<p data-rb-stub="outbound">This build is offline. The link target is kept in the <code>?to=</code> query parameter.</p>
++<script>
++  document.querySelector("code").textContent = new URLSearchParams(location.search).get("to") || "(none)";
++</script>
++</body>
++</html>
+diff --git a/public/vendor/menu-drop/dist/index.js b/public/vendor/menu-drop/dist/index.js
+new file mode 100644
+index 0000000..79f7146
+--- /dev/null
++++ b/public/vendor/menu-drop/dist/index.js
+@@ -0,0 +1,535 @@
++"use strict";
++class MenuDropElement extends HTMLElement {
++    static #importMetaURL = document.currentScript.src;
++    #isDefined;
++    constructor() {
++        super();
++        this.attachShadow({ mode: "open" });
++        this.#isDefined = false;
++    }
++    connectedCallback() {
++        if (this.#isDefined || !this.isConnected)
++            return;
++        this.#isDefined = true;
++        this.shadowRoot.addEventListener("keydown", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (event.key == "ArrowDown") {
++                event.preventDefault();
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".opener, .list, .option")) {
++                    const options = this.getOptions((event.target.matches(".option"))
++                        ? event.target.closest(".list")
++                        : (event.target.matches(".list"))
++                            ? event.target
++                            : undefined);
++                    const index = options.indexOf(event.target) + 1;
++                    const option = options[(index <= options.length - 1) ? index : 0];
++                    option.focus();
++                }
++                if (event.target.matches(".sub-list[data-open] > .option")) {
++                    this.close(event.target.closest(".sub-list"));
++                }
++            }
++            if (event.key == "ArrowUp") {
++                event.preventDefault();
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".opener, .list, .option")) {
++                    const options = this.getOptions((event.target.matches(".option"))
++                        ? event.target.closest(".list")
++                        : (event.target.matches(".list"))
++                            ? event.target
++                            : undefined);
++                    const index = options.indexOf(event.target) - 1;
++                    const option = options[(index >= 0) ? index : options.length - 1];
++                    option.focus();
++                }
++                if (event.target.matches(".sub-list[data-open] > .option")) {
++                    this.close(event.target.closest(".sub-list"));
++                }
++            }
++            if (event.key == "ArrowRight" || event.key == "ArrowLeft") {
++                event.preventDefault();
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".list")) {
++                    const options = this.getOptions(event.target);
++                    options[0].focus();
++                }
++            }
++            if (event.key == "ArrowRight") {
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".sub-list > .option")) {
++                    const subList = event.target.closest(".sub-list");
++                    const option = this.getOptions(subList.querySelector(".list"))[0];
++                    this.open(subList);
++                    option.focus();
++                }
++            }
++            if (event.key == "ArrowLeft") {
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".sub-list[data-open] > .option")) {
++                    this.close(event.target.closest(".sub-list"));
++                    return;
++                }
++                if (event.target.matches(".sub-list > .list .option")) {
++                    const subList = event.target.closest(".list").closest(".sub-list");
++                    const option = subList.querySelector(".option");
++                    this.close(subList);
++                    option.focus();
++                }
++            }
++            if (event.key == "Escape") {
++                if (!this.matches("[data-open]"))
++                    return;
++                event.preventDefault();
++                this.close((event.target.matches(".sub-list > .list .option"))
++                    ? event.target.closest(".list").closest(".sub-list")
++                    : undefined);
++                ((event.target.matches(".sub-list > .list .option"))
++                    ? event.target.closest(".list").closest(".sub-list").querySelector(".option")
++                    : this.opener).focus();
++            }
++            if (event.key == "Tab") {
++                if (this.matches("[data-open]")) {
++                    event.preventDefault();
++                }
++            }
++            if (event.key == "Enter") {
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(":not(a).option")) {
++                    event.preventDefault();
++                    event.target.click();
++                }
++                if (event.target.matches(".sub-list > .option")) {
++                    this.getOptions(event.target.closest(".sub-list").querySelector(".list"))[0].focus();
++                }
++            }
++        });
++        this.shadowRoot.addEventListener("keyup", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (event.key == " ") {
++                if (!this.matches("[data-open]"))
++                    return;
++                if (event.target.matches(".option")) {
++                    event.preventDefault();
++                    event.target.click();
++                }
++                if (event.target.matches(".sub-list > .option")) {
++                    this.getOptions(event.target.closest(".sub-list").querySelector(".list"))[0].focus();
++                }
++            }
++        });
++        this.shadowRoot.addEventListener("pointerdown", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            this.shadowRoot.pointerType = event.pointerType;
++            if (this.shadowRoot.pointerType != "mouse") {
++                if (event.target.matches(".opener") && this.matches("[data-alternate]")) {
++                    this.shadowRoot.alternateTimeout = window.setTimeout(() => {
++                        if (event.target != this.shadowRoot.activeElement) {
++                            event.target.focus();
++                        }
++                        this.toggle();
++                    }, 500);
++                }
++            }
++            if (this.shadowRoot.pointerType == "mouse") {
++                if ((event.button != 0 && !event.target.matches("a")) || event.target.matches(".opener, .list")) {
++                    event.preventDefault();
++                }
++                if (event.target.matches(".opener") && !this.matches("[data-alternate]")) {
++                    if (event.target != this.shadowRoot.activeElement) {
++                        event.target.focus();
++                    }
++                    if (event.button == 0) {
++                        this.toggle();
++                    }
++                }
++                if (event.target.matches(".list")) {
++                    event.target.querySelectorAll(":scope > li > .sub-list[data-open]").forEach(subList => this.close(subList));
++                    event.target.focus();
++                }
++            }
++        });
++        this.shadowRoot.addEventListener("pointermove", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (this.shadowRoot.pointerType != "mouse") {
++                if (event.target.matches(".opener") && this.matches("[data-alternate]")) {
++                    if (!("alternateTimeout" in this.shadowRoot))
++                        return;
++                    window.clearTimeout(this.shadowRoot.alternateTimeout);
++                    delete this.shadowRoot.alternateTimeout;
++                }
++            }
++            if (this.shadowRoot.pointerType == "mouse") {
++                if (event.target == this.shadowRoot.activeElement)
++                    return;
++                if (event.target.matches(".option")) {
++                    event.target.focus();
++                }
++                if (event.target.matches(".sub-list > .option")) {
++                    this.open(event.target.closest(".sub-list"));
++                }
++                if (event.target.matches(":not(.sub-list) > .option")) {
++                    event.target.closest(".list").querySelectorAll(":scope > li > .sub-list[data-open]").forEach(subList => this.close(subList));
++                }
++            }
++        });
++        this.shadowRoot.addEventListener("pointerout", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (this.shadowRoot.pointerType == "mouse")
++                return;
++            if (event.target.matches(".opener") && this.matches("[data-alternate]")) {
++                if (!("alternateTimeout" in this.shadowRoot))
++                    return;
++                window.clearTimeout(this.shadowRoot.alternateTimeout);
++                delete this.shadowRoot.alternateTimeout;
++            }
++        });
++        this.shadowRoot.addEventListener("pointerup", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (this.shadowRoot.pointerType == "mouse")
++                return;
++            if (event.target.matches(".list")) {
++                event.target.querySelectorAll(":scope > li > .sub-list[data-open]").forEach(subList => this.close(subList));
++                event.target.focus();
++            }
++        });
++        this.shadowRoot.addEventListener("click", eventOld => {
++            let event = eventOld;
++            if (!(event.target instanceof HTMLElement))
++                return;
++            // if (!("pointerType" in event)){
++            //   event.pointerType = this.shadowRoot.pointerType;
++            // }
++            // delete this.shadowRoot.pointerType;
++            if (event.target.matches(".opener") && !this.matches("[data-alternate]")) {
++                if (this.shadowRoot.pointerType == "mouse")
++                    return;
++                if (event.target != this.shadowRoot.activeElement) {
++                    event.target.focus();
++                }
++                this.toggle();
++            }
++            if (event.target.matches(".sub-list > .option")) {
++                this[(this.shadowRoot.pointerType != "mouse")
++                    ? "open"
++                    : "toggle"](event.target.closest(".sub-list"));
++                return;
++            }
++            if (event.target.matches(".option")) {
++                if (this.matches("[data-select]") && event.target.matches(":not([data-no-select])") && event.target.matches(":not([data-disabled])")) {
++                    this.select(event.target);
++                }
++                this.close();
++                this.opener.focus();
++            }
++        });
++        this.shadowRoot.addEventListener("contextmenu", event => {
++            if (!(event.target instanceof HTMLElement))
++                return;
++            if (!event.target.matches("a")) {
++                event.preventDefault();
++            }
++            if (event.target.matches(".opener") && this.matches("[data-alternate]")) {
++                if (event.target != this.shadowRoot.activeElement) {
++                    event.target.focus();
++                }
++                this.toggle();
++            }
++        });
++        this.shadowRoot.addEventListener("focusout", () => {
++            window.requestAnimationFrame(() => {
++                if (document.activeElement == this)
++                    return;
++                if (this.matches("[data-open]")) {
++                    this.close();
++                }
++            });
++        });
++        window.requestAnimationFrame(() => {
++            // @ts-expect-error
++            this.container = document.createElement("div");
++            this.container.part.add("container");
++            this.container.classList.add("container");
++            this.container.setAttribute("ontouchstart", "");
++            // @ts-expect-error
++            this.styles = document.createElement("link");
++            this.styles.rel = "stylesheet";
++            this.styles.href = `${new URL("../styles/styles.css", MenuDropElement.#importMetaURL)}`;
++            // @ts-expect-error
++            this.opener = this.querySelector("button") || document.createElement("button");
++            this.opener.part.add("opener");
++            this.opener.classList.add("opener");
++            // @ts-expect-error
++            this.body = document.createElement("div");
++            this.body.part.add("body");
++            this.body.classList.add("body");
++            // @ts-expect-error
++            this.main = this.querySelector("ul") || document.createElement("ul");
++            this.main.part.add("list");
++            this.main.part.add("main");
++            this.main.classList.add("list");
++            this.main.classList.add("main");
++            this.main.tabIndex = -1;
++            this.main.querySelectorAll("ul").forEach(list => {
++                const subList = document.createElement("div");
++                const option = list.closest("li");
++                const opener = document.createElement("span");
++                subList.part.add("sub-list");
++                subList.classList.add("sub-list");
++                opener.textContent = this.getTextNodes(option)[0].textContent;
++                this.getTextNodes(option)[0].textContent = "";
++                list.part.add("list");
++                list.classList.add("list");
++                list.tabIndex = -1;
++                list.parentElement.insertBefore(subList, list);
++                subList.appendChild(opener);
++                subList.appendChild(list);
++            });
++            this.main.querySelectorAll("li, a, .sub-list > span").forEach(option => {
++                if (option.querySelector(":scope > hr")) {
++                    option.classList.add("pass-through");
++                }
++                if (option.querySelector(":scope > :is(a,hr,.sub-list)"))
++                    return;
++                option.part.add("option");
++                option.classList.add("option");
++                option.tabIndex = -1;
++                if (option.matches("[data-shortcuts]")) {
++                    const shortcuts = JSON.parse(option.getAttribute("data-shortcuts"));
++                    if ("macOS" in shortcuts) {
++                        shortcuts.macOS = shortcuts.macOS
++                            .replace(/Ctrl/g, "⌃")
++                            .replace(/Option/g, "⌥")
++                            .replace(/Shift/g, "⇧")
++                            .replace(/Cmd/g, "⌘")
++                            .replace(/Return/g, "↵")
++                            .replace(/Enter/g, "⌤")
++                            .replace(/\+/g, "");
++                    }
++                    const shortcut = document.createElement("span");
++                    shortcut.part.add("shortcut");
++                    shortcut.classList.add("shortcut");
++                    shortcut.textContent = shortcuts[(/(macOS|Mac|iPhone|iPad|iPod)/i.test(("userAgentData" in navigator)
++                        ? navigator.userAgentData.platform
++                        // @ts-expect-error
++                        : navigator.platform) && "macOS" in shortcuts)
++                        ? "macOS"
++                        : "default"];
++                    option.appendChild(shortcut);
++                }
++                if (option.matches("[onclick]")) {
++                    option.setAttribute("onclick", `window.setTimeout(${option.onclick});`);
++                }
++                if (option.querySelector(":scope > :is(img,svg)")) {
++                    const icon = option.querySelector(":scope > :is(img,svg)");
++                    icon.part.add("icon");
++                    icon.classList.add("icon");
++                    if (icon instanceof HTMLImageElement) {
++                        icon.draggable = false;
++                    }
++                }
++            });
++            this.main.querySelectorAll("hr").forEach(divider => {
++                divider.part.add("divider");
++                divider.classList.add("divider");
++            });
++            this.shadowRoot.appendChild(this.container);
++            this.container.appendChild(this.styles);
++            this.container.appendChild(this.opener);
++            this.container.appendChild(this.body);
++            this.body.appendChild(this.main);
++            this.innerHTML = "";
++            if (this.matches("[data-select]") && !this.matches("[data-select='no-appearance']")) {
++                if (this.getAttribute("data-select") != "") {
++                    this.setAttribute("data-select", "");
++                }
++                new ResizeObserver(() => {
++                    this.opener.style.minWidth = `${this.main.offsetWidth}px`;
++                }).observe(this.main);
++                if (this.main.querySelector(".option[data-selected]")) {
++                    this.opener.textContent = this.getTextNodes(this.main.querySelector(".option[data-selected]"))[0].textContent;
++                }
++            }
++        });
++    }
++    /**
++     * Opens the top-level list within the menu.
++     *
++     * @param section This is used internally to open specific lists within the menu.
++    */
++    open(section = this) {
++        const list = (section == this)
++            ? this.main
++            : section.querySelector(".list");
++        if (section == this) {
++            const bounds = this.opener.getBoundingClientRect();
++            this.body.style.left = `calc(${bounds.left - parseInt(window.getComputedStyle(this).getPropertyValue("--safe-area-inset-left"))
++                + ((CSS.supports("-webkit-touch-callout: none"))
++                    ? window.visualViewport.offsetLeft
++                    : 0)}px + var(--safe-area-inset-left))`;
++            this.body.style.top = `calc(${bounds.bottom - parseInt(window.getComputedStyle(this).getPropertyValue("--safe-area-inset-top"))
++                + ((CSS.supports("-webkit-touch-callout: none"))
++                    ? window.visualViewport.offsetTop
++                    : 0)}px + var(--safe-area-inset-top))`;
++            this.body.style.width = `${bounds.width}px`;
++        }
++        Array.from(((section == this)
++            ? this.main
++            : section.closest(".list"))
++            .querySelectorAll(".sub-list[data-open]"))
++            .filter(subList => subList != list.closest(".sub-list"))
++            .forEach(subList => this.close(subList, false));
++        list.part.add((this.getVisibility(section))
++            ? "left"
++            : "right");
++        list.classList.add((this.getVisibility(section))
++            ? "left"
++            : "right");
++        section.setAttribute("data-open", "");
++        list.part.add("open");
++    }
++    /**
++     * Closes the top-level list within the menu.
++     *
++     * @param section This is used internally to close specific lists within the menu.
++    */
++    close(section = this, recursive = true) {
++        const list = (section == this)
++            ? this.main
++            : section.querySelector(".list");
++        if (recursive) {
++            list.querySelectorAll(".sub-list[data-open]").forEach(subList => this.close(subList, false));
++        }
++        if (!section.matches("[data-open]"))
++            return;
++        section.removeAttribute("data-open");
++        list.part.remove("open");
++        if (section == this) {
++            this.body.removeAttribute("style");
++        }
++        if (list.matches(".left")) {
++            list.part.remove("left");
++            list.classList.remove("left");
++        }
++        if (list.matches(".right")) {
++            list.part.remove("right");
++            list.classList.remove("right");
++        }
++    }
++    /**
++     * Toggles the top-level list within the menu.
++     *
++     * @param section This is used internally to toggle specific lists within the menu.
++    */
++    toggle(section = this) {
++        (!section.matches("[data-open]"))
++            ? this.open(section)
++            : this.close(section);
++    }
++    /**
++     * Selects a given option from the top-level menu, when 'select' mode is enabled.
++     *
++     * I never fully finished this functionality, so there's not much of a great API to work with this unfortunately.
++     * Same with the 'shortcuts' feature. It works great for what this legacy version needed to do, but it really could
++     * use a fresh start in the next update.
++     *
++     * For these two features, if you really need to use them (I'm probably talking to myself here, lol), the most
++     * I can say is to look into the source for this legacy build, and how STE used it also. It's not even using it much
++     * there, so that's probably why I didn't smoothen it out yet. I think the technical debt for this component got
++     * pretty high for me with the last few updates too, so that didn't help with being able to add new things safely.
++     * Hence, why this whole rework is happening.
++     *
++     * This text should probably be in the commit message for these docs, too.
++     *
++     * Second edit: Realized there are a few other features that I haven't mentioned anywhere in any documentation either,
++     * that being the Divider element (`<hr>`), and alternate menus for right-click and long-pressing on touch devices.
++     *
++     * ```html
++     * <!--
++     *   In the top-level opener button, the text content
++     *   will reflect the currently selected value, and a
++     *   dropdown arrow will be rendered next to it.
++     * -->
++     * <menu-drop data-select></menu-drop>
++     *
++     * <!--
++     *   Enables 'select' mode, while rendering the
++     *   top-level opener button without any custom
++     *   functionality.
++     * -->
++     * <menu-drop data-select="no-appearance"></menu-drop>
++     * ```
++    */
++    select(option) {
++        if (!this.matches("[data-select]"))
++            return;
++        if (!option && option != 0)
++            return;
++        if (typeof option == "number") {
++            option = this.getOptions()[option];
++        }
++        if (typeof option == "string") {
++            option = this.main.querySelector(`[data-value="${option}"]`);
++        }
++        if (!this.main.contains(option))
++            return;
++        this.getOptions(option.closest(".list"))
++            .filter(option => option.matches("[data-selected]"))
++            .forEach(option => option.removeAttribute("data-selected"));
++        option.setAttribute("data-selected", "");
++        if (!this.matches("[data-select='no-appearance']")) {
++            this.opener.textContent = this.getTextNodes(option)[0].textContent;
++        }
++        return option;
++    }
++    /**
++     * Returns the child options for a given list within the menu.
++    */
++    getOptions(container = this.main) {
++        const elements = container.querySelectorAll(":scope > .option, :scope > li > .option, :scope > li > .sub-list > .option");
++        return Array.from(elements)
++            .filter(element => ((window.getComputedStyle(element).getPropertyValue("display") != "none") &&
++            !element.matches("[data-disabled]")));
++    }
++    /**
++     * Calculates if a given element within the menu is not obstructed by the viewport.
++     *
++     * This is used internally for the list auto-wrapping behavior.
++    */
++    getVisibility(element = this.main) {
++        const bounds = element.getBoundingClientRect();
++        return (bounds.left >= 0 &&
++            bounds.right <= window.innerWidth - bounds.width);
++    }
++    /**
++     * Returns the text nodes for a given element within the menu, only if they contain more than whitespace.
++    */
++    getTextNodes(element) {
++        return Array.from(element.childNodes)
++            .filter(node => (node.nodeType == Node.TEXT_NODE &&
++            node.textContent?.replace(/\s/g, "").length));
++    }
++    focus(options = {}) {
++        this.opener.focus(options);
++    }
++    blur() {
++        this.shadowRoot.activeElement?.blur?.();
++    }
++    get defined() {
++        return this.#isDefined;
++    }
++}
++window.customElements.define("menu-drop", MenuDropElement);
++//# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/public/vendor/menu-drop/styles/styles.css b/public/vendor/menu-drop/styles/styles.css
+new file mode 100644
+index 0000000..71dd568
+--- /dev/null
++++ b/public/vendor/menu-drop/styles/styles.css
+@@ -0,0 +1,371 @@
++:host {
++  position: relative;
++  display: inline-block;
++  color: #000000;
++  font-size: 12px;
++  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", system-ui, sans-serif;
++  line-height: 1.4;
++  white-space: nowrap;
++  cursor: default;
++  z-index: 1;
++  -webkit-user-select: none;
++  user-select: none;
++  -webkit-text-size-adjust: 100%;
++  -webkit-tap-highlight-color: transparent;
++}
++
++:host {
++  --safe-area-inset-left: env(safe-area-inset-left,0px);
++  --safe-area-inset-right: env(safe-area-inset-right,0px);
++  --safe-area-inset-top: env(safe-area-inset-top,0px);
++  --safe-area-inset-bottom: env(safe-area-inset-bottom,0px);
++}
++
++:host {
++  --list-padding: max(0px,var(--list-padding-y)) max(0px,var(--list-padding-x));
++  --list-padding-x: 1px;
++  --list-padding-y: 5px;
++  --list-border-width: 1px;
++  --option-padding: max(0px,var(--option-padding-y)) max(0px,var(--option-padding-x));
++  --option-padding-x: 13px;
++  --option-padding-y: 3px;
++  --option-gap: 36px;
++  --option-icon-width: 16px;
++  --option-icon-height: 16px;
++  --option-icon-gap: 8px;
++  --option-selected-icon-gap: 6px;
++  --option-selected-icon-width: 1ch;
++}
++
++*, *::before, *::after {
++  margin: 0;
++  padding: 0;
++  box-sizing: border-box;
++  touch-action: manipulation;
++  -webkit-app-region: no-drag;
++}
++
++.container {
++  width: 100%;
++  height: 100%;
++  display: flex;
++  flex-direction: column;
++}
++
++.opener {
++  padding: var(--option-padding);
++  width: 100%;
++  height: 100%;
++  display: flex;
++  gap: 8px;
++  align-items: center;
++  color: inherit;
++  font: inherit;
++  background: #efefef;
++  border: 1px solid #000000a0;
++  border-radius: 0;
++  cursor: inherit;
++}
++
++:host([data-select]:not([data-select="no-appearance"])) .opener::after {
++  content: "";
++  margin-left: auto;
++  height: 6px;
++  border: 5px solid transparent;
++  border-top-width: 6px;
++  border-top-color: currentColor;
++  border-bottom: none;
++  opacity: 0.75;
++}
++
++.body {
++  position: fixed;
++  z-index: 1;
++}
++
++.list {
++  padding: var(--list-padding);
++  position: absolute;
++  top: var(--list-position-y);
++  display: flex;
++  flex-direction: column;
++  list-style: none;
++  background: #ffffff;
++  border: var(--list-border-width) solid #000000a0;
++  box-shadow: 0 4px 8px #00000040;
++  outline: none;
++}
++
++.list.left {
++  left: var(--list-position-x);
++}
++
++.list.right {
++  right: var(--list-position-x);
++}
++
++.list.main {
++  --list-position-x: 0px;
++  --list-position-y: 100%;
++}
++
++:host(:not([data-select=""]):not([data-open])) .list.main,
++.sub-list:not([data-open]) > .list {
++  padding: 0;
++  right: 0;
++  top: 50%;
++  width: 0;
++  height: 0;
++  border: none;
++  visibility: hidden;
++  overflow: hidden;
++}
++
++:host([data-select]:not([data-select="no-appearance"]):not([data-open])) .list.main {
++  padding-top: 0;
++  padding-bottom: 0;
++  left: 0;
++  top: 0;
++  height: 0;
++  border-top: none;
++  border-bottom: none;
++  visibility: hidden;
++  overflow: hidden;
++}
++
++.option {
++  padding: var(--option-padding);
++  display: flex;
++  gap: var(--option-gap);
++  align-items: center;
++  color: inherit;
++  --option-color-interact: currentColor;
++  --option-background-color-interact: #00000020;
++  --sub-list-option-color-interact: var(--option-color-interact);
++  --sub-list-option-background-color-interact: var(--option-background-color-interact);
++  outline: none;
++}
++
++:host(:not([data-select])) .list[data-show-icons] > .option,
++:host(:not([data-select])) .list[data-show-icons] > li > .option,
++:host(:not([data-select])) .list[data-show-icons] > li > .sub-list > .option {
++  padding-left: calc(max(0px,var(--option-padding-x)) + max(0px,var(--option-icon-width)) + max(0px,var(--option-icon-gap)));
++}
++
++:host([data-select]) a.option {
++  display: none;
++}
++
++@supports not selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .option:where(:hover:focus,:active,:focus) {
++      color: var(--option-color-interact);
++      background-color: var(--option-background-color-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .option:where(:hover,:active,:focus) {
++      color: var(--option-color-interact);
++      background-color: var(--option-background-color-interact);
++    }
++  }
++}
++
++@supports selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .option:where(:hover:focus,:active,:focus-visible) {
++      color: var(--option-color-interact);
++      background-color: var(--option-background-color-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .option:where(:hover,:active,:focus-visible) {
++      color: var(--option-color-interact);
++      background-color: var(--option-background-color-interact);
++    }
++  }
++}
++
++:host([data-select]) .option::before {
++  content: "✓";
++  margin-right: calc(max(0px,var(--option-gap)) * -1 + max(0px,var(--option-selected-icon-gap)));
++  width: var(--option-selected-icon-width);
++  display: flex;
++  justify-content: center;
++  align-items: center;
++}
++
++:host([data-select]) .option:not([data-selected])::before {
++  visibility: hidden;
++}
++
++.option[data-disabled] {
++  opacity: 0.7;
++  pointer-events: none;
++}
++
++.icon {
++  margin-left: calc(max(0px,var(--option-icon-gap)) * -1 - max(0px,var(--option-icon-width)));
++  position: absolute;
++  width: var(--option-icon-width);
++  height: var(--option-icon-height);
++  pointer-events: none;
++}
++
++.list:not([data-show-icons]) > .option > .icon,
++.list:not([data-show-icons]) > li > .option > .icon,
++.list:not([data-show-icons]) > li > .sub-list > .option > .icon {
++  display: none;
++}
++
++:host([data-select]) .list[data-show-icons] > .option > .icon,
++:host([data-select]) .list[data-show-icons] > li > .option > .icon,
++:host([data-select]) .list[data-show-icons] > li > .sub-list > .option > .icon {
++  display: none;
++}
++
++.shortcut {
++  margin-left: auto;
++  opacity: var(--shortcut-opacity);
++  --shortcut-opacity: 0.7;
++  --shortcut-opacity-interact: 1;
++  pointer-events: none;
++}
++
++@supports not selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .option:is(:hover:focus,:active,:focus) > .shortcut {
++      opacity: var(--shortcut-opacity-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .option:is(:hover,:active,:focus) > .shortcut {
++      opacity: var(--shortcut-opacity-interact);
++    }
++  }
++}
++
++@supports selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .option:is(:hover:focus,:active,:focus-visible) > .shortcut {
++      opacity: var(--shortcut-opacity-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .option:is(:hover,:active,:focus-visible) > .shortcut {
++      opacity: var(--shortcut-opacity-interact);
++    }
++  }
++}
++
++.pass-through {
++  pointer-events: none;
++}
++
++.divider {
++  margin: calc(max(0px,var(--option-padding-y)) * 1.2) max(0px,var(--option-padding-x));
++  height: 1px;
++  color: inherit;
++  background: currentColor;
++  border: none;
++  opacity: 0.5;
++}
++
++:host(:not([data-select])) .list[data-show-icons] > li > .divider {
++  margin-left: calc(max(0px,var(--option-padding-x)) + max(0px,var(--option-icon-width)) + max(0px,var(--option-icon-gap)));
++}
++
++:host([data-select]) .divider {
++  margin-left: calc(max(0px,var(--option-padding-x)) + max(0px,var(--option-selected-icon-width)) + max(0px,var(--option-selected-icon-gap)));
++}
++
++.sub-list {
++  position: relative;
++  z-index: 1;
++}
++
++:host([data-select]) :is(.sub-list,.sub-list > .option) {
++  display: none;
++}
++
++@supports not selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .sub-list[data-open] > .option:not(:where(:hover:focus,:active,:focus)) {
++      color: var(--sub-list-option-color-interact);
++      background-color: var(--sub-list-option-background-color-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .sub-list[data-open] > .option:not(:where(:hover,:active,:focus)) {
++      color: var(--sub-list-option-color-interact);
++      background-color: var(--sub-list-option-background-color-interact);
++    }
++  }
++}
++
++@supports selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    .sub-list[data-open] > .option:not(:where(:hover:focus,:active,:focus-visible)) {
++      color: var(--sub-list-option-color-interact);
++      background-color: var(--sub-list-option-background-color-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    .sub-list[data-open] > .option:not(:where(:hover,:active,:focus-visible)) {
++      color: var(--sub-list-option-color-interact);
++      background-color: var(--sub-list-option-background-color-interact);
++    }
++  }
++}
++
++.sub-list > .option::after {
++  content: "";
++  margin-left: auto;
++  width: 1.75ch;
++  height: 1.75ch;
++  background: currentColor;
++  -webkit-mask: var(--sub-list-icon-mask);
++  mask: var(--sub-list-icon-mask);
++  --sub-list-icon-mask: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20512%20512%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%3Cpath%20d%3D%22m405%20256-265.5%20221.7v-443.41l265.5%20221.7z%22%2F%3E%0A%3C%2Fsvg%3E");
++  opacity: 0.5;
++  --sub-list-icon-opacity-interact: 1;
++}
++
++@supports not selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    :is(.option:is(:hover:focus,:active,:focus), .sub-list[data-open] > .option)::after {
++      opacity: var(--sub-list-icon-opacity-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    :is(.option:is(:hover,:active,:focus), .sub-list[data-open] > .option)::after {
++      opacity: var(--sub-list-icon-opacity-interact);
++    }
++  }
++}
++
++@supports selector(:focus-visible) {
++  @media (hover: hover) and (pointer: fine) {
++    :is(.option:is(:hover:focus,:active,:focus-visible), .sub-list[data-open] > .option)::after {
++      opacity: var(--sub-list-icon-opacity-interact);
++    }
++  }
++
++  @media (hover: none) and (pointer: coarse) {
++    :is(.option:is(:hover,:active,:focus-visible), .sub-list[data-open] > .option)::after {
++      opacity: var(--sub-list-icon-opacity-interact);
++    }
++  }
++}
++
++.sub-list > .list {
++  --list-position-x: calc(100% - max(0px,var(--option-padding-x)) / 4);
++  --list-position-y: calc(max(0px,var(--list-padding-y)) * -1 - max(0px,var(--list-border-width)));
++}
+\ No newline at end of file
+diff --git a/public/vendor/num-text/dist/index.js b/public/vendor/num-text/dist/index.js
+new file mode 100644
+index 0000000..39ce103
+--- /dev/null
++++ b/public/vendor/num-text/dist/index.js
+@@ -0,0 +1,522 @@
++"use strict";
++/**
++ * A global namespace to manage the configurations for Num Text.
++*/
++var NumText = {
++    /**
++     * A namespace which manages the theme definitions available for Num Text elements.
++    */
++    themes: {
++        entries: {},
++        /**
++         * Creates a new theme definition which can be applied to your own Num Text elements. This will resolve to a failed Promise if a theme by the given name is already defined.
++        */
++        async define(name, { type = "any", url, template, content = "" } = {}) {
++            if (NumText.themes.has(name)) {
++                return console.error(new ReferenceError(`Could not define theme "${name}", as it has already been defined in the global NumText object. If you would like to update an existing theme's content, use NumText.themes.update() instead.`));
++            }
++            const stylesheet = document.createElement("style");
++            stylesheet.setAttribute("num-text-theme", name);
++            stylesheet.setAttribute("num-text-theme-type", type);
++            if (!url) {
++                stylesheet.textContent = NumText.themes._tempBackwardsCompatibility_((template) ? template.content.querySelector(`[num-text-theme="${name}"]`).textContent : content);
++            }
++            NumText.themes.entries[name] = {
++                type,
++                ...url && { url },
++                stylesheet,
++                elements: []
++            };
++            if (url) {
++                await NumText.themes.update({ name, url });
++            }
++        },
++        /**
++         * Updates the stylesheet content for an already defined theme. The changes will be synced to all Num Text elements that have that theme applied.
++        */
++        async update({ name, url, content = null }) {
++            if (!NumText.themes.has(name)) {
++                return console.error(new ReferenceError(`Could not update theme "${name}", as it has not been defined in the global NumText object.`));
++            }
++            if (!url && content == undefined) {
++                return console.error(new ReferenceError(`Could not update theme "${name}". Please provide a stylesheet URL or CSS content.`));
++            }
++            if (url) {
++                content = await NumText.themes.fetch((url == "refresh") ? NumText.themes.entries[name].url : url);
++            }
++            content = NumText.themes._tempBackwardsCompatibility_(content);
++            NumText.themes.entries[name].stylesheet.textContent = content;
++            NumText.themes.entries[name].elements.forEach(element => element.themes.entries[name].stylesheet.textContent = content);
++        },
++        async fetch(url) {
++            const response = await fetch(url);
++            return await response.text();
++        },
++        /**
++         * This provides a legacy fallback for browsers that don't yet support the `:is()` or `:where()` selectors in CSS, and it will use the `:-webkit-any()` selector instead. This is applied to all themes automatically.
++        */
++        _tempBackwardsCompatibility_(content) {
++            if (CSS.supports("not selector(:is())")) {
++                content = content.replace(/:is\(/g, ":-webkit-any(");
++            }
++            if (CSS.supports("not selector(:where())")) {
++                content = content.replace(/:where\(/g, ":-webkit-any(");
++            }
++            return content;
++        },
++        /**
++         * Deletes the definition for a given theme, and removes the theme from all Num Text elements that apply it.
++        */
++        remove(name) {
++            if (!NumText.themes.has(name)) {
++                return console.error(new ReferenceError(`Could not remove theme "${name}", as it has not been defined in the global NumText object.`));
++            }
++            NumText.themes.entries[name].elements.forEach(element => element.themes.remove(name));
++            delete NumText.themes.entries[name];
++        },
++        /**
++         * Checks if a given theme has been defined.
++        */
++        has(name) {
++            return (name in NumText.themes.entries);
++        }
++    }
++};
++(() => {
++    const importMetaURL = document.currentScript.src;
++    NumText.themes.define("vanilla-layout", {
++        type: "user-agent",
++        url: `${new URL("../styles/vanilla-layout.css", importMetaURL)}`
++    });
++    NumText.themes.define("vanilla-appearance", {
++        url: `${new URL("../styles/vanilla-appearance.css", importMetaURL)}`
++    });
++    NumText.themes.define("vanilla-highlighting", {
++        type: "syntax-highlight",
++        url: `${new URL("../styles/vanilla-highlighting.css", importMetaURL)}`
++    });
++})();
++class NumTextElement extends HTMLElement {
++    #isDefined;
++    constructor() {
++        super();
++        this.attachShadow({ mode: "open" });
++        this.#isDefined = false;
++        this.colorScheme = {
++            set: (appearance) => {
++                const state = this.colorScheme.get();
++                if (appearance == state)
++                    return state;
++                if (appearance == "light")
++                    this.classList.remove("color-scheme-dark");
++                if (appearance == "dark")
++                    this.classList.add("color-scheme-dark");
++                return this.colorScheme.get();
++            },
++            /**
++             * Toggles between the light and dark color schemes.
++            */
++            toggle: () => {
++                this.classList.toggle("color-scheme-dark");
++                return this.colorScheme.get();
++            },
++            get: () => {
++                return (!this.matches(".color-scheme-dark")) ? "light" : "dark";
++            }
++        },
++            this.themes = {
++                entries: {},
++                /**
++                 * Adds a defined theme to the element.
++                 *
++                 * Only one syntax highlighting theme can be applied at a time. If one is already applied to the element, it will be removed.
++                */
++                add: (name) => {
++                    if (!NumText.themes.has(name)) {
++                        return console.error(new ReferenceError(`Cound not add theme "${name}" to ${this}, as it has not been defined in the global NumText object.`));
++                    }
++                    if (this.themes.has(name))
++                        return;
++                    const { type, stylesheet } = NumText.themes.entries[name];
++                    if (type == "syntax-highlight") {
++                        this.themes.getAll("syntax-highlight").forEach(theme => this.themes.remove(theme));
++                    }
++                    this.themes.entries[name] = {
++                        type,
++                        stylesheet: stylesheet.cloneNode(true),
++                        active: true
++                    };
++                    if (type == "syntax-highlight" && !this.matches("[syntax-highlight]")) {
++                        this.themes.disable(name);
++                    }
++                    this.shadowRoot.insertBefore(this.themes.entries[name].stylesheet, this.container);
++                    NumText.themes.entries[name].elements.push(this);
++                },
++                /**
++                 * Removes an applied theme from the element.
++                */
++                remove: (name) => {
++                    if (!this.themes.has(name)) {
++                        return console.error(new ReferenceError(`Could not remove theme "${name}", as it has not been added to ${this}.`));
++                    }
++                    this.shadowRoot.removeChild(this.themes.entries[name].stylesheet);
++                    delete this.themes.entries[name];
++                    NumText.themes.entries[name].elements.splice(NumText.themes.entries[name].elements.indexOf(this));
++                },
++                /**
++                 * Checks if a given theme has been applied to the element.
++                */
++                has: (name) => {
++                    return (name in this.themes.entries);
++                },
++                /**
++                 * Re-enables an applied theme which was previously hidden.
++                */
++                enable: (name) => {
++                    if (!this.themes.has(name)) {
++                        return console.error(new ReferenceError(`Could not enable theme "${name}", as it has not been added to ${this}.`));
++                    }
++                    this.themes.entries[name].active = true;
++                    this.themes.entries[name].stylesheet.removeAttribute("media");
++                },
++                /**
++                 * Hides an applied theme in-place.
++                 *
++                 * This is useful for performance if you plan to add it again later, as it won't actually remove it from the element.
++                */
++                disable: (name) => {
++                    if (!this.themes.has(name)) {
++                        return console.error(new ReferenceError(`Could not disable theme "${name}", as it has not been added to ${this}.`));
++                    }
++                    this.themes.entries[name].active = false;
++                    this.themes.entries[name].stylesheet.media = "not all";
++                },
++                /**
++                 * Checks if an applied theme is currently enabled or disabled.
++                */
++                active: (name) => {
++                    if (!this.themes.has(name))
++                        return;
++                    return this.themes.entries[name].active;
++                },
++                /**
++                 * Toggles the active state of an applied theme, between enabled and disabled.
++                */
++                toggle: (name) => {
++                    if (!this.themes.has(name)) {
++                        return console.error(new ReferenceError(`Could not toggle theme "${name}", as it has not been added to ${this}.`));
++                    }
++                    if (!this.themes.active(name)) {
++                        this.themes.enable(name);
++                    }
++                    else {
++                        this.themes.disable(name);
++                    }
++                    return this.themes.active(name);
++                },
++                /**
++                 * Returns an array for all applied themes applied to the element of a given theme type. The default theme type is 'any'.
++                 *
++                 * The built-in theme provided by Num Text will not be included unless the 'user-agent' theme type is specified.
++                */
++                getAll: (type = "any") => {
++                    return Object.keys(this.themes.entries).filter(theme => {
++                        return (!type) ? (this.themes.entries[theme].type != "user-agent") : type == this.themes.entries[theme].type;
++                    });
++                }
++            };
++        this.syntaxHighlight = {
++            enable: () => {
++                this.setAttribute("syntax-highlight", "");
++                this.themes.getAll("syntax-highlight").forEach(theme => this.themes.enable(theme));
++                this.refreshSyntaxOverlay();
++                this.refreshScrollPosition();
++            },
++            disable: () => {
++                this.removeAttribute("syntax-highlight");
++                this.themes.getAll("syntax-highlight").forEach(theme => this.themes.disable(theme));
++            },
++            /**
++             * Checks if syntax highlighting is currently enabled.
++            */
++            active: () => {
++                return this.matches("[syntax-highlight]");
++            },
++            toggle: () => {
++                if (!this.syntaxHighlight.active()) {
++                    this.syntaxHighlight.enable();
++                }
++                else {
++                    this.syntaxHighlight.disable();
++                }
++            }
++        };
++        this.container = document.createElement("div");
++        this.gutter = document.createElement("ol");
++        this.content = document.createElement("div");
++        this.syntax = document.createElement("pre");
++        this.editor = document.createElement("textarea");
++    }
++    connectedCallback() {
++        if (this.#isDefined || !this.isConnected)
++            return;
++        this.#isDefined = true;
++        this.addEventListener("mousedown", event => {
++            const target = event.composedPath()[0];
++            if (target == this.editor)
++                return;
++            event.preventDefault();
++            this.focus({ preventScroll: (!this.gutter.contains(target)) });
++        });
++        this.container.part.add("container");
++        this.gutter.part.add("gutter");
++        this.gutter.addEventListener("mousedown", event => {
++            const index = this.getLineIndexes()[Array.from(this.gutter.children).indexOf(event.target)];
++            this.editor.setSelectionRange(index, index);
++            this.blur();
++        });
++        this.gutter.addEventListener("dblclick", event => {
++            const indexes = this.getLineIndexes();
++            const line = Array.from(this.gutter.children).indexOf(event.target);
++            this.editor.setSelectionRange(indexes[line], (line + 1 in indexes) ? indexes[line + 1] : this.editor.value.length);
++        });
++        this.gutter.addEventListener("scroll", () => {
++            this.refreshScrollPosition();
++        }, { passive: true });
++        this.content.part.add("content");
++        this.syntax.part.add("syntax");
++        this.editor.part.add("editor");
++        this.editor.placeholder = this.getAttribute("placeholder") || "";
++        this.editor.wrap = "off";
++        this.editor.spellcheck = false;
++        this.editor.autocomplete = "off";
++        this.editor.autocapitalize = "none";
++        this.editor.setAttribute("autocorrect", "off");
++        this.editor.addEventListener("input", () => {
++            this.refreshLineNumbers();
++        });
++        this.editor.addEventListener("scroll", () => {
++            this.refreshScrollPosition();
++        }, { passive: true });
++        new ResizeObserver(() => {
++            this.style.removeProperty("width");
++            this.style.height = `${this.offsetHeight - this.clientHeight + parseInt(this.editor.style.height, 10)}px`;
++            this.editor.style.removeProperty("height");
++            this.refreshScrollPosition();
++        }).observe(this.editor);
++        this.shadowRoot.appendChild(this.container);
++        this.themes.add("vanilla-layout");
++        this.themes.add("vanilla-appearance");
++        this.themes.add("vanilla-highlighting");
++        if (this.matches("[themes]")) {
++            this.getAttribute("themes").split(" ").forEach(theme => this.themes.add(theme));
++        }
++        this.container.appendChild(this.gutter);
++        this.container.appendChild(this.content);
++        this.content.appendChild(this.syntax);
++        this.content.appendChild(this.editor);
++        this.disabled = this.matches("[disabled]");
++        this.readonly = this.matches("[readonly]");
++        this.editor.value = this.getAttribute("value") || "";
++        this.editor.setSelectionRange(0, 0);
++        this.refreshLineNumbers();
++    }
++    /**
++     * Re-renders the internal line numbers section of the element to reflect the internal textarea's value.
++    */
++    refreshLineNumbers() {
++        this.refreshSyntaxOverlay();
++        const previousCount = Number(this.getAttribute("line-count") || 0);
++        const count = (this.editor.value.match(/\n/g) || []).length + 1;
++        const difference = count - previousCount;
++        if (difference == 0)
++            return;
++        if (difference > 0) {
++            const fragment = new DocumentFragment();
++            const lineNumber = document.createElement("li");
++            lineNumber.part.add("line-number");
++            for (let i = 0; i < difference; i++) {
++                fragment.appendChild(lineNumber.cloneNode());
++            }
++            this.gutter.appendChild(fragment);
++        }
++        if (difference < 0) {
++            for (let i = 0; i < Math.abs(difference); i++) {
++                this.gutter.lastChild?.remove();
++            }
++        }
++        this.setAttribute("line-count", count.toString());
++        this.refreshScrollPosition();
++    }
++    /**
++     * Re-renders the internal syntax highlighting layer with Prism to reflect the internal textarea's value.
++    */
++    refreshSyntaxOverlay() {
++        if (!this.matches("[syntax-highlight][syntax-language]"))
++            return;
++        let tokened = this.editor.value;
++        if (tokened[tokened.length - 1] == "\n") {
++            tokened += "\n";
++        }
++        if (!("Prism" in window)) {
++            return console.error(`Could not refresh syntax overlay for ${this}, as Prism has not been loaded into the document.`);
++        }
++        this.syntax.innerHTML = Prism.highlight(tokened, Prism.languages[this.getAttribute("syntax-language")], "");
++    }
++    /**
++     * Syncs the scroll positions for the internal line numbers section and the internal syntax highlighing layer to that of the internal textarea.
++     *
++     * Overscroll effects use by some platforms when scrolling past the bounds of the internal textarea's scroll box are also synced.
++    */
++    refreshScrollPosition() {
++        const { offsetWidth, offsetHeight, clientWidth, clientHeight, scrollWidth, scrollHeight, scrollLeft, scrollTop } = this.editor;
++        const scrollbarWidth = offsetWidth - clientWidth;
++        const scrollbarHeight = offsetHeight - clientHeight;
++        const overscrollX = (scrollLeft < 0 || (clientWidth + scrollLeft) > scrollWidth)
++            ? (scrollLeft < 0)
++                ? scrollLeft
++                : (clientWidth + scrollLeft) - scrollWidth
++            : false;
++        const overscrollY = (scrollTop < 0 || (clientHeight + scrollTop) > scrollHeight)
++            ? (scrollTop < 0)
++                ? scrollTop
++                : (clientHeight + scrollTop) - scrollHeight
++            : false;
++        if (scrollbarWidth > 0) {
++            this.container.style.setProperty("--overflow-offset-x", `${scrollbarWidth}px`);
++        }
++        else {
++            this.container.style.removeProperty("--overflow-offset-x");
++        }
++        if (scrollbarHeight > 0) {
++            this.container.style.setProperty("--overflow-offset-y", `${scrollbarHeight}px`);
++        }
++        else {
++            this.container.style.removeProperty("--overflow-offset-y");
++        }
++        if (overscrollX == false) {
++            this.container.style.removeProperty("--overscroll-left");
++            this.container.style.removeProperty("--overscroll-right");
++        }
++        else if (overscrollX < 0) {
++            this.container.style.setProperty("--overscroll-left", `${Math.abs(overscrollX)}px`);
++        }
++        else {
++            this.container.style.setProperty("--overscroll-right", `${overscrollX}px`);
++        }
++        if (overscrollY == false) {
++            this.container.style.removeProperty("--overscroll-top");
++            this.container.style.removeProperty("--overscroll-bottom");
++        }
++        else if (overscrollY < 0) {
++            this.container.style.setProperty("--overscroll-top", `${Math.abs(overscrollY)}px`);
++        }
++        else {
++            this.container.style.setProperty("--overscroll-bottom", `${overscrollY}px`);
++        }
++        if (this.gutter.scrollTop != scrollTop) {
++            this.gutter.scrollTop = scrollTop;
++        }
++        if (!this.matches("[syntax-language]"))
++            return;
++        if (this.syntax.scrollLeft != scrollLeft) {
++            this.syntax.scrollLeft = scrollLeft;
++        }
++        if (this.syntax.scrollTop != scrollTop) {
++            this.syntax.scrollTop = scrollTop;
++        }
++    }
++    /**
++     * Returns the numerical indices of a given character (string) within the editor.
++    */
++    getCharacterIndexes(character) {
++        const list = [];
++        let i = -1;
++        while ((i = this.editor.value.indexOf(character, i + 1)) >= 0) {
++            list.push(i + 1);
++        }
++        return list;
++    }
++    /**
++     * Returns the numerical indices of the lines within the editor.
++    */
++    getLineIndexes() {
++        const indexes = this.getCharacterIndexes("\n");
++        indexes.unshift(0);
++        return indexes;
++    }
++    /**
++     * Performs a find and replace for a given pattern or string within the editor.
++    */
++    replace(pattern, value) {
++        const replaced = this.editor.value.replace(pattern, value);
++        if (replaced != this.editor.value) {
++            this.value = replaced;
++        }
++    }
++    focus(options) {
++        this.editor.focus(options);
++    }
++    blur() {
++        this.editor.blur();
++    }
++    get defined() {
++        return this.#isDefined;
++    }
++    /**
++     * Retrieves or sets the language to use for Prism's syntax highlighting tokenization.
++    */
++    get syntaxLanguage() {
++        return this.getAttribute("syntax-language") ?? "";
++    }
++    set syntaxLanguage(language) {
++        this.setAttribute("syntax-language", language);
++        this.refreshLineNumbers();
++    }
++    /**
++     * Retrieves or sets the text within the editor.
++    */
++    get value() {
++        return this.editor.value;
++    }
++    set value(content) {
++        const active = document.activeElement;
++        if (active != this.editor) {
++            this.focus({ preventScroll: true });
++        }
++        this.editor.select();
++        document.execCommand("insertText", false, content);
++        if (active != this.editor) {
++            active.focus({ preventScroll: true });
++        }
++    }
++    get disabled() {
++        return this.editor.disabled;
++    }
++    set disabled(state) {
++        if (state) {
++            this.setAttribute("disabled", "");
++        }
++        else {
++            this.removeAttribute("disabled");
++        }
++        this.editor.disabled = state;
++    }
++    /**
++     * Retrieves or sets whether the editor is in read-only mode.
++    */
++    get readonly() {
++        return this.editor.readOnly;
++    }
++    set readonly(state) {
++        if (state) {
++            this.setAttribute("readonly", "");
++        }
++        else {
++            this.removeAttribute("readonly");
++        }
++        this.editor.readOnly = state;
++    }
++}
++window.customElements.define("num-text", NumTextElement);
++//# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/public/vendor/num-text/styles/vanilla-appearance.css b/public/vendor/num-text/styles/vanilla-appearance.css
+new file mode 100644
+index 0000000..8e5c5fa
+--- /dev/null
++++ b/public/vendor/num-text/styles/vanilla-appearance.css
+@@ -0,0 +1,42 @@
++:host {
++  border: 1px solid #808080;
++  border-radius: 3px;
++}
++
++:host(:where(:hover)) {
++  border-color: #3b3b3b;
++}
++
++:host(.color-scheme-dark:where(:hover)) {
++  border-color: #acacac;
++}
++
++:host(:where(:focus-within)) {
++  border-color: #195ae6;
++  box-shadow: 0 0 0 3px #4fd7ff6b;
++}
++
++:host(.color-scheme-dark:where(:focus-within)) {
++  border-color: #66b2d9;
++}
++
++:host(:where([disabled])) {
++  border-color: #b0b0b0;
++  opacity: 0.65;
++  cursor: default;
++}
++
++:host(:not(.color-scheme-dark):where([disabled])) {
++  background: #efefef;
++}
++
++[part="content"] {
++  min-width: 4ch;
++  min-height: 4ch;
++}
++
++[part="editor"] {
++  min-width: 4ch;
++  min-height: 4ch;
++  resize: both;
++}
+\ No newline at end of file
+diff --git a/public/vendor/num-text/styles/vanilla-highlighting.css b/public/vendor/num-text/styles/vanilla-highlighting.css
+new file mode 100644
+index 0000000..89f3132
+--- /dev/null
++++ b/public/vendor/num-text/styles/vanilla-highlighting.css
+@@ -0,0 +1,102 @@
++/* HTML Global Comment */
++.token:is(.comment) {
++  opacity: 0.55;
++}
++
++/* HTML Tag, DOCTYPE Tag, RegEx */
++.token:is(.tag,.doctype-tag,.regex) {
++  color: hsl(359,90%,48%);
++}
++
++:host(.color-scheme-dark) .token:is(.tag,.doctype-tag,.regex) {
++  color: hsl(359,90%,68%);
++}
++
++/* Global Punctuation */
++.token:is(.punctuation) {
++  color: var(--color);
++}
++
++.token:is(.punctuation), .language-html :is(.language-css,.language-javascript) .token:is(.punctuation) {
++  opacity: 0.7;
++}
++
++.token:is(.tag,.doctype) .token:is(.punctuation) {
++  opacity: 0.5;
++}
++
++/* HTML Attribute Name, CSS Selector, Global Number, Global Boolean, DOCTYPE Name */
++.token:is(.attr-name,.selector,.number,.boolean), .token.doctype .token.name {
++  color: hsl(35,80%,36%);
++}
++
++:host(.color-scheme-dark) .token:is(.attr-name,.selector,.number,.boolean), :host(.color-scheme-dark) .token.doctype .token.name {
++  color: hsl(35,80%,68%);
++}
++
++/* CSS Property */
++.token:is(.property) {
++  color: hsl(180,37%,37%);
++}
++
++:host(.color-scheme-dark) .token:is(.property) {
++  color: hsl(180,37%,68%);
++}
++
++/* HTML Attribute Value, Global String, HTML Attribute Value Punctuation */
++.token:is(.attr-value,.string), .token:is(.attr-value) .token.punctuation:not(.attr-equals) {
++  color: hsl(117,47%,36%);
++}
++
++.token:is(.attr-value) .token.punctuation:not(.attr-equals) {
++  opacity: 1;
++}
++
++:host(.color-scheme-dark) .token:is(.attr-value,.string), :host(.color-scheme-dark) .token:is(.attr-value) .token.punctuation:not(.attr-equals) {
++  color: hsl(117,47%,68%);
++}
++
++/* CSS Important */
++.token:is(.important) {
++  color: hsl(58,80%,27%);
++}
++
++:host(.color-scheme-dark) .token:is(.important) {
++  color: hsl(58,80%,68%);
++}
++
++/* CSS Function, JavaScript Function */
++.token:is(.function) {
++  color: hsl(208,78%,45%);
++}
++
++:host(.color-scheme-dark) .token:is(.function) {
++  color: hsl(208,78%,68%);
++}
++
++/* Global Class Name */
++.token:is(.class-name) {
++  color: hsl(45,80%,27%);
++}
++
++:host(.color-scheme-dark) .token:is(.class-name) {
++  color: hsl(45,80%,68%);
++}
++
++/* Global Operator */
++.token:is(.operator) {
++  color: hsl(175,54%,33%);
++}
++
++:host(.color-scheme-dark) .token:is(.operator) {
++  color: hsl(175,54%,68%);
++}
++
++/* CSS Rule, JavaScript Keyword */
++.token:is(.rule,.keyword) {
++  color: hsl(273,75%,50%);
++}
++
++:host(.color-scheme-dark) .token:is(.rule,.keyword) {
++  color: hsl(273,75%,78%);
++}
+\ No newline at end of file
+diff --git a/public/vendor/num-text/styles/vanilla-layout.css b/public/vendor/num-text/styles/vanilla-layout.css
+new file mode 100644
+index 0000000..62b2fbb
+--- /dev/null
++++ b/public/vendor/num-text/styles/vanilla-layout.css
+@@ -0,0 +1,159 @@
++:host, *, *::before, *::after {
++  margin: 0;
++  padding: 0;
++  box-sizing: border-box;
++}
++
++:host {
++  --padding: 6px;
++  position: relative;
++  height: 80px;
++  display: inline-block;
++  vertical-align: bottom;
++  color-scheme: light;
++  --color: #000000;
++  color: var(--color);
++  font-size: 13px;
++  font-family: ui-monospace, "Cousine", "Consolas", monospace;
++  line-height: 1.4;
++  --selection-color: inherit;
++  --selection-background: #75b1ff38;
++  --selection-background-inactive: #a1a1a138;
++  background: #ffffff;
++  overflow: hidden;
++  cursor: text;
++  -webkit-user-select: none;
++  user-select: none;
++  -webkit-text-size-adjust: 100%;
++}
++
++:host(.color-scheme-dark) {
++  color-scheme: dark;
++  --color: #eaeaea;
++  background: #242424;
++}
++
++:host(:-moz-window-inactive) {
++  --selection-background: var(--selection-background-inactive);
++}
++
++[part="container"] {
++  width: 100%;
++  height: 100%;
++  display: flex;
++}
++
++[part="gutter"] {
++  counter-reset: line-number;
++  flex-shrink: 0;
++  display: flex;
++  flex-direction: column;
++  list-style: inside none;
++  overflow: hidden;
++}
++
++[part="line-number"]::before {
++  content: counter(line-number);
++  counter-increment: line-number;
++  --padding-multiplier: 2;
++  padding: 0 calc(var(--padding) * var(--padding-multiplier));
++  display: block;
++  text-align: right;
++  opacity: 0.45;
++}
++
++[part="line-number"]:first-child::before {
++  padding-top: calc(var(--padding) + var(--overscroll-top,0px));
++}
++
++[part="line-number"]:last-child {
++  flex-basis: 100%;
++}
++
++[part="line-number"]:last-child::before {
++  padding-bottom: calc(var(--padding) + var(--overscroll-bottom,0px));
++  height: 100%;
++}
++
++[part="line-number"]:last-child::after {
++  content: "";
++  display: block;
++  height: var(--overflow-offset-y,0px);
++}
++
++[part="content"] {
++  position: relative;
++  flex-basis: 100%;
++  display: flex;
++  overflow: hidden;
++}
++
++[part="syntax"] {
++  padding: var(--padding);
++  position: absolute;
++  left: 0;
++  top: 0;
++  width: 100%;
++  height: 100%;
++  font: inherit;
++  background-clip: padding-box;
++  border: 0 solid transparent;
++  border-right-width: var(--overflow-offset-x,0px);
++  border-bottom-width: var(--overflow-offset-y,0px);
++  overflow: hidden;
++  transform: translate(calc(var(--overscroll-left,0px) + calc(var(--overscroll-right,0px) * -1)),calc(var(--overscroll-top,0px) + calc(var(--overscroll-bottom,0px) * -1)));
++}
++
++@supports (-moz-appearance: none) {
++  [part="syntax"] {
++    padding-left: 0;
++    border-left-width: var(--padding);
++    border-right-width: calc(var(--padding) + var(--overflow-offset-x,0px));
++  }
++}
++
++:host(:not([syntax-highlight])) [part="syntax"] {
++  display: none;
++}
++
++[part="editor"] {
++  padding: var(--padding);
++  min-width: 0;
++  flex-basis: 100%;
++  color: var(--color);
++  font: inherit;
++  line-height: inherit;
++  background: none;
++  border: none;
++  border-radius: 0;
++  outline: none;
++  z-index: 1;
++  resize: none;
++  -webkit-appearance: none;
++  appearance: none;
++}
++
++@supports not (-webkit-touch-callout: none) {
++  [part="editor"] {
++    caret-color: var(--color);
++  }
++}
++
++[part="editor"]::placeholder {
++  color: var(--color);
++  opacity: 0.55;
++  white-space: pre-wrap;
++}
++
++[part="editor"]::selection {
++  color: var(--selection-color);
++  background: var(--selection-background);
++}
++
++[part="editor"]::selection:window-inactive {
++  background: var(--selection-background-inactive);
++}
++
++:host([syntax-highlight]) [part="editor"] {
++  color: transparent;
++}
+\ No newline at end of file
+diff --git a/src/Header.tsx b/src/Header.tsx
+index 27da2f5..03d5a2b 100644
+--- a/src/Header.tsx
++++ b/src/Header.tsx
+@@ -50,7 +50,7 @@ function Omnibox() {
+         icon={<RefreshIcon/>}
+       />
+       <OmniboxAnchor
+-        href="https://github.com/Offroaders123/Smart-Text-Editor"
++        href="./offline/out.html?to=github.com%2FOffroaders123%2FSmart-Text-Editor"
+         title="Smart Text Editor on GitHub"
+         icon={<GitHubIcon/>}
+       />
+diff --git a/src/Menubar.tsx b/src/Menubar.tsx
+index 473282a..f316b95 100644
+--- a/src/Menubar.tsx
++++ b/src/Menubar.tsx
+@@ -109,15 +109,15 @@ export default function Menubar(props: MenubarProps) {
+           </li>
+           <li>Online Resources...
+             <ul data-show-icons>
+-              <li><a href="https://webformatter.com"><DecorativeImage src={WebFormatter} alt=""/>Code Formatter</a></li>
+-              <li><a href="https://www.sharedrop.io"><DecorativeImage part="invert" src={Sharedrop} alt=""/>File Transferer</a></li>
+-              <li><a href="https://www.diffchecker.com/"><DecorativeImage src={Diffchecker} alt=""/>Difference Finder</a></li>
+-              <li><a href="https://caniuse.com/"><DecorativeImage src={Caniuse} alt=""/>Compatibility Checker</a></li>
+-              <li><a href="https://web.dev/measure/"><DecorativeImage src={WebDev} alt=""/>Performance Tester</a></li>
+-              <li><a href="https://realfavicongenerator.net/"><DecorativeImage part="rounded" src={RealFaviconGenerator} alt=""/>Favicon Generator</a></li>
+-              <li><a href="https://appsco.pe/developer/splash-screens/"><DecorativeImage part="invert" src={Appscope} alt=""/>Splash Generator</a></li>
+-              <li><a href="https://www.svgminify.com/"><DecorativeImage src={SVGMinify} alt=""/>SVG Simplifier</a></li>
+-              <li><a href="https://cryptii.com/"><DecorativeImage src={Cryptii} alt=""/>Text Encryptor</a></li>
++              <li><a href="./offline/out.html?to=webformatter.com"><DecorativeImage src={WebFormatter} alt=""/>Code Formatter</a></li>
++              <li><a href="./offline/out.html?to=www.sharedrop.io"><DecorativeImage part="invert" src={Sharedrop} alt=""/>File Transferer</a></li>
++              <li><a href="./offline/out.html?to=www.diffchecker.com%2F"><DecorativeImage src={Diffchecker} alt=""/>Difference Finder</a></li>
++              <li><a href="./offline/out.html?to=caniuse.com%2F"><DecorativeImage src={Caniuse} alt=""/>Compatibility Checker</a></li>
++              <li><a href="./offline/out.html?to=web.dev%2Fmeasure%2F"><DecorativeImage src={WebDev} alt=""/>Performance Tester</a></li>
++              <li><a href="./offline/out.html?to=realfavicongenerator.net%2F"><DecorativeImage part="rounded" src={RealFaviconGenerator} alt=""/>Favicon Generator</a></li>
++              <li><a href="./offline/out.html?to=appsco.pe%2Fdeveloper%2Fsplash-screens%2F"><DecorativeImage part="invert" src={Appscope} alt=""/>Splash Generator</a></li>
++              <li><a href="./offline/out.html?to=www.svgminify.com%2F"><DecorativeImage src={SVGMinify} alt=""/>SVG Simplifier</a></li>
++              <li><a href="./offline/out.html?to=cryptii.com%2F"><DecorativeImage src={Cryptii} alt=""/>Text Encryptor</a></li>
+             </ul>
+           </li>
+         </ul>
+diff --git a/src/prism.ts b/src/prism.ts
+index 88d6290..fa15216 100644
+--- a/src/prism.ts
++++ b/src/prism.ts
+@@ -5,7 +5,11 @@
+ 
+ globalThis.Prism = { manual: true } as typeof import("prismjs");
+ 
+-await import("https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js");
+-await import("https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js");
++// RepairBench adaptation: these two specifiers were remote (cdnjs.cloudflare.com). Offline the
++// top-level await rejects and takes the whole module graph with it, so nothing renders. They now
++// resolve to the local `prismjs` dependency - the same 1.29.0 the CDN URL pinned. Manual mode is
++// still armed on globalThis before the core loads, so highlighting behaviour is unchanged.
++await import("prismjs");
++await import("prismjs/components/prism-json");
+ 
+ export default globalThis.Prism;
+\ No newline at end of file
+diff --git a/src/prismjs.d.ts b/src/prismjs.d.ts
+index e3323ea..681c131 100644
+--- a/src/prismjs.d.ts
++++ b/src/prismjs.d.ts
+@@ -1,3 +1,5 @@
+-declare module "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" {}
+-
+-declare module "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" {}
+\ No newline at end of file
++// RepairBench adaptation: these two shorthand ambient modules used to name the remote cdnjs
++// specifiers that src/prism.ts awaited. The core specifier is now "prismjs", which @types/prismjs
++// already types, so only the language-component subpath still needs a declaration - @types/prismjs
++// has no "prismjs/components/*" module declarations.
++declare module "prismjs/components/prism-json" {}
+\ No newline at end of file

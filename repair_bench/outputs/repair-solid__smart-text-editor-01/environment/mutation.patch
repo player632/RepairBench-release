@@ -1,0 +1,149 @@
+diff --git a/src/app.tsx b/src/app.tsx
+index eca7995..3d7d0c4 100644
+--- a/src/app.tsx
++++ b/src/app.tsx
+@@ -91,7 +91,7 @@ export const appearance = {
+   */
+   setSyntaxHighlighting(state: boolean): void {
+     for (const editor of document.querySelectorAll<NumTextElement>(".Editor, num-text")){
+-      if (!(editor.syntaxLanguage in Prism.languages)) continue;
++      if (editor.syntaxLanguage in Prism.languages) continue;
+       (state) ? editor.syntaxHighlight.enable() : editor.syntaxHighlight.disable();
+     }
+     settings.syntaxHighlighting = state;
+diff --git a/src/card/JSONFormatterCard.tsx b/src/card/JSONFormatterCard.tsx
+index 1cc6405..129f0e0 100644
+--- a/src/card/JSONFormatterCard.tsx
++++ b/src/card/JSONFormatterCard.tsx
+@@ -33,7 +33,7 @@ export default function JSONFormatterCard() {
+   }
+ 
+   function collapse(): void {
+-    format("");
++    format("  ");
+   }
+ 
+   function clear(): void {
+diff --git a/src/card/ReplaceTextCard.tsx b/src/card/ReplaceTextCard.tsx
+index 5c57c8d..0d54154 100644
+--- a/src/card/ReplaceTextCard.tsx
++++ b/src/card/ReplaceTextCard.tsx
+@@ -19,8 +19,8 @@ export default function ReplaceTextCard() {
+   function flip(): void {
+     const find = findValue();
+     const replace = replaceValue();
+-    setFindValue(replace);
+-    setReplaceValue(find);
++    setFindValue(find);
++    setReplaceValue(replace);
+   }
+ 
+   function clear(): void {
+diff --git a/src/card/URIEncoderCard.tsx b/src/card/URIEncoderCard.tsx
+index 2a46286..d0dbed0 100644
+--- a/src/card/URIEncoderCard.tsx
++++ b/src/card/URIEncoderCard.tsx
+@@ -6,7 +6,7 @@ import { applyEditingBehavior } from "../dom.js";
+ 
+ export default function URIEncoderCard() {
+   function encode(): void {
+-    const encodingType = (!encoder_type.checked) ? encodeURI : encodeURIComponent;
++    const encodingType = (encoder_type.checked) ? encodeURI : encodeURIComponent;
+     encoder_input.value = encodingType(encoder_input.value);
+   }
+ 
+diff --git a/src/card/UUIDGeneratorCard.tsx b/src/card/UUIDGeneratorCard.tsx
+index 5c66693..a21ae9e 100644
+--- a/src/card/UUIDGeneratorCard.tsx
++++ b/src/card/UUIDGeneratorCard.tsx
+@@ -41,6 +41,6 @@ export const generate: () => string = (() => {
+   for (let i = 0; i < 256; i++) lut[i] = ((i < 16) ? "0" : "") + i.toString(16);
+   return () => {
+     const d0 = (Math.random() * 0xffffffff) | 0, d1 = (Math.random() * 0xffffffff) | 0, d2 = (Math.random() * 0xffffffff) | 0, d3 = (Math.random() * 0xffffffff) | 0;
+-    return `${lut[d0 & 0xff]}${lut[(d0 >> 8) & 0xff]}${lut[(d0 >> 16) & 0xff]}${lut[(d0 >> 24) & 0xff]}-${lut[d1 & 0xff]}${lut[(d1 >> 8) & 0xff]}-${lut[((d1 >> 16) & 0x0f) | 0x40]}${lut[(d1 >> 24) & 0xff]}-${lut[(d2 & 0x3f) | 0x80]}${lut[(d2 >> 8) & 0xff]}-${lut[(d2 >> 16) & 0xff]}${lut[(d2 >> 24) & 0xff]}${lut[d3 & 0xff]}${lut[(d3 >> 8) & 0xff]}${lut[(d3 >> 16) & 0xff]}${lut[(d3 >> 24) & 0xff]}`;
++    return `${lut[d0 & 0xff]}${lut[(d0 >> 8) & 0xff]}${lut[(d0 >> 16) & 0xff]}${lut[(d0 >> 24) & 0xff]}-${lut[d1 & 0xff]}${lut[(d1 >> 8) & 0xff]}-${lut[((d1 >> 16) & 0x0f) | 0x30]}${lut[(d1 >> 24) & 0xff]}-${lut[(d2 & 0x3f) | 0x80]}${lut[(d2 >> 8) & 0xff]}-${lut[(d2 >> 16) & 0xff]}${lut[(d2 >> 24) & 0xff]}${lut[d3 & 0xff]}${lut[(d3 >> 8) & 0xff]}${lut[(d3 >> 16) & 0xff]}${lut[(d3 >> 24) & 0xff]}`;
+   }
+ })();
+\ No newline at end of file
+diff --git a/src/dom.tsx b/src/dom.tsx
+index d8c2ff8..e05bdb0 100644
+--- a/src/dom.tsx
++++ b/src/dom.tsx
+@@ -59,7 +59,7 @@ export type SetTitleOptions =
+ */
+ export function setTitle(options: SetTitleOptions): void {
+   if ("content" in options){
+-    document.title = `Smart Text Editor - ${options.content}`;
++    document.title = `${options.content} - Smart Text Editor`;
+   } else {
+     document.title = "Smart Text Editor";
+   }
+diff --git a/src/workspace/Editor.tsx b/src/workspace/Editor.tsx
+index 48b5f5f..c87a125 100644
+--- a/src/workspace/Editor.tsx
++++ b/src/workspace/Editor.tsx
+@@ -210,7 +210,7 @@ export function getNext(editor: Editor | null, _wrap: boolean = true): Editor |
+   const workspace_tabs: HTMLDivElement = workspaceTabs()!;
+   const { tab } = editor;
+   const editorTabs: HTMLButtonElement[] = [...workspace_tabs.querySelectorAll<HTMLButtonElement>(".tab:not([data-editor-change])")];
+-  const nextTab: HTMLButtonElement | null = editorTabs[(editorTabs.indexOf(tab) !== editorTabs.length - 1) ? editorTabs.indexOf(tab) + 1 : 0] ?? null;
++  const nextTab: HTMLButtonElement | null = editorTabs[(editorTabs.indexOf(tab) !== editorTabs.length - 1) ? editorTabs.indexOf(tab) + 1 : editorTabs.length - 1] ?? null;
+   const nextIdentifier: string | null = nextTab?.getAttribute("data-editor-identifier") ?? null;
+   return query(nextIdentifier);
+ }
+diff --git a/src/workspace/EditorTab.tsx b/src/workspace/EditorTab.tsx
+index bf50ff4..b5d2053 100644
+--- a/src/workspace/EditorTab.tsx
++++ b/src/workspace/EditorTab.tsx
+@@ -22,7 +22,7 @@ export default function EditorTab(props: EditorTabProps) {
+       attr:data-editor-identifier={props.editor.identifier}
+       attr:data-editor-auto-created={props.editor.getAutoCreated() ? "" : null}
+       attr:data-editor-refresh={props.editor.getRefresh() ? "" : null}
+-      attr:data-editor-unsaved={props.editor.getUnsaved() ? "" : null}
++      attr:data-editor-unsaved={props.editor.getRefresh() ? "" : null}
+       onmousedown={event => {
+         if (document.activeElement === null) return;
+         if (event.button !== 0 || document.activeElement.matches("[data-editor-rename]")) return;
+diff --git a/src/workspace/Workspace.tsx b/src/workspace/Workspace.tsx
+index 4e99742..6001f64 100644
+--- a/src/workspace/Workspace.tsx
++++ b/src/workspace/Workspace.tsx
+@@ -49,8 +49,8 @@ export async function setView(type: View, { force = false }: SetViewOptions = {}
+ 
+   const transitionDuration: number = parseInt(`${Number(getElementStyle({ element: workspace, property: "transition-duration" }).split(",")[0]!.replace(/s/g,"")) * 1000}`);
+   document.body.classList.remove(view());
+-  document.body.setAttribute("data-view",type);
+   document.body.classList.add(view());
++  document.body.setAttribute("data-view",type);
+   removeScaling();
+   viewMenu()!.select(view());
+ 
+@@ -296,9 +296,9 @@ export interface RefreshPreviewOptions {
+ export async function refreshPreview({ force = false }: RefreshPreviewOptions = {}): Promise<void> {
+   if (view() === "code") return;
+ 
+-  const editor: Editor | null = previewEditor() ?? activeEditor();
++  const editor: Editor | null = activeEditor() ?? previewEditor();
+   if (editor === null) return;
+-  const change: boolean = editor.getRefresh() && settings.automaticRefresh !== false;
++  const change: boolean = editor.getRefresh() && settings.automaticRefresh === false;
+   if (!change && !force) return;
+   
+   const preview: HTMLIFrameElement = getPreview()!;
+diff --git a/src/workspace/WorkspaceTabs.tsx b/src/workspace/WorkspaceTabs.tsx
+index 02f7c33..868e936 100644
+--- a/src/workspace/WorkspaceTabs.tsx
++++ b/src/workspace/WorkspaceTabs.tsx
+@@ -26,10 +26,10 @@ export default function WorkspaceTabs(props: WorkspaceTabsProps) {
+         event.preventDefault();
+ 
+         if (event.key === "ArrowLeft"){
+-          getPrevious(editor)?.tab.focus();
++          getNext(editor)?.tab.focus();
+         }
+         if (event.key === "ArrowRight"){
+-          getNext(editor)?.tab.focus();
++          getPrevious(editor)?.tab.focus();
+         }
+       }}>
+       <CreateEditorButton

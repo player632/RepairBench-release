@@ -1,0 +1,762 @@
+diff --git a/src/hooks.client.ts b/src/hooks.client.ts
+new file mode 100644
+index 000000000..d329855ca
+--- /dev/null
++++ b/src/hooks.client.ts
+@@ -0,0 +1,33 @@
++// INSTRUMENTATION (repair-bench, environment/instrumentation.patch).
++//
++// WHY THIS FILE EXISTS AT ALL - a MEASURED correction (leg COM4, 2026-09-08).
++// The native-bridge answers used to be installed from src/routes/+layout.ts. That is too late. ES module
++// imports are hoisted: every module a route chunk reaches is evaluated before a single statement of the
++// importing module runs, and src/lib/stores/logs.ts:123-125 calls initLogging() as soon as the log store is
++// created - initLogging() immediately awaits invoke('get_log_file_path') against a bridge that did not exist
++// yet. All four faces of the first four-state leg measured the same consequence: one unhandled rejection
++// ("Cannot read properties of undefined (reading 'transformCallback')"), one caught warning ("Failed to
++// initialize file logging: ..."), and P01/P20 permanently red on rejectionCount() === 0.
++//
++// src/hooks.client.ts is the earliest client-side module SvelteKit evaluates - the generated client entry
++// imports it statically, while route modules (and therefore the application's own stores) are imported
++// dynamically afterwards - so installing from here puts the answers in place before any application module
++// runs. rb-stub.ts imports nothing from $lib, which is what makes this ordering safe.
++//
++// src/routes/+layout.ts keeps its own installRbStub() call: installRbStub() is idempotent, so that call is a
++// no-op guard here and still correct if the harness is ever loaded through a path that skips client hooks.
++//
++// The probe is published with a dynamic import so that nothing in rb-probe.ts - which DOES import the
++// application's own stores - is pulled into this early module and thereby moved ahead of the bridge. The
++// bridge answers are what must be first; the readers only need to be first among readers.
++import { browser } from '$app/environment';
++import { installRbStub } from '$lib/rb-stub';
++
++if (browser) {
++  installRbStub();
++  void import('$lib/rb-probe')
++    .then((m) => {
++      m.installRbProbe();
++    })
++    .catch(() => {});
++}
+diff --git a/src/routes/+layout.ts b/src/routes/+layout.ts
+index a3d15781a..67ccb324a 100644
+--- a/src/routes/+layout.ts
++++ b/src/routes/+layout.ts
+@@ -1 +1,17 @@
++// INSTRUMENTATION (repair-bench, environment/instrumentation.patch).
++// The seed's own route module keeps `ssr = false` (Tauri has no Node server, so the app is a
++// static SPA). The two installs below are IDEMPOTENT GUARDS, not the primary install point: the
++// harness is installed from src/hooks.client.ts, the earliest client-side module SvelteKit
++// evaluates, because installing from a route module is measurably too late - see the note there.
++// Kept here so the bridge is live before src/routes/+layout.svelte's onMount calls
++// getCurrentWindow() / invoke() even on a load path that skips client hooks.
++import { browser } from '$app/environment';
++import { installRbStub } from '$lib/rb-stub';
++import { installRbProbe } from '$lib/rb-probe';
++
+ export const ssr = false;
++
++if (browser) {
++  installRbStub();
++  installRbProbe();
++}
+diff --git a/src/lib/rb-probe.ts b/src/lib/rb-probe.ts
+new file mode 100644
+index 000000000..354e2033a
+--- /dev/null
++++ b/src/lib/rb-probe.ts
+@@ -0,0 +1,404 @@
++/**
++ * INSTRUMENTATION (repair-bench, environment/instrumentation.patch) - the measurement bridge.
++ *
++ * WHY THIS EXISTS. The graded observables of this task are the seed's own pure helpers and its
++ * own boot outcome. Nothing in the shipped bundle exposes them to a page context, so this file
++ * publishes `window.__COM__`: a flat table of READERS that call the seed's real modules and hand
++ * back scalars. It re-implements nothing - every reading below is produced by importing the
++ * application's own `src/lib/**` code and calling it, which is what keeps a candidate fix (or a
++ * remaining defect) visible in the numbers.
++ *
++ * CONTRACTS THIS FILE HOLDS
++ *  - every reader returns a SCALAR (string | number | boolean | null); `undefined` is converted to
++ *    `null` at the boundary, because an `undefined` result cannot be compared by the runner.
++ *  - no reader mutates application state, writes storage, navigates, or performs I/O. The only
++ *    stateful readers are the two explicitly-named scenarios (`lru*`, `debounce*`), which allocate
++ *    their OWN throwaway objects and never touch an application store.
++ *  - error/unhandledrejection/console.error are trapped from the moment rb-stub.ts is installed -
++ *    the earliest client-side module - so a boot failure is a number, not a silent blank page.
++ */
++import { get } from 'svelte/store';
++import { defaultSettings, settings, settingsReady } from '$lib/stores/settings';
++import { remoteDefaults } from '$lib/composables/remoteSync';
++import { getLocale } from '$lib/i18n';
++import { formatDuration, formatSize, formatSpeed, formatTime, parseTimeString } from '$lib/utils/format';
++import { safeDuration, safeDurationSeconds } from '$lib/utils/duration';
++import { isDirectFileUrl, isLikelyChannel, isLikelyPlaylist, isYouTubeMix } from '$lib/utils/urlUtils';
++import { calculateMatchScore } from '$lib/utils/search';
++import { matchesShortcut } from '$lib/utils/keyboard';
++import { adjustBrightnessHex, hexToRgba, hslToHex } from '$lib/utils/color';
++import { LRUCache } from '$lib/utils/LRUCache';
++import { debounce } from '$lib/utils/debounce';
++import { rbConsoleErrors, rbIpcLog, rbPageErrors, rbPageRejections, rbStubInstalled } from '$lib/rb-stub';
++
++type Scalar = string | number | boolean | null;
++
++const nul = <T>(value: T | undefined | null): Scalar => (value === undefined ? null : (value as Scalar));
++
++// ---------------------------------------------------------------- error surface
++// The traps live in rb-stub.ts and are installed from src/hooks.client.ts, the earliest client-side
++// module SvelteKit evaluates. They cannot live here: this module imports the application's own stores,
++// whose import-time side effects (src/lib/stores/logs.ts:123-125 calls initLogging() the moment the log
++// store is created) are hoisted ahead of every statement in this file, so a trap installed from here is
++// always installed after part of the boot it is meant to watch. These are LIVE VIEWS of that module's
++// arrays, not copies, so a failure recorded after this module loaded is still counted by the next read.
++const errorCount = (): number => rbPageErrors().length;
++const errorDetail = (index: number): Scalar => nul(rbPageErrors()[index]);
++const rejectionCount = (): number => rbPageRejections().length;
++const rejectionDetail = (index: number): Scalar => nul(rbPageRejections()[index]);
++const consoleErrorCount = (): number => rbConsoleErrors().length;
++const consoleErrorDetail = (index: number): Scalar => nul(rbConsoleErrors()[index]);
++
++// ---------------------------------------------------------------- boot surface
++const splashPresent = (): boolean => document.getElementById('splash-screen') !== null;
++const appRootPresent = (): boolean => document.querySelector('.app') !== null;
++const sidebarNavPresent = (): boolean => document.querySelector('.sidebar-nav') !== null;
++const bottomBarPresent = (): boolean => document.querySelector('.bottom-bar') !== null;
++const readyFlag = (): boolean => get(settingsReady) === true;
++const sizeUnit = (): Scalar => nul(get(settings).sizeUnit);
++const defaultSizeUnit = (): Scalar => nul(defaultSettings.sizeUnit);
++const backgroundType = (): Scalar => nul(get(settings).backgroundType);
++const accentColor = (): Scalar => nul(get(settings).accentColor);
++const extensionLocalPort = (): number => Number(get(settings).extensionLocalPort);
++const remoteDefaultsKeyCount = (): number => Object.keys(get(remoteDefaults)).length;
++const localeCode = (): Scalar => nul(getLocale());
++const documentLang = (): Scalar => nul(document.documentElement.getAttribute('lang'));
++const titleText = (): Scalar => nul(document.title);
++const anchorCount = (): number => document.querySelectorAll('a').length;
++const buttonCount = (): number => document.querySelectorAll('button').length;
++const inputCount = (): number => document.querySelectorAll('input').length;
++const videoElementCount = (): number => document.querySelectorAll('video').length;
++const imgElementCount = (): number => document.querySelectorAll('img').length;
++const textOf = (selector: string): Scalar => {
++  const el = document.querySelector(selector);
++  return el === null ? null : (el.textContent || '').trim();
++};
++const countOf = (selector: string): number => document.querySelectorAll(selector).length;
++
++// ---------------------------------------------------------------- zero-egress surface
++function resourceEntries(): PerformanceResourceTiming[] {
++  return performance.getEntriesByType('resource') as PerformanceResourceTiming[];
++}
++const resourceEntryCount = (): number => resourceEntries().length;
++const externalRequestCount = (): number =>
++  resourceEntries().filter((entry) => {
++    try {
++      return new URL(entry.name).origin !== window.location.origin;
++    } catch {
++      return true;
++    }
++  }).length;
++const requestCountFor = (fragment: string): number =>
++  resourceEntries().filter((entry) => entry.name.includes(fragment)).length;
++const externalRequestNames = (): Scalar => {
++  const names = resourceEntries()
++    .filter((entry) => {
++      try {
++        return new URL(entry.name).origin !== window.location.origin;
++      } catch {
++        return true;
++      }
++    })
++    .map((entry) => entry.name);
++  return names.length === 0 ? null : names.join('|');
++};
++
++// ---------------------------------------------------------------- storage / URL residue
++const localStorageCount = (): number => window.localStorage.length;
++const localStorageKeys = (): Scalar => {
++  const keys: string[] = [];
++  for (let i = 0; i < window.localStorage.length; i += 1) {
++    const key = window.localStorage.key(i);
++    if (key !== null) keys.push(key);
++  }
++  return keys.length === 0 ? null : keys.sort().join('|');
++};
++const localStorageHas = (key: string): boolean => window.localStorage.getItem(key) !== null;
++const localStorageValue = (key: string): Scalar => nul(window.localStorage.getItem(key));
++const sessionStorageCount = (): number => window.sessionStorage.length;
++const sessionStorageKeys = (): Scalar => {
++  const keys: string[] = [];
++  for (let i = 0; i < window.sessionStorage.length; i += 1) {
++    const key = window.sessionStorage.key(i);
++    if (key !== null) keys.push(key);
++  }
++  return keys.length === 0 ? null : keys.sort().join('|');
++};
++const locationSearch = (): Scalar => nul(window.location.search);
++const locationHash = (): Scalar => nul(window.location.hash);
++const locationPathname = (): Scalar => nul(window.location.pathname);
++const cookieString = (): Scalar => nul(document.cookie);
++
++// ---------------------------------------------------------------- native-bridge surface
++const ipcCallCount = (): number => rbIpcLog().length;
++const ipcDistinctCommandCount = (): number => new Set(rbIpcLog()).size;
++const ipcCallCountFor = (cmd: string): number => rbIpcLog().filter((entry) => entry === cmd).length;
++const ipcLogJoined = (): Scalar => {
++  const log = rbIpcLog();
++  return log.length === 0 ? null : log.join('|');
++};
++const stubInstalled = (): boolean => rbStubInstalled();
++
++// ---------------------------------------------------------------- pure helpers (seed's own code)
++const mixProbe = (urlStr: string): boolean => isYouTubeMix(urlStr);
++const playlistProbe = (urlStr: string): boolean => isLikelyPlaylist(urlStr);
++const playlistIgnoreMixesProbe = (urlStr: string): boolean => isLikelyPlaylist(urlStr, { ignoreMixes: true });
++const channelProbe = (urlStr: string): boolean => isLikelyChannel(urlStr);
++const directFileFilename = (urlStr: string): Scalar => nul(isDirectFileUrl(urlStr).filename);
++const directFileIsFile = (urlStr: string): boolean => isDirectFileUrl(urlStr).isFile;
++const sizeProbe = (bytes: number): Scalar => nul(formatSize(bytes));
++const speedProbe = (bytesPerSecond: number): Scalar => nul(formatSpeed(bytesPerSecond));
++const durationProbe = (seconds: number): Scalar => nul(formatDuration(seconds));
++const durationNullProbe = (): Scalar => nul(formatDuration(null));
++const durationWithZeroFallback = (seconds: number, zeroFallback: string): Scalar =>
++  nul(formatDuration(seconds, { zeroFallback }));
++const timeProbe = (seconds: number): Scalar => nul(formatTime(seconds));
++const timeForceHoursProbe = (seconds: number): Scalar => nul(formatTime(seconds, { forceHours: true }));
++const parseTimeProbe = (input: string): Scalar => nul(parseTimeString(input));
++const safeSecondsProbe = (value: number): Scalar => nul(safeDurationSeconds(value));
++const safeDurationProbe = (value: number, fallback: number): number => safeDuration(value, fallback);
++const matchScoreProbe = (text: string, query: string): number => calculateMatchScore(text, query);
++const hslHexProbe = (h: number, s: number, l: number): Scalar => nul(hslToHex(h, s, l));
++const brightnessProbe = (hex: string, percent: number): Scalar => nul(adjustBrightnessHex(hex, percent));
++const hexToRgbaProbe = (hex: string, alpha: number): Scalar => nul(hexToRgba(hex, alpha));
++
++interface ShortcutShape {
++  key: string;
++  mod?: boolean;
++  ctrl?: boolean;
++  meta?: boolean;
++  shift?: boolean;
++  alt?: boolean;
++}
++interface KeyState {
++  ctrl?: boolean;
++  meta?: boolean;
++  shift?: boolean;
++  alt?: boolean;
++}
++function makeKeyEvent(key: string, state: KeyState): KeyboardEvent {
++  return new KeyboardEvent('keydown', {
++    key,
++    ctrlKey: state.ctrl === true,
++    metaKey: state.meta === true,
++    shiftKey: state.shift === true,
++    altKey: state.alt === true,
++    bubbles: true,
++    cancelable: true,
++  });
++}
++const shortcutMatch = (key: string, state: KeyState, shortcut: ShortcutShape): boolean =>
++  matchesShortcut(makeKeyEvent(key, state), shortcut);
++
++// ---------------------------------------------------------------- scenario 1: LRU eviction
++let lruCache: LRUCache<string, number> | null = null;
++let lruMutations = 0;
++const lruBegin = (maxSize: number): boolean => {
++  lruCache = new LRUCache<string, number>(maxSize);
++  lruMutations = 0;
++  lruCache.setMutationCallback(() => {
++    lruMutations += 1;
++  });
++  return true;
++};
++const lruSet = (key: string, value: number): number => {
++  if (lruCache === null) lruBegin(3);
++  lruCache!.set(key, value);
++  return lruCache!.size;
++};
++const lruGet = (key: string): Scalar => (lruCache === null ? null : nul(lruCache.get(key)));
++const lruHas = (key: string): boolean => lruCache !== null && lruCache.has(key);
++const lruSize = (): number => (lruCache === null ? -1 : lruCache.size);
++const lruKeys = (): Scalar => {
++  if (lruCache === null) return null;
++  const keys: string[] = [];
++  for (const entry of lruCache.entries()) keys.push(String(entry[0]));
++  return keys.length === 0 ? null : keys.join('|');
++};
++const lruMutationCount = (): number => lruMutations;
++
++// ---------------------------------------------------------------- scenario 2: debounce timing
++let debounceFires = 0;
++function makeCounter(waitMs: number) {
++  return debounce(() => {
++    debounceFires += 1;
++  }, waitMs);
++}
++type DebouncedCounter = ReturnType<typeof makeCounter>;
++let debounced: DebouncedCounter | null = null;
++const debounceBegin = (waitMs: number): boolean => {
++  debounceFires = 0;
++  debounced = makeCounter(waitMs);
++  return true;
++};
++const debounceBurst = (times: number): number => {
++  if (debounced === null) debounceBegin(250);
++  for (let i = 0; i < times; i += 1) debounced!();
++  return debounceFires;
++};
++const debounceCount = (): number => debounceFires;
++const debounceCancel = (): number => {
++  if (debounced === null) return -1;
++  debounced.cancel();
++  return debounceFires;
++};
++const debounceFlush = (): number => {
++  if (debounced === null) return -1;
++  debounced.flush();
++  return debounceFires;
++};
++
++// ---------------------------------------------------------------- latches (async boot facts)
++interface Latch {
++  ok: boolean;
++  detail: string;
++  polls: number;
++}
++const latches: Record<string, Latch> = {};
++const predicates: Record<string, () => boolean> = {
++  settingsReadyTrue: () => get(settingsReady) === true,
++  splashGone: () => document.getElementById('splash-screen') === null,
++  appMounted: () => document.querySelector('.app') !== null,
++  bridgeAnswered: () => rbIpcLog().length > 0,
++  remoteDefaultsApplied: () => Object.keys(get(remoteDefaults)).length > 0,
++};
++const latchNames = (): Scalar => {
++  const names = Object.keys(latches);
++  return names.length === 0 ? null : names.sort().join('|');
++};
++async function armLatch(name: string, timeoutMs: number): Promise<boolean> {
++  const predicate = predicates[name];
++  if (typeof predicate !== 'function') {
++    latches[name] = { ok: false, detail: 'unknown predicate', polls: 0 };
++    return false;
++  }
++  const deadline = Date.now() + timeoutMs;
++  let polls = 0;
++  for (;;) {
++    polls += 1;
++    let ok = false;
++    try {
++      ok = predicate() === true;
++    } catch (error) {
++      latches[name] = { ok: false, detail: error instanceof Error ? error.message : String(error), polls };
++      return false;
++    }
++    if (ok) {
++      latches[name] = { ok: true, detail: 'satisfied', polls };
++      return true;
++    }
++    if (Date.now() >= deadline) {
++      latches[name] = { ok: false, detail: 'timeout', polls };
++      return false;
++    }
++    await new Promise((resolve) => {
++      window.setTimeout(resolve, 50);
++    });
++  }
++}
++const latchOk = (name: string): Scalar => (latches[name] ? latches[name].ok : null);
++const latchDetail = (name: string): Scalar => (latches[name] ? nul(latches[name].detail) : null);
++const latchPolls = (name: string): Scalar => (latches[name] ? latches[name].polls : null);
++
++const bridge = {
++  errorCount,
++  errorDetail,
++  rejectionCount,
++  rejectionDetail,
++  consoleErrorCount,
++  consoleErrorDetail,
++  splashPresent,
++  appRootPresent,
++  sidebarNavPresent,
++  bottomBarPresent,
++  readyFlag,
++  sizeUnit,
++  defaultSizeUnit,
++  backgroundType,
++  accentColor,
++  extensionLocalPort,
++  remoteDefaultsKeyCount,
++  localeCode,
++  documentLang,
++  titleText,
++  anchorCount,
++  buttonCount,
++  inputCount,
++  videoElementCount,
++  imgElementCount,
++  textOf,
++  countOf,
++  resourceEntryCount,
++  externalRequestCount,
++  requestCountFor,
++  externalRequestNames,
++  localStorageCount,
++  localStorageKeys,
++  localStorageHas,
++  localStorageValue,
++  sessionStorageCount,
++  sessionStorageKeys,
++  locationSearch,
++  locationHash,
++  locationPathname,
++  cookieString,
++  ipcCallCount,
++  ipcDistinctCommandCount,
++  ipcCallCountFor,
++  ipcLogJoined,
++  stubInstalled,
++  mixProbe,
++  playlistProbe,
++  playlistIgnoreMixesProbe,
++  channelProbe,
++  directFileFilename,
++  directFileIsFile,
++  sizeProbe,
++  speedProbe,
++  durationProbe,
++  durationNullProbe,
++  durationWithZeroFallback,
++  timeProbe,
++  timeForceHoursProbe,
++  parseTimeProbe,
++  safeSecondsProbe,
++  safeDurationProbe,
++  matchScoreProbe,
++  hslHexProbe,
++  brightnessProbe,
++  hexToRgbaProbe,
++  shortcutMatch,
++  lruBegin,
++  lruSet,
++  lruGet,
++  lruHas,
++  lruSize,
++  lruKeys,
++  lruMutationCount,
++  debounceBegin,
++  debounceBurst,
++  debounceCount,
++  debounceCancel,
++  debounceFlush,
++  latchNames,
++  armLatch,
++  latchOk,
++  latchDetail,
++  latchPolls,
++};
++
++let probeInstalled = false;
++
++/** Publishes `window.__COM__`. Idempotent and a no-op outside a browser context. */
++export function installRbProbe(): boolean {
++  if (probeInstalled) return true;
++  if (typeof window === 'undefined') return false;
++  probeInstalled = true;
++  (window as unknown as Record<string, unknown>).__COM__ = bridge;
++  return true;
++}
++
++/** True once installRbProbe() has published the bridge for this document. */
++export function rbProbeInstalled(): boolean {
++  return probeInstalled;
++}
+diff --git a/src/lib/rb-stub.ts b/src/lib/rb-stub.ts
+new file mode 100644
+index 000000000..8f6bd8364
+--- /dev/null
++++ b/src/lib/rb-stub.ts
+@@ -0,0 +1,285 @@
++/**
++ * INSTRUMENTATION (repair-bench, environment/instrumentation.patch) - browser-side
++ * answers for the seed's native (Tauri) bridge, plus a deterministic pin for the two
++ * platform entropy sources the bundle reaches for.
++ *
++ * WHY THIS EXISTS. comine is a Tauri 2 desktop app: every backend capability is an
++ * `invoke()` over `window.__TAURI_INTERNALS__`, which does not exist in a plain browser
++ * context. Without answers here, `getCurrentWindow()` in src/routes/+layout.svelte:294
++ * throws synchronously inside onMount, so initSettings / queue.init / the dependency
++ * check / the update check / the remote-defaults sync never run at all and the window
++ * stays behind its splash screen. The seed ships no browser harness of its own.
++ *
++ * WHAT IT DOES *NOT* DO. No application code path is rewritten, short-circuited or
++ * special-cased: the seed's own `invoke` call sites run unchanged and simply receive
++ * canned answers, which is exactly what the upstream `@tauri-apps/api/mocks` module is
++ * published for ("This function can be used when testing tauri frontend applications or
++ * when running the frontend in a Node.js context during static site generation").
++ * Every answer below is a CONSTANT - no clock, no randomness, no I/O - so the boot
++ * sequence is byte-identical from run to run.
++ *
++ * The fixtures model an idle, fully provisioned desktop session: all seven optional
++ * components reported installed (so deps.autoInstallBundle() finds nothing missing and
++ * raises no progress toast), an empty job queue and an empty history (so no thumbnail,
++ * no media-colour extraction and no external image request is ever queued), no pending
++ * update, no broadcasts, plenty of disk (so the low-disk warning stays down) and an
++ * empty settings store (so `Store.get` answers "does not exist" and initSettings keeps
++ * the seed's own `defaultSettings` verbatim, which is what makes every settings-derived
++ * reading reproducible).
++ */
++import { mockConvertFileSrc, mockIPC, mockWindows } from '@tauri-apps/api/mocks';
++
++const ipcLog: string[] = [];
++let installed = false;
++
++/**
++ * Error / unhandledrejection / console.error traps.
++ *
++ * WHY THEY LIVE IN THIS FILE AND NOT IN rb-probe.ts - a MEASURED correction (leg COM4, 2026-09-08).
++ * rb-probe.ts imports the application's own stores and helpers, and ES module imports are hoisted, so every
++ * app module it reaches is evaluated BEFORE a single statement in the importing module runs. Installing the
++ * bridge from src/routes/+layout.ts therefore let application import-time side effects reach
++ * `window.__TAURI_INTERNALS__` while it was still undefined - src/lib/stores/logs.ts:123-125 calls
++ * initLogging() as soon as the log store is created, and initLogging() immediately awaits
++ * invoke('get_log_file_path'). The first four-state leg measured the consequence on ALL FOUR faces: one
++ * unhandled rejection ("Cannot read properties of undefined (reading 'transformCallback')"), one caught
++ * warning ("Failed to initialize file logging: TypeError: Cannot read properties of undefined (reading
++ * 'invoke')"), and P01/P20 permanently red on `rejectionCount() === 0`.
++ *
++ * This file imports nothing from $lib - only @tauri-apps/api/mocks - so it can be installed from
++ * src/hooks.client.ts, the earliest client-side module SvelteKit evaluates, which puts the bridge answers in
++ * place before any application module runs. The traps move with it deliberately: a trap that is installed
++ * after the boot it is supposed to watch reports a clean boot it never observed, and a zero below must mean
++ * "nothing failed", never "nothing was listening yet".
++ */
++const pageErrors: string[] = [];
++const pageRejections: string[] = [];
++const consoleErrors: string[] = [];
++let trapsInstalled = false;
++
++function installTraps(): void {
++  if (trapsInstalled) return;
++  trapsInstalled = true;
++  window.addEventListener('error', (event: ErrorEvent) => {
++    pageErrors.push(String((event && (event.message || (event.error && event.error.message))) || 'error'));
++  });
++  window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
++    const reason: unknown = event && event.reason;
++    const message = reason instanceof Error ? reason.message : String(reason);
++    pageRejections.push(message || 'rejection');
++  });
++  const realError = console.error.bind(console);
++  console.error = (...args: unknown[]): void => {
++    consoleErrors.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '));
++    realError(...args);
++  };
++}
++
++/**
++ * Live views of the trap arrays for rb-probe.ts. Deliberately NOT copies: a failure that lands after the
++ * probe module loaded still has to be counted by the next read.
++ */
++export function rbPageErrors(): string[] {
++  return pageErrors;
++}
++
++export function rbPageRejections(): string[] {
++  return pageRejections;
++}
++
++export function rbConsoleErrors(): string[] {
++  return consoleErrors;
++}
++
++/** src/lib/bindings/DependencyStatus.ts, one fixed shape for all seven components. */
++function dependencyStatus(version: string, path: string): unknown {
++  return {
++    installed: true,
++    version,
++    path,
++    updateAvailable: null,
++    diskSize: 42000000,
++  };
++}
++
++/** src/lib/bindings/DiskSpaceInfo.ts - half a terabyte free, far above the warning floor. */
++const DISK_SPACE = {
++  availableBytes: 536870912000,
++  totalBytes: 1073741824000,
++  availableGb: 500,
++  totalGb: 1000,
++  usedPercent: 50,
++};
++
++/** src/lib/bindings/UpdateCheckResult.ts - nothing pending, so no update notification. */
++const UPDATE_CHECK = {
++  available: false,
++  version: null,
++  body: null,
++  date: null,
++  download_url: null,
++  is_prerelease: false,
++};
++
++/** src/lib/bindings/HistoryStats.ts over an empty history. */
++const HISTORY_STATS = {
++  totalDownloads: 0,
++  totalSize: 0,
++  totalDuration: 0,
++  formatCounts: {},
++  favouritesCount: 0,
++};
++
++const DEPENDENCY_VERSIONS: Record<string, [string, string]> = {
++  check_ytdlp: ['2026.03.15', '/usr/local/bin/yt-dlp'],
++  check_ffmpeg: ['7.1.1', '/usr/local/bin/ffmpeg'],
++  check_aria2: ['1.37.0', '/usr/local/bin/aria2c'],
++  check_deno: ['2.2.3', '/usr/local/bin/deno'],
++  check_quickjs: ['0.9.1', '/usr/local/bin/quickjs'],
++  check_lux: ['0.24.1', '/usr/local/bin/lux'],
++  check_gallery_dl: ['1.28.2', '/usr/local/bin/gallery-dl'],
++};
++
++/**
++ * One deterministic answer per command the seed can issue during boot and during the
++ * measured interactions. Anything unlisted resolves to null, which every call site in
++ * the seed already handles (they are all wrapped in try/catch or optional-chained).
++ */
++function answer(cmd: string): unknown {
++  if (cmd in DEPENDENCY_VERSIONS) {
++    const entry = DEPENDENCY_VERSIONS[cmd];
++    return dependencyStatus(entry[0], entry[1]);
++  }
++  switch (cmd) {
++    // @tauri-apps/plugin-store: `load` hands back a resource id, `get` a [value, exists]
++    // tuple. exists=false makes Store.get resolve to undefined, so initSettings falls
++    // back to defaultSettings for every key instead of merging a stored profile.
++    case 'plugin:store|load':
++      return 1;
++    case 'plugin:store|get_store':
++      return null;
++    case 'plugin:store|get':
++      return [null, false];
++    case 'plugin:store|has':
++      return false;
++    case 'plugin:store|keys':
++    case 'plugin:store|values':
++    case 'plugin:store|entries':
++      return [];
++    case 'plugin:store|length':
++      return 0;
++    case 'plugin:store|set':
++    case 'plugin:store|save':
++    case 'plugin:store|clear':
++    case 'plugin:store|reset':
++    case 'plugin:store|reload':
++      return null;
++    case 'plugin:store|delete':
++      return false;
++
++    case 'plugin:log|log':
++      return null;
++    case 'plugin:notification|is_permission_granted':
++      return false;
++    case 'plugin:notification|request_permission':
++      return 'denied';
++    case 'plugin:clipboard-manager|read_text':
++      return null;
++
++    // queue / history / system state: an idle session with nothing in flight
++    case 'get_jobs':
++    case 'get_history':
++    case 'fetch_broadcasts':
++    case 'read_session_logs':
++      return [];
++    case 'get_history_stats':
++      return HISTORY_STATS;
++    case 'get_disk_space':
++      return DISK_SPACE;
++    case 'check_for_update':
++      return UPDATE_CHECK;
++    case 'server_is_running':
++      return true;
++
++    // thumbnail colour extraction: no item is ever enqueued during measurement, so these
++    // are reachable only if a candidate fix drives them by hand. Fixed tuple, fixed answer.
++    case 'get_cached_thumbnail_color':
++      return null;
++    case 'extract_thumbnail_color':
++    case 'extract_local_thumbnail_color':
++      return [14, 165, 233];
++
++    default:
++      return null;
++  }
++}
++
++/**
++ * Deterministic pins for the bundle's two platform entropy sources. Neither feeds any
++ * measured observable (they only name skeleton-shimmer widths, clip-range element ids and
++ * queue/history/conversion/notification ids), so pinning them cannot mask or manufacture a
++ * symptom - it removes run-to-run noise from the page the measurements are read off.
++ * `crypto.getRandomValues` is deliberately left ALONE: @tauri-apps/api/mocks uses it to
++ * allocate IPC callback ids and rewriting it would break the bridge this file installs.
++ */
++function pinEntropy(): void {
++  let state = 0x9e3779b9;
++  const nextRandom = (): number => {
++    state = (state + 0x6d2b79f5) | 0;
++    let t = Math.imul(state ^ (state >>> 15), 1 | state);
++    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++  Math.random = nextRandom;
++
++  const w = window as unknown as { crypto?: Crypto };
++  const real = w.crypto;
++  if (real && typeof real.randomUUID === 'function') {
++    let counter = 0;
++    const hex = (value: number, width: number): string => value.toString(16).padStart(width, '0');
++    Object.defineProperty(real, 'randomUUID', {
++      configurable: true,
++      writable: true,
++      value: (): string => {
++        counter += 1;
++        return (
++          '00000000-0000-4000-8000-' + hex(counter, 12)
++        );
++      },
++    });
++  }
++}
++
++/**
++ * Installs the bridge answers. Idempotent, and a no-op outside a browser context so the
++ * SvelteKit build (which evaluates route modules in Node during `svelte-kit sync`) is
++ * unaffected. Returns true when the stub is live.
++ */
++export function installRbStub(): boolean {
++  if (installed) return true;
++  if (typeof window === 'undefined') return false;
++  installed = true;
++  // Traps first: everything below, and every application module that loads afterwards, is then observed.
++  installTraps();
++  pinEntropy();
++  mockWindows('main');
++  mockConvertFileSrc('windows');
++  mockIPC(
++    (cmd: string) => {
++      ipcLog.push(cmd);
++      return answer(cmd);
++    },
++    { shouldMockEvents: true }
++  );
++  return true;
++}
++
++/** Command names the seed has invoked through the bridge since the stub went live. */
++export function rbIpcLog(): string[] {
++  return ipcLog.slice();
++}
++
++/** True once installRbStub() has answered the bridge for this document. */
++export function rbStubInstalled(): boolean {
++  return installed;
++}

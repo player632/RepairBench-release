@@ -1,0 +1,744 @@
+diff --git a/src/index.html b/src/index.html
+index c12c350..c5bebed 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -11,6 +11,7 @@
+ <body>
+   <div
+     id="loading-mask"
++    data-testid="loading-mask"
+     style="
+     position:fixed;
+     top:0;right:0;bottom:0;left:0;
+@@ -36,7 +37,7 @@
+       </div>
+ 
+       <div class='column main-column'>
+-        <div id="drawing-canvas-container" class="drawing-canvas-container canvas-container" data-test-id="drawing-canvas">
++        <div id="drawing-canvas-container" class="drawing-canvas-container canvas-container" data-testid="drawing-canvas">
+           <div class="canvas-background"></div>
+         </div>
+       </div>
+@@ -46,7 +47,7 @@
+         @@include('templates/layers-list.html', {})
+         @@include('templates/transformations.html', {})
+         @@include('templates/palettes-list.html', {})
+-        <div class="pull-bottom cursor-coordinates"></div>
++        <div class="pull-bottom cursor-coordinates" data-testid="cursor-coordinates"></div>
+       </div>
+     </div>
+ 
+@@ -54,15 +55,15 @@
+       <div class="sticky-section-wrap">
+         @@include('templates/settings.html', {})
+         <div class="drawer vertical-centerer">
+-          <div class="drawer-content" id="drawer-container">
++          <div class="drawer-content" id="drawer-container" data-testid="settings-drawer">
+           </div>
+         </div>
+       </div>
+     </div>
+   </div>
+ 
+-  <div id="dialog-container-wrapper">
+-    <div id="dialog-container">
++  <div id="dialog-container-wrapper" data-testid="dialog-wrapper">
++    <div id="dialog-container" data-testid="dialog-container">
+     </div>
+   </div>
+ 
+@@ -105,5 +106,6 @@
+   <!-- the comment above indicates the end of the markup reused by the editor integrated in piskelapp.com -->
+   <!-- do not delete, do not move :) -->
+ 
++  <div id="wlb-state-probe" data-testid="state-probe" style="display:none"></div>
+ </body>
+ </html>
+diff --git a/src/js/app.js b/src/js/app.js
+index 90ec961..318add1 100644
+--- a/src/js/app.js
++++ b/src/js/app.js
+@@ -272,6 +272,8 @@
+           dialogId: "unsupported-browser"
+         });
+       }
++
++      this.initWlbStateProbe_();
+     },
+ 
+     // TODO: Remove this method and connected code.
+@@ -279,6 +281,141 @@
+       return false;
+     },
+ 
++    /**
++     * WLB instrumentation: read-only state probe. Polls real service state
++     * every 200ms and mirrors it as data-* attributes on #wlb-state-probe.
++     * Deliberately never subscribes to application events: the event graph
++     * is part of the surface under test.
++     */
++    initWlbStateProbe_: function () {
++      var probeEl = document.getElementById("wlb-state-probe");
++      if (!probeEl) {
++        return;
++      }
++
++      var fnv1a = function (bytes) {
++        var hash = 0x811c9dc5;
++        for (var i = 0; i < bytes.length; i++) {
++          hash ^= bytes[i];
++          hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
++        }
++        return ("00000000" + hash.toString(16)).slice(-8);
++      };
++
++      var lastPreviewUrl = "";
++      var previewBusy = false;
++
++      var readCanvasHash = function (pc, set) {
++        var frame = pc.getCurrentFrame();
++        if (!frame) {
++          return;
++        }
++        var pixels = frame.getPixels();
++        var bytes = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length * 4);
++        set("data-canvas-hash", fnv1a(bytes) + "-" + frame.getWidth() + "x" + frame.getHeight());
++      };
++
++      var readPreviewHash = function (app, pc, set) {
++        var container = document.querySelector(
++          "#animated-preview-canvas-container .background-image-frame-container"
++        );
++        if (!container) {
++          return;
++        }
++        var match = (container.style.backgroundImage || "").match(/^url\((.*)\)$/);
++        var url = match ? match[1] : "";
++        url = url.replace(/^["']|["']$/g, "");
++        if (!url || url === lastPreviewUrl || previewBusy) {
++          return;
++        }
++        lastPreviewUrl = url;
++        previewBusy = true;
++        var image = new Image();
++        image.onload = function () {
++          try {
++            var width = pc.getWidth();
++            var height = pc.getHeight();
++            var zoom = app.previewController.renderer.getZoom();
++            var canvas = document.createElement("canvas");
++            canvas.width = image.width;
++            canvas.height = image.height;
++            var context = canvas.getContext("2d");
++            context.drawImage(image, 0, 0);
++            var data = context.getImageData(0, 0, canvas.width, canvas.height).data;
++            var grid = new Uint8Array(width * height * 4);
++            for (var y = 0; y < height; y++) {
++              for (var x = 0; x < width; x++) {
++                var sx = Math.min(Math.floor((x + 0.5) * zoom), canvas.width - 1);
++                var sy = Math.min(Math.floor((y + 0.5) * zoom), canvas.height - 1);
++                var si = (sy * canvas.width + sx) * 4;
++                var di = (y * width + x) * 4;
++                grid[di] = data[si];
++                grid[di + 1] = data[si + 1];
++                grid[di + 2] = data[si + 2];
++                grid[di + 3] = data[si + 3];
++              }
++            }
++            set("data-preview-hash", fnv1a(grid) + "-" + width + "x" + height);
++          } catch (error) {
++            // keep the previously captured value
++          }
++          previewBusy = false;
++        };
++        image.onerror = function () {
++          previewBusy = false;
++          lastPreviewUrl = "";
++        };
++        image.src = url;
++      };
++
++      var updateProbe = function () {
++        try {
++          if (!pskl.app.piskelController || !pskl.app.toolController) {
++            return;
++          }
++          var app = pskl.app;
++          var pc = app.piskelController;
++          var set = function (name, value) {
++            probeEl.setAttribute(name, String(value));
++          };
++
++          set("data-tool", app.toolController.currentSelectedTool ? app.toolController.currentSelectedTool.toolId : "");
++          set("data-pen-size", app.penSizeService.getPenSize());
++          set("data-primary-color", app.selectedColorsService.getPrimaryColor());
++          set("data-secondary-color", app.selectedColorsService.getSecondaryColor());
++          set("data-fps", pc.getFPS());
++          set("data-frame-index", pc.getCurrentFrameIndex());
++          set("data-frame-count", pc.getFrameCount());
++          set("data-layer-index", pc.getCurrentLayerIndex());
++          set("data-layer-count", pc.getLayers().length);
++          set("data-zoom", app.drawingController.compositeRenderer.getZoom().toFixed(2));
++          set("data-canvas-width", pc.getWidth());
++          set("data-canvas-height", pc.getHeight());
++          set("data-onion-skin", pskl.UserSettings.get(pskl.UserSettings.ONION_SKIN));
++          set("data-grid", pskl.UserSettings.get(pskl.UserSettings.GRID_ENABLED));
++          set("data-layer-preview", pskl.UserSettings.get(pskl.UserSettings.LAYER_PREVIEW));
++          set("data-preview-size", pskl.UserSettings.get(pskl.UserSettings.PREVIEW_SIZE));
++          set("data-seamless", pskl.UserSettings.get(pskl.UserSettings.SEAMLESS_MODE));
++          set("data-dirty", app.savedStatusService.isDirty());
++          set("data-piskel-name", pc.getPiskel().getDescriptor().name);
++          set("data-dialog", app.dialogsController.currentDialog_ ? app.dialogsController.currentDialog_.id : "none");
++          set("data-drawer", app.settingsController.currentSetting || "none");
++          set("data-history-index", app.historyService.currentIndex);
++          set("data-history-length", app.historyService.stateQueue.length);
++          set("data-prompt-count", window.__wlbPromptCalls || 0);
++          var layer = pc.getCurrentLayer();
++          set("data-layer-opacity", layer ? layer.getOpacity() : "");
++          readCanvasHash(pc, set);
++          readPreviewHash(app, pc, set);
++        } catch (error) {
++          // the probe must never break the application
++        }
++      };
++
++      window.setInterval(updateProbe, 200);
++      updateProbe();
++    },
++
+     initTooltips_: function () {
+       $("body").tooltip({
+         selector: "[rel=tooltip]"
+diff --git a/src/js/controller/FramesListController.js b/src/js/controller/FramesListController.js
+index c5d6105..d25f54a 100644
+--- a/src/js/controller/FramesListController.js
++++ b/src/js/controller/FramesListController.js
+@@ -212,7 +212,7 @@
+     newFrameButton.id = "add-frame-action";
+     newFrameButton.className = "add-frame-action";
+     newFrameButton.setAttribute("data-tile-action", ACTION.NEW_FRAME);
+-    newFrameButton.setAttribute("data-test-id", "add-frame-button");
++    newFrameButton.setAttribute("data-testid", "add-frame-button");
+     newFrameButton.innerHTML =
+       '<div class="add-frame-action-icon icon-frame-plus-white">' +
+       '</div><div class="label">Add new frame</div>';
+@@ -281,7 +281,7 @@
+     previewTileRoot.setAttribute("data-tile-hash", currentFrame.getHash());
+     previewTileRoot.setAttribute("data-tile-action", ACTION.SELECT);
+     previewTileRoot.classList.add("preview-tile");
+-    previewTileRoot.setAttribute("data-test-id", "frame-tile");
++    previewTileRoot.setAttribute("data-testid", "frame-tile");
+     if (this.piskelController.getCurrentFrame() == currentFrame) {
+       previewTileRoot.classList.add("selected");
+     }
+@@ -318,7 +318,7 @@
+     cloneFrameButton.setAttribute("title", "Duplicate this frame");
+     cloneFrameButton.className =
+       "tile-overlay duplicate-frame-action icon-frame-duplicate-white";
+-    cloneFrameButton.setAttribute("data-test-id", "duplicate-frame-button");
++    cloneFrameButton.setAttribute("data-testid", "duplicate-frame-button");
+     previewTileRoot.appendChild(cloneFrameButton);
+ 
+     // Add delete button
+@@ -330,7 +330,7 @@
+     deleteButton.setAttribute("data-tile-action", ACTION.DELETE);
+     deleteButton.className =
+       "tile-overlay delete-frame-action icon-frame-recyclebin-white";
+-    deleteButton.setAttribute("data-test-id", "delete-frame-button");
++    deleteButton.setAttribute("data-testid", "delete-frame-button");
+     previewTileRoot.appendChild(deleteButton);
+ 
+     // Add 'dragndrop handle'.
+diff --git a/src/js/controller/NotificationController.js b/src/js/controller/NotificationController.js
+index 3d32bca..f8127fe 100644
+--- a/src/js/controller/NotificationController.js
++++ b/src/js/controller/NotificationController.js
+@@ -23,6 +23,7 @@
+     var message = document.createElement("div");
+     message.id = "user-message";
+     message.className = "user-message";
++    message.setAttribute("data-testid", "notification-message");
+     message.innerHTML = messageInfo.content;
+     message.innerHTML =
+       message.innerHTML + '<div title="Close message" class="close">x</div>';
+diff --git a/src/js/widgets/SizePicker.js b/src/js/widgets/SizePicker.js
+index 5318df8..4bb0753 100644
+--- a/src/js/widgets/SizePicker.js
++++ b/src/js/widgets/SizePicker.js
+@@ -41,6 +41,7 @@
+     if (selectedOption) {
+       selectedOption.classList.add("selected");
+     }
++    this.container.dataset.selectedSize = size;
+   };
+ 
+   ns.SizePicker.prototype.onSizeOptionClick_ = function (e) {
+diff --git a/src/templates/debug-header.html b/src/templates/debug-header.html
+index 90004f4..a247960 100644
+--- a/src/templates/debug-header.html
++++ b/src/templates/debug-header.html
+@@ -48,5 +48,5 @@
+     data-placement="left"
+     >+</a
+   >
+-  <span class="piskel-name"></span>
++  <span class="piskel-name" data-testid="piskel-name"></span>
+ </div>
+diff --git a/src/templates/drawing-tools.html b/src/templates/drawing-tools.html
+index 278d35a..59593e9 100644
+--- a/src/templates/drawing-tools.html
++++ b/src/templates/drawing-tools.html
+@@ -6,33 +6,33 @@
+         title="Pen size<br/>from 1 to 4 pixels"
+         rel="tooltip"
+         data-placement="top"
+-        data-test-id="pen-size-picker"
++        data-testid="pen-size-picker"
+       >
+         <div
+           class="pen-size-option size-picker-option"
+           data-size="1"
+-          data-test-id="pen-size-1"
++          data-testid="pen-size-1"
+         ></div>
+         <div
+           class="pen-size-option size-picker-option"
+           data-size="2"
+-          data-test-id="pen-size-2"
++          data-testid="pen-size-2"
+         ></div>
+         <div
+           class="pen-size-option size-picker-option"
+           data-size="3"
+-          data-test-id="pen-size-3"
++          data-testid="pen-size-3"
+         ></div>
+         <div
+           class="pen-size-option size-picker-option"
+           data-size="4"
+-          data-test-id="pen-size-4"
++          data-testid="pen-size-4"
+         ></div>
+       </div>
+       <ul
+         id="tools-container"
+         class="tools-wrapper"
+-        data-test-id="tools-container"
++        data-testid="tools-container"
+       ><!-- Drawing tools will be inserted here --></ul>
+       <div class="palette-wrapper">
+         <div
+@@ -45,7 +45,7 @@
+             id="color-picker"
+             class="color"
+             type="text"
+-            data-test-id="primary-color-picker"
++            data-testid="primary-color-picker"
+           >
+         </div>
+         <div
+@@ -58,12 +58,12 @@
+             id="secondary-color-picker"
+             class="secondary-color-picker color"
+             type="text"
+-            data-test-id="secondary-color-picker"
++            data-testid="secondary-color-picker"
+           >
+         </div>
+         <div
+           class="swap-colors-button icon-common-swapcolors-arrow-grey"
+-          data-test-id="swap-colors-button"
++          data-testid="swap-colors-button"
+           title="Swap colors (X)"
+           rel="tooltip"
+           data-placement="right"
+@@ -76,6 +76,6 @@
+ 
+   <!-- Drawing tool icon-button -->
+   <script type="text/template" id="drawingTool-item-template">
+-    <li rel="tooltip" data-placement="{{tooltipposition}}" class="{{cssclass}}" data-tool-id="{{toolid}}" data-test-id="tool-{{toolid}}" title="{{title}}"></li>
++    <li rel="tooltip" data-placement="{{tooltipposition}}" class="{{cssclass}}" data-tool-id="{{toolid}}" data-testid="tool-{{toolid}}" title="{{title}}"></li>
+   </script>
+ </div>
+diff --git a/src/templates/frames-list.html b/src/templates/frames-list.html
+index e3f054e..035bba7 100644
+--- a/src/templates/frames-list.html
++++ b/src/templates/frames-list.html
+@@ -1,7 +1,7 @@
+ <div
+   id="preview-list-wrapper"
+   class="preview-list-wrapper"
+-  data-test-id="frame-list"
++  data-testid="frame-list"
+ >
+   <div id="preview-list-scroller" class="preview-list-scroller">
+     <ul class="preview-list" id="preview-list"></ul>
+diff --git a/src/templates/layers-list.html b/src/templates/layers-list.html
+index 42409bd..3fbf3ed 100644
+--- a/src/templates/layers-list.html
++++ b/src/templates/layers-list.html
+@@ -1,17 +1,17 @@
+-<div class="toolbox-container layers-list-container" data-test-id="layer-list">
++<div class="toolbox-container layers-list-container" data-testid="layer-list">
+   <h3 class="toolbox-title layers-title">
+     Layers
+     <div
+       rel="tooltip"
+       data-placement="left"
+       class="layers-toggle-preview piskel-icon-eye"
+-      data-test-id="layer-preview-toggle"
++      data-testid="layer-preview-toggle"
+     ></div>
+   </h3>
+   <div class="toolbox-buttons">
+     <button
+       data-action="add"
+-      data-test-id="layer-add-button"
++      data-testid="layer-add-button"
+       class="button layers-button piskel-icon-plus"
+       rel="tooltip"
+       data-placement="top"
+@@ -19,7 +19,7 @@
+ 
+     <button
+       data-action="up"
+-      data-test-id="layer-move-up-button"
++      data-testid="layer-move-up-button"
+       class="button layers-button piskel-icon-arrow-up-fat"
+       title="Move layer up"
+       rel="tooltip"
+@@ -28,7 +28,7 @@
+ 
+     <button
+       data-action="down"
+-      data-test-id="layer-move-down-button"
++      data-testid="layer-move-down-button"
+       class="button layers-button piskel-icon-arrow-down-fat"
+       title="Move layer down"
+       rel="tooltip"
+@@ -37,7 +37,7 @@
+ 
+     <button
+       data-action="edit"
+-      data-test-id="layer-edit-button"
++      data-testid="layer-edit-button"
+       class="button layers-button piskel-icon-pencil"
+       title="Edit layer name"
+       rel="tooltip"
+@@ -46,7 +46,7 @@
+ 
+     <button
+       data-action="merge"
+-      data-test-id="layer-merge-button"
++      data-testid="layer-merge-button"
+       class="button layers-button piskel-icon-merge"
+       title="Merge with layer below"
+       rel="tooltip"
+@@ -55,7 +55,7 @@
+ 
+     <button
+       data-action="delete"
+-      data-test-id="layer-delete-button"
++      data-testid="layer-delete-button"
+       class="button layers-button piskel-icon-close"
+       title="Delete selected layer"
+       rel="tooltip"
+@@ -63,13 +63,13 @@
+     ></button>
+   </div>
+ 
+-  <ul class="layers-list" data-test-id="layers-list-items"></ul>
++  <ul class="layers-list" data-testid="layers-list-items"></ul>
+ 
+   <script type="text/template" id="layer-item-template">
+     <li class="layer-item {{isselected:current-layer-item}}"
+-        data-layer-index="{{layerindex}}" data-test-id="layer-item">
+-        <span class="layer-name" data-placement="top" data-test-id="layer-name">{{layername}}</span>
+-        <span class="layer-item-opacity" data-test-id="layer-opacity"
++        data-layer-index="{{layerindex}}" data-testid="layer-item">
++        <span class="layer-name" data-placement="top" data-testid="layer-name">{{layername}}</span>
++        <span class="layer-item-opacity" data-testid="layer-alpha-button"
+               title="Layer opacity ({{opacity}})" rel="tooltip" data-placement="top">
+             &#945;
+         </span>
+@@ -77,6 +77,6 @@
+   </script>
+ 
+   <script type="text/template" id="layer-name-input-template">
+-    <input class="textfield layer-name-input" type="text" autocomplete="off" value="{{layername}}" data-test-id="layer-name-input" />
++    <input class="textfield layer-name-input" type="text" autocomplete="off" value="{{layername}}" data-testid="layer-name-input" />
+   </script>
+ </div>
+diff --git a/src/templates/palettes-list.html b/src/templates/palettes-list.html
+index bd3feae..a713d30 100644
+--- a/src/templates/palettes-list.html
++++ b/src/templates/palettes-list.html
+@@ -7,11 +7,11 @@
+       title="Create a new palette"
+       rel="tooltip"
+       data-placement="top"
+-      data-test-id="create-palette-button"
++      data-testid="create-palette-button"
+     ></button>
+     <select
+       class="button palettes-list-select"
+-      data-test-id="palette-select"
++      data-testid="palette-select"
+     ></select>
+     <button
+       class="button palettes-list-button edit-palette-button  piskel-icon-pencil"
+@@ -24,6 +24,7 @@
+   <div class="palettes-list-colors"></div>
+   <script type="text/template" id="palette-color-template">
+     <div class="palettes-list-color"
++         data-testid="palette-color"
+          data-color="{{color}}"
+          data-color-index="{{index}}"
+          title="{{title}}">
+diff --git a/src/templates/preview.html b/src/templates/preview.html
+index 13eed74..5981917 100644
+--- a/src/templates/preview.html
++++ b/src/templates/preview.html
+@@ -11,7 +11,7 @@
+           class="preview-contextual-action  original-size-button"
+           rel="tooltip"
+           data-placement="left"
+-          data-test-id="preview-size-1x"
++          data-testid="preview-size-1x"
+         >
+           1x
+         </div>
+@@ -19,13 +19,13 @@
+           class="preview-contextual-action  best-size-button"
+           rel="tooltip"
+           data-placement="left"
+-          data-test-id="preview-size-best"
++          data-testid="preview-size-best"
+         ></div>
+         <div
+           class="preview-contextual-action  full-size-button"
+           rel="tooltip"
+           data-placement="left"
+-          data-test-id="preview-size-full"
++          data-testid="preview-size-full"
+         >
+           Full
+         </div>
+@@ -35,14 +35,14 @@
+         title="Toggle grid"
+         rel="tooltip"
+         data-placement="bottom"
+-        data-test-id="grid-toggle-button"
++        data-testid="grid-toggle-button"
+       ></div>
+       <div
+         class="preview-contextual-action  open-popup-preview-button  icon-minimap-popup-preview-arrow-white"
+         title="Open preview in popup"
+         rel="tooltip"
+         data-placement="bottom"
+-        data-test-id="open-popup-preview-button"
++        data-testid="open-popup-preview-button"
+       ></div>
+     </div>
+ 
+@@ -55,12 +55,12 @@
+       rel="tooltip"
+       data-placement="bottom"
+       class="piskel-icon-onion preview-toggle-onion-skin"
+-      data-test-id="onion-skin-toggle-button"
++      data-testid="onion-skin-toggle-button"
+     ></div>
+     <span
+       id="display-fps"
+       class="display-fps"
+-      data-test-id="fps-display"
++      data-testid="fps-display"
+     ></span>
+     <input
+       id="preview-fps"
+@@ -68,7 +68,7 @@
+       type="range"
+       min="0"
+       max="24"
+-      data-test-id="fps-slider"
++      data-testid="fps-slider"
+     >
+   </div>
+   <div></div>
+diff --git a/src/templates/settings.html b/src/templates/settings.html
+index 11be5d4..87850b8 100644
+--- a/src/templates/settings.html
++++ b/src/templates/settings.html
+@@ -1,6 +1,7 @@
+ <div class="vertical-centerer">
+   <div
+     data-setting="user"
++    data-testid="settings-user-button"
+     class="tool-icon icon-settings-gear-white"
+     title="<span class='highlight'>PREFERENCES</span></br>"
+     rel="tooltip"
+@@ -9,6 +10,7 @@
+ 
+   <div
+     data-setting="resize"
++    data-testid="settings-resize-button"
+     class="tool-icon  icon-settings-resize-white"
+     title="<span class='highlight'>RESIZE</span></br>Resize the drawing area"
+     rel="tooltip"
+@@ -17,6 +19,7 @@
+ 
+   <div
+     data-setting="save"
++    data-testid="settings-save-button"
+     class="tool-icon  icon-settings-save-white"
+     title="<span class='highlight'>SAVE</span></br>Save locally or export as a file"
+     rel="tooltip"
+@@ -25,6 +28,7 @@
+ 
+   <div
+     data-setting="export"
++    data-testid="settings-export-button"
+     class="tool-icon  icon-settings-export-white"
+     title="<span class='highlight'>EXPORT</span></br>Export as Image, as Spritesheet<br/>or as Animated GIF"
+     rel="tooltip"
+@@ -33,6 +37,7 @@
+ 
+   <div
+     data-setting="import"
++    data-testid="settings-import-button"
+     class="tool-icon  icon-settings-open-folder-white"
+     title="<span class='highlight'>IMPORT</span></br>Import an existing image,<br/>an animated GIF or a .piskel file"
+     rel="tooltip"
+diff --git a/src/templates/settings/export/gif.html b/src/templates/settings/export/gif.html
+index d4b528f..d9fc89d 100644
+--- a/src/templates/settings/export/gif.html
++++ b/src/templates/settings/export/gif.html
+@@ -17,7 +17,7 @@
+              data-placement="top">Loop repeatedly</label>
+     </div>
+     <div class="export-panel-section export-panel-row">
+-      <button type="button" class="button button-primary gif-download-button">Download</button>
++      <button type="button" class="button button-primary gif-download-button" data-testid="gif-download-button">Download</button>
+       <div class="export-info">Download as an animated GIF.</div>
+     </div>
+   </div>
+diff --git a/src/templates/settings/export/misc.html b/src/templates/settings/export/misc.html
+index 9800a44..d8d3bff 100644
+--- a/src/templates/settings/export/misc.html
++++ b/src/templates/settings/export/misc.html
+@@ -10,7 +10,7 @@
+           C file with frame rendered as array.
+         </span>
+       </div>
+-      <button type="button" class="button button-primary c-download-button" data-test-id="c-file-download-button">Download C file</button>
++      <button type="button" class="button button-primary c-download-button" data-testid="c-file-download-button">Download C file</button>
+     </div>
+   </div>
+ </script>
+diff --git a/src/templates/settings/export/png.html b/src/templates/settings/export/png.html
+index cdf8901..380929f 100644
+--- a/src/templates/settings/export/png.html
++++ b/src/templates/settings/export/png.html
+@@ -19,7 +19,7 @@
+         <span class="highlight export-panel-row">Spritesheet file export: </span>
+       </div>
+       <div class="export-panel-row">
+-        <button type="button" class="button button-primary png-download-button" data-test-id="png-download-button">Download</button>
++        <button type="button" class="button button-primary png-download-button" data-testid="png-download-button">Download</button>
+         <span class="png-export-dimension-info export-info"></span>
+       </div>
+     </div>
+@@ -52,7 +52,7 @@
+         <span class="highlight">Selected frame export:</span>
+       </div>
+       <div class="export-panel-row">
+-        <button type="button" class="button button-primary selected-frame-download-button" data-test-id="png-selected-frame-download-button"/>Download</button>
++        <button type="button" class="button button-primary selected-frame-download-button" data-testid="png-selected-frame-download-button"/>Download</button>
+         <span class="export-info">Single frame as a PNG file</span>
+       </div>
+     </div>
+diff --git a/src/templates/settings/export/zip.html b/src/templates/settings/export/zip.html
+index 80b2d8e..1fc5f16 100644
+--- a/src/templates/settings/export/zip.html
++++ b/src/templates/settings/export/zip.html
+@@ -15,7 +15,7 @@
+         <input id="zip-use-layer-names" class="zip-use-layer-names-checkbox checkbox-fix" type="checkbox" />
+         <label for="zip-use-layer-names">Index by layer names</label>
+       </div>
+-      <button type="button" class="button button-primary zip-generate-button" data-test-id="zip-download-button"/>Download ZIP</button>
++      <button type="button" class="button button-primary zip-generate-button" data-testid="zip-download-button"/>Download ZIP</button>
+     </div>
+   </div>
+ </script>
+diff --git a/src/templates/settings/import.html b/src/templates/settings/import.html
+index 7509180..2168a09 100644
+--- a/src/templates/settings/import.html
++++ b/src/templates/settings/import.html
+@@ -16,7 +16,7 @@
+       <span>Load a <span class="import-highlight">.piskel</span> file from your computer</span>
+ 
+       <div class="import-section">
+-        <button type="button" class="button  button-primary open-piskel-button" data-test-id="import-piskel-button">Browse .piskel files</button>
++        <button type="button" class="button  button-primary open-piskel-button" data-testid="import-piskel-button">Browse .piskel files</button>
+         <span class="file-input-open-piskel-status"></span>
+         <input style="display:none"
+           type="file" name="open-piskel-input"
+@@ -29,7 +29,7 @@
+     <div class="settings-item">
+       <div style="margin-top:5px;margin-bottom:5px;">Supports <span class="import-highlight">PNG, JPG, BMP, Animated GIF</span></div>
+       <div class="import-section">
+-        <button type="button" class="button  button-primary file-input-button" data-test-id="import-image-button">Browse images</button>
++        <button type="button" class="button  button-primary file-input-button" data-testid="import-image-button">Browse images</button>
+         <input style="display:none"
+           type="file" name="file-upload-input"
+           value="file" accept="image/*"/>
+@@ -41,7 +41,7 @@
+     <div class="settings-item">
+       Browse backups of previous sessions.
+       <div style="margin-top:10px;">
+-        <button type="button" class="button button-primary browse-backups-button" data-test-id="browse-backups-button">Browse backups</button>
++        <button type="button" class="button button-primary browse-backups-button" data-testid="browse-backups-button">Browse backups</button>
+       </div>
+     </div>
+   </div>
+diff --git a/src/templates/settings/save.html b/src/templates/settings/save.html
+index 62a7c32..5d47512 100644
+--- a/src/templates/settings/save.html
++++ b/src/templates/settings/save.html
+@@ -5,7 +5,7 @@
+       <div class="settings-item">
+         <div class="settings-form-section" style="overflow:hidden">
+           <label class="row" style="line-height:20px;">Title : </label>
+-          <input id="save-name" type="text" class="save-field textfield" autocomplete="off" data-test-id="save-name" />
++          <input id="save-name" type="text" class="save-field textfield" autocomplete="off" data-testid="save-name" />
+         </div>
+         <div class="settings-form-section">
+           <label class="row" style="line-height:20px;">Description : </label>
+@@ -25,7 +25,7 @@
+ <script type="text/template" id="save-localstorage-partial">
+   <div class="settings-title">Save offline in Browser</div>
+   <div class="settings-item">
+-    <input type="button" class="button button-primary" id="save-localstorage-button" value="Save in Browser" />
++    <input type="button" class="button button-primary" id="save-localstorage-button" value="Save in Browser" data-testid="save-browser-button" />
+     <div class="save-status">Your piskel will be saved locally and will only be accessible from this browser.</div>
+   </div>
+ </script>
+@@ -44,7 +44,7 @@
+ <script type="text/template" id="save-file-download-partial">
+   <div class="settings-title">Save offline as File</div>
+   <div class="settings-item">
+-    <input type="button" class="button button-primary" id="save-file-download-button" value="Save as .piskel" data-test-id="save-file-download-button" />
++    <input type="button" class="button button-primary" id="save-file-download-button" value="Save as .piskel" data-testid="save-file-download-button" />
+     <div class="save-status">Your sprite will be downloaded as a .piskel file.</div>
+   </div>
+ </script>
+diff --git a/src/templates/transformations.html b/src/templates/transformations.html
+index 10081f4..5aebfaf 100644
+--- a/src/templates/transformations.html
++++ b/src/templates/transformations.html
+@@ -1,4 +1,4 @@
+-<div class="toolbox-container transformations-container">
++<div class="toolbox-container transformations-container" data-testid="transformations-container">
+   <h3 class="toolbox-title transformations-title">
+     Transform
+     <span

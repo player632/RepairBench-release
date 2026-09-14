@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta name="referer" content="never" />
+		<meta name="renderer" content="webkit" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=0"
+		/>
+		<script>
+			// --- harness adaptation (AD-2): deterministic pseudo-random source ---
+			// A repair checkpoint must read the same scalar twice if nothing under test changed. This
+			// seed draws real randomness in 8 places that are on the observable surface:
+			//   src/modules/demo/views/home/components/count-user.vue:37    random(100000)
+			//   src/modules/demo/views/home/components/count-paid.vue:28    random(10000)
+			//   src/modules/demo/views/home/components/count-effect.vue:54  Math.random() * 30 + 30
+			//   src/modules/demo/views/home/components/count-effect.vue:55  random(10000000)
+			//   src/modules/demo/views/home/components/count-views.vue:75   range(12).map(...)  (Math.random() * 1000)
+			//   src/modules/demo/views/home/components/count-views.vue:89   random(1000000)
+			//   src/modules/demo/views/home/components/tab-chart.vue:110    range(12).map(...)  (Math.random() * 10000)
+			//   src/modules/demo/views/test/route.vue:29,33                 router.push('/demo/test/route/' + random(100) + '/...')
+			// The "random" helper there is lodash-es random, which draws from Math.random exactly like
+			// the direct calls, so replacing the single global source converges all eight without
+			// touching a call site, a value range or a distribution shape. This is mulberry32: 32-bit
+			// state, four ops per draw, no dependency on BigInt or on any package.
+			// It has to be an inline CLASSIC script here rather than an import in src/main.ts: module
+			// scripts are deferred, and vite.config.ts:87-102 splits lodash-es into its own chunk, which
+			// rollup evaluates before the entry chunk body - so lodash's own "nativeRandom = Math.random"
+			// capture would already have happened. Measured, not argued: with the install in main.ts the
+			// dashboard counters still changed across a reload (17887 -> 27073).
+			(function () {
+				var state = 0x2f6e2b1 >>> 0;
+				Math.random = function () {
+					state = (state + 0x6d2b79f5) >>> 0;
+					var t = state;
+					t = Math.imul(t ^ (t >>> 15), t | 1);
+					t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+					return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+				};
+			})();
+		</script>
+		<title></title>
+		<link rel="icon" href="./favicon.ico" />
+		<style>
+			html,
+			body,
+			#app {
+				height: 100%;
+				overflow: hidden;
+			}
+
+			* {
+				-webkit-font-smoothing: antialiased;
+				font-family:
+					'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+					'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+			}
+
+			.preload__wrap {
+				display: flex;
+				flex-direction: column;
+				letter-spacing: 1px;
+				background-color: #2f3447;
+				position: fixed;
+				left: 0;
+				top: 0;
+				height: 100%;
+				width: 100%;
+				z-index: 9999;
+				transition: all 0.3s ease-in;
+				opacity: 1;
+				pointer-events: none;
+			}
+
+			.preload__wrap.is-hide {
+				opacity: 0;
+			}
+
+			.preload__container {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
+				width: 100%;
+				user-select: none;
+				-webkit-user-select: none;
+				flex-grow: 1;
+			}
+
+			.preload__name {
+				font-size: 30px;
+				color: #fff;
+				letter-spacing: 5px;
+				font-weight: bold;
+				margin-bottom: 30px;
+				min-height: 50px;
+			}
+
+			.preload__title {
+				color: #fff;
+				font-size: 14px;
+				margin: 30px 0 20px 0;
+				min-height: 20px;
+			}
+
+			.preload__sub-title {
+				color: #ababab;
+				font-size: 12px;
+				min-height: 20px;
+			}
+
+			.preload__name,
+			.preload__title,
+			.preload__sub-title {
+				animation: s 0.5s ease-in;
+			}
+
+			@keyframes s {
+				from {
+					opacity: 0;
+				}
+				to {
+					opacity: 1;
+				}
+			}
+
+			.preload__loading {
+				height: 44px;
+				width: 44px;
+				border-radius: 30px;
+				border: 7px solid currentColor;
+				border-bottom-color: #2f3447;
+				position: relative;
+				animation:
+					r 1s infinite cubic-bezier(0.17, 0.67, 0.83, 0.67),
+					bc 2s infinite ease-in;
+				transform: rotate(0deg);
+				box-sizing: border-box;
+			}
+
+			@keyframes r {
+				from {
+					transform: rotate(0deg);
+				}
+
+				to {
+					transform: rotate(360deg);
+				}
+			}
+
+			.preload__loading::after,
+			.preload__loading::before {
+				content: '';
+				display: inline-block;
+				position: absolute;
+				bottom: -2px;
+				height: 7px;
+				width: 7px;
+				border-radius: 10px;
+				background-color: currentColor;
+			}
+
+			.preload__loading::after {
+				left: -1px;
+			}
+
+			.preload__loading::before {
+				right: -1px;
+			}
+
+			@keyframes bc {
+				0% {
+					color: #689cc5;
+				}
+
+				25% {
+					color: #b3b7e2;
+				}
+
+				50% {
+					color: #93dbe9;
+				}
+
+				75% {
+					color: #abbd81;
+				}
+
+				100% {
+					color: #689cc5;
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="preload__wrap" id="Loading">
+			<div class="preload__container">
+				<div class="preload__name"></div>
+				<div class="preload__loading"></div>
+				<div class="preload__title"></div>
+				<div class="preload__sub-title"></div>
+			</div>
+		</div>
+
+		<div id="app"></div>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>

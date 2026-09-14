@@ -1,0 +1,174 @@
+diff --git a/apps/demo-vue/src/App.vue b/apps/demo-vue/src/App.vue
+index 9d56a91..75cef7d 100644
+--- a/apps/demo-vue/src/App.vue
++++ b/apps/demo-vue/src/App.vue
+@@ -14,7 +14,7 @@ const demoMode = ref<'manual' | 'vmodel' | 'compound' | 'nodeview' | 'notion' |
+ 
+ function toggleTheme() {
+   isDark.value = !isDark.value;
+-  document.body.classList.toggle('dm-theme-dark');
++  document.body.classList.add('dm-theme-dark');
+ }
+ </script>
+ 
+diff --git a/apps/demo-vue/src/MultiEditorDemo.vue b/apps/demo-vue/src/MultiEditorDemo.vue
+index 06bbcf2..8b1c84b 100644
+--- a/apps/demo-vue/src/MultiEditorDemo.vue
++++ b/apps/demo-vue/src/MultiEditorDemo.vue
+@@ -52,7 +52,7 @@ function addEditor(withToolbar: boolean): void {
+   panels.value = [...panels.value, { id: nextId++, withToolbar }];
+ }
+ function removeEditor(id: number): void {
+-  panels.value = panels.value.filter((s) => s.id !== id);
++  panels.value = panels.value.filter((s) => s.id === id);
+ }
+ 
+ onBeforeUnmount(() => {
+diff --git a/packages/vue/src/Domternal.ts b/packages/vue/src/Domternal.ts
+index a3b286e..df50994 100644
+--- a/packages/vue/src/Domternal.ts
++++ b/packages/vue/src/Domternal.ts
+@@ -106,7 +106,7 @@ const DomternalContent = defineComponent({
+       if (!container || !ed || ed.isDestroyed) return;
+ 
+       const editorDom = ed.view.dom;
+-      if (editorDom.parentElement !== container) {
++      if (editorDom.parentElement === container) {
+         container.appendChild(editorDom);
+         // The detached-construction window is over; let a preset: 'notion'
+         // editor paint dm-notion-mode on the host it can now reach.
+diff --git a/packages/vue/src/DomternalEditor.ts b/packages/vue/src/DomternalEditor.ts
+index c2472f2..b1dd07c 100644
+--- a/packages/vue/src/DomternalEditor.ts
++++ b/packages/vue/src/DomternalEditor.ts
+@@ -73,7 +73,7 @@ export const DomternalEditor = defineComponent({
+   emits: {
+     'update:modelValue': (_value: Content | JSONContent) => true,
+   },
+-  setup(props, { slots, emit, expose }) {
++  setup(props, { slots, expose }) {
+     const { editor, editorRef } = useEditor({
+       ...(props.extensions && { extensions: props.extensions }),
+       content: props.modelValue ?? props.content ?? '',
+@@ -125,15 +125,6 @@ export const DomternalEditor = defineComponent({
+         if (newValue === prevModelValue.value) return;
+         prevModelValue.value = newValue;
+ 
+-        if (props.outputFormat === 'html') {
+-          if (newValue !== ed.getHTML()) {
+-            ed.setContent(newValue, false);
+-          }
+-        } else {
+-          if (JSON.stringify(newValue) !== JSON.stringify(ed.getJSON())) {
+-            ed.setContent(newValue, false);
+-          }
+-        }
+       },
+       { flush: 'post' },
+     );
+@@ -147,7 +138,6 @@ export const DomternalEditor = defineComponent({
+           ? ed.getHTML()
+           : ed.getJSON();
+         prevModelValue.value = val;
+-        emit('update:modelValue', val);
+       };
+ 
+       ed.on('update', handler);
+diff --git a/packages/vue/src/EditorContext.ts b/packages/vue/src/EditorContext.ts
+index 4b6f13a..bfde044 100644
+--- a/packages/vue/src/EditorContext.ts
++++ b/packages/vue/src/EditorContext.ts
+@@ -1,4 +1,4 @@
+-import { getCurrentInstance, inject, provide, shallowRef, watchEffect } from 'vue';
++import { getCurrentInstance, inject, shallowRef, watchEffect } from 'vue';
+ import type { InjectionKey, ShallowRef } from 'vue';
+ import type { Editor } from '@domternal/core';
+ import { appContextStore, pendingAppContextStore } from './utils.js';
+@@ -22,8 +22,6 @@ export const EDITOR_KEY: InjectionKey<ShallowRef<Editor | null>> = Symbol('domte
+  * ```
+  */
+ export function provideEditor(editor: ShallowRef<Editor | null>): void {
+-  provide(EDITOR_KEY, editor);
+-
+   // Store appContext for VueNodeViewRenderer.
+   // We must preserve the original appContext object (not spread it) so that
+   // config, mixins, and the prototype chain remain intact. The provides
+diff --git a/packages/vue/src/node-views/VueNodeViewRenderer.ts b/packages/vue/src/node-views/VueNodeViewRenderer.ts
+index 73f5675..8659c41 100644
+--- a/packages/vue/src/node-views/VueNodeViewRenderer.ts
++++ b/packages/vue/src/node-views/VueNodeViewRenderer.ts
+@@ -222,7 +222,6 @@ class VueNodeView {
+ 
+   update(node: PMNode, decorations: readonly unknown[]): boolean {
+     if (node.type.name !== this.props.node.type.name) return false;
+-    this.props.node = markRaw(node);
+     this.props.decorations = decorations;
+     return true;
+   }
+diff --git a/packages/vue/src/toolbar/DomternalToolbar.ts b/packages/vue/src/toolbar/DomternalToolbar.ts
+index 0f03f4c..f73e754 100644
+--- a/packages/vue/src/toolbar/DomternalToolbar.ts
++++ b/packages/vue/src/toolbar/DomternalToolbar.ts
+@@ -116,7 +116,7 @@ export const DomternalToolbar = defineComponent({
+       if (!editor) return null;
+ 
+       // Read activeVersion to establish reactive dependency
+-      void activeVersion.value;
++      void activeVersion;
+ 
+       return h(
+         'div',
+diff --git a/packages/vue/src/toolbar/ToolbarButton.ts b/packages/vue/src/toolbar/ToolbarButton.ts
+index b5f43b5..d27363d 100644
+--- a/packages/vue/src/toolbar/ToolbarButton.ts
++++ b/packages/vue/src/toolbar/ToolbarButton.ts
+@@ -22,7 +22,7 @@ export const ToolbarButton = defineComponent({
+       h('button', {
+         type: 'button',
+         class: ['dm-toolbar-button', props.isActive && 'dm-toolbar-button--active'],
+-        disabled: props.isDisabled,
++        disabled: false,
+         tabindex: props.tabIndex,
+         innerHTML: props.iconHtml,
+         'aria-pressed': props.isActive,
+diff --git a/packages/vue/src/toolbar/useToolbarController.ts b/packages/vue/src/toolbar/useToolbarController.ts
+index 7382f62..83b85d9 100644
+--- a/packages/vue/src/toolbar/useToolbarController.ts
++++ b/packages/vue/src/toolbar/useToolbarController.ts
+@@ -59,7 +59,6 @@ export function useToolbarController(
+       if (groups.value.length !== controllerGroups.length) {
+         groups.value = controllerGroups;
+       }
+-      focusedIndex.value = controller.focusedIndex;
+       openDropdown.value = controller.openDropdown;
+       activeVersion.value++;
+     });
+diff --git a/packages/vue/src/useEditor.ts b/packages/vue/src/useEditor.ts
+index ab0f6ef..7210e18 100644
+--- a/packages/vue/src/useEditor.ts
++++ b/packages/vue/src/useEditor.ts
+@@ -101,7 +101,7 @@ export function useEditor(options: UseEditorOptions = {}): {
+   function createEditorInstance(element: HTMLElement, initialContent: Content, focus: FocusPosition): Editor {
+     const extensions = options.extensions ?? [];
+     const editable = options.editable ?? true;
+-    const defaults = (options.history ?? true)
++    const defaults = (options.history ?? false)
+       ? DEFAULT_EXTENSIONS
+       : DEFAULT_EXTENSIONS.filter((extension) => extension.name !== 'history');
+ 
+diff --git a/packages/vue/src/useEditorState.ts b/packages/vue/src/useEditorState.ts
+index ceb4888..34156df 100644
+--- a/packages/vue/src/useEditorState.ts
++++ b/packages/vue/src/useEditorState.ts
+@@ -89,11 +89,9 @@ function useEditorStateFull(editor: ShallowRef<Editor | null>): EditorState {
+       isEditable.value = state.editable;
+ 
+       const onTransaction = (): void => {
+-        const html = ed.getHTML();
+         const json = ed.getJSON();
+         const empty = ed.isEmpty;
+         const editable = ed.isEditable;
+-        if (htmlContent.value !== html) htmlContent.value = html;
+         if (isEmpty.value !== empty) isEmpty.value = empty;
+         if (isEditable.value !== editable) isEditable.value = editable;
+         jsonContent.value = json;

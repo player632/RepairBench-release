@@ -1,0 +1,93 @@
+// =============================================================================
+// Task List Styles
+// =============================================================================
+// TaskList renders as ul[data-type="taskList"]
+// TaskItem renders as li[data-type="taskItem"] with label > input[checkbox] + div
+//
+// Visual goal: render task items the same way bullet items render. The checkbox
+// hangs in the padding-left area of the wrapper (like a native bullet marker)
+// and the label paragraph starts at the same column as bullet-list text. This
+// is achieved by giving the wrapper the same `padding-left: 1.5em` as <ul> and
+// absolutely positioning the label so it visually replaces the bullet glyph.
+// =============================================================================
+
+.dm-editor .ProseMirror {
+  ul[data-type="taskList"] {
+    list-style: none;
+    // Logical so the checkbox gutter mirrors under `dir="rtl"`, matching
+    // the bullet/ordered marker gutter in `_content.scss`.
+    padding-inline-start: 1.5em;
+
+    li[data-type="taskItem"] {
+      position: relative;
+      margin: 0.25em 0;
+
+      > label {
+        position: absolute;
+        // Position is driven by tokens (defined in `_variables.scss`):
+        //  - `inset-inline-start` hangs the checkbox in the marker column on
+        //    the reading-start side (so it mirrors under `dir="rtl"`). Paired
+        //    with the wrapper's `padding-inline-start: 1.5em` and the
+        //    checkbox's 1em width, its reading-end edge sits ~0.25em before
+        //    the text column and text starts at the item's content edge.
+        //  - `top` aligns with the first text line's x-height, so the
+        //    checkbox visually rests next to lower-case glyphs the way
+        //    a bullet glyph does. Override the token alongside
+        //    `--dm-editor-line-height` to keep alignment.
+        inset-inline-start: var(--dm-task-checkbox-left, -1.15em);
+        top: var(--dm-task-checkbox-top, 0.45em);
+        display: flex;
+        align-items: center;
+        user-select: none;
+
+        input[type="checkbox"] {
+          width: 1em;
+          height: 1em;
+          margin: 0;
+          padding: 0;
+          cursor: pointer;
+          accent-color: var(--dm-accent, #2563eb);
+        }
+      }
+
+      > div {
+        > p {
+          // Small breathing gap (~5px at the editor's default font size)
+          // between the checkbox and the paragraph text, applied only on
+          // the paragraph so nested ul/ol siblings stay flush with li.left
+          // and visually align with bullet-list nesting.
+          margin: 0.1em 0;
+          padding-inline: 0.3em 0;
+        }
+
+        // Notion-style "children zone" indent: post-label blocks
+        // (heading, codeBlock, blockquote, etc.) render indented one
+        // level below the label paragraph aligned with the checkbox.
+        //
+        // Excluded: ALL nested `<ul>` and `<ol>` (plain and taskList).
+        // Each list type already gains the same visual indent through
+        // its own `padding-left: 1.5em`, so adding the children-zone
+        // margin would push nested taskLists ~1.5em further right than
+        // nested plain bullet lists. `margin-inline-start` (logical
+        // property) flips the indent to the right edge in RTL.
+        > :not(p:first-child):not(ul):not(ol) {
+          margin-inline-start: var(--dm-block-children-indent, 1.5rem);
+          margin-top: 0.25rem;
+        }
+      }
+
+      // Checked state: strikethrough and dim ONLY the label paragraph
+      // (the first child of the children-zone div). Targeting `> div`
+      // would propagate `text-decoration` and `opacity` into the
+      // entire children-zone subtree, including nested taskItems and
+      // children-zone notes paragraphs. Notion-style: checking a
+      // parent task marks ONLY that task's label, never bleeds into
+      // children. Schema enforces paragraph-as-first-child via
+      // `taskItem.content = 'paragraph block*'`.
+      &[data-checked="true"] > div > p:first-child {
+        text-decoration: line-through;
+        opacity: 0.6;
+      }
+    }
+  }
+}

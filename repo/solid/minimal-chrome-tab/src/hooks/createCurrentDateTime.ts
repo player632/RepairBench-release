@@ -1,0 +1,60 @@
+import { type Accessor, createSignal } from 'solid-js'
+import createPolled, { EveryClockMinute, EveryClockSecond, type PolledStrategy } from '@/hooks/createPolled'
+import useTabActive from '@/hooks/useTabActive'
+
+interface CurrentDateTimeConfig {
+  update: PolledStrategy
+}
+
+/**
+ * ADAPTATION (repair-bench, environment/adaptation.patch) - deterministic entropy source.
+ *
+ * The seed read the platform wall clock here (`const getDate = (): Date => new Date()`) and
+ * fed it to two pollers - EveryClockSecond for the clock face, EveryClockMinute for the
+ * milestones - so every reading this page can produce (both formatted time spans and all
+ * five milestone fractions) drifted continuously and was unreproducible across runs, let
+ * alone across machines. Pinning ONLY this getter replaces that entropy source with a
+ * constant. Everything else on the path stays byte-identical to the seed: both pollers and
+ * their real setTimeout scheduling, the `equals: isDateEqual` guard that suppresses a
+ * no-op tick, the `useTabActive()` visibility gate, the two call sites and every downstream
+ * date-fns calculation. The app still runs its genuine clock-driven code path; it simply
+ * always reads the same instant, 2026-07-15T13:24:36.000Z (a Wednesday, 48276 s into the
+ * UTC day, 0.5587 of the way through it). tests/dsl.json pins the browser context to
+ * locale en-US + timezoneId UTC so the local-time date-fns anchors (startOfDay,
+ * startOfISOWeek, startOfMonth, startOfYear) all resolve on UTC boundaries and the Intl
+ * formats are the en-US ones the derivations quote.
+ *
+ * `getPinnedEpochMs` is exported for the instrumentation bridge alone: it lets one
+ * checkpoint pin the adaptation itself (that the frozen instant is the declared one)
+ * without inferring it from a formatted string. No seed module imports it.
+ */
+const PinnedEpochMs = 1784121876000 // 2026-07-15T13:24:36.000Z
+
+const getDate = (): Date => new Date(PinnedEpochMs)
+
+export const getPinnedEpochMs = (): number => PinnedEpochMs
+
+const isDateEqual = (a: Date, b: Date): boolean => a.valueOf() === b.valueOf()
+
+export { EveryClockMinute, EveryClockSecond }
+
+export default function createCurrentDateTime(config: CurrentDateTimeConfig): Accessor<Date> {
+  const [dateTime, setDateTime] = createSignal(getDate(), { equals: isDateEqual })
+  const update = (): void => {
+    setDateTime(getDate())
+  }
+
+  const isTabActive = useTabActive()
+
+  createPolled({
+    get enabled() {
+      return isTabActive()
+    },
+    get every() {
+      return config.update
+    },
+    onTick: update,
+  })
+
+  return dateTime
+}

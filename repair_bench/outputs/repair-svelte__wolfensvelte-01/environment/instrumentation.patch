@@ -1,0 +1,157 @@
+diff --git a/src/lib/components/Door.svelte b/src/lib/components/Door.svelte
+index a72c125..8749263 100644
+--- a/src/lib/components/Door.svelte
++++ b/src/lib/components/Door.svelte
+@@ -141,6 +141,7 @@
+ 
+ <!-- {#if visibility} -->
+ <div
++	data-testid="door-{offset}-{section}"
+ 	class="door {state}"
+ 	style="{willChange ? `will-change: ${willChange};` : ''} visibility: {visibility
+ 		? 'visible'
+diff --git a/src/lib/components/Player.svelte b/src/lib/components/Player.svelte
+index b22c02a..afecb27 100644
+--- a/src/lib/components/Player.svelte
++++ b/src/lib/components/Player.svelte
+@@ -491,6 +491,7 @@
+ 	<slot />
+ </div>
+ <div
++	data-testid="player-gun"
+ 	class="player-gun {state} {$PlayerState.weapons.active}"
+ 	on:animationend|capture={() => {
+ 		state = "idle";
+diff --git a/src/lib/components/Scene.svelte b/src/lib/components/Scene.svelte
+index 6ef7e62..4c8e78a 100644
+--- a/src/lib/components/Scene.svelte
++++ b/src/lib/components/Scene.svelte
+@@ -59,6 +59,7 @@
+ </script>
+ 
+ <div
++	data-testid="scene-root"
+ 	id="scene"
+ 	bind:offsetWidth
+ 	style={offsetWidth < 720 ? "transform: scale(0.6, 0.6)" : ""}
+@@ -66,6 +67,7 @@
+ 	{#key $playerLives}
+ 		<Player>
+ 			<div
++				data-testid="world-root"
+ 				class="world"
+ 				id="world"
+ 			>
+diff --git a/src/lib/components/UI.svelte b/src/lib/components/UI.svelte
+index ac595e3..fef86ce 100644
+--- a/src/lib/components/UI.svelte
++++ b/src/lib/components/UI.svelte
+@@ -70,13 +70,15 @@
+ 		{/key}
+ 	</div>
+ {/if} -->
+-<div class="hud">
++<div class="hud" data-testid="hud-root">
++		<span data-testid="probe-portrait-idx" style="position:absolute;left:-9999px;">{CURRENT_IDX}</span>
+ 	<div class="stats">
+ 		{#each HUD_SECTIONS as [name, value] (name)}
+ 			<div class="col {name === 'portrait' ? 'player' : name}">
+ 				{#if name === "portrait"}
+ 					{#each FACE_MAP[PORTRAIT_STATE] as img, idx (img)}
+ 						<div
++							data-testid="portrait-face"
+ 							role="img"
+ 							class="portrait {PORTRAIT_STATE}"
+ 							class:show={PORTRAIT_STATE === "dead" ? true : idx === CURRENT_IDX}
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 780b8ba..fb12e37 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -41,6 +41,7 @@
+ {#if loaded}
+ 	{#if !hasAudioPerms}
+ 		<div
++			data-testid="audio-gate"
+ 			class="center"
+ 			style="text-align:center"
+ 		>
+diff --git a/src/routes/[...level]/+page.svelte b/src/routes/[...level]/+page.svelte
+index cc60c53..86180c1 100644
+--- a/src/routes/[...level]/+page.svelte
++++ b/src/routes/[...level]/+page.svelte
+@@ -6,7 +6,7 @@
+ 	import MenuImg from "$lib/sprites/menu/wolf_menu.BMP?url";
+ 	import GetPsychedImg from "$lib/sprites/menu/get_psyched.BMP?url";
+ 	import Fizzlefade from "$lib/components/Fizzlefade.svelte";
+-	import { PlayerState, createPlayerState, playerHealth } from "$lib/stores/player";
++	import { PlayerState, createPlayerState, playerAmmo, playerHealth } from "$lib/stores/player";
+ 	import { clear_loops, frameLoop } from "$lib/utils/raf";
+ 	import { GameObjects } from "$lib/utils/manager";
+ 	import GetPsyched from "../_menu/GetPsyched.svelte";
+@@ -123,8 +123,36 @@
+ 		MapHandler.changeMap(page);
+ 		MusicManager.play(page, true);
+ 	});
++
++	onMount(() => {
++		(window as any).__wfs = {
++			PlayerState,
++			takeDamage: (n: number) => PlayerState.takeDamage(n),
++			setWeapon: (w: string) => {
++				const s = PlayerState.get();
++				s.weapons.active = w as any;
++				PlayerState.set({ ...s });
++			}
++		};
++	});
+ </script>
+ 
++<div
++	data-testid="wfs-probes"
++	style="position:absolute;left:-9999px;top:0;"
++>
++	<span data-testid="probe-x">{$PlayerState.position.x}</span>
++	<span data-testid="probe-z">{$PlayerState.position.z}</span>
++	<span data-testid="probe-rot">{$PlayerState.rotation.y}</span>
++	<span data-testid="probe-health">{$playerHealth}</span>
++	<span data-testid="probe-score">{$PlayerState.score}</span>
++	<span data-testid="probe-ammo">{$PlayerState.weapons.ammo}</span>
++	<span data-testid="probe-ammo-derived">{$playerAmmo}</span>
++	<span data-testid="probe-lives">{$PlayerState.lives}</span>
++	<span data-testid="probe-weapon">{$PlayerState.weapons.active}</span>
++	<span data-testid="probe-level">{MapHandler.currentMapName}</span>
++</div>
++
+ {#key page}
+ 	{#await get_psyched_promise}
+ 		<GetPsyched
+@@ -134,7 +162,7 @@
+ 			zIndex={1000}
+ 		/>
+ 	{:then _}
+-		<div class="game-container">
++		<div class="game-container" data-testid="game-container">
+ 			{#if !$LevelHandler.isComplete}
+ 				<div class="level-wrapper">
+ 					<div class="level">
+@@ -158,7 +186,7 @@
+ 				<Ui />
+ 			</div>
+ 
+-			<div class="joystick">
++			<div class="joystick" data-testid="joystick-bar">
+ 				<Joystick
+ 					style="justify-self:flex-start;"
+ 					type="move"
+diff --git a/src/routes/menu/+page.svelte b/src/routes/menu/+page.svelte
+index 7eecca4..dadbfab 100644
+--- a/src/routes/menu/+page.svelte
++++ b/src/routes/menu/+page.svelte
+@@ -8,6 +8,7 @@
+ 		<img src={MenuImg} />
+ 	</div>
+ 	<button
++		data-testid="menu-play-btn"
+ 		on:click|once={() => {
+ 			goto("/E1M1");
+ 		}}>Play Wolfensvelte 3D</button

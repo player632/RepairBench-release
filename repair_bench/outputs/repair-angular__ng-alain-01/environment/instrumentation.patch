@@ -1,0 +1,704 @@
+diff --git a/src/app/layout/basic/basic.ts b/src/app/layout/basic/basic.ts
+index 3249d8c..ec51ec6 100644
+--- a/src/app/layout/basic/basic.ts
++++ b/src/app/layout/basic/basic.ts
+@@ -43,16 +43,16 @@ import { HeaderUser } from './widgets/user';
+         <header-search [(toggleChange)]="searchToggleStatus" />
+       </layout-default-header-item>
+       <layout-default-header-item direction="right">
+-        <header-notify />
++        <header-notify data-testid="hd-notify" />
+       </layout-default-header-item>
+       <layout-default-header-item direction="right" hidden="mobile">
+-        <header-task />
++        <header-task data-testid="hd-task" />
+       </layout-default-header-item>
+       <layout-default-header-item direction="right" hidden="mobile">
+         <header-icon />
+       </layout-default-header-item>
+       <layout-default-header-item direction="right" hidden="mobile">
+-        <div layout-default-header-item-trigger nz-dropdown [nzDropdownMenu]="settingsMenu" nzTrigger="click" nzPlacement="bottomRight">
++        <div data-testid="hd-settings" layout-default-header-item-trigger nz-dropdown [nzDropdownMenu]="settingsMenu" nzTrigger="click" nzPlacement="bottomRight">
+           <nz-icon nzType="setting" />
+         </div>
+         <nz-dropdown-menu #settingsMenu="nzDropdownMenu">
+@@ -64,7 +64,7 @@ import { HeaderUser } from './widgets/user';
+               <header-fullscreen />
+             </div>
+             <div nz-menu-item>
+-              <header-clear-storage />
++              <header-clear-storage data-testid="hd-clear-storage" />
+             </div>
+             <div nz-menu-item>
+               <header-i18n />
+diff --git a/src/app/layout/basic/widgets/task.ts b/src/app/layout/basic/widgets/task.ts
+index 9a7183c..6169b93 100644
+--- a/src/app/layout/basic/widgets/task.ts
++++ b/src/app/layout/basic/widgets/task.ts
+@@ -25,9 +25,9 @@ import { NzSpinModule } from 'ng-zorro-antd/spin';
+     <nz-dropdown-menu #taskMenu="nzDropdownMenu">
+       <div nz-menu class="wd-lg">
+         @if (loading()) {
+-          <div class="mx-lg p-lg"><nz-spin /></div>
++          <div data-testid="ht-spin" class="mx-lg p-lg"><nz-spin /></div>
+         } @else {
+-          <nz-card nzTitle="Notifications" nzBordered="false" class="ant-card__body-nopadding">
++          <nz-card data-testid="ht-content" nzTitle="Notifications" nzBordered="false" class="ant-card__body-nopadding">
+             <ng-template #extra><nz-icon nzType="plus" /></ng-template>
+             <div nz-row [nzJustify]="'center'" [nzAlign]="'middle'" class="py-sm pr-md point bg-grey-lighter-h">
+               <div nz-col [nzSpan]="4" class="text-center">
+diff --git a/src/app/routes/dashboard/v1/v1.component.html b/src/app/routes/dashboard/v1/v1.component.html
+index 3d9bc74..34fd040 100644
+--- a/src/app/routes/dashboard/v1/v1.component.html
++++ b/src/app/routes/dashboard/v1/v1.component.html
+@@ -1,4 +1,7 @@
+ @let _webSite = webSite();
++@if (obStarted()) {
++  <div data-testid="v1-onboard-flag" class="d-none"></div>
++}
+ <div class="alain-default__content-title">
+   <h1>
+     Dashboard
+@@ -34,6 +37,7 @@
+       <div nz-col nzSpan="12">
+         @if (_webSite) {
+           <g2-mini-bar
++            data-testid="chart-site"
+             height="35"
+             color="#fff"
+             borderWidth="3"
+@@ -119,7 +123,7 @@
+       </ng-template>
+       @let sd = salesData();
+       @if (sd) {
+-        <g2-bar height="275" [data]="sd" />
++        <g2-bar data-testid="chart-sales" height="275" [data]="sd" />
+       }
+     </nz-card>
+   </div>
+@@ -131,7 +135,7 @@
+       </ng-template>
+       @let _offlineChartData = offlineChartData();
+       @if (_offlineChartData) {
+-        <g2-timeline [data]="_offlineChartData" [height]="289" [titleMap]="{ y1: '客流量', y2: '支付笔数' }" />
++        <g2-timeline data-testid="chart-offline" [data]="_offlineChartData" [height]="289" [titleMap]="{ y1: '客流量', y2: '支付笔数' }" />
+       }
+     </nz-card>
+   </div>
+@@ -176,24 +180,24 @@
+   <div nz-col nzXs="24" nzMd="12">
+     <nz-card nzTitle="Todo lists" [nzBordered]="false" class="ant-card__body-nopadding">
+       @for (item of todoData; track $index) {
+-        <div nz-row [nzJustify]="'center'" [nzAlign]="'middle'" class="py-sm pr-md bg-grey-lighter-h point">
++        <div [attr.data-testid]="'todo-item-' + $index" nz-row [nzJustify]="'center'" [nzAlign]="'middle'" class="py-sm pr-md bg-grey-lighter-h point">
+           <div nz-col [nzSpan]="4" class="text-center">
+             <nz-avatar [nzSrc]="'./assets/tmp/img/' + item.avatar + '.png'" />
+           </div>
+           <div nz-col [nzSpan]="18">
+-            <strong>{{ item.name }}</strong>
+-            <p [class.text-deleted]="item.completed" class="mb0">{{ item.content }}</p>
++            <strong [attr.data-testid]="'todo-name-' + $index">{{ item.name }}</strong>
++            <p [attr.data-testid]="'todo-content-' + $index" [attr.data-completed]="item.completed" [class.text-deleted]="item.completed" class="mb0">{{ item.content }}</p>
+           </div>
+           <div nz-col [nzSpan]="2" class="text-right pr-md">
+-            <nz-icon nzType="ellipsis" nz-dropdown [nzDropdownMenu]="todoMenus" nzPlacement="topRight" class="rotate-90" />
++            <nz-icon [attr.data-testid]="'todo-menu-' + $index" nzType="ellipsis" nz-dropdown [nzDropdownMenu]="todoMenus" nzPlacement="topRight" class="rotate-90" />
+             <nz-dropdown-menu #todoMenus="nzDropdownMenu">
+               <ul nz-menu>
+                 @if (item.completed) {
+-                  <li nz-menu-item (click)="item.completed = false">Active</li>
++                  <li [attr.data-testid]="'todo-toggle-' + $index" nz-menu-item (click)="item.completed = false">Active</li>
+                 } @else {
+-                  <li nz-menu-item (click)="item.completed = true">Completed</li>
++                  <li [attr.data-testid]="'todo-toggle-' + $index" nz-menu-item (click)="item.completed = true">Completed</li>
+                 }
+-                <li nz-menu-item (click)="todoData.splice(todoData.indexOf(item), 1)">Delted</li>
++                <li [attr.data-testid]="'todo-del-' + $index" nz-menu-item (click)="todoData.splice(todoData.indexOf(item), 1)">Delted</li>
+               </ul>
+             </nz-dropdown-menu>
+           </div>
+diff --git a/src/app/routes/dashboard/v1/v1.component.ts b/src/app/routes/dashboard/v1/v1.component.ts
+index db03f70..2f71c83 100644
+--- a/src/app/routes/dashboard/v1/v1.component.ts
++++ b/src/app/routes/dashboard/v1/v1.component.ts
+@@ -61,6 +61,7 @@ export class DashboardV1Component {
+     }
+   ];
+ 
++  protected obStarted = signal(false);
+   protected webSite = signal<G2MiniBarData[] | null>(null);
+   protected salesData = signal<G2BarData[] | null>(null);
+   protected offlineChartData = signal<G2TimelineData[] | null>(null);
+@@ -96,6 +97,7 @@ export class DashboardV1Component {
+     }
+     this.http.get(`./assets/tmp/on-boarding.json`).subscribe(res => {
+       this.obSrv.start(res);
++      this.obStarted.set(true);
+       localStorage.setItem(KEY, '1');
+     });
+   }
+diff --git a/src/app/routes/dashboard/workplace/workplace.component.html b/src/app/routes/dashboard/workplace/workplace.component.html
+index 946181f..6087665 100644
+--- a/src/app/routes/dashboard/workplace/workplace.component.html
++++ b/src/app/routes/dashboard/workplace/workplace.component.html
+@@ -79,7 +79,7 @@
+     <nz-card nzTitle="动态" [nzBordered]="false" [nzLoading]="loading" class="ant-card__body-nopadding mb-lg active-card">
+       <nz-list nzSize="large" class="activities">
+         @for (item of activities; track $index) {
+-          <nz-list-item>
++          <nz-list-item [attr.data-testid]="'wp-activity-' + $index">
+             <nz-list-item-meta [nzAvatar]="item.user.avatar" [nzTitle]="activeTitle" [nzDescription]="activeDescription">
+               <ng-template #activeTitle>
+                 <a (click)="msg.success(item.user.name)" class="username">{{ item.user.name }}</a>
+diff --git a/src/app/routes/passport/login/login.component.html b/src/app/routes/passport/login/login.component.html
+index 7f64c7d..51ac178 100644
+--- a/src/app/routes/passport/login/login.component.html
++++ b/src/app/routes/passport/login/login.component.html
+@@ -2,13 +2,13 @@
+   <nz-tabs [nzAnimated]="false" class="tabs" (nzSelectChange)="switch($event)">
+     <nz-tab [nzTitle]="'app.login.tab-login-credentials' | i18n">
+       @if (error) {
+-        <nz-alert [nzType]="'error'" [nzMessage]="error" [nzShowIcon]="true" class="mb-lg" />
++        <nz-alert data-testid="login-error" [nzType]="'error'" [nzMessage]="error" [nzShowIcon]="true" class="mb-lg" />
+       }
+       <nz-form-item>
+         <nz-form-control nzErrorTip="Please enter mobile number, muse be: admin or user">
+           <nz-input-wrapper>
+             <nz-icon nzInputPrefix nzType="user" />
+-            <input nz-input nzSize="large" formControlName="userName" autocomplete="username" placeholder="username: admin or user" />
++            <input data-testid="login-user" nz-input nzSize="large" formControlName="userName" autocomplete="username" placeholder="username: admin or user" />
+           </nz-input-wrapper>
+         </nz-form-control>
+       </nz-form-item>
+@@ -17,6 +17,7 @@
+           <nz-input-wrapper>
+             <nz-icon nzInputPrefix nzType="lock" />
+             <input
++              data-testid="login-password"
+               nz-input
+               nzSize="large"
+               type="password"
+@@ -73,7 +74,7 @@
+     </nz-col>
+   </nz-form-item>
+   <nz-form-item>
+-    <button nz-button type="submit" nzType="primary" nzSize="large" [nzLoading]="loading" nzBlock>
++    <button data-testid="login-submit" [attr.data-loading]="loading" nz-button type="submit" nzType="primary" nzSize="large" [nzLoading]="loading" nzBlock>
+       {{ 'app.login.login' | i18n }}
+     </button>
+   </nz-form-item>
+diff --git a/src/app/routes/pro/form/advanced-form/advanced-form.component.html b/src/app/routes/pro/form/advanced-form/advanced-form.component.html
+index d714521..d2d8ac0 100644
+--- a/src/app/routes/pro/form/advanced-form/advanced-form.component.html
++++ b/src/app/routes/pro/form/advanced-form/advanced-form.component.html
+@@ -8,7 +8,7 @@
+         <nz-form-item>
+           <nz-form-label nzFor="name">仓库名</nz-form-label>
+           <nz-form-control nzErrorTip="请输入仓库名称">
+-            <input nz-input formControlName="name" id="name" placeholder="请输入仓库名称" />
++            <input data-testid="af-title" nz-input formControlName="name" id="name" placeholder="请输入仓库名称" />
+           </nz-form-control>
+         </nz-form-item>
+       </nz-col>
+@@ -17,7 +17,7 @@
+           <nz-form-label>仓库域名</nz-form-label>
+           <nz-form-control nzErrorTip="请输入仓库域名">
+             <nz-input-wrapper nzAddonBefore="http://" nzAddonAfter=".com">
+-              <input nz-input formControlName="url" placeholder="请输入" />
++              <input data-testid="af-url" nz-input formControlName="url" placeholder="请输入" />
+             </nz-input-wrapper>
+           </nz-form-control>
+         </nz-form-item>
+@@ -146,51 +146,52 @@
+       </thead>
+       <tbody>
+         @for (item of items.controls; track $index; let i = $index) {
+-          <tr [formGroupName]="i">
++          <tr [formGroupName]="i" [attr.data-testid]="'af-row-' + i">
+             @let v = items.value[i];
+             @let isView = editIndex !== i;
+             <td>
+               @if (isView) {
+-                {{ v.name }}
++                <span [attr.data-testid]="'af-name-' + i">{{ v.name }}</span>
+               } @else {
+                 <nz-form-item>
+                   <nz-form-control nzErrorTip="请输入成员姓名">
+-                    <input nz-input formControlName="name" placeholder="请输入成员姓名" />
++                    <input [attr.data-testid]="'af-edit-name-' + i" nz-input formControlName="name" placeholder="请输入成员姓名" />
+                   </nz-form-control>
+                 </nz-form-item>
+               }
+             </td>
+             <td>
+               @if (isView) {
+-                {{ v.workId }}
++                <span [attr.data-testid]="'af-workid-' + i">{{ v.workId }}</span>
+               } @else {
+                 <nz-form-item>
+                   <nz-form-control nzErrorTip="请输入工号">
+-                    <input nz-input formControlName="workId" placeholder="请输入工号" />
++                    <input [attr.data-testid]="'af-edit-workid-' + i" nz-input formControlName="workId" placeholder="请输入工号" />
+                   </nz-form-control>
+                 </nz-form-item>
+               }
+             </td>
+             <td>
+               @if (isView) {
+-                {{ v.department }}
++                <span [attr.data-testid]="'af-dept-' + i">{{ v.department }}</span>
+               } @else {
+                 <nz-form-item>
+                   <nz-form-control nzErrorTip="请输入所属部门">
+-                    <input nz-input formControlName="department" placeholder="请输入所属部门" />
++                    <input [attr.data-testid]="'af-edit-dept-' + i" nz-input formControlName="department" placeholder="请输入所属部门" />
+                   </nz-form-control>
+                 </nz-form-item>
+               }
+             </td>
+             <td>
+               @if (isView) {
+-                <a (click)="edit(i)">编辑</a>
++                <!-- instrumentation: popconfirm overlays removed so row actions stay deterministically drivable -->
++                <a [attr.data-testid]="'af-edit-' + i" (click)="edit(i)">编辑</a>
+                 <nz-divider nzType="vertical" />
+-                <a nz-popconfirm nzPopconfirmTitle="是否要删除此行？" (nzOnConfirm)="del(i)">删除</a>
++                <a [attr.data-testid]="'af-del-' + i" (click)="del(i)">删除</a>
+               } @else {
+-                <a (click)="save(i)">保存</a>
++                <a [attr.data-testid]="'af-save-' + i" (click)="save(i)">保存</a>
+                 <nz-divider nzType="vertical" />
+-                <a nz-popconfirm nzPopconfirmTitle="是否要取消操作？" (nzOnConfirm)="cancel(i)">取消</a>
++                <a [attr.data-testid]="'af-cancel-' + i" (click)="cancel(i)">取消</a>
+               }
+             </td>
+           </tr>
+@@ -198,7 +199,7 @@
+       </tbody>
+     </nz-table>
+     @if (editIndex === -1) {
+-      <button nz-button [nzType]="'dashed'" (click)="add()" nzBlock class="mt-md">
++      <button data-testid="af-add" nz-button [nzType]="'dashed'" (click)="add()" nzBlock class="mt-md">
+         <nz-icon nzType="plus" />
+         <span>新增成员</span>
+       </button>
+diff --git a/src/app/routes/pro/form/basic-form/basic-form.component.html b/src/app/routes/pro/form/basic-form/basic-form.component.html
+index 51f59e9..5d0f26e 100644
+--- a/src/app/routes/pro/form/basic-form/basic-form.component.html
++++ b/src/app/routes/pro/form/basic-form/basic-form.component.html
+@@ -1,17 +1,18 @@
+ <page-header [title]="'基础表单'"> 将一个冗长或用户不熟悉的表单任务分成多个步骤，指导用户完成。 </page-header>
+ <nz-card [nzBordered]="false">
+   <form nz-form [formGroup]="form" (ngSubmit)="submit()" se-container="1" labelWidth="200">
++  <input data-testid="bf-date-hidden" autocomplete="off" style="position: fixed; left: -9999px; top: 0; width: 40px; height: 20px; opacity: 0; pointer-events: none" (input)="probeDate($any($event.target).value)" />
+     <se label="标题" error="请输入标题" required>
+-      <input nz-input formControlName="title" placeholder="给目标起个名字" />
++      <input data-testid="bf-title" nz-input formControlName="title" placeholder="给目标起个名字" />
+     </se>
+     <se label="起止日期" error="请输入标题" required>
+-      <nz-range-picker formControlName="date" />
++      <nz-range-picker data-testid="bf-date" formControlName="date" />
+     </se>
+     <se label="目标描述" error="请输入目标描述" required>
+-      <textarea nz-input formControlName="goal" [nzAutosize]="{ minRows: 4 }" placeholder="请输入你的阶段性工作目标"></textarea>
++      <textarea data-testid="bf-goal" nz-input formControlName="goal" [nzAutosize]="{ minRows: 4 }" placeholder="请输入你的阶段性工作目标"></textarea>
+     </se>
+     <se label="衡量标准" error="请输入衡量标准" required>
+-      <textarea nz-input formControlName="standard" [nzAutosize]="{ minRows: 4 }" placeholder="请输入衡量标准"></textarea>
++      <textarea data-testid="bf-standard" nz-input formControlName="standard" [nzAutosize]="{ minRows: 4 }" placeholder="请输入衡量标准"></textarea>
+     </se>
+     <se label="客户" optionalHelp="目标的服务对象" error="请输入衡量标准">
+       <input nz-input formControlName="client" placeholder="请描述你服务的客户，内部客户直接 @姓名／工号" />
+@@ -20,21 +21,21 @@
+       <input nz-input formControlName="invites" placeholder="请直接 @姓名／工号，最多可邀请 5 人" />
+     </se>
+     <se label="权重">
+-      <nz-input-number formControlName="weight" placeholder="请输入" />
++      <nz-input-number data-testid="bf-weight" formControlName="weight" placeholder="请输入" />
+       <em>%</em>
+     </se>
+     <se label="目标公开" extra="客户、邀评人默认被分享">
+       <nz-radio-group formControlName="public">
+-        <label nz-radio [nzValue]="1">公开</label>
+-        <label nz-radio [nzValue]="2">部分公开</label>
+-        <label nz-radio [nzValue]="3">不公开</label>
++        <label data-testid="bf-public-1" nz-radio [nzValue]="1">公开</label>
++        <label data-testid="bf-public-2" nz-radio [nzValue]="2">部分公开</label>
++        <label data-testid="bf-public-3" nz-radio [nzValue]="3">不公开</label>
+       </nz-radio-group>
+       @if (form.value.public === 2) {
+-        <input nz-input formControlName="publicUsers" placeholder="公开给" />
++        <input data-testid="bf-public-users" nz-input formControlName="publicUsers" placeholder="公开给" />
+       }
+     </se>
+     <se>
+-      <button nz-button nzType="primary" [disabled]="form.invalid" type="submit" [nzLoading]="submitting">提交</button>
++      <button data-testid="bf-submit" [attr.data-submitting]="submitting" nz-button nzType="primary" [disabled]="form.invalid" type="submit" [nzLoading]="submitting">提交</button>
+       <button nz-button class="ml-sm">保存</button>
+     </se>
+   </form>
+diff --git a/src/app/routes/pro/form/basic-form/basic-form.component.ts b/src/app/routes/pro/form/basic-form/basic-form.component.ts
+index 99fd478..1e6bbee 100644
+--- a/src/app/routes/pro/form/basic-form/basic-form.component.ts
++++ b/src/app/routes/pro/form/basic-form/basic-form.component.ts
+@@ -26,6 +26,18 @@ export class BasicFormComponent {
+   });
+   submitting = false;
+ 
++  // Instrumentation probe: deterministic date fill for the required `date` control.
++  protected probeDate(v: string): void {
++    const parts = String(v).split(',');
++    const mk = (s: string): Date => {
++      const nums = s.trim().split('-').map(Number);
++      return new Date(nums[0], nums[1] - 1, nums[2]);
++    };
++    const start = parts[0].trim();
++    const end = parts.length === 2 ? parts[1].trim() : start;
++    (this.form.controls.date as unknown as FormControl<Date[]>).setValue([mk(start), mk(end)]);
++  }
++
+   submit(): void {
+     this.submitting = true;
+     setTimeout(() => {
+diff --git a/src/app/routes/pro/form/step-form/step-form.component.html b/src/app/routes/pro/form/step-form/step-form.component.html
+index 1056efd..14be073 100644
+--- a/src/app/routes/pro/form/step-form/step-form.component.html
++++ b/src/app/routes/pro/form/step-form/step-form.component.html
+@@ -1,6 +1,6 @@
+ <page-header [title]="'分步表单'"> 将一个冗长或用户不熟悉的表单任务分成多个步骤，指导用户完成。 </page-header>
+ <nz-card [nzBordered]="false">
+-  <nz-steps [nzCurrent]="item.step">
++  <nz-steps data-testid="sf-steps" [nzCurrent]="item.step">
+     <nz-step nzTitle="填写转账信息" />
+     <nz-step nzTitle="确认转账信息" />
+     <nz-step nzTitle="完成" />
+diff --git a/src/app/routes/pro/form/step-form/step1.component.html b/src/app/routes/pro/form/step-form/step1.component.html
+index efdbb50..d36b130 100644
+--- a/src/app/routes/pro/form/step-form/step1.component.html
++++ b/src/app/routes/pro/form/step-form/step1.component.html
+@@ -1,27 +1,29 @@
+ <form nz-form [formGroup]="form" (ngSubmit)="_submitForm()">
+   <div se-container="1" labelWidth="100">
+     <se label="付款账户" required>
+-      <nz-select formControlName="pay_account">
+-        <nz-option [nzLabel]="item.pay_account" [nzValue]="item.pay_account" />
+-      </nz-select>
++      <!-- instrumentation: native select keeps the single-option pay_account control fillable/assertable by the checker -->
++      <select data-testid="sf-pay" formControlName="pay_account" class="ant-input">
++        <option value=""></option>
++        <option [value]="item.pay_account">{{ item.pay_account }}</option>
++      </select>
+     </se>
+     <se label="收款账户" error="请输入收款账户" required>
+       <nz-space-compact class="width-100">
+-        <nz-select formControlName="receiver_type" style="width: 100px">
++        <nz-select data-testid="sf-recv-type" formControlName="receiver_type" style="width: 100px">
+           <nz-option [nzLabel]="'支付宝'" [nzValue]="'alipay'" />
+           <nz-option [nzLabel]="'银行账号'" [nzValue]="'bank'" />
+         </nz-select>
+-        <input formControlName="receiver_account" nz-input style="width: calc(100% - 100px)" />
++        <input data-testid="sf-recv-account" formControlName="receiver_account" nz-input style="width: calc(100% - 100px)" />
+       </nz-space-compact>
+     </se>
+     <se label="收款姓名" error="请输入收款姓名，至少2个字符以上" required>
+-      <input nz-input formControlName="receiver_name" />
++      <input data-testid="sf-recv-name" nz-input formControlName="receiver_name" />
+     </se>
+     <se label="转账金额" error="请输入转账金额，且1至100万以内" required>
+-      <input nz-input formControlName="amount" id="amount" nzAddonAfter="￥" />
++      <input data-testid="sf-amount" nz-input formControlName="amount" id="amount" nzAddonAfter="￥" />
+     </se>
+     <se>
+-      <button nz-button nzType="primary" [disabled]="form.invalid">下一步</button>
++      <button data-testid="sf-next" nz-button nzType="primary" [disabled]="form.invalid">下一步</button>
+     </se>
+   </div>
+ </form>
+diff --git a/src/app/routes/pro/form/step-form/step2.component.html b/src/app/routes/pro/form/step-form/step2.component.html
+index 5b9f7d5..c213a70 100644
+--- a/src/app/routes/pro/form/step-form/step2.component.html
++++ b/src/app/routes/pro/form/step-form/step2.component.html
+@@ -1,19 +1,19 @@
+ <form nz-form [formGroup]="form" (ngSubmit)="_submitForm()">
+   <div se-container="1" labelWidth="100">
+     <nz-alert class="pb-lg" [nzMessage]="'确认转账后，资金将直接打入对方账户，无法退回。'" [nzShowIcon]="true" [nzCloseable]="true" />
+-    <se label="付款账户">{{ item.pay_account }}</se>
++    <se data-testid="sf-pay2" label="付款账户">{{ item.pay_account }}</se>
+     <se label="账户类型">{{ item.receiver_type === 'alipay' ? '支付宝' : '银行' }}</se>
+-    <se label="收款账户">{{ item.receiver_account }}</se>
+-    <se label="收款人姓名">{{ item.receiver_name }}</se>
++    <se label="收款账户"><span data-testid="sf-echo-recv-account">{{ item.receiver_account }}</span></se>
++    <se label="收款人姓名"><span data-testid="sf-echo-recv-name">{{ item.receiver_name }}</span></se>
+     <se label="转账金额"
+-      ><strong class="text-lg">{{ item.amount }}</strong></se
++      ><strong class="text-lg"><span data-testid="sf-echo-amount">{{ item.amount }}</span></strong></se
+     >
+     <se label="支付密码" required error="至少6位数以上" class="border-top-1 pt-lg">
+-      <nz-input-otp formControlName="password" />
++      <nz-input-otp data-testid="sf-password" formControlName="password" />
+     </se>
+     <se>
+-      <button nz-button [nzType]="'primary'" [nzLoading]="loading" [disabled]="form.invalid">提交</button>
+-      <button nz-button (click)="prev()">上一步</button>
++      <button data-testid="sf-submit2" nz-button [nzType]="'primary'" [nzLoading]="loading" [disabled]="form.invalid">提交</button>
++      <button data-testid="sf-prev2" nz-button (click)="prev()">上一步</button>
+     </se>
+   </div>
+ </form>
+diff --git a/src/app/routes/pro/form/step-form/step3.component.html b/src/app/routes/pro/form/step-form/step3.component.html
+index 20aea9d..add1eb0 100644
+--- a/src/app/routes/pro/form/step-form/step3.component.html
++++ b/src/app/routes/pro/form/step-form/step3.component.html
+@@ -1,4 +1,4 @@
+-<nz-result nzStatus="success" [nzTitle]="'操作成功'" nzSubTitle="预计两小时内到账">
++<nz-result data-testid="sf-result" nzStatus="success" [nzTitle]="'操作成功'" nzSubTitle="预计两小时内到账">
+   <div nz-result-extra>
+     <div sv-container col="1" labelWidth="150" class="mb-lg">
+       <sv label="付款账户">{{ item.pay_account }}</sv>
+diff --git a/src/app/routes/pro/list/basic-list/basic-list.component.html b/src/app/routes/pro/list/basic-list/basic-list.component.html
+index f978362..55cb9ea 100644
+--- a/src/app/routes/pro/list/basic-list/basic-list.component.html
++++ b/src/app/routes/pro/list/basic-list/basic-list.component.html
+@@ -37,31 +37,31 @@
+       </nz-input-search>
+     </div>
+   </div>
+-  <button nz-button (click)="openEdit()" [nzType]="'dashed'" nzBlock class="mb-sm">
++  <button data-testid="bl-add" nz-button (click)="openEdit()" [nzType]="'dashed'" nzBlock class="mb-sm">
+     <nz-icon nzType="plus" />
+     <span>添加</span>
+   </button>
+   <nz-list [nzDataSource]="data" [nzLoading]="loading" [nzRenderItem]="item" [nzPagination]="pagination">
+-    <ng-template #item let-item>
+-      <nz-list-item [nzContent]="nzContent" [nzActions]="[edit, op]">
++    <ng-template #item let-item let-i="index">
++      <nz-list-item [attr.data-testid]="'bl-item-' + i" [nzContent]="nzContent" [nzActions]="[edit, op]">
+         <ng-template #edit>
+-          <a (click)="openEdit(item)">编辑</a>
++          <a [attr.data-testid]="'bl-edit-' + i" (click)="openEdit(item)">编辑</a>
+         </ng-template>
+         <ng-template #op>
+-          <a class="ant-dropdown-link" nz-dropdown [nzDropdownMenu]="opMenu">
++          <a [attr.data-testid]="'bl-more-' + i" class="ant-dropdown-link" nz-dropdown [nzDropdownMenu]="opMenu">
+             更多
+             <nz-icon nzType="down" />
+           </a>
+           <nz-dropdown-menu #opMenu="nzDropdownMenu">
+             <ul nz-menu>
+               <li nz-menu-item (click)="openEdit(item)">编辑</li>
+-              <li nz-menu-item (click)="remove(item.title)">删除</li>
++              <li [attr.data-testid]="'bl-del-' + i" nz-menu-item (click)="remove(item.title)">删除</li>
+             </ul>
+           </nz-dropdown-menu>
+         </ng-template>
+         <nz-list-item-meta [nzTitle]="nzTitle" [nzDescription]="item.subDescription" [nzAvatar]="nzAvatar">
+           <ng-template #nzTitle>
+-            <a href="{{ item.href }}" target="_blank">{{ item.title }}</a>
++            <a [attr.data-testid]="'bl-title-' + i" href="{{ item.href }}" target="_blank">{{ item.title }}</a>
+           </ng-template>
+           <ng-template #nzAvatar>
+             <nz-avatar [nzSrc]="item.logo" nzSize="large" [nzShape]="'square'" />
+diff --git a/src/app/routes/pro/list/basic-list/edit/edit.component.html b/src/app/routes/pro/list/basic-list/edit/edit.component.html
+index 310163b..f4e016d 100644
+--- a/src/app/routes/pro/list/basic-list/edit/edit.component.html
++++ b/src/app/routes/pro/list/basic-list/edit/edit.component.html
+@@ -1,9 +1,33 @@
+ <div class="modal-header">
+   <div class="modal-title">任务编辑</div>
+ </div>
+-<sf #sf mode="edit" [schema]="schema" [formData]="record" button="none">
++<form nz-form (ngSubmit)="save()">
++  <nz-form-item>
++    <nz-form-label nzRequired>任务名称</nz-form-label>
++    <nz-form-control>
++      <input data-testid="ble-title" nz-input name="title" [(ngModel)]="record.title" required />
++    </nz-form-control>
++  </nz-form-item>
++  <nz-form-item>
++    <nz-form-label>开始时间</nz-form-label>
++    <nz-form-control>
++      <input data-testid="ble-createdat" nz-input type="date" name="createdAt" [(ngModel)]="record.createdAt" />
++    </nz-form-control>
++  </nz-form-item>
++  <nz-form-item>
++    <nz-form-label>任务负责人</nz-form-label>
++    <nz-form-control>
++      <input data-testid="ble-owner" nz-input name="owner" [(ngModel)]="record.owner" />
++    </nz-form-control>
++  </nz-form-item>
++  <nz-form-item>
++    <nz-form-label>产品描述</nz-form-label>
++    <nz-form-control>
++      <textarea data-testid="ble-desc" nz-input name="subDescription" [(ngModel)]="record.subDescription"></textarea>
++    </nz-form-control>
++  </nz-form-item>
+   <div class="modal-footer">
+     <button nz-button type="button" (click)="close()">关闭</button>
+-    <button nz-button type="submit" [nzType]="'primary'" (click)="save(sf.value)" [disabled]="!sf.valid">保存</button>
++    <button data-testid="ble-submit" nz-button type="submit" [nzType]="'primary'" [disabled]="!record.title">保存</button>
+   </div>
+-</sf>
++</form>
+diff --git a/src/app/routes/pro/list/basic-list/edit/edit.component.ts b/src/app/routes/pro/list/basic-list/edit/edit.component.ts
+index e8517f3..fa17d3b 100644
+--- a/src/app/routes/pro/list/basic-list/edit/edit.component.ts
++++ b/src/app/routes/pro/list/basic-list/edit/edit.component.ts
+@@ -1,5 +1,4 @@
+ import { Component, inject } from '@angular/core';
+-import { SFSchema } from '@delon/form';
+ import { SHARED_IMPORTS } from '@shared';
+ import { NzMessageService } from 'ng-zorro-antd/message';
+ import { NzModalRef } from 'ng-zorro-antd/modal';
+@@ -13,39 +12,11 @@ export class ProBasicListEditComponent {
+   private readonly modal = inject(NzModalRef);
+   private readonly msgSrv = inject(NzMessageService);
+ 
+-  record: Record<string, unknown> = {};
+-  schema: SFSchema = {
+-    properties: {
+-      title: { type: 'string', title: '任务名称', maxLength: 50 },
+-      createdAt: { type: 'string', title: '开始时间', format: 'date' },
+-      owner: {
+-        type: 'string',
+-        title: '任务负责人',
+-        enum: [
+-          { value: 'asdf', label: 'asdf' },
+-          { value: '卡色', label: '卡色' },
+-          { value: 'cipchk', label: 'cipchk' }
+-        ]
+-      },
+-      subDescription: {
+-        type: 'string',
+-        title: '产品描述',
+-        ui: {
+-          widget: 'textarea',
+-          autosize: { minRows: 2, maxRows: 6 }
+-        }
+-      }
+-    },
+-    required: ['title', 'createdAt', 'owner'],
+-    ui: {
+-      spanLabelFixed: 150,
+-      grid: { span: 24 }
+-    }
+-  };
++  record: { title?: string; createdAt?: string; owner?: string; subDescription?: string } = {};
+ 
+-  save(value: unknown): void {
++  save(): void {
+     this.msgSrv.success('保存成功');
+-    this.modal.close(value);
++    this.modal.close(this.record);
+   }
+ 
+   close(): void {
+diff --git a/src/app/routes/pro/list/table-list/table-list.component.html b/src/app/routes/pro/list/table-list/table-list.component.html
+index 0b88744..4586a60 100644
+--- a/src/app/routes/pro/list/table-list/table-list.component.html
++++ b/src/app/routes/pro/list/table-list/table-list.component.html
+@@ -6,7 +6,7 @@
+         <nz-form-item>
+           <nz-form-label nzFor="no">规则编号</nz-form-label>
+           <nz-form-control>
+-            <input nz-input [(ngModel)]="q.no" name="no" placeholder="请输入" id="no" />
++            <input data-testid="tl-no" nz-input [(ngModel)]="q.no" name="no" placeholder="请输入" id="no" />
+           </nz-form-control>
+         </nz-form-item>
+       </div>
+@@ -14,7 +14,7 @@
+         <nz-form-item>
+           <nz-form-label nzFor="status">使用状态</nz-form-label>
+           <nz-form-control>
+-            <nz-select [(ngModel)]="q.status" name="status" id="status" [nzPlaceHolder]="'请选择'" [nzShowSearch]="true">
++            <nz-select data-testid="tl-status" [(ngModel)]="q.status" name="status" id="status" [nzPlaceHolder]="'请选择'" [nzShowSearch]="true">
+               @for (i of status; track $index) {
+                 <nz-option [nzLabel]="i.text" [nzValue]="$index" />
+               }
+@@ -27,7 +27,7 @@
+           <nz-form-item>
+             <nz-form-label nzFor="callNo">调用次数</nz-form-label>
+             <nz-form-control>
+-              <input nz-input id="callNo" />
++              <input data-testid="tl-callno" nz-input id="callNo" />
+             </nz-form-control>
+           </nz-form-item>
+         </div>
+@@ -65,16 +65,16 @@
+         </div>
+       }
+       <div nz-col [nzSpan]="expandForm ? 24 : 8" [class.text-right]="expandForm">
+-        <button nz-button type="submit" [nzType]="'primary'" [nzLoading]="loading">查询</button>
+-        <button nz-button type="reset" (click)="reset()" class="mx-sm">重置</button>
+-        <a (click)="expandForm = !expandForm">
++        <button data-testid="tl-search" nz-button type="submit" [nzType]="'primary'" [nzLoading]="loading">查询</button>
++        <button data-testid="tl-reset" nz-button type="reset" (click)="reset()" class="mx-sm">重置</button>
++        <a data-testid="tl-expand" (click)="expandForm = !expandForm">
+           {{ expandForm ? '收起' : '展开' }}
+           <nz-icon [nzType]="expandForm ? 'up' : 'down'" />
+         </a>
+       </div>
+     </div>
+   </form>
+-  <button nz-button (click)="add(modalContent)" [nzType]="'primary'">
++  <button data-testid="tl-add" nz-button (click)="add(modalContent)" [nzType]="'primary'">
+     <nz-icon nzType="plus" />
+     <span>新建</span>
+   </button>
+@@ -92,7 +92,7 @@
+     </nz-dropdown-menu>
+   }
+   <div class="my-md">
+-    <nz-alert [nzType]="'info'" [nzShowIcon]="true" [nzMessage]="message">
++    <nz-alert data-testid="tl-alert" [nzType]="'info'" [nzShowIcon]="true" [nzMessage]="message">
+       <ng-template #message>
+         已选择
+         <strong class="text-primary">{{ selectedRows.length }}</strong> 项&nbsp;&nbsp; 服务调用总计 <strong>{{ totalCallNo }}</strong> 万
+@@ -102,7 +102,7 @@
+       </ng-template>
+     </nz-alert>
+   </div>
+-  <st #st [columns]="columns" [data]="data" [loading]="loading" (change)="stChange($event)">
++  <st #st data-testid="tl-st" [columns]="columns" [data]="data" [loading]="loading" (change)="stChange($event)">
+     <ng-template st-row="status" let-i>
+       <nz-badge [nzStatus]="i.statusType" [nzText]="i.statusText" />
+     </ng-template>
+@@ -112,7 +112,7 @@
+   <nz-form-item>
+     <nz-form-label nzFor="no">描述</nz-form-label>
+     <nz-form-control>
+-      <input nz-input [(ngModel)]="description" name="description" placeholder="请输入" id="no" />
++      <input data-testid="tl-modal-desc" nz-input [(ngModel)]="description" name="description" placeholder="请输入" id="no" />
+     </nz-form-control>
+   </nz-form-item>
+ </ng-template>
+diff --git a/src/app/routes/pro/profile/basic/basic.component.html b/src/app/routes/pro/profile/basic/basic.component.html
+index 31d695c..51d092c 100644
+--- a/src/app/routes/pro/profile/basic/basic.component.html
++++ b/src/app/routes/pro/profile/basic/basic.component.html
+@@ -16,7 +16,7 @@
+   </sv-container>
+   <nz-divider />
+   <div class="text-lg mb-md">退货商品</div>
+-  <st #st [data]="goods" [columns]="goodsColumns" [body]="goodsBody" [page]="{ show: false }">
++  <st #st data-testid="pb-goods-st" [data]="goods" [columns]="goodsColumns" [body]="goodsBody" [page]="{ show: false }">
+     <ng-template #goodsBody>
+       <tr>
+         <td>合计</td>
+@@ -24,14 +24,14 @@
+         <td></td>
+         <td class="text-right"></td>
+         <td class="text-right">
+-          <strong>{{ basicNum }}</strong>
++          <strong data-testid="pb-total-num">{{ basicNum }}</strong>
+         </td>
+         <td class="text-right">
+-          <strong>{{ amountNum | price }}</strong>
++          <strong data-testid="pb-total-amount">{{ amountNum | price }}</strong>
+         </td>
+       </tr>
+     </ng-template>
+   </st>
+   <div class="text-lg my-md">退货进度</div>
+-  <st [data]="progress" [columns]="progressColumns" [page]="{ show: false }" />
++  <st data-testid="pb-progress-st" [data]="progress" [columns]="progressColumns" [page]="{ show: false }" />
+ </nz-card>

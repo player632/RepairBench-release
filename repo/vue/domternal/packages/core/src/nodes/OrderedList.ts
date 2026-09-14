@@ -1,0 +1,157 @@
+/**
+ * OrderedList Node
+ *
+ * Block-level ordered (numbered) list container.
+ * Supports start attribute and markdown-style input rules.
+ */
+
+import { Node } from '../Node.js';
+import { wrappingInputRule, notInsideList } from '../helpers/wrappingInputRule.js';
+import type { CommandSpec } from '../types/Commands.js';
+import type { ToolbarItem } from '../types/Toolbar.js';
+import type { FloatingMenuItem } from '../types/FloatingMenu.js';
+import { ListItem } from './ListItem.js';
+
+declare module '@domternal/core' {
+  interface RawCommands {
+    toggleOrderedList: CommandSpec;
+    turnIntoOrderedList: CommandSpec;
+  }
+}
+
+export interface OrderedListOptions {
+  HTMLAttributes: Record<string, unknown>;
+  itemTypeName: string;
+}
+
+export const OrderedList = Node.create<OrderedListOptions>({
+  name: 'orderedList',
+  group: 'block list',
+  content: 'listItem+',
+
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+      itemTypeName: 'listItem',
+    };
+  },
+
+  addAttributes() {
+    return {
+      start: {
+        default: 1,
+        // Clamp to a finite integer >= 1. Without this, a malformed
+        // `start="abc"` parses to NaN; `JSON.stringify(NaN)` is `null`, so
+        // getJSON() serializes `start: null` and a save/load cycle
+        // permanently dirties the document (reloads as `<ol start="null">`).
+        parseHTML: (element: HTMLElement) => {
+          const n = parseInt(element.getAttribute('start') ?? '', 10);
+          return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+        },
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const start = attributes['start'] as number;
+          // Only emit a non-default, valid start. Guards against a stray
+          // NaN/non-finite reaching the DOM as `start="NaN"`.
+          if (!Number.isFinite(start) || start <= 1) {
+            return {};
+          }
+          return { start: String(Math.floor(start)) };
+        },
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'ol' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['ol', { ...this.options.HTMLAttributes, ...HTMLAttributes }, 0];
+  },
+
+  addCommands() {
+    const { name, options } = this;
+    return {
+      toggleOrderedList:
+        () =>
+        ({ commands }) => {
+          return commands.toggleList(name, options.itemTypeName);
+        },
+      // Notion "turn into" (slash menu / block menu): convert only the cursor's
+      // item and split the run, instead of retyping the whole list.
+      turnIntoOrderedList:
+        () =>
+        ({ commands }) => {
+          return commands.toggleList(name, options.itemTypeName, undefined, { perItem: true });
+        },
+    };
+  },
+
+  addToolbarItems(): ToolbarItem[] {
+    return [
+      {
+        type: 'button',
+        name: 'orderedList',
+        command: 'toggleOrderedList',
+        isActive: 'orderedList',
+        icon: 'listNumbers',
+        label: 'Ordered List',
+        shortcut: 'Mod-Shift-7',
+        group: 'lists',
+        priority: 190,
+      },
+    ];
+  },
+
+  addFloatingMenuItems(): FloatingMenuItem[] {
+    return [
+      {
+        name: 'ordered-list',
+        label: 'Numbered list',
+        description: 'Create a numbered list',
+        icon: 'listNumbers',
+        group: 'Lists',
+        priority: 190,
+        keywords: ['ordered', 'numbered', 'list', 'ol', '1.'],
+        shortcut: '1. ',
+        command: 'turnIntoOrderedList',
+        hideWhenInside: ['orderedList'],
+      },
+    ];
+  },
+
+  addKeyboardShortcuts() {
+    const { editor } = this;
+    return {
+      'Mod-Shift-7': () => {
+        return editor?.commands['toggleOrderedList']?.() ?? false;
+      },
+    };
+  },
+
+  addExtensions() {
+    return [ListItem];
+  },
+
+  addInputRules() {
+    const { nodeType } = this;
+
+    if (!nodeType) {
+      return [];
+    }
+
+    return [
+      // 1. item (any number followed by . )
+      wrappingInputRule({
+        find: /^(\d+)\.\s$/,
+        type: nodeType,
+        guard: notInsideList,
+        joinForward: true,
+        getAttributes: (match) => {
+          const n = parseInt(match[1] ?? '', 10);
+          return { start: Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1 };
+        },
+      }),
+    ];
+  },
+});

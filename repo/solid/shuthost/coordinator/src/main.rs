@@ -1,0 +1,12 @@
+//! Shim binary that calls into the `coordinator` library's `inner_main`.
+use clap::Parser as _;
+use eyre::Result;
+
+use shuthost_coordinator::cli::Cli;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let invocation = Cli::parse();
+    // Delegate to library entrypoint
+    shuthost_coordinator::inner_main(invocation).await
+}

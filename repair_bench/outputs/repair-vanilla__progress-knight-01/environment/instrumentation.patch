@@ -1,0 +1,269 @@
+diff --git a/index.html b/index.html
+index 5ff2499..07850d8 100644
+--- a/index.html
++++ b/index.html
+@@ -306,5 +306,7 @@
+ <script type="text/javascript" src="js/HackTimer.js"></script>
+ <script type="text/javascript" src="js/classes.js"></script>
+ <script type="text/javascript" src="js/main.js"></script>
++<!-- RB-INSTR: verifier probes - attaches stable data-testid attributes only, touches no game state -->
++<script type="text/javascript" src="js/rb-probe.js"></script>
+ 
+ </html>
+\ No newline at end of file
+diff --git a/js/rb-probe.js b/js/rb-probe.js
+new file mode 100644
+index 0000000..3cd7779
+--- /dev/null
++++ b/js/rb-probe.js
+@@ -0,0 +1,250 @@
++/*
++ * js/rb-probe.js - RB-INSTR: verifier probes for the repair task.
++ *
++ * This file only attaches stable data-testid attributes to DOM nodes that the
++ * seed already renders. It reads no game state, writes no game state, defines
++ * no global binding, registers no timer and no event listener, and every pass
++ * is individually guarded so a probe can never break the page.
++ *
++ * Naming rules that matter for the repair contract:
++ *   - probes are derived from DOCUMENT ORDER and from STATIC MARKUP TEXT, never
++ *     from a class name or an id that application logic is allowed to rewrite,
++ *     so a probe keeps pointing at the same node no matter how the surrounding
++ *     code behaves;
++ *   - entity rows are keyed by the entity name the seed itself renders
++ *     ("row Personal squire" -> item-row-personal-squire);
++ *   - category rows are keyed by the category caption the seed itself renders
++ *     ("Common work" -> req-row-common-work).
++ */
++(function () {
++    "use strict";
++
++    function slug(value) {
++        return String(value == null ? "" : value).trim().toLowerCase()
++            .replace(/[^a-z0-9]+/g, "-")
++            .replace(/^-+|-+$/g, "");
++    }
++
++    function set(element, testid) {
++        if (element && element.setAttribute) { element.setAttribute("data-testid", testid); }
++    }
++
++    function keep(element, testid) {
++        if (element && element.setAttribute && !element.getAttribute("data-testid")) {
++            element.setAttribute("data-testid", testid);
++        }
++    }
++
++    function byId(id) { return document.getElementById(id); }
++
++    function one(root, selector) {
++        try { return root.querySelector(selector); } catch (e) { return null; }
++    }
++
++    function all(root, selector) {
++        try { return Array.prototype.slice.call(root.querySelectorAll(selector)); }
++        catch (e) { return []; }
++    }
++
++    function step(body) {
++        try { body(); } catch (e) { /* a probe must never break the page */ }
++    }
++
++    function childrenOf(host, prefix) {
++        step(function () {
++            var element = typeof host === "string" ? byId(host) : byId(host.id);
++            if (!element) { return; }
++            var tiers = ["p", "g", "s", "c"];
++            for (var i = 0; i < tiers.length; i++) {
++                set(element.children[i], prefix + "-" + tiers[i]);
++            }
++        });
++    }
++
++    /* 1. the four-span money readouts (platinum / gold / silver / copper) */
++    childrenOf({ id: "coinDisplay" }, "coin");
++    childrenOf({ id: "netDisplay" }, "net");
++    childrenOf({ id: "incomeDisplay" }, "income");
++    childrenOf({ id: "expenseDisplay" }, "expense");
++
++    /* 2. sidebar scalars and controls */
++    step(function () {
++        var sidebar = {
++            ageDisplay: "age-display",
++            dayDisplay: "day-display",
++            lifespanDisplay: "lifespan-display",
++            pauseButton: "pause-button",
++            deathText: "death-text",
++            automation: "automation",
++            autoPromote: "auto-promote",
++            autoLearn: "auto-learn",
++            signDisplay: "sign-display",
++            happinessDisplay: "happiness-display",
++            evilInfo: "evil-info",
++            evilDisplay: "evil-display",
++            evilGainDisplay: "evil-gain-display",
++            quickTaskDisplay: "quick-task-display",
++            timeWarping: "time-warping",
++            timeWarpingDisplay: "time-warping-display",
++            timeWarpingButton: "time-warping-button",
++            importExportBox: "import-export-box",
++            jobTable: "job-table",
++            skillTable: "skill-table",
++            itemTable: "item-table"
++        };
++        Object.keys(sidebar).forEach(function (id) { set(byId(id), sidebar[id]); });
++    });
++
++    /* 3. navigation buttons, keyed by their static caption */
++    step(function () {
++        var names = {
++            jobs: "tab-button-jobs",
++            skills: "tab-button-skills",
++            shop: "tab-button-shop",
++            amulet: "tab-button-rebirth",
++            settings: "tab-button-settings"
++        };
++        all(document, ".tabButton").forEach(function (button) {
++            var testid = names[slug(button.textContent)];
++            if (testid) { set(button, testid); }
++        });
++    });
++
++    /* 4. tab panels */
++    step(function () {
++        all(document, ".tab").forEach(function (panel) {
++            if (panel.id) { set(panel, "tab-" + slug(panel.id)); }
++        });
++    });
++
++    /* 5. sidebar quick task display: two bars in document order + their captions */
++    step(function () {
++        var host = byId("quickTaskDisplay");
++        if (!host) { return; }
++        all(host, ".progress-bar").forEach(function (bar, index) {
++            var position = index + 1;
++            set(bar, "quick-bar-" + position);
++            set(one(bar, ".progress-fill"), "quick-fill-" + position);
++            set(one(bar, ".name"), "quick-name-" + position);
++        });
++        all(host, ":scope > .sidebar-element").forEach(function (caption, index) {
++            set(caption, "quick-caption-" + (index + 1));
++        });
++    });
++
++    /* 6. entity rows (jobs, skills, items) keyed by the rendered entity name */
++    step(function () {
++        all(document, 'tr[id^="row "]').forEach(function (row) {
++            var name = row.id.slice(4);
++            var key = slug(name);
++            if (one(row, ".item-button")) {
++                set(row, "item-row-" + key);
++                set(one(row, ".item-button"), "item-button-" + key);
++                set(one(row, ".name"), "item-name-" + key);
++                set(one(row, ".tooltipText"), "item-tooltip-" + key);
++                set(one(row, ".active"), "item-active-" + key);
++                set(one(row, ".effect"), "item-effect-" + key);
++                var expense = one(row, ".expense");
++                set(expense, "item-expense-" + key);
++                if (expense) {
++                    var tiers = ["p", "g", "s", "c"];
++                    for (var i = 0; i < tiers.length; i++) {
++                        set(expense.children[i], "item-expense-" + key + "-" + tiers[i]);
++                    }
++                }
++                return;
++            }
++            set(row, "task-row-" + key);
++            set(one(row, ".progressBar"), "task-progress-" + key);
++            set(one(row, ".progressFill"), "task-bar-" + key);
++            set(one(row, ".name"), "task-name-" + key);
++            set(one(row, ".tooltipText"), "task-tooltip-" + key);
++            set(one(row, ".level"), "task-level-" + key);
++            set(one(row, ".xpGain"), "task-xpgain-" + key);
++            set(one(row, ".xpLeft"), "task-xpleft-" + key);
++            set(one(row, ".maxLevel"), "task-maxlevel-" + key);
++            set(one(row, ".skipSkill"), "task-skipcell-" + key);
++            set(one(row, ".skipSkill .checkbox"), "task-skip-" + key);
++            set(one(row, ".effect"), "task-effect-" + key);
++            var income = one(row, ".income");
++            set(income, "task-income-" + key);
++            if (income) {
++                var money = ["p", "g", "s", "c"];
++                for (var j = 0; j < money.length; j++) {
++                    set(income.children[j], "task-income-" + key + "-" + money[j]);
++                }
++            }
++        });
++    });
++
++    /* 7. category header rows, keyed by the rendered category caption */
++    step(function () {
++        all(document, "tr.headerRow").forEach(function (row) {
++            var caption = one(row, ".category");
++            var key = slug(caption ? caption.textContent : "");
++            if (!key) { return; }
++            set(row, "header-row-" + key);
++            set(caption, "header-category-" + key);
++            set(one(row, ".valueType"), "header-valuetype-" + key);
++            set(one(row, ".maxLevel"), "header-maxlevel-" + key);
++            set(one(row, ".skipSkill"), "header-skipcell-" + key);
++        });
++    });
++
++    /* 8. "Required: ..." hint rows, keyed by the same category caption */
++    step(function () {
++        all(document, ".requiredRow").forEach(function (row) {
++            var caption = one(row, ".category");
++            var key = slug(caption ? caption.textContent : row.id);
++            if (!key) { return; }
++            set(row, "req-row-" + key);
++            set(one(row, ".levels"), "req-levels-" + key);
++            set(one(row, ".evil"), "req-evil-" + key);
++            var coins = one(row, ".coins");
++            set(coins, "req-coins-" + key);
++            if (coins) {
++                var tiers = ["p", "g", "s", "c"];
++                for (var i = 0; i < tiers.length; i++) {
++                    set(coins.children[i], "req-coins-" + key + "-" + tiers[i]);
++                }
++            }
++        });
++    });
++
++    /* 9. amulet notes, keyed by their static story text (never by their id) */
++    step(function () {
++        var rebirth = byId("rebirth");
++        if (!rebirth) { return; }
++        all(rebirth, "ul > li").forEach(function (note) {
++            var text = note.textContent || "";
++            if (text.indexOf("45th birthday") >= 0) { set(note, "amulet-note-45"); }
++            else if (text.indexOf("65th birthday") >= 0) { set(note, "amulet-note-65"); }
++            else if (text.indexOf("grand age of 200") >= 0) { set(note, "amulet-note-200"); }
++            else if (!note.id) { set(note, "amulet-note-intro"); }
++        });
++        all(rebirth, "button").forEach(function (button) {
++            var caption = slug(button.textContent);
++            if (caption === "touch-the-eye") { set(button, "amulet-button-one"); }
++            else if (caption === "embrace-evil") { set(button, "amulet-button-two"); }
++        });
++    });
++
++    /* 10. settings panel buttons, keyed by their static caption */
++    step(function () {
++        var settings = byId("settings");
++        if (!settings) { return; }
++        all(settings, "button").forEach(function (button) {
++            var caption = slug(button.textContent);
++            if (caption) { set(button, "settings-button-" + caption); }
++        });
++        var link = one(settings, 'a[href*="discord"]');
++        if (link) { set(link, "community-link"); }
++    });
++
++    /* 11. fallback: every remaining seeded id becomes addressable */
++    step(function () {
++        all(document, "[id]").forEach(function (element) {
++            keep(element, "id-" + slug(element.id));
++        });
++    });
++})();

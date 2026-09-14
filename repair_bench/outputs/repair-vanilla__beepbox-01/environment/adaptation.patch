@@ -1,0 +1,44 @@
+diff --git a/editor/SongDocument.ts b/editor/SongDocument.ts
+index 1e46fbb..a8cca04 100644
+--- a/editor/SongDocument.ts
++++ b/editor/SongDocument.ts
+@@ -49,6 +49,8 @@ export class SongDocument {
+ 	public currentPatternIsDirty: boolean = false;
+ 	
+ 	private static readonly _maximumUndoHistory: number = 100;
++	// AD-1 (repair fixture): deterministic song loaded whenever no song hash is present.
++	private static readonly _fixtureSongString: string = "9n31s0k0l00e03t1Ua7g07j07r1i0o432T1v0u01f0qw03d04A0F0B0Q0000Pff00E0T0v0u00f0qw02d04w2h0E0T0v0u00f0qw02d04w2h0E0T2v0u02f0qw02d04w1E0b4y4i8h4h000h4g004h4h4gp1UEbPxv0BY2nMhvE5Z9vknRBU5wWswcte00a2cg4t17ghQ4t17ghQ4t160";
+ 	private _recovery: SongRecovery = new SongRecovery();
+ 	private _recoveryUid: string;
+ 	private _recentChange: Change | null = null;
+@@ -72,6 +74,10 @@ export class SongDocument {
+ 		if (songString == "") {
+ 			songString = this._getHash();
+ 		}
++		if (songString == "") {
++			// AD-1: load the deterministic fixture song when no hash is present.
++			songString = "#" + SongDocument._fixtureSongString;
++		}
+ 		try {
+ 			this.song = new Song(songString);
+ 			if (songString == "" || songString == undefined) {
+diff --git a/website/beepbox_offline_template.html b/website/beepbox_offline_template.html
+index f0b1fe0..384d1b5 100644
+--- a/website/beepbox_offline_template.html
++++ b/website/beepbox_offline_template.html
+@@ -116,6 +116,15 @@
+ 			}
+ 		}
+ 	</style>
++	<script>
++		// AD-2 (repair fixture): deterministic preference seeds for the offline demo.
++		try {
++			window.localStorage.setItem("autoPlay", "false");
++			if (window.localStorage.getItem("enableChannelMuting") == null) window.localStorage.setItem("enableChannelMuting", "true");
++			if (window.localStorage.getItem("displayBrowserUrl") == null) window.localStorage.setItem("displayBrowserUrl", "true");
++			if (window.localStorage.getItem("enableNotePreview") == null) window.localStorage.setItem("enableNotePreview", "false");
++		} catch (e) { /* storage unavailable */ }
++	</script>
+ </head>
+ 
+ <body>

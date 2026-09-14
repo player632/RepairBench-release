@@ -1,0 +1,578 @@
+diff --git a/src/components/auth/SignIn.tsx b/src/components/auth/SignIn.tsx
+index 7eadf37..2493873 100644
+--- a/src/components/auth/SignIn.tsx
++++ b/src/components/auth/SignIn.tsx
+@@ -44,6 +44,7 @@ const SignIn = () => {
+         <Input
+           name='email'
+           type='email'
++          data-testid='signin-email'
+           onChange={handleChange}
+           value={email}
+           placeholder='Email'
+@@ -53,14 +54,15 @@ const SignIn = () => {
+         <Input
+           name='password'
+           type='password'
++          data-testid='signin-password'
+           value={password}
+           onChange={handleChange}
+           placeholder='Password'
+           autoComplete='current-password'
+           required
+         />
+-        <Button type='submit'>Sign In</Button>
+-        <Button type='button' google onClick={signInWithGoogle}>
++        <Button type='submit' data-testid='signin-submit'>Sign In</Button>
++        <Button type='button' google onClick={signInWithGoogle} data-testid='signin-google'>
+           Sign in with Google
+         </Button>
+         <StyledLink to='/signup'>New to Dunno? Sign up</StyledLink>
+diff --git a/src/components/auth/SignUp.tsx b/src/components/auth/SignUp.tsx
+index a166468..100c43e 100644
+--- a/src/components/auth/SignUp.tsx
++++ b/src/components/auth/SignUp.tsx
+@@ -64,6 +64,7 @@ const SignUp = () => {
+         <Input
+           type='text'
+           name='displayName'
++          data-testid='signup-name'
+           value={displayName}
+           onChange={handleChange}
+           placeholder='Name'
+@@ -72,6 +73,7 @@ const SignUp = () => {
+         <Input
+           type='email'
+           name='email'
++          data-testid='signup-email'
+           value={email}
+           onChange={handleChange}
+           placeholder='Email'
+@@ -81,6 +83,7 @@ const SignUp = () => {
+         <Input
+           type='password'
+           name='password'
++          data-testid='signup-password'
+           value={password}
+           onChange={handleChange}
+           placeholder='Password'
+@@ -90,13 +93,14 @@ const SignUp = () => {
+         <Input
+           type='password'
+           name='confirmPassword'
++          data-testid='signup-confirm'
+           value={confirmPassword}
+           onChange={handleChange}
+           placeholder='Confirm Password'
+           autoComplete='new-password'
+           required
+         />
+-        <Button type='submit'>Sign Up</Button>
++        <Button type='submit' data-testid='signup-submit'>Sign Up</Button>
+         <StyledLink to='/signin'>Already have an account? Sign in</StyledLink>
+       </Form>
+     </Container>
+diff --git a/src/components/home/Categories.tsx b/src/components/home/Categories.tsx
+index a2d928d..fe4c559 100644
+--- a/src/components/home/Categories.tsx
++++ b/src/components/home/Categories.tsx
+@@ -2,11 +2,11 @@ import { Container, StyledNavLink } from './CategoriesStyles';
+ 
+ const Categories = () => (
+   <Container>
+-    <StyledNavLink exact to='/'>
++    <StyledNavLink exact to='/' data-testid='category-tv'>
+       TV SHOWS
+     </StyledNavLink>
+ 
+-    <StyledNavLink exact to='/movie'>
++    <StyledNavLink exact to='/movie' data-testid='category-movie'>
+       MOVIES
+     </StyledNavLink>
+   </Container>
+diff --git a/src/components/home/List.tsx b/src/components/home/List.tsx
+index 224ada1..b005297 100644
+--- a/src/components/home/List.tsx
++++ b/src/components/home/List.tsx
+@@ -37,9 +37,9 @@ const List: React.VFC<Props> = ({ mediaType, category, id }) => {
+   useLazyLoading('.lazy', titles);
+   return (
+     <>
+-      <Heading>{titleCase(category)}</Heading>
++      <Heading data-testid={`list-section-${category}_${mediaType}`}>{titleCase(category)}</Heading>
+       <ScrollContainer vertical={false}>
+-        <Container>
++        <Container data-testid={`list-container-${category}_${mediaType}`}>
+           <InitialSpace additionalSpace={page === totalPages}>
+             {titles &&
+               titles.map(
+@@ -50,12 +50,13 @@ const List: React.VFC<Props> = ({ mediaType, category, id }) => {
+                       id={title.id}
+                       title={title.title || title.name}
+                       mediaType={mediaType}
++                      testId={`list-poster-${title.id}`}
+                       key={title.id}
+                     />
+                   )
+               )}
+           </InitialSpace>
+-          {page < totalPages && <LoadMore ref={bottomBoundaryRef} />}
++          {page < totalPages && <LoadMore ref={bottomBoundaryRef} data-testid={`loadmore-${category}_${mediaType}`} />}
+         </Container>
+       </ScrollContainer>
+     </>
+diff --git a/src/components/home/ListPoster.tsx b/src/components/home/ListPoster.tsx
+index 029ea6e..4199190 100644
+--- a/src/components/home/ListPoster.tsx
++++ b/src/components/home/ListPoster.tsx
+@@ -6,15 +6,17 @@ interface Props {
+   title: string;
+   mediaType: string;
+   posterPath: string;
++  testId?: string;
+ }
+ 
+-const ListPoster: React.VFC<Props> = ({ id, mediaType, title, posterPath }) => {
++const ListPoster: React.VFC<Props> = ({ id, mediaType, title, posterPath, testId }) => {
+   const [loaded, setLoaded] = useState(false);
+   return (
+-    <StyledLink to={`/${mediaType}/${id}`} aria-label={title}>
++    <StyledLink to={`/${mediaType}/${id}`} aria-label={title} data-testid={testId}>
+       <Img
+         alt={title}
+         className='lazy'
++        data-testid={`poster-img-${id}`}
+         data-src={posterPath}
+         fade={loaded}
+         onLoad={() => setLoaded(true)}
+diff --git a/src/components/layout/BottomNavbar.tsx b/src/components/layout/BottomNavbar.tsx
+index 1c7480d..c0288fd 100644
+--- a/src/components/layout/BottomNavbar.tsx
++++ b/src/components/layout/BottomNavbar.tsx
+@@ -33,31 +33,35 @@ const BottomNavbar: React.VFC<Props> = ({ searchIcon }) => {
+         <NavLink
+           to='/'
+           aria-label='Home'
++          data-testid='bottomnav-home'
+           isActive={() => ['/', '/movie'].includes(pathname)}
+         >
+           <HomeIcon />
+         </NavLink>
+ 
+-        <IconWrapper ref={searchIcon} onClick={() => dispatch(setIsOpen())}>
++        <IconWrapper ref={searchIcon} onClick={() => dispatch(setIsOpen())} data-testid='bottomnav-search'>
+           <SearchIcon />
+         </IconWrapper>
+ 
+-        <NavLink exact to='/randomizer' aria-label='Randomizer'>
++        <NavLink exact to='/randomizer' aria-label='Randomizer'
++          data-testid='bottomnav-randomizer'>
+           <RandomizerIcon />
+         </NavLink>
+ 
+-        <NavLink exact to='/my-list' aria-label='My list'>
++        <NavLink exact to='/my-list' aria-label='My list'
++          data-testid='bottomnav-mylist'>
+           <FavoriteIcon />
+         </NavLink>
+ 
+         {userId ? (
+-          <IconWrapper onClick={() => signOut(auth)}>
++          <IconWrapper onClick={() => signOut(auth)} data-testid='bottomnav-auth'>
+             <SignOutIcon />
+           </IconWrapper>
+         ) : (
+           <NavLink
+             to='/signin'
+             aria-label='Sign in'
++            data-testid='bottomnav-auth'
+             isActive={() => ['/signin', '/signup'].includes(pathname)}
+           >
+             <ProfileIcon />
+diff --git a/src/components/layout/Header.tsx b/src/components/layout/Header.tsx
+index d64c55f..7929649 100644
+--- a/src/components/layout/Header.tsx
++++ b/src/components/layout/Header.tsx
+@@ -25,37 +25,37 @@ const Header: React.VFC<Props> = ({ searchIcon }) => {
+ 
+   return (
+     <StyledHeader>
+-      <LogoLink to='/'>dunno</LogoLink>
++      <LogoLink to='/' data-testid='header-logo'>dunno</LogoLink>
+ 
+       <Nav>
+-        <StyledNavLink exact to='/'>
++        <StyledNavLink exact to='/' data-testid='header-nav-tv'>
+           TV Shows
+         </StyledNavLink>
+ 
+-        <StyledNavLink exact to='/movie'>
++        <StyledNavLink exact to='/movie' data-testid='header-nav-movies'>
+           Movies
+         </StyledNavLink>
+ 
+-        <StyledNavLink exact to='/randomizer'>
++        <StyledNavLink exact to='/randomizer' data-testid='header-nav-randomizer'>
+           Randomizer
+         </StyledNavLink>
+ 
+-        <StyledNavLink exact to='/my-list'>
++        <StyledNavLink exact to='/my-list' data-testid='header-nav-mylist'>
+           My List
+         </StyledNavLink>
+       </Nav>
+ 
+       <Icons>
+-        <IconWrapper ref={searchIcon} onClick={() => dispatch(setIsOpen())}>
++        <IconWrapper ref={searchIcon} onClick={() => dispatch(setIsOpen())} data-testid='header-search-open'>
+           <SearchIcon />
+         </IconWrapper>
+ 
+         {userId ? (
+-          <IconWrapper onClick={() => signOut(auth)}>
++          <IconWrapper onClick={() => signOut(auth)} data-testid='header-signout'>
+             <SignOutIcon />
+           </IconWrapper>
+         ) : (
+-          <Link to='/signin' aria-label='Sign In'>
++          <Link to='/signin' aria-label='Sign In' data-testid='header-auth'>
+             <IconWrapper>
+               <ProfileIcon />
+             </IconWrapper>
+diff --git a/src/components/layout/NotFound.tsx b/src/components/layout/NotFound.tsx
+index 58e0f3c..27e11e7 100644
+--- a/src/components/layout/NotFound.tsx
++++ b/src/components/layout/NotFound.tsx
+@@ -1,7 +1,7 @@
+ import { Container, StyledLink, Paragraph, Heading } from './NotFoundStyles';
+ 
+ const NotFound = () => (
+-  <Container>
++  <Container data-testid='notfound-page'>
+     <Heading>404</Heading>
+     <Paragraph>Oops! Something went wrong.</Paragraph>
+     <StyledLink to='/'>Go Home</StyledLink>
+diff --git a/src/components/layout/SearchBar.tsx b/src/components/layout/SearchBar.tsx
+index 75477fa..6667252 100644
+--- a/src/components/layout/SearchBar.tsx
++++ b/src/components/layout/SearchBar.tsx
+@@ -54,9 +54,9 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+ 
+   return (
+     <>
+-      <Overlay isOpen={isOpen} />
++      <Overlay isOpen={isOpen} data-testid='search-overlay' />
+       <div ref={outside}>
+-        <Container isOpen={isOpen}>
++        <Container isOpen={isOpen} data-testid='search-panel'>
+           <InputContainer>
+             <IconWrapper>
+               <SearchIcon />
+@@ -66,21 +66,23 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+               value={value}
+               ref={searchInput}
+               onChange={(e) => dispatch(setValue(e.target.value))}
++              data-testid='search-input'
+             />
+-            <IconWrapper pointer onClick={() => dispatch(resetSearch())}>
++            <IconWrapper pointer onClick={() => dispatch(resetSearch())} data-testid='search-clear'>
+               <XMarkCircle />
+             </IconWrapper>
+           </InputContainer>
+ 
+-          <ul>
++          <ul data-testid='search-results'>
+             {titles.length > 0 &&
+               titles
+                 .filter((item, index) => index < 5)
+-                .map((item) => (
++                .map((item, index) => (
+                   <Link
+                     to={`/${item.media_type}/${item.id}`}
+                     onClick={() => dispatch(resetSearch())}
+                     key={item.id}
++                    data-testid={`search-result-${index}`}
+                   >
+                     <Item>{item.original_title || item.name}</Item>
+                   </Link>
+@@ -89,6 +91,7 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+             {titles.length > 5 && (
+               <Link
+                 to={{ pathname: `/search/${value}`, state: titles }}
++                data-testid='search-display-all'
+                 onClick={() => dispatch(resetSearch())}
+               >
+                 <Item style={{ fontWeight: 500 }}>DISPLAY ALL RESULTS</Item>
+@@ -96,7 +99,7 @@ const Modal: React.VFC<Props> = ({ searchIcon, mobileSearchIcon }) => {
+             )}
+ 
+             {titles.length === 0 && !loading && (
+-              <Item noPointer>
++              <Item noPointer data-testid='search-empty'>
+                 Sorry, we can't find what you're looking for. Try adjusting your
+                 search.
+               </Item>
+diff --git a/src/components/layout/Spinner.tsx b/src/components/layout/Spinner.tsx
+index 5cb3861..b5c2ab5 100644
+--- a/src/components/layout/Spinner.tsx
++++ b/src/components/layout/Spinner.tsx
+@@ -1,7 +1,7 @@
+ import { SpinnerContainer, SpinnerOverlay } from './SpinnerStyles';
+ 
+ const Spinner = () => (
+-  <SpinnerOverlay>
++  <SpinnerOverlay data-testid='spinner'>
+     <SpinnerContainer />
+   </SpinnerOverlay>
+ );
+diff --git a/src/components/my-list/MyList.tsx b/src/components/my-list/MyList.tsx
+index 8f01ba8..6fc2f77 100644
+--- a/src/components/my-list/MyList.tsx
++++ b/src/components/my-list/MyList.tsx
+@@ -16,11 +16,11 @@ const MyList = () => {
+ 
+   return (
+     <>
+-      <Heading>My List</Heading>
+-      <Container>
++      <Heading data-testid='mylist-heading'>My List</Heading>
++      <Container data-testid='mylist-container'>
+         {titles &&
+-          titles.map((title) => (
+-            <MyListPoster {...title} userId={userId!} key={title.firebaseId} />
++          titles.map((title, index) => (
++            <MyListPoster {...title} userId={userId!} testIndex={String(index)} key={title.firebaseId} />
+           ))}
+       </Container>
+     </>
+diff --git a/src/components/my-list/MyListPoster.tsx b/src/components/my-list/MyListPoster.tsx
+index 711257c..9bed392 100644
+--- a/src/components/my-list/MyListPoster.tsx
++++ b/src/components/my-list/MyListPoster.tsx
+@@ -7,12 +7,12 @@ import { StyledLink, Img, Button } from './MyListPosterStyles';
+ 
+ const MyListPoster: React.VFC<{
+   [key: string]: string;
+-}> = ({ mediaType, id, title, posterPath, firebaseId, userId }) => {
++}> = ({ mediaType, id, title, posterPath, firebaseId, userId, testIndex }) => {
+   const dispatch = useDispatch();
+   const [loaded, setLoaded] = useState(false);
+ 
+   return (
+-    <StyledLink to={`/${mediaType}/${id}`}>
++    <StyledLink to={`/${mediaType}/${id}`} data-testid={`mylist-item-${testIndex}`}>
+       <Img
+         onLoad={() => setLoaded(true)}
+         alt={title}
+@@ -20,6 +20,7 @@ const MyListPoster: React.VFC<{
+         fade={loaded}
+       />
+       <Button
++        data-testid={`mylist-remove-${testIndex}`}
+         onClick={(e) => {
+           e.preventDefault();
+           dispatch(removeTitle(userId, firebaseId));
+diff --git a/src/components/person/Person.tsx b/src/components/person/Person.tsx
+index 33fce06..e417c54 100644
+--- a/src/components/person/Person.tsx
++++ b/src/components/person/Person.tsx
+@@ -28,10 +28,11 @@ const Person = () => {
+   if (error) return <NotFound />;
+ 
+   return (
+-    <Wrapper>
+-      <Heading>{name}</Heading>
+-      {titles.map((title) => (
+-        <Link to={`/${title.media_type}/${title.id}`} key={title.id}>
++    <Wrapper data-testid='person-page'>
++      <Heading data-testid='person-name'>{name}</Heading>
++      {titles.map((title, index) => (
++        <Link to={`/${title.media_type}/${title.id}`} data-testid={`person-title-${index}`}
++          key={title.id}>
+           <Row>
+             <Placeholder>
+               <Img
+diff --git a/src/components/randomizer/Randomizer.tsx b/src/components/randomizer/Randomizer.tsx
+index c3f4ab6..afe08fb 100644
+--- a/src/components/randomizer/Randomizer.tsx
++++ b/src/components/randomizer/Randomizer.tsx
+@@ -47,7 +47,7 @@ const Randomizer = () => {
+   }, [mediaType, genres, dispatch]);
+ 
+   return (
+-    <Container>
++    <Container data-testid='randomizer-page'>
+       {backdrop_path && matches && (
+         <Background
+           alt={title || name}
+@@ -57,8 +57,9 @@ const Randomizer = () => {
+         />
+       )}
+       <Column>
+-        <StyledLink to={poster_path ? `${name ? 'tv' : 'movie'}/${id}` : `#`}>
++        <StyledLink data-testid='randomizer-poster-link' to={poster_path ? `${name ? 'tv' : 'movie'}/${id}` : `#`}>
+           <Img
++            data-testid='randomizer-poster'
+             alt={title || name}
+             src={
+               poster_path
+@@ -70,8 +71,8 @@ const Randomizer = () => {
+           />
+         </StyledLink>
+         <Buttons>
+-          <Button onClick={() => dispatch(resetLoaded('tv'))}>TV SHOW</Button>
+-          <Button onClick={() => dispatch(resetLoaded('movie'))}>MOVIE</Button>
++          <Button data-testid='randomizer-tv-button' onClick={() => dispatch(resetLoaded('tv'))}>TV SHOW</Button>
++          <Button data-testid='randomizer-movie-button' onClick={() => dispatch(resetLoaded('movie'))}>MOVIE</Button>
+         </Buttons>
+       </Column>
+     </Container>
+diff --git a/src/components/search/Search.tsx b/src/components/search/Search.tsx
+index 8f3a2af..b9001e3 100644
+--- a/src/components/search/Search.tsx
++++ b/src/components/search/Search.tsx
+@@ -46,6 +46,7 @@ const Search = () => {
+             (title) =>
+               (title.poster_path || title.profile_path) && (
+                 <SearchPoster
++                  testId={`${title.media_type}_${title.id}`}
+                   id={title.id}
+                   mediaType={title.media_type}
+                   title={title.name || title.title!}
+diff --git a/src/components/search/SearchPoster.tsx b/src/components/search/SearchPoster.tsx
+index e080682..3b6d565 100644
+--- a/src/components/search/SearchPoster.tsx
++++ b/src/components/search/SearchPoster.tsx
+@@ -7,6 +7,7 @@ interface Props {
+   title: string;
+   mediaType: string;
+   posterPath: string;
++  testId?: string;
+ }
+ 
+ const SearchPoster: React.VFC<Props> = ({
+@@ -14,11 +15,12 @@ const SearchPoster: React.VFC<Props> = ({
+   title,
+   mediaType,
+   posterPath,
++  testId,
+ }) => {
+   const [loaded, setLoaded] = useState(false);
+ 
+   return (
+-    <StyledLink to={`/${mediaType}/${id}`}>
++    <StyledLink to={`/${mediaType}/${id}`} data-testid={`searchpage-poster-${testId}`}>
+       <Img
+         onLoad={() => setLoaded(true)}
+         alt={title}
+diff --git a/src/components/title/Title.tsx b/src/components/title/Title.tsx
+index bcf2f3e..c3df8af 100644
+--- a/src/components/title/Title.tsx
++++ b/src/components/title/Title.tsx
+@@ -38,23 +38,24 @@ const Title = () => {
+   if (error) return <NotFound />;
+ 
+   return (
+-    <Container>
++    <Container data-testid='title-page'>
+       <TitleBackdrop title={heading} backdropPath={backdrop_path} />
+       <Card>
+         {matches && <TitlePoster title={heading} posterPath={poster_path} />}
+         <Info>
+-          <Heading>{heading}</Heading>
+-          <Overview>{matches ? sliceOverview(overview) : overview}</Overview>
++          <Heading data-testid='title-heading'>{heading}</Heading>
++          <Overview data-testid='title-overview'>{matches ? sliceOverview(overview) : overview}</Overview>
+           <TitleRating rating={vote_average} />
+           <Row>
+             {cast.length > 0 &&
+               cast
+                 .slice(0, 4)
+-                .map((person) => (
++                .map((person, index) => (
+                   <TitleCast
+                     profilePath={person.profile_path}
+                     name={person.name}
+                     id={person.id}
++                    testId={`title-cast-${index}`}
+                     key={person.credit_id}
+                   />
+                 ))}
+diff --git a/src/components/title/TitleBackdrop.tsx b/src/components/title/TitleBackdrop.tsx
+index 3482bd6..8c9e9cb 100644
+--- a/src/components/title/TitleBackdrop.tsx
++++ b/src/components/title/TitleBackdrop.tsx
+@@ -17,6 +17,7 @@ const TitleBackdrop: React.VFC<Props> = ({ title, backdropPath }) => {
+     <>
+       <Placeholder>
+         <Img
++          data-testid='title-backdrop'
+           alt={title}
+           src={
+             backdropPath
+diff --git a/src/components/title/TitleButtons.tsx b/src/components/title/TitleButtons.tsx
+index 214944d..7b6da0f 100644
+--- a/src/components/title/TitleButtons.tsx
++++ b/src/components/title/TitleButtons.tsx
+@@ -27,6 +27,8 @@ const TitleButtons: React.VFC<{ [key: string]: string }> = ({
+   return (
+     <Row>
+       <Button
++        data-testid='title-mylist-button'
++        data-state={fbId ? 'added' : 'none'}
+         onClick={() =>
+           userId
+             ? dispatch(toggle(userId, id, mediaType, posterPath, title, fbId))
+@@ -39,6 +41,7 @@ const TitleButtons: React.VFC<{ [key: string]: string }> = ({
+ 
+       {videos.length > 0 && (
+         <Link
++          data-testid='title-trailer-link'
+           rel='noopener noreferrer'
+           href={`https://www.youtube.com/watch?v=${videos[0].key}`}
+           target='_blank'
+diff --git a/src/components/title/TitleCast.tsx b/src/components/title/TitleCast.tsx
+index c0082b5..120e45f 100644
+--- a/src/components/title/TitleCast.tsx
++++ b/src/components/title/TitleCast.tsx
+@@ -8,12 +8,13 @@ interface Props {
+   id: number;
+   name: string;
+   profilePath: string;
++  testId?: string;
+ }
+ 
+-const TitleCast: React.VFC<Props> = ({ id, name, profilePath }) => {
++const TitleCast: React.VFC<Props> = ({ id, name, profilePath, testId }) => {
+   const [loaded, setLoaded] = useState(false);
+   return (
+-    <Column>
++    <Column data-testid={testId}>
+       <Link to={`/person/${id}`}>
+         <Photo>
+           <Img
+diff --git a/src/components/title/TitlePoster.tsx b/src/components/title/TitlePoster.tsx
+index 5ddd221..952b264 100644
+--- a/src/components/title/TitlePoster.tsx
++++ b/src/components/title/TitlePoster.tsx
+@@ -16,6 +16,7 @@ const TitlePoster: React.VFC<Props> = ({ title, posterPath }) => {
+   return (
+     <Container>
+       <Img
++        data-testid='title-poster'
+         alt={title}
+         src={
+           posterPath
+diff --git a/src/components/title/TitleRating.tsx b/src/components/title/TitleRating.tsx
+index 233b5fd..b848163 100644
+--- a/src/components/title/TitleRating.tsx
++++ b/src/components/title/TitleRating.tsx
+@@ -7,7 +7,7 @@ const TitleRating: React.VFC<{ rating: number }> = ({ rating }) => (
+     <ImdbWrapper>
+       <Imdb />
+     </ImdbWrapper>
+-    <Rank>{Math.round(rating * 10) / 10}/10</Rank>
++    <Rank data-testid='title-rating'>{Math.round(rating * 10) / 10}/10</Rank>
+     <StarWrapper>
+       <Star />
+     </StarWrapper>

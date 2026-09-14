@@ -1,0 +1,112 @@
+diff --git a/src/context/index.js b/src/context/index.js
+index c88bb6e..2ec66b4 100644
+--- a/src/context/index.js
++++ b/src/context/index.js
+@@ -86,6 +86,9 @@ function MaterialUIControllerProvider({ children }) {
+   const [controller, dispatch] = useReducer(reducer, initialState);
+ 
+   const value = useMemo(() => [controller, dispatch], [controller, dispatch]);
++  // RepairBench instrumentation: live bridge exposure (re-assigned every render)
++  window.__MDR_CTX__ = controller;
++  window.__MDR_DISPATCH__ = dispatch;
+ 
+   return <MaterialUI.Provider value={value}>{children}</MaterialUI.Provider>;
+ }
+diff --git a/src/examples/Charts/BarCharts/ReportsBarChart/index.js b/src/examples/Charts/BarCharts/ReportsBarChart/index.js
+index 47d0db0..a866f0a 100644
+--- a/src/examples/Charts/BarCharts/ReportsBarChart/index.js
++++ b/src/examples/Charts/BarCharts/ReportsBarChart/index.js
+@@ -62,7 +62,14 @@ function ReportsBarChart({ color, title, description, date, chart }) {
+               mt={-5}
+               height="12.5rem"
+             >
+-              <Bar data={data} options={options} redraw />
++              <Bar
++                data={data}
++                options={options}
++                redraw
++                ref={(instance) => {
++                  if (instance && window.__MDR__) window.__MDR__.registerChart(instance);
++                }}
++              />
+             </MDBox>
+           ),
+           [color, chart]
+diff --git a/src/examples/Charts/LineCharts/ReportsLineChart/index.js b/src/examples/Charts/LineCharts/ReportsLineChart/index.js
+index 7efe6f5..8961d5b 100644
+--- a/src/examples/Charts/LineCharts/ReportsLineChart/index.js
++++ b/src/examples/Charts/LineCharts/ReportsLineChart/index.js
+@@ -73,7 +73,14 @@ function ReportsLineChart({ color, title, description, date, chart }) {
+               mt={-5}
+               height="12.5rem"
+             >
+-              <Line data={data} options={options} redraw />
++              <Line
++                data={data}
++                options={options}
++                redraw
++                ref={(instance) => {
++                  if (instance && window.__MDR__) window.__MDR__.registerChart(instance);
++                }}
++              />
+             </MDBox>
+           ),
+           [chart, color]
+diff --git a/src/index.js b/src/index.js
+index b13cbec..5987670 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -18,6 +18,9 @@ import { createRoot } from "react-dom/client";
+ import { BrowserRouter } from "react-router-dom";
+ import App from "App";
+ 
++// RepairBench instrumentation probe (bridge installation)
++import "./rb-probe";
++
+ // Material Dashboard 2 React Context Provider
+ import { MaterialUIControllerProvider } from "context";
+ 
+diff --git a/src/rb-probe.js b/src/rb-probe.js
+new file mode 100644
+index 0000000..cb92070
+--- /dev/null
++++ b/src/rb-probe.js
+@@ -0,0 +1,38 @@
++/**
++ * RepairBench instrumentation probe for material-dashboard-react.
++ * Installs the window.__MDR__ bridge (live reads only - every getter fetches
++ * fresh state on call, nothing is snapshotted, and DSL checkpoints must
++ * re-read window.__MDR__ on every access). The context provider re-assigns
++ * window.__MDR_CTX__/__MDR_DISPATCH__ on every render; chart components
++ * register their chart.js instances, and the charts() getter returns only
++ * instances whose canvas is still mounted.
++ */
++(function () {
++  "use strict";
++
++  var charts = [];
++
++  window.__MDR__ = {
++    ready: true,
++    route: function () {
++      return window.location.pathname;
++    },
++    controller: function () {
++      return window.__MDR_CTX__ || null;
++    },
++    dispatch: function (action) {
++      if (!window.__MDR_DISPATCH__) return false;
++      window.__MDR_DISPATCH__(action);
++      return true;
++    },
++    registerChart: function (inst) {
++      if (inst && charts.indexOf(inst) === -1) charts.push(inst);
++      return true;
++    },
++    charts: function () {
++      return charts.filter(function (c) {
++        return c && c.canvas && document.contains(c.canvas);
++      });
++    },
++  };
++})();

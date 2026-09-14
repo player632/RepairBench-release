@@ -1,0 +1,92 @@
+import React, { useEffect, useCallback } from 'react'
+import useCheckAuth from '../useCheckAuth'
+import useLogin from '../useLogin'
+import { useNavigate } from 'react-router-dom'
+import { Card } from '../../ui'
+import { Form, TextInput, PasswordInput } from '../../form'
+import styles from './Login.module.scss'
+import { useConfig } from '../../config/ConfigContext'
+import { useTheme } from '../../theme'
+import { ThemeName } from '../../theme/interfaces'
+import Icon from '../../assets/icons'
+import { useLocaleProvider } from '../../locale'
+import OAuthLoginComponent from './OAuthLogin'
+
+export function LoginLayout({ children }: { children?: React.ReactNode }) {
+    return <div className={styles.wrap}>{children}</div>
+}
+
+export function Login() {
+    const { themeName } = useTheme()
+    const { auth: locale, form: formLocale } = useLocaleProvider()
+    const checkAuth = useCheckAuth()
+    const navigate = useNavigate()
+    const { loginLogo = LogoDefault } = useConfig()
+    const LogoComponent = typeof loginLogo === 'function' ? loginLogo : null
+
+    useEffect(() => {
+        checkAuth({}, false)
+            .then(() => {
+                navigate('/')
+            })
+            .catch(() => {})
+    }, [checkAuth, navigate])
+
+    const login = useLogin()
+
+    const submit = useCallback(
+        (values: any) => {
+            return login(values)
+        },
+        [login],
+    )
+
+    return (
+        <div className={styles.content}>
+            <Card className={styles.card} verticalSpace="xl" horizontalSpace="xl">
+                <div className={styles.logo}>
+                    {LogoComponent ? (
+                        <LogoComponent themeName={themeName} />
+                    ) : (
+                        <img src={loginLogo as string} alt="logo" />
+                    )}
+                </div>
+
+                <Form
+                    submitData={submit}
+                    locale={{
+                        ...formLocale,
+                        successMessage: locale.notification.success,
+                        serverErrorMessage: locale.notification.error,
+                    }}
+                >
+                    <Form.Fields singleColumn>
+                        <TextInput
+                            autoComplete="on"
+                            label={locale.email}
+                            name="email"
+                            inputMode="email"
+                            placeholder={locale.email}
+                        />
+                        <PasswordInput
+                            autoComplete="on"
+                            label={locale.password}
+                            name="password"
+                            placeholder={locale.password}
+                            type="password"
+                        />
+                    </Form.Fields>
+
+                    <div className={styles.footer}>
+                        <Form.Submit>{locale.login}</Form.Submit>
+                    </div>
+                </Form>
+                <OAuthLoginComponent />
+            </Card>
+        </div>
+    )
+}
+
+const LogoDefault = ({ themeName }: { themeName: ThemeName }) => {
+    return <Icon name={themeName === 'light' ? 'logo-auth' : 'logo-auth-inversion'} width={140} />
+}

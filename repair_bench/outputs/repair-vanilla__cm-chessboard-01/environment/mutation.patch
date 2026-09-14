@@ -1,0 +1,135 @@
+diff --git a/src/Chessboard.js b/src/Chessboard.js
+--- a/src/Chessboard.js
++++ b/src/Chessboard.js
+@@ -109,7 +109,6 @@
+         }
+         this.boardTurning = true
+         return this.positionAnimationsQueue.enqueueTurnBoard(position, color, animated).then(() => {
+-            this.boardTurning = false
+             this.state.invokeExtensionPoints(EXTENSION_POINT.boardChanged)
+         })
+     }
+diff --git a/src/extensions/markers/Markers.js b/src/extensions/markers/Markers.js
+--- a/src/extensions/markers/Markers.js
++++ b/src/extensions/markers/Markers.js
+@@ -72,7 +72,7 @@
+     }
+ 
+     drawAutoMarkers(event) {
+-        if(event.type !== INPUT_EVENT_TYPE.moveInputFinished) {
++        if(event.type === INPUT_EVENT_TYPE.moveInputFinished) {
+             this.removeMarkers(this.props.autoMarkers)
+         }
+         if (event.type === INPUT_EVENT_TYPE.moveInputStarted &&
+diff --git a/src/extensions/persistence/Persistence.js b/src/extensions/persistence/Persistence.js
+--- a/src/extensions/persistence/Persistence.js
++++ b/src/extensions/persistence/Persistence.js
+@@ -10,7 +10,7 @@
+         super(chessboard)
+         console.warn("The Persistence extension is work in progress, don't use it in production.")
+         this.props = props
+-        this.registerExtensionPoint(EXTENSION_POINT.positionChanged, this.savePosition.bind(this))
++        this.registerExtensionPoint(EXTENSION_POINT.boardChanged, this.savePosition.bind(this))
+         this.loadPosition()
+     }
+ 
+diff --git a/src/extensions/piece-rotation/PieceRotation.js b/src/extensions/piece-rotation/PieceRotation.js
+--- a/src/extensions/piece-rotation/PieceRotation.js
++++ b/src/extensions/piece-rotation/PieceRotation.js
+@@ -112,7 +112,7 @@
+                 }
+                 const t = Math.min(1, (time - startTime) / this.props.animationDuration)
+                 const progress = t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t // easeInOut
+-                this.angles[color] = startAngle + (angle - startAngle) * progress
++                this.angles[color] = startAngle + (angle - startAngle) * (1 - progress)
+                 this.applyAngles()
+                 if (t < 1) {
+                     animation.frameHandle = requestAnimationFrame(step)
+diff --git a/src/extensions/right-click-annotator/RightClickAnnotator.js b/src/extensions/right-click-annotator/RightClickAnnotator.js
+--- a/src/extensions/right-click-annotator/RightClickAnnotator.js
++++ b/src/extensions/right-click-annotator/RightClickAnnotator.js
+@@ -190,7 +190,7 @@
+ 
+     drawPreviewArrow(from, to, type) {
+         if(!this.previewArrowType) {
+-            this.previewArrowType = {...type}
++            this.previewArrowType = type
+         }
+         this.chessboard.removeArrows(this.previewArrowType)
+         this.chessboard.addArrow(this.previewArrowType, from, to)
+@@ -205,8 +205,8 @@
+ 
+     modifiersToColorKey(modifiers) {
+         if (modifiers.shift && modifiers.alt) return "warning"
+-        if (modifiers.shift) return "danger"
+-        if (modifiers.alt) return "info"
++        if (modifiers.shift) return "info"
++        if (modifiers.alt) return "danger"
+         return "success"
+     }
+ 
+diff --git a/src/lib/Utils.js b/src/lib/Utils.js
+--- a/src/lib/Utils.js
++++ b/src/lib/Utils.js
+@@ -7,7 +7,7 @@
+ export class Utils {
+ 
+     static delegate(element, eventName, selector, handler) {
+-        const eventListener = function (event) {
++        const eventListener = (event) => {
+             const match = event.target.closest(selector)
+             if (match && this.contains(match)) {
+                 handler.call(match, event)
+diff --git a/src/view/ChessboardView.js b/src/view/ChessboardView.js
+--- a/src/view/ChessboardView.js
++++ b/src/view/ChessboardView.js
+@@ -262,7 +262,7 @@
+             if (this.chessboard.state.orientation === COLOR.white) {
+                 textElement.textContent = "" + (8 - rank)
+             } else {
+-                textElement.textContent = "" + (1 + rank)
++                textElement.textContent = "" + (8 - rank)
+             }
+         }
+     }
+diff --git a/src/view/PositionAnimationsQueue.js b/src/view/PositionAnimationsQueue.js
+--- a/src/view/PositionAnimationsQueue.js
++++ b/src/view/PositionAnimationsQueue.js
+@@ -45,7 +45,7 @@
+             this.stop = false
+             return
+         }
+-        const entry = this.queue.shift()
++        const entry = this.queue.pop()
+         if (!entry) {
+             return
+         }
+diff --git a/src/view/VisualMoveInput.js b/src/view/VisualMoveInput.js
+--- a/src/view/VisualMoveInput.js
++++ b/src/view/VisualMoveInput.js
+@@ -194,7 +194,7 @@
+                 break
+ 
+             case MOVE_INPUT_STATE.reset:
+-                if (this.fromSquare && !this.toSquare && this.movedPiece) {
++                if (this.fromSquare && this.movedPiece) {
+                     this.chessboard.state.position.setPiece(this.fromSquare, this.movedPiece)
+                 }
+                 this.fromSquare = null
+@@ -372,7 +372,6 @@
+                     this.toSquare = square
+                     this.movingOverSquareCallback(this.fromSquare, this.toSquare)
+                 } else if (square === this.fromSquare && this.toSquare !== null) {
+-                    this.toSquare = null
+                     this.movingOverSquareCallback(this.fromSquare, null)
+                 }
+             } else if (this.toSquare !== null) {
+@@ -398,7 +397,7 @@
+ 
+             if (square) {
+                 if (this.moveInputState === MOVE_INPUT_STATE.dragTo || this.moveInputState === MOVE_INPUT_STATE.clickDragTo) {
+-                    if (this.fromSquare === square) {
++                    if (this.fromSquare !== square) {
+                         this.chessboard.state.position.setPiece(this.fromSquare, this.movedPiece)
+                         this.view.setPieceVisibility(this.fromSquare)
+                         this.moveInputCanceledCallback(square, null, MOVE_CANCELED_REASON.draggedBack)

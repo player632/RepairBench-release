@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>MarkPad</title>
+    <script>
+      // Pre-React theme bootstrap — prevents a flash of the wrong theme on
+      // first paint. Intentionally duplicates the first-launch resolution
+      // logic from src/lib/preferences.ts because that module cannot load
+      // before React mounts. Keep the two in sync.
+      (function () {
+        try {
+          var stored = localStorage.getItem("markpad.theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia &&
+                  window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <script>
+      // RepairBench offline host stub (__rb_offline_host_stub__).
+      // markpad is a Tauri v2 DESKTOP app; served as a static bundle in a plain browser there is
+      // no Rust host, so window.__TAURI_INTERNALS__ is undefined. @tauri-apps/api/core
+      // transformCallback (core.js:69-73) reads window.__TAURI_INTERNALS__.transformCallback while
+      // building the listen() payload (event.js:79), so it throws SYNCHRONOUSLY inside an async
+      // function => listen() rejects => subscribeToOpenFiles (launchFiles.ts:26-32, no try/catch)
+      // rejects => the mount IIFE aborts at App.tsx:544 BEFORE loadSession() on :552, so the whole
+      // recents/session family never initialises.
+      // This stub supplies ONLY what that path touches and fabricates NO data:
+      //   - transformCallback returns an id whose callback is NEVER invoked (there is no host that
+      //
+      //   - invoke RESOLVES only the two event-plugin bookkeeping commands, so neither listen()
+      //     nor _unlisten (event.js:42-48, awaited un-caught at App.tsx:648) rejects; every OTHER
+      //     command REJECTS, which each caller's own try/catch already turns into its documented
+      //     empty fallback (session.ts:41-52 emptySession, launchFiles.ts:17-24 []);
+      //   - metadata is deliberately NOT stubbed: getCurrentWebviewWindow() reads
+      //     __TAURI_INTERNALS__.metadata (webview.js:28) and throws, but both of its call sites are
+      //     already try/catch guarded (fileOpen.ts:290-298, :307-312), so inventing a window label
+      //     would fabricate host identity for no behavioural gain;
+      //   - window.isTauri is deliberately left UNSET so isTauri() (core.js:278) stays false and no
+      //     desktop-only branch is taken.
+      // Tauri v2 never reads window.__TAURI_IPC__ (0 hits across the 29 shipped @tauri-apps/*.js
+      // files), so that v1 name is not stubbed here.
+      (function () {
+        if (window.__TAURI_INTERNALS__) return;
+        var cbSeq = 0;
+        var evSeq = 0;
+        window.__TAURI_INTERNALS__ = {
+          transformCallback: function () { return ++cbSeq; },
+          unregisterCallback: function () {},
+          invoke: function (cmd) {
+            if (cmd === "plugin:event|listen" || cmd === "plugin:event|unlisten") {
+              return Promise.resolve(++evSeq);
+            }
+            return Promise.reject(new Error("rb-offline-stub: no Tauri host for " + cmd));
+          },
+        };
+        window.__TAURI_EVENT_PLUGIN_INTERNALS__ = window.__TAURI_EVENT_PLUGIN_INTERNALS__ || {
+          unregisterListener: function () {},
+        };
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

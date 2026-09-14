@@ -1,0 +1,11 @@
+import { ActivityTypes } from '../../activities/ActivityState'
+import { ActivityStartResult } from '../../activities/activityInterfaces'
+import { makeStartActivity } from '../../activities/functions/makeStartActivity'
+import { GameState } from '../../game/GameState'
+import { startTimer } from '../../timers/startTimer'
+
+export const startBattle = makeStartActivity((state: GameState, id: string) => {
+    startTimer(state, 3e3, ActivityTypes.StartBattle, id)
+
+    return ActivityStartResult.Started
+})

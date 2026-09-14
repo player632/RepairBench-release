@@ -1,0 +1,82 @@
+# Reusable Workflow: NPM Release — npm 包发布 + dist 产物上传到 GitHub Release
+# 使用 OIDC Trusted Publisher 进行 npm 认证，无需 NPM_TOKEN
+
+name: 'Reusable: npm Release'
+
+on:
+  workflow_call:
+    inputs:
+      package_name:
+        description: 'Workspace package name to publish'
+        required: false
+        type: string
+        default: 'cherry-markdown'
+      package_dir:
+        description: 'Package directory'
+        required: false
+        type: string
+        default: './packages/cherry-markdown'
+      package_version:
+        description: 'Package version for GitHub Release asset upload'
+        required: false
+        type: string
+        default: ''
+      dist_asset_name:
+        description: 'Dist zip asset name prefix'
+        required: false
+        type: string
+        default: 'cherry-markdown'
+      release_tag:
+        description: 'GitHub Release tag name for dist asset upload'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release-npm-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: '.node-version'
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          registry-url: 'https://registry.npmjs.org'
+          cache: yarn
+
+      - name: Install and build
+        run: vp install && vp run -F "${{ inputs.package_name }}" build
+
+      - name: Prepare package for publish
+        if: inputs.package_name == 'cherry-markdown'
+        working-directory: ${{ inputs.package_dir }}
+        run: cp ../../README*.md . || { echo "❌ Failed to copy README files" >&2; exit 1; }
+
+      - name: Publish ${{ inputs.package_name }}
+        working-directory: ${{ inputs.package_dir }}
+        run: NODE_AUTH_TOKEN="" npm publish --access public --provenance --no-workspaces
+
+      # =========================================================================
+      # 将 dist 产物打包为 zip 并上传到 GitHub Release
+      # =========================================================================
+      - name: Package dist to zip
+        if: inputs.package_version != '' && inputs.release_tag != ''
+        working-directory: ${{ inputs.package_dir }}/dist
+        run: zip -r "$GITHUB_WORKSPACE/${{ inputs.dist_asset_name }}-${{ inputs.package_version }}.zip" .
+
+      - name: Upload dist zip to GitHub Release
+        if: inputs.package_version != '' && inputs.release_tag != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ inputs.dist_asset_name }}-${{ inputs.package_version }}.zip
+          tag_name: ${{ inputs.release_tag }}
+          fail_on_unmatched_files: true

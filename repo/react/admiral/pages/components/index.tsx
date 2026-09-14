@@ -1,0 +1,63 @@
+import React from 'react'
+import { Page, Button } from '../../admiral'
+import { Link } from 'react-router-dom'
+
+export default function ComponentsPage() {
+    return (
+        <Page title="Components">
+            <div style={{ display: 'grid', gridGap: '24px' }}>
+                <Link to="components/table">
+                    <Button component="span">Table</Button>
+                </Link>
+                <Link to="components/checkbox">
+                    <Button component="span">Checkbox</Button>
+                </Link>
+                <Link to="components/pagination">
+                    <Button component="span">Pagination</Button>
+                </Link>
+                <Link to="components/switch">
+                    <Button component="span">Switch</Button>
+                </Link>
+                <Link to="components/textarea">
+                    <Button component="span">Textarea</Button>
+                </Link>
+                <Link to="components/translatable">
+                    <Button component="span">Translatable</Button>
+                </Link>
+                <Link to="components/daterangepicker">
+                    <Button component="span">DateRangePicker</Button>
+                </Link>
+                <Link to="components/datepicker">
+                    <Button component="span">DatePicker</Button>
+                </Link>
+                <Link to="components/upload">
+                    <Button component="span">Upload</Button>
+                </Link>
+                <Link to="components/card">
+                    <Button component="span">Card</Button>
+                </Link>
+                <Link to="components/editor">
+                    <Button component="span">Editor</Button>
+                </Link>
+                <Link to="components/colorpicker">
+                    <Button component="span">ColorPicker</Button>
+                </Link>
+                <Link to="components/typography">
+                    <Button component="span">Typography</Button>
+                </Link>
+                <Link to="components/drawer">
+                    <Button component="span">Drawer</Button>
+                </Link>
+                <Link to="components/tabs">
+                    <Button component="span">Tabs</Button>
+                </Link>
+                <Link to="components/badge">
+                    <Button component="span">Badge</Button>
+                </Link>
+                <Link to="components/notification">
+                    <Button component="span">Notification</Button>
+                </Link>
+            </div>
+        </Page>
+    )
+}

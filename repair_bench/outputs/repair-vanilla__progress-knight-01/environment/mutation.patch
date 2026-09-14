@@ -1,0 +1,138 @@
+diff --git a/css/styles.css b/css/styles.css
+index 77dd611..74c615f 100644
+--- a/css/styles.css
++++ b/css/styles.css
+@@ -41,7 +41,7 @@ td {
+ }
+ 
+ .hiddenTask {
+-    display: none !important;
++    opacity: 0;
+ }
+ 
+ .button {
+diff --git a/index.html b/index.html
+index 07850d8..b5cee32 100644
+--- a/index.html
++++ b/index.html
+@@ -29,7 +29,7 @@
+                 <span id="automation" class="inline" style="margin-left: 8px">
+                     <span>
+                         <div class="inline">Auto-promote</div>
+-                        <input type="checkbox" class="inline" id="autoPromote">
++                        <input type="checkbox" class="inline" id="autoPromote" checked>
+                     </span>
+                     </br>
+                     <span>
+@@ -68,13 +68,13 @@
+                 </ul>
+ 
+                 <span id="quickTaskDisplay">
+-                    <div style="width: 230px" class="small-margin inline job progress-bar progressBar">
++                    <div style="width: 230px" class="small-margin inline skill progress-bar progressBar">
+                         <div class="progress-fill progressFill" style="background-color:rgb(225, 165, 0)"></div>
+                         <div class="progress-text name">Task</div>
+                     </div>
+                     <div class="sidebar-element" style="color: gray">Current job</div>
+ 
+-                    <div style="width: 230px" class="small-margin skill progress-bar progressBar">
++                    <div style="width: 230px" class="small-margin job progress-bar progressBar">
+                         <div class="progress-fill progressFill" style="background-color:rgb(225, 165, 0)"></div>
+                         <div class="progress-text name">Task</div>              
+                     </div>
+@@ -229,12 +229,12 @@
+                             it has any worth on the market given that it's made from cheap-looking copper. However, you
+                             feel a weird urge to keep the amulet, so you slip it into your pocket for safekeeping.
+                         </li>
+-                        <li style="margin: 8px;" id="rebirthNote1">
++                        <li style="margin: 8px;" id="rebirthNote2">
+                             On your 45th birthday, you feel the amulet shiver uncontrollably in your pocket. You take it
+                             out and the constant shivering suddenly stops. More to your bizarre surprise, you notice
+                             a strange etching on the centre of the amulet.
+                         </li>
+-                        <li style="margin: 8px;" id="rebirthNote2">
++                        <li style="margin: 8px;" id="rebirthNote1">
+                             <div style="margin-bottom: 8px">
+                                 On your 65th birthday, you once again encounter the strange, unexplained shivering from your
+                                 amulet. But this time, a living eyeball emerges from the centre. Although terribly frightened,
+diff --git a/js/classes.js b/js/classes.js
+index a7f3c4f..8b5466d 100644
+--- a/js/classes.js
++++ b/js/classes.js
+@@ -20,7 +20,7 @@ class Task {
+     }
+ 
+     getMaxLevelMultiplier() {
+-        var maxLevelMultiplier = 1 + this.maxLevel / 10
++        var maxLevelMultiplier = 1 + this.maxLevel * 10
+         return maxLevelMultiplier
+     }
+ 
+@@ -92,7 +92,6 @@ class Item {
+ 
+     getEffectDescription() {
+         var description = this.baseData.description
+-        if (itemCategories["Properties"].includes(this.name)) description = "Happiness"
+         var text = "x" + this.baseData.effect.toFixed(1) + " " + description
+         return text
+     }
+@@ -110,7 +109,7 @@ class Requirement {
+     }
+ 
+     isCompleted() {
+-        if (this.completed) {return true}
++        if (this.completed && this.type == "task") {return true}
+         for (var requirement of this.requirements) {
+             if (!this.getCondition(requirement)) {
+                 return false
+diff --git a/js/main.js b/js/main.js
+index 8b07a1c..1e1341c 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -229,7 +229,7 @@ function addMultipliers() {
+             task.incomeMultipliers.push(task.getLevelMultiplier.bind(task))
+             task.incomeMultipliers.push(getBindedTaskEffect("Demon's wealth"))
+             task.xpMultipliers.push(getBindedTaskEffect("Productivity"))
+-            task.xpMultipliers.push(getBindedItemEffect("Personal squire"))    
++            task.xpMultipliers.push(getBindedItemEffect("Butler"))    
+         } else if (task instanceof Skill) {
+             task.xpMultipliers.push(getBindedTaskEffect("Concentration"))
+             task.xpMultipliers.push(getBindedItemEffect("Book"))
+@@ -311,7 +311,7 @@ function applyMultipliers(value, multipliers) {
+ }
+ 
+ function applySpeed(value) {
+-    finalValue = value * getGameSpeed() / updateSpeed
++    finalValue = value * getGameSpeed()
+     return finalValue
+ }
+ 
+@@ -583,7 +583,7 @@ function updateItemRows() {
+         var item = gameData.itemData[key]
+         var row = document.getElementById("row " + item.name)
+         var button = row.getElementsByClassName("button")[0]
+-        button.disabled = gameData.coins < item.getExpense()
++        button.disabled = gameData.coins < item.getExpense() * 100
+         var active = row.getElementsByClassName("active")[0]
+         var color = itemCategories["Properties"].includes(item.name) ? headerRowColors["Properties"] : headerRowColors["Misc"]
+         active.style.backgroundColor = gameData.currentMisc.includes(item) || item == gameData.currentProperty ? color : "white"
+@@ -807,8 +807,8 @@ function formatCoins(coins, element) {
+     var leftOver = coins
+     var i = 0
+     for (tier of tiers) {
+-        var x = Math.floor(leftOver / Math.pow(10, (tiers.length - i) * 2))
+-        var leftOver = Math.floor(leftOver - x * Math.pow(10, (tiers.length - i) * 2))
++        var x = Math.floor(leftOver / Math.pow(10, (tiers.length - i) * 3))
++        var leftOver = Math.floor(leftOver - x * Math.pow(10, (tiers.length - i) * 3))
+         var text = format(String(x)) + tier + " "
+         element.children[i].textContent = x > 0 ? text : ""
+         element.children[i].style.color = colors[tier]
+@@ -884,7 +884,7 @@ function rebirthReset() {
+ 
+     for (key in gameData.requirements) {
+         var requirement = gameData.requirements[key]
+-        if (requirement.completed && permanentUnlocks.includes(key)) continue
++        if (requirement.completed && !permanentUnlocks.includes(key)) continue
+         requirement.completed = false
+     }
+ }

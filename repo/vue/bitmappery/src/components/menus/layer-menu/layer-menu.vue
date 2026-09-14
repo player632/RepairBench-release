@@ -1,0 +1,177 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2020-2026 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+ <template>
+    <ul
+        class="submenu"
+        :class="{ 'submenu--opened': opened }"
+    >
+        <li>
+            <button
+                type="button"
+                :disabled="!activeLayer"
+                data-testid="layer-menu-duplicate"
+                @click="requestDuplicateLayer()"
+            >{{ t( "duplicateLayer" ) }}</button>
+        </li>
+        <li>
+            <button
+                type="button"
+                :disabled="!activeLayerCanBeCommitted"
+                @click="commitLayerEffects()"
+            >{{ t( "commitEffects" ) }}</button>
+        </li>
+        <li>
+            <button
+                type="button"
+                :disabled="!activeLayer"
+                @click="copyLayerFilters()"
+            >{{ t( "copyLayerFilters" ) }}</button>
+        </li>
+        <li>
+            <button
+                type="button"
+                :disabled="!activeLayer || !clonedFilters"
+                @click="requestPasteLayerFilters()"
+            >{{ t( "pasteLayerFilters" ) }}</button>
+        </li>
+        <li>
+            <button
+                v-tooltip.right="t('toggleLayerFiltersTooltip')"
+                type="button"
+                :disabled="!activeLayer"
+                @click="requestToggleLayerFilters()"
+            >{{ t( activeLayerHasFiltersEnabled ? "disableLayerFilters" : "enableLayerFilters" ) }}</button>
+        </li>
+        <li>
+            <button
+                type="button"
+                :disabled="!canMergeDown"
+                data-testid="layer-menu-merge-down"
+                @click="requestMergeLayerDown()"
+            >{{ t( "mergeDown" ) }}</button>
+        </li>
+        <li>
+            <button
+                type="button"
+                :disabled="!canFlatten"
+                @click="requestMergeLayerDown( true )"
+            >{{ t( "flattenImage" ) }}</button>
+        </li>
+    </ul>
+ </template>
+
+<script lang="ts">
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapGetters, mapMutations } from "vuex";
+import { LayerTypes } from "@/definitions/layer-types";
+import { hasFilters } from "@/model/factories/filters-factory";
+import { commitLayerEffectsAndTransforms } from "@/model/actions/layer-commit-effects-and-transforms";
+import { duplicateLayer } from "@/model/actions/layer-duplicate";
+import { mergeLayerDown } from "@/model/actions/layer-merge-down";
+import { pasteLayerFilters } from "@/model/actions/layer-paste-filters";
+import { toggleLayerFilters } from "@/model/actions/layer-toggle-filters";
+import { hasTransform } from "@/utils/layer-util";
+import { getIndexOfFirstLayerInTileGroup, getLayersByTile } from "@/utils/timeline-util";
+
+import messages from "./messages.json";
+
+export default {
+    props: {
+        opened: {
+            type: Boolean,
+            default: true,
+        },
+    },
+    setup(): { t: ComposerTranslation } {
+        const { t } = useI18n({ messages });
+        return { t };
+    },
+    computed: {
+        ...mapGetters([
+            "activeDocument",
+            "activeGroup",
+            "activeLayer",
+            "activeLayerIndex",
+            "clonedFilters",
+        ]),
+        activeLayerCanBeCommitted(): boolean {
+            return !!this.activeLayer && ( hasTransform( this.activeLayer ) || hasFilters( this.activeLayer.filters )) && this.activeLayer.type !== LayerTypes.LAYER_TEXT;
+        },
+        activeLayerHasFiltersEnabled(): boolean {
+            return this.activeLayer?.filters?.enabled;
+        },
+        canMergeDown(): boolean {
+            if ( !this.activeLayer ) {
+                return false;
+            }
+            if ( this.hasTimeline ) {
+                return this.activeLayerIndex > getIndexOfFirstLayerInTileGroup( this.activeDocument, this.activeGroup );
+            }
+            return this.activeLayerIndex > 0;
+        },
+        canFlatten(): boolean {
+            if ( !this.activeLayer ) {
+                return false;
+            }
+            if ( this.hasTimeline ) {
+                return getLayersByTile( this.activeDocument, this.activeGroup ).length >= 2;
+            }
+            return this.activeDocument.layers.length >= 2;
+        },
+        hasTimeline(): boolean {
+            return this.activeDocument?.type === "timeline";
+        },
+    },
+    methods: {
+        ...mapMutations([
+            "setClonedFilters",
+            "showNotification",
+        ]),
+        requestDuplicateLayer(): void {
+            duplicateLayer( this.$store, this.activeLayer, this.activeLayerIndex + 1 );
+        },
+        commitLayerEffects(): void {
+            commitLayerEffectsAndTransforms( this.$store, this.activeDocument, this.activeLayer, this.activeLayerIndex );
+        },
+        async requestMergeLayerDown( allLayers = false ): Promise<void> {
+            await mergeLayerDown( this.$store, this.activeDocument, this.activeLayer, this.activeLayerIndex, this.t( "mergedLayer" ), allLayers );
+        },
+        copyLayerFilters(): void {
+            this.setClonedFilters({ ...this.activeLayer.filters });
+            this.showNotification({ message: this.t( "filtersCopied" ) });
+        },
+        requestPasteLayerFilters(): void {
+            pasteLayerFilters( this.$store, this.clonedFilters, this.activeLayer, this.activeLayerIndex );
+        },
+        requestToggleLayerFilters(): void {
+            toggleLayerFilters( this.$store, this.activeLayer, this.activeLayerIndex );
+        },
+    },
+}
+</script>
+
+<style lang="scss" scoped>
+@use "@/styles/ui";
+
+@include ui.nestedMenu();
+</style>

@@ -1,0 +1,121 @@
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.db.base_model import BaseModel
+from backend.util.now import now
+
+if TYPE_CHECKING:
+    from backend.modules.hosts.hosts_model import HostsModel
+
+
+class ContainersModel(BaseModel):
+    """Model of docker container"""
+
+    __tablename__ = "containers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    host_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("hosts.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    check_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("FALSE"),
+    )
+    update_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("FALSE"),
+    )
+    update_available: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("FALSE"),
+    )
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # When remote digests were last observed to change.
+    # Used with DELAY_UPDATE_FOR / delay_update_for for scheduled updates.
+    # Never cleared — always reflects the last digest change time.
+    remote_digests_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    # Per-container override of DELAY_UPDATE_FOR (seconds). None = use global.
+    delay_update_for: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Per-container override of healthcheck timeout (seconds). None = use host's default.
+    healthcheck_timeout: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        default=now,
+        nullable=False,
+    )
+    modified_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        server_onupdate=text("CURRENT_TIMESTAMP"),
+        onupdate=now,
+        default=now,
+        nullable=False,
+    )
+    # Local image id,
+    # Used to invalidate old local_digests in case
+    # such as container's updated from outside the app.
+    image_id: Mapped[str] = mapped_column(String, nullable=True)
+    # Digests of local image,
+    # used to prevent duplicate requests and save pull rate limits.
+    # This digests should be platform specific.
+    local_digests: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    # Last fetched remote digests,
+    # used to prevent duplicate notifications.
+    # This digests should be platform specific.
+    remote_digests: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    # Identity of the image the container ran before the last successful
+    # update. Captured from the pre-update image inspect, so it costs no
+    # extra registry requests. Digests are the only value that pins the
+    # exact image again; tags/version are informational.
+    previous_image_digests: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    previous_image_tags: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    # Version reported by the image labels (see VERSION_LABELS).
+    # A publisher provided hint, not necessarily a published tag.
+    previous_image_version: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+    # Update lifecycle hooks (see ContainerHooks), stored as
+    # {"pre_update": ["cmd1", ...], "post_update": [...], ...}.
+    # Only executed when backend ALLOW_HOOKS and the host's agent ALLOW_EXEC
+    # are both true.
+    hooks: Mapped[dict[str, list[str]] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    host: Mapped["HostsModel"] = relationship("HostsModel", back_populates="containers")

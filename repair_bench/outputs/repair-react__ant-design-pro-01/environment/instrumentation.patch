@@ -1,0 +1,893 @@
+diff --git a/src/app.tsx b/src/app.tsx
+index 0aeb312..23b7631 100644
+--- a/src/app.tsx
++++ b/src/app.tsx
+@@ -143,6 +143,7 @@ export const layout: RunTimeLayoutConfig = ({
+           <SettingDrawer
+             disableUrlParams
+             enableDarkTheme
++            drawerProps={{ 'data-testid': 'setting-drawer' }}
+             collapse={initialState?.settingDrawerOpen}
+             onCollapseChange={(open) => {
+               setInitialState((s) => ({
+diff --git a/src/components/Footer/index.tsx b/src/components/Footer/index.tsx
+index f6e41ff..7c73ce9 100644
+--- a/src/components/Footer/index.tsx
++++ b/src/components/Footer/index.tsx
+@@ -68,7 +68,7 @@ const Footer: React.FC = () => {
+   const year = new Date().getFullYear();
+ 
+   return (
+-    <div className={styles.footer}>
++    <div className={styles.footer} data-testid="app-footer">
+       <div className={styles.copyright}>Ant Design Pro &copy; {year}</div>
+       <div className={styles.meta}>
+         <span className={styles.group}>
+@@ -78,6 +78,7 @@ const Footer: React.FC = () => {
+             href={REPO_URL}
+             target="_blank"
+             rel="noopener noreferrer"
++            data-testid="footer-version"
+           >
+             {__APP_VERSION__}
+           </a>
+@@ -100,6 +101,7 @@ const Footer: React.FC = () => {
+             href="https://umijs.org/"
+             target="_blank"
+             rel="noopener noreferrer"
++            data-testid="footer-umi"
+           >
+             {__UMI_VERSION__}
+           </a>
+@@ -112,6 +114,7 @@ const Footer: React.FC = () => {
+             href="https://utoo.land"
+             target="_blank"
+             rel="noopener noreferrer"
++            data-testid="footer-utoo"
+           >
+             {__UTOO_VERSION__}
+           </a>
+diff --git a/src/components/RightContent/AvatarDropdown.tsx b/src/components/RightContent/AvatarDropdown.tsx
+index ffc8697..046ed77 100644
+--- a/src/components/RightContent/AvatarDropdown.tsx
++++ b/src/components/RightContent/AvatarDropdown.tsx
+@@ -6,7 +6,7 @@ import {
+ import { history, useModel } from '@umijs/max';
+ import type { MenuProps } from 'antd';
+ import { Spin } from 'antd';
+-import React, { startTransition } from 'react';
++import React, { cloneElement, isValidElement, startTransition } from 'react';
+ import { outLogin } from '@/services/ant-design-pro/api';
+ import HeaderDropdown from '../HeaderDropdown';
+ 
+@@ -18,12 +18,12 @@ const menuItems: MenuProps['items'] = [
+   {
+     key: 'settings',
+     icon: <SettingOutlined />,
+-    label: '个人设置',
++    label: <span data-testid="settings-menu-item">个人设置</span>,
+   },
+   {
+     key: 'theme',
+     icon: <SkinOutlined />,
+-    label: '主题设置',
++    label: <span data-testid="theme-menu-item">主题设置</span>,
+   },
+   {
+     type: 'divider' as const,
+@@ -31,7 +31,7 @@ const menuItems: MenuProps['items'] = [
+   {
+     key: 'logout',
+     icon: <LogoutOutlined />,
+-    label: '退出登录',
++    label: <span data-testid="logout-menu-item">退出登录</span>,
+   },
+ ];
+ 
+@@ -96,7 +96,11 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
+       }}
+       arrow
+     >
+-      {children}
++      {isValidElement(children)
++        ? cloneElement(children as React.ReactElement, {
++            'data-testid': 'avatar-menu',
++          })
++        : children}
+     </HeaderDropdown>
+   );
+ };
+diff --git a/src/localApi/crud.ts b/src/localApi/crud.ts
+index 9b6279f..e1ab59c 100644
+--- a/src/localApi/crud.ts
++++ b/src/localApi/crud.ts
+@@ -66,16 +66,18 @@ export function getRules(params: Record<string, unknown>) {
+ export function postRule(body: Record<string, any>) {
+   const method = body.method;
+   if (method === 'delete') {
+-    const keys: number[] = Array.isArray(body.key) ? body.key : [body.key];
++    const keySrc = body.data && body.data.key !== undefined ? body.data.key : body.key;
++    const keys: number[] = Array.isArray(keySrc) ? keySrc : [keySrc];
+     ruleStore = ruleStore.filter((item) => keys.indexOf(item.key) === -1);
+   } else if (method === 'post') {
++    const src = (body.data || body) as Record<string, any>;
+     const newRule: RuleItem = {
+       key: ruleStore.length,
+       href: 'https://ant.design',
+       avatar: '/logo.svg',
+-      name: body.name,
++      name: src.name,
+       owner: '曲丽丽',
+-      desc: body.desc || '',
++      desc: src.desc || '',
+       callNo: (ruleStore.length * 41) % 1000,
+       status: ruleStore.length % 2,
+       updatedAt: '2026-01-15',
+@@ -86,11 +88,12 @@ export function postRule(body: Record<string, any>) {
+     ruleStore.unshift(newRule);
+     return newRule;
+   } else if (method === 'update') {
++    const src = (body.data || body) as Record<string, any>;
+     let updated: RuleItem | Record<string, never> = {};
+     ruleStore = ruleStore.map((item) => {
+-      if (item.key === body.key) {
+-        updated = { ...item, desc: body.desc, name: body.name };
+-        return { ...item, desc: body.desc, name: body.name };
++      if (item.key === src.key) {
++        updated = { ...item, desc: src.desc, name: src.name };
++        return { ...item, desc: src.desc, name: src.name };
+       }
+       return item;
+     });
+diff --git a/src/localApi/session.ts b/src/localApi/session.ts
+index c0efd58..84e8bb9 100644
+--- a/src/localApi/session.ts
++++ b/src/localApi/session.ts
+@@ -1,7 +1,8 @@
+ // Local session state machine (adaptation ledger).
+-// Mirrors the module-level access variable of seed mock/user.ts:
+-// admin/ant.design -> admin, user/ant.design -> user, mobile type -> admin,
+-// anything else -> guest (login error); outLogin clears the session.
++// Mirrors the access variable of seed mock/user.ts: admin/ant.design -> admin,
++// user/ant.design -> user, mobile type -> admin, anything else -> guest.
++// The value is persisted to sessionStorage so login survives full page reloads
++// (seed mock kept it in the long-lived dev-server process).
+ 
+ export type LoginResult = {
+   status?: 'ok' | 'error';
+@@ -9,7 +10,28 @@ export type LoginResult = {
+   currentAuthority?: 'admin' | 'user' | 'guest';
+ };
+ 
+-let access: '' | 'admin' | 'user' = '';
++const ACCESS_KEY = 'pro_access';
++
++function readStoredAccess(): '' | 'admin' | 'user' {
++  try {
++    const v = window.sessionStorage.getItem(ACCESS_KEY);
++    if (v === 'admin' || v === 'user') return v;
++  } catch {
++    // storage unavailable: fall back to in-memory only
++  }
++  return '';
++}
++
++function storeAccess(value: '' | 'admin' | 'user'): void {
++  try {
++    if (value) window.sessionStorage.setItem(ACCESS_KEY, value);
++    else window.sessionStorage.removeItem(ACCESS_KEY);
++  } catch {
++    // ignore
++  }
++}
++
++let access: '' | 'admin' | 'user' = readStoredAccess();
+ 
+ export const getAccess = (): '' | 'admin' | 'user' => access;
+ 
+@@ -20,14 +42,17 @@ export function loginAccount(
+ ): LoginResult {
+   if (password === 'ant.design' && username === 'admin') {
+     access = 'admin';
++    storeAccess(access);
+     return { status: 'ok', type, currentAuthority: 'admin' };
+   }
+   if (password === 'ant.design' && username === 'user') {
+     access = 'user';
++    storeAccess(access);
+     return { status: 'ok', type, currentAuthority: 'user' };
+   }
+   if (type === 'mobile') {
+     access = 'admin';
++    storeAccess(access);
+     return { status: 'ok', type, currentAuthority: 'admin' };
+   }
+   return { status: 'error', type, currentAuthority: 'guest' };
+@@ -35,4 +60,5 @@ export function loginAccount(
+ 
+ export function outLogin(): void {
+   access = '';
++  storeAccess(access);
+ }
+diff --git a/src/pages/Admin.tsx b/src/pages/Admin.tsx
+index b8cb281..6c89143 100644
+--- a/src/pages/Admin.tsx
++++ b/src/pages/Admin.tsx
+@@ -13,7 +13,7 @@ const Admin: React.FC = () => {
+         defaultMessage: 'This page can only be viewed by admin',
+       })}
+     >
+-      <Card>
++      <Card data-testid="admin-content">
+         <Alert
+           title={intl.formatMessage({
+             id: 'pages.welcome.alertMessage',
+diff --git a/src/pages/account/settings/components/base.tsx b/src/pages/account/settings/components/base.tsx
+index 9b3c045..88637da 100644
+--- a/src/pages/account/settings/components/base.tsx
++++ b/src/pages/account/settings/components/base.tsx
+@@ -83,6 +83,7 @@ const BaseView: React.FC = () => {
+         <>
+           <div className={styles.left}>
+             <ProForm
++              data-testid="settings-form"
+               formRef={formRef}
+               layout="vertical"
+               onFinish={handleFinish}
+@@ -104,6 +105,7 @@ const BaseView: React.FC = () => {
+               <ProFormText
+                 width="md"
+                 name="email"
++                fieldProps={{ 'data-testid': 'settings-email' }}
+                 label="邮箱"
+                 rules={[
+                   {
+@@ -115,6 +117,7 @@ const BaseView: React.FC = () => {
+               <ProFormText
+                 width="md"
+                 name="name"
++                fieldProps={{ 'data-testid': 'settings-name' }}
+                 label="昵称"
+                 rules={[
+                   {
+@@ -164,6 +167,7 @@ const BaseView: React.FC = () => {
+                   width="sm"
+                   fieldProps={{
+                     labelInValue: true,
++                    'data-testid': 'province-select',
+                   }}
+                   name="province"
+                   request={async () => {
+@@ -191,6 +195,8 @@ const BaseView: React.FC = () => {
+                         ]}
+                         fieldProps={{
+                           labelInValue: true,
++                          'data-testid': 'city-select',
++                          'aria-disabled': String(!province),
+                         }}
+                         disabled={!province}
+                         request={async (params) => {
+diff --git a/src/pages/dashboard/analysis/components/IntroduceRow.tsx b/src/pages/dashboard/analysis/components/IntroduceRow.tsx
+index b278e4f..b05ec95 100644
+--- a/src/pages/dashboard/analysis/components/IntroduceRow.tsx
++++ b/src/pages/dashboard/analysis/components/IntroduceRow.tsx
+@@ -28,11 +28,12 @@ const IntroduceRow = ({
+ }) => {
+   const { styles } = useStyles();
+   return (
+-    <Row gutter={24}>
++    <Row gutter={24} data-testid="analysis-introduce">
+       <Col {...topColResponsiveProps}>
+         <ChartCard
+           variant="borderless"
+           title="总销售额"
++          data-testid="introduce-sales"
+           action={
+             <Tooltip title="指标说明">
+               <InfoCircleOutlined />
+@@ -64,6 +65,7 @@ const IntroduceRow = ({
+           variant="borderless"
+           loading={loading}
+           title="访问量"
++          data-testid="introduce-visits"
+           action={
+             <Tooltip title="指标说明">
+               <InfoCircleOutlined />
+@@ -94,6 +96,7 @@ const IntroduceRow = ({
+           variant="borderless"
+           loading={loading}
+           title="支付笔数"
++          data-testid="introduce-payments"
+           action={
+             <Tooltip title="指标说明">
+               <InfoCircleOutlined />
+@@ -119,6 +122,7 @@ const IntroduceRow = ({
+           loading={loading}
+           variant="borderless"
+           title="运营活动效果"
++          data-testid="introduce-effect"
+           action={
+             <Tooltip title="指标说明">
+               <InfoCircleOutlined />
+diff --git a/src/pages/dashboard/analysis/components/ProportionSales.tsx b/src/pages/dashboard/analysis/components/ProportionSales.tsx
+index 140e192..819906d 100644
+--- a/src/pages/dashboard/analysis/components/ProportionSales.tsx
++++ b/src/pages/dashboard/analysis/components/ProportionSales.tsx
+@@ -20,17 +20,22 @@ const ProportionSales = ({
+   handleChangeSalesType?: (value: 'all' | 'online' | 'stores') => void;
+ }) => {
+   const { styles } = useStyles();
++  const pieSum = salesPieData.reduce((acc, item) => acc + (item.y || 0), 0);
+   const dropdownGroup = renderDropdownGroup();
+   const extra = (
+     <div className={styles.salesCardExtra}>
+       {dropdownGroup}
+       <Segmented
+         className={styles.salesTypeRadio}
++        data-testid="sales-type-radio"
+         value={salesType}
+         onChange={handleChangeSalesType}
+         options={[
+           { label: '全部渠道', value: 'all' },
+-          { label: '线上', value: 'online' },
++          {
++            label: <span data-testid="sales-type-radio-online">线上</span>,
++            value: 'online',
++          },
+           { label: '门店', value: 'stores' },
+         ]}
+         size="middle"
+@@ -41,6 +46,8 @@ const ProportionSales = ({
+     <Card
+       loading={loading}
+       className={styles.salesCard}
++      data-testid="sales-pie"
++      data-sum={String(pieSum)}
+       variant="borderless"
+       title="销售额类别占比"
+       style={{
+diff --git a/src/pages/dashboard/monitor/components/ActiveChart/index.tsx b/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
+index 265c745..ad41776 100644
+--- a/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
++++ b/src/pages/dashboard/monitor/components/ActiveChart/index.tsx
+@@ -82,7 +82,7 @@ const ActiveChart = () => {
+       {activeData && (
+         <div>
+           <div className={styles.activeChartGrid}>
+-            <p>{maxValue + 200} 亿元</p>
++            <p data-testid="active-chart-max">{maxValue + 200} 亿元</p>
+             <p>{medianValue} 亿元</p>
+           </div>
+           <div className={styles.dashedLine}>
+diff --git a/src/pages/dashboard/monitor/components/Map/index.tsx b/src/pages/dashboard/monitor/components/Map/index.tsx
+index 0e6b94a..c72da88 100644
+--- a/src/pages/dashboard/monitor/components/Map/index.tsx
++++ b/src/pages/dashboard/monitor/components/Map/index.tsx
+@@ -253,6 +253,7 @@ export default function MonitorMap() {
+           .enter()
+           .append('circle')
+           .attr('class', 'data-point')
++          .attr('data-testid', 'monitor-map-point')
+           .attr('cx', (d) => projectedPoint(d, projection)[0])
+           .attr('cy', (d) => projectedPoint(d, projection)[1])
+           .attr('r', (d) => getRadius(d.properties.cum_conf, maxVal))
+@@ -367,6 +368,7 @@ export default function MonitorMap() {
+     <div style={{ position: 'absolute', inset: 0 }}>
+       <svg
+         ref={svgRef}
++        data-testid="monitor-map-points"
+         style={{
+           width: '100%',
+           height: '100%',
+diff --git a/src/pages/dashboard/monitor/index.tsx b/src/pages/dashboard/monitor/index.tsx
+index 5848e9d..1ddc0a4 100644
+--- a/src/pages/dashboard/monitor/index.tsx
++++ b/src/pages/dashboard/monitor/index.tsx
+@@ -48,14 +48,14 @@ const Monitor: FC = () => {
+             }}
+           >
+             <Row>
+-              <Col md={6} sm={12} xs={24}>
++              <Col md={6} sm={12} xs={24} data-testid="monitor-stat-total">
+                 <Statistic
+                   title="今日交易总额"
+                   suffix="元"
+                   value={formatNumber(124543233)}
+                 />
+               </Col>
+-              <Col md={6} sm={12} xs={24}>
++              <Col md={6} sm={12} xs={24} data-testid="monitor-stat-rate">
+                 <Statistic title="销售目标完成率" value="92%" />
+               </Col>
+               <Col md={6} sm={12} xs={24}>
+@@ -66,7 +66,7 @@ const Monitor: FC = () => {
+                   format="HH:mm:ss:SSS"
+                 />
+               </Col>
+-              <Col md={6} sm={12} xs={24}>
++              <Col md={6} sm={12} xs={24} data-testid="monitor-stat-persec">
+                 <Statistic
+                   title="每秒交易总额"
+                   suffix="元"
+@@ -179,6 +179,8 @@ const Monitor: FC = () => {
+           <Card
+             title="热门搜索"
+             loading={loading}
++            data-testid="monitor-tags"
++            data-count={String((data?.list || []).length)}
+             variant="borderless"
+             styles={{
+               body: {
+diff --git a/src/pages/dashboard/workplace/index.tsx b/src/pages/dashboard/workplace/index.tsx
+index 5f9828a..cc420d6 100644
+--- a/src/pages/dashboard/workplace/index.tsx
++++ b/src/pages/dashboard/workplace/index.tsx
+@@ -73,14 +73,14 @@ const PageHeaderContent: FC<{
+ const ExtraContent: FC<Record<string, any>> = () => {
+   const { styles } = useStyles();
+   return (
+-    <div className={styles.extraContent}>
+-      <div className={styles.statItem}>
++    <div className={styles.extraContent} data-testid="workplace-stats">
++      <div className={styles.statItem} data-testid="stat-projects">
+         <Statistic title="项目数" value={56} />
+       </div>
+-      <div className={styles.statItem}>
++      <div className={styles.statItem} data-testid="stat-rank">
+         <Statistic title="团队内排名" value={8} suffix="/ 24" />
+       </div>
+-      <div className={styles.statItem}>
++      <div className={styles.statItem} data-testid="stat-visits">
+         <Statistic title="项目访问" value={2223} />
+       </div>
+     </div>
+@@ -105,7 +105,7 @@ const Workplace: FC = () => {
+       if (item[key as keyof ActivitiesType]) {
+         const value = item[key as 'user'];
+         return (
+-          <a href={value?.link} key={value?.name}>
++          <a href={value?.link} key={value?.name} data-testid="activity-tpl-link">
+             {value.name}
+           </a>
+         );
+@@ -118,7 +118,7 @@ const Workplace: FC = () => {
+           avatar={<Avatar src={item.user.avatar} />}
+           title={
+             <span>
+-              <a className={styles.username} href={item.user.link || '/'}>
++              <a className={styles.username} href={item.user.link || '/'} data-testid="activity-user-link">
+                 {item.user.name}
+               </a>
+               &nbsp;
+@@ -126,7 +126,7 @@ const Workplace: FC = () => {
+             </span>
+           }
+           description={
+-            <span className={styles.datetime} title={item.updatedAt}>
++            <span className={styles.datetime} title={item.updatedAt} data-testid="activity-datetime">
+               {dayjs(item.updatedAt).fromNow()}
+             </span>
+           }
+@@ -157,6 +157,7 @@ const Workplace: FC = () => {
+         <Col xl={16} lg={24} md={24} sm={24} xs={24}>
+           <Card
+             className={styles.projectList}
++            data-testid="workplace-projects"
+             style={{
+               marginBottom: 24,
+             }}
+@@ -170,7 +171,7 @@ const Workplace: FC = () => {
+             loading={projectLoading}
+           >
+             {projectNotice.map((item) => (
+-              <Card.Grid className={styles.projectGrid} key={item.id}>
++              <Card.Grid className={styles.projectGrid} key={item.id} data-testid="project-card">
+                 <Card.Meta
+                   title={
+                     <div className={styles.cardTitle}>
+@@ -206,6 +207,7 @@ const Workplace: FC = () => {
+             }}
+             variant="borderless"
+             className={styles.activeCard}
++            data-testid="workplace-activities"
+             title="动态"
+             loading={activitiesLoading}
+           >
+diff --git a/src/pages/exception/403/index.tsx b/src/pages/exception/403/index.tsx
+index 29911a4..c771bae 100644
+--- a/src/pages/exception/403/index.tsx
++++ b/src/pages/exception/403/index.tsx
+@@ -2,7 +2,7 @@ import { Link } from '@umijs/max';
+ import { Button, Card, Result } from 'antd';
+ 
+ export default () => (
+-  <Card variant="borderless">
++  <Card variant="borderless" data-testid="exception-403">
+     <Result
+       status="403"
+       title="403"
+diff --git a/src/pages/form/step-form/index.tsx b/src/pages/form/step-form/index.tsx
+index b536657..10ea63a 100644
+--- a/src/pages/form/step-form/index.tsx
++++ b/src/pages/form/step-form/index.tsx
+@@ -16,7 +16,7 @@ import {
+   Result,
+   Statistic,
+ } from 'antd';
+-import React, { useState } from 'react';
++import React, { cloneElement, useState } from 'react';
+ import type { StepDataType } from './data.d';
+ import useStyles from './style.style';
+ 
+@@ -55,7 +55,7 @@ const StepResult: React.FC<{
+       subTitle="预计两小时内到账"
+       extra={
+         <>
+-          <Button type="primary" onClick={props.onFinish}>
++          <Button type="primary" onClick={props.onFinish} data-testid="again-btn">
+             再转一笔
+           </Button>
+           <Button>查看账单</Button>
+@@ -89,7 +89,12 @@ const StepForm: React.FC<Record<string, any>> = () => {
+               if (props.step === 2) {
+                 return null;
+               }
+-              return dom;
++              const items = Array.isArray(dom) ? dom : [dom];
++              const last = items[items.length - 1] as React.ReactElement;
++              const tagged = cloneElement(last, {
++                'data-testid': props.step === 0 ? 'step1-next' : 'step2-next',
++              });
++              return [...items.slice(0, items.length - 1), tagged];
+             },
+           }}
+         >
+@@ -135,6 +140,7 @@ const StepForm: React.FC<Record<string, any>> = () => {
+               />
+               <ProFormText
+                 name="receiverAccount"
++                fieldProps={{ 'data-testid': 'step1-receiverAccount' }}
+                 rules={[
+                   {
+                     required: true,
+@@ -152,6 +158,7 @@ const StepForm: React.FC<Record<string, any>> = () => {
+               label="收款人姓名"
+               width="md"
+               name="receiverName"
++              fieldProps={{ 'data-testid': 'step1-receiverName' }}
+               rules={[
+                 {
+                   required: true,
+@@ -163,6 +170,7 @@ const StepForm: React.FC<Record<string, any>> = () => {
+             <ProFormDigit
+               label="转账金额"
+               name="amount"
++              fieldProps={{ prefix: '￥', 'data-testid': 'step1-amount' }}
+               width="md"
+               rules={[
+                 {
+@@ -175,14 +183,11 @@ const StepForm: React.FC<Record<string, any>> = () => {
+                 },
+               ]}
+               placeholder="请输入金额"
+-              fieldProps={{
+-                prefix: '￥',
+-              }}
+             />
+           </StepsForm.StepForm>
+ 
+           <StepsForm.StepForm title="确认转账信息">
+-            <div className={styles.result}>
++            <div className={styles.result} data-testid="step2-confirm">
+               <Alert
+                 closable
+                 showIcon
+@@ -201,6 +206,7 @@ const StepForm: React.FC<Record<string, any>> = () => {
+                 label="支付密码"
+                 width="md"
+                 name="password"
++                fieldProps={{ 'data-testid': 'step2-password' }}
+                 required={false}
+                 rules={[
+                   {
+diff --git a/src/pages/list/basic-list/components/OperationModal.tsx b/src/pages/list/basic-list/components/OperationModal.tsx
+index 4331596..deb2966 100644
+--- a/src/pages/list/basic-list/components/OperationModal.tsx
++++ b/src/pages/list/basic-list/components/OperationModal.tsx
+@@ -6,7 +6,7 @@ import {
+   ProFormTextArea,
+ } from '@ant-design/pro-components';
+ import { Button, Result } from 'antd';
+-import type { FC } from 'react';
++import { cloneElement, isValidElement, type FC } from 'react';
+ import type { BasicListItemDataType } from '../data.d';
+ import useStyles from '../style.style';
+ 
+@@ -29,11 +29,19 @@ const OperationModal: FC<OperationModalProps> = (props) => {
+       className={styles.standardListForm}
+       width={640}
+       onFinish={async (values) => {
+-        onSubmit(values);
++        onSubmit(Object.assign({}, values, current ? { id: current.id } : {}));
+       }}
+       initialValues={current}
+       submitter={{
+-        render: (_, dom) => (done ? null : dom),
++        render: (_, dom) => {
++          if (done) return null;
++          const items = Array.isArray(dom) ? dom : [dom];
++          const last = items[items.length - 1];
++          const tagged = isValidElement(last)
++            ? cloneElement(last, { 'data-testid': 'modal-submit' })
++            : last;
++          return [...items.slice(0, items.length - 1), tagged];
++        },
+       }}
+       trigger={children}
+       modalProps={{
+@@ -52,6 +60,7 @@ const OperationModal: FC<OperationModalProps> = (props) => {
+         <>
+           <ProFormText
+             name="title"
++            fieldProps={{ 'data-testid': 'modal-title-input' }}
+             label="任务名称"
+             rules={[
+               {
+@@ -74,11 +83,15 @@ const OperationModal: FC<OperationModalProps> = (props) => {
+               style: {
+                 width: '100%',
+               },
++              inputRender: (inputProps) => (
++                <input {...inputProps} data-testid="modal-createdat" />
++              ),
+             }}
+             placeholder="请选择"
+           />
+           <ProFormSelect
+             name="owner"
++            fieldProps={{ 'data-testid': 'modal-owner' }}
+             label="任务负责人"
+             rules={[
+               {
+diff --git a/src/pages/list/basic-list/index.tsx b/src/pages/list/basic-list/index.tsx
+index 36f5c17..b30227a 100644
+--- a/src/pages/list/basic-list/index.tsx
++++ b/src/pages/list/basic-list/index.tsx
+@@ -109,6 +109,9 @@ const BasicList: FC = () => {
+     showQuickJumper: true,
+     pageSize: 5,
+     total: list.length,
++    showTotal: (total: number) => (
++      <span data-testid="list-total">{'共 ' + total + ' 条'}</span>
++    ),
+   };
+   const showEditModal = (item: BasicListItemDataType) => {
+     setVisible(true);
+@@ -154,7 +157,7 @@ const BasicList: FC = () => {
+     </div>
+   );
+ 
+-  const renderMoreBtn = (item: BasicListItemDataType) => {
++  const renderMoreBtn = (item: BasicListItemDataType, index: number) => {
+     return (
+       <Dropdown
+         menu={{
+@@ -166,12 +169,12 @@ const BasicList: FC = () => {
+             },
+             {
+               key: 'delete',
+-              label: '删除',
++              label: <span data-testid="list-delete-item">删除</span>,
+             },
+           ],
+         }}
+       >
+-        <Button type="link">
++        <Button type="link" data-testid={'list-more-' + index}>
+           更多 <DownOutlined />
+         </Button>
+       </Dropdown>
+@@ -191,7 +194,7 @@ const BasicList: FC = () => {
+   return (
+     <div>
+       <PageContainer>
+-        <div className={styles.standardList}>
++        <div className={styles.standardList} data-testid="basic-list">
+           <Card variant="borderless">
+             <Row>
+               <Col sm={8} xs={24}>
+@@ -226,17 +229,19 @@ const BasicList: FC = () => {
+               loading={loading}
+               pagination={paginationProps}
+               dataSource={list}
+-              renderItem={(item) => (
++              renderItem={(item, index) => (
+                 <List.Item
++                  data-testid={'list-item-' + index}
+                   actions={[
+                     <Button
+                       key="edit"
+                       type="link"
++                      data-testid={'list-edit-' + index}
+                       onClick={() => showEditModal(item)}
+                     >
+                       编辑
+                     </Button>,
+-                    renderMoreBtn(item),
++                    renderMoreBtn(item, index),
+                   ]}
+                 >
+                   <List.Item.Meta
+@@ -255,6 +260,7 @@ const BasicList: FC = () => {
+       </PageContainer>
+       <Button
+         type="dashed"
++        data-testid="list-add-btn"
+         onClick={() => {
+           setVisible(true);
+         }}
+diff --git a/src/pages/table-list/components/CreateForm.tsx b/src/pages/table-list/components/CreateForm.tsx
+index 3c64582..5f1fb4e 100644
+--- a/src/pages/table-list/components/CreateForm.tsx
++++ b/src/pages/table-list/components/CreateForm.tsx
+@@ -47,12 +47,13 @@ const CreateForm: FC<CreateFormProps> = (props) => {
+           defaultMessage: 'New rule',
+         })}
+         trigger={
+-          <Button type="primary" icon={<PlusOutlined />}>
++          <Button type="primary" icon={<PlusOutlined />} data-testid="create-rule-btn">
+             <FormattedMessage id="pages.searchTable.new" defaultMessage="New" />
+           </Button>
+         }
+         width="400px"
+         modalProps={{ okButtonProps: { loading } }}
++        submitter={{ submitButtonProps: { 'data-testid': 'modal-ok' } }}
+         onFinish={async (value) => {
+           try {
+             await run({ data: value as API.RuleListItem });
+@@ -76,6 +77,7 @@ const CreateForm: FC<CreateFormProps> = (props) => {
+           ]}
+           width="md"
+           name="name"
++          fieldProps={{ 'data-testid': 'rule-name-input' }}
+         />
+         <ProFormTextArea width="md" name="desc" />
+       </ModalForm>
+diff --git a/src/pages/table-list/index.tsx b/src/pages/table-list/index.tsx
+index 4ce8f49..ec732df 100644
+--- a/src/pages/table-list/index.tsx
++++ b/src/pages/table-list/index.tsx
+@@ -56,10 +56,11 @@ const TableList: React.FC = () => {
+         />
+       ),
+       dataIndex: 'name',
+-      render: (dom, entity) => {
++      render: (dom, entity, index) => {
+         return (
+           <Button
+             type="link"
++            data-testid={'rule-name-link-' + index}
+             onClick={() => {
+               setCurrentRow(entity);
+               setShowDetail(true);
+@@ -243,6 +244,7 @@ const TableList: React.FC = () => {
+   return (
+     <PageContainer>
+       {contextHolder}
++      <div data-testid="rule-table">
+       <ProTable<API.RuleListItem, API.PageParams>
+         headerTitle={intl.formatMessage({
+           id: 'pages.searchTable.title',
+@@ -250,6 +252,7 @@ const TableList: React.FC = () => {
+         })}
+         actionRef={actionRef}
+         rowKey="key"
++        onRow={(record, index) => ({ 'data-testid': 'rule-row-' + index })}
+         search={{
+           labelWidth: 120,
+         }}
+@@ -262,8 +265,12 @@ const TableList: React.FC = () => {
+           onChange: (_, selectedRows) => {
+             setSelectedRows(selectedRows);
+           },
++          renderCell: (checked, record, index, originNode) => (
++            <span data-testid={'rule-check-' + index}>{originNode}</span>
++          ),
+         }}
+       />
++      </div>
+       {selectedRowsState?.length > 0 && (
+         <FooterToolbar
+           extra={
+@@ -299,6 +306,7 @@ const TableList: React.FC = () => {
+         >
+           <Button
+             loading={loading}
++            data-testid="batch-delete-btn"
+             onClick={() => {
+               handleRemove(selectedRowsState);
+             }}
+@@ -319,6 +327,7 @@ const TableList: React.FC = () => {
+ 
+       <Drawer
+         size={600}
++        data-testid="rule-drawer"
+         open={showDetail}
+         onClose={() => {
+           setCurrentRow(undefined);
+diff --git a/src/pages/user/login/index.tsx b/src/pages/user/login/index.tsx
+index 6b1ecd4..3e4dd9c 100644
+--- a/src/pages/user/login/index.tsx
++++ b/src/pages/user/login/index.tsx
+@@ -118,6 +118,7 @@ const LoginMessage: React.FC<{
+         marginBottom: 24,
+       }}
+       title={content}
++      data-testid="login-error-alert"
+       type="error"
+       showIcon
+     />
+@@ -173,7 +174,7 @@ const Login: React.FC = () => {
+   const { status, type: loginType } = userLoginState;
+ 
+   return (
+-    <div className={styles.container}>
++    <div className={styles.container} data-testid="login-page">
+       <Helmet>
+         <title>
+           {intl.formatMessage({
+@@ -211,6 +212,9 @@ const Login: React.FC = () => {
+             />,
+             <ActionIcons key="icons" />,
+           ]}
++          submitter={{
++            submitButtonProps: { 'data-testid': 'login-submit' },
++          }}
+           onFinish={async (values) => {
+             await handleSubmit(values as API.LoginParams);
+           }}
+@@ -252,6 +256,7 @@ const Login: React.FC = () => {
+                 fieldProps={{
+                   size: 'large',
+                   prefix: <UserOutlined />,
++                  'data-testid': 'login-username',
+                 }}
+                 placeholder={intl.formatMessage({
+                   id: 'pages.login.username.placeholder',
+@@ -274,6 +279,7 @@ const Login: React.FC = () => {
+                 fieldProps={{
+                   size: 'large',
+                   prefix: <LockOutlined />,
++                  'data-testid': 'login-password',
+                 }}
+                 placeholder={intl.formatMessage({
+                   id: 'pages.login.password.placeholder',
+diff --git a/src/pages/user/register/index.tsx b/src/pages/user/register/index.tsx
+index 2dffe3f..25d803d 100644
+--- a/src/pages/user/register/index.tsx
++++ b/src/pages/user/register/index.tsx
+@@ -164,7 +164,7 @@ const Register: FC = () => {
+   return (
+     <div className={styles.main}>
+       <h3>注册</h3>
+-      <Form form={form} name="UserRegister" onFinish={onFinish}>
++      <Form form={form} name="UserRegister" onFinish={onFinish} data-testid="register-form">
+         <FormItem
+           name="email"
+           rules={[
+@@ -294,6 +294,7 @@ const Register: FC = () => {
+               size="large"
+               disabled={!!count}
+               className={styles.getCaptcha}
++              data-testid="register-captcha-button"
+               onClick={onGetCaptcha}
+             >
+               {count ? `${count} s` : '获取验证码'}
+@@ -308,6 +309,7 @@ const Register: FC = () => {
+               className={styles.submit}
+               type="primary"
+               htmlType="submit"
++              data-testid="register-submit"
+             >
+               <span>注册</span>
+             </Button>

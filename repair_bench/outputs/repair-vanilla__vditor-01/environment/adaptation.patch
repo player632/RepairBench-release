@@ -1,0 +1,60 @@
+diff --git a/src/ts/undo/index.ts b/src/ts/undo/index.ts
+index 7ddcfd7..2dc4c1a 100644
+--- a/src/ts/undo/index.ts
++++ b/src/ts/undo/index.ts
+@@ -8,16 +8,20 @@ import {processCodeRender} from "../util/processCode";
+ import {setRangeByWbr, setSelectionFocus} from "../util/selection";
+ import {renderToc} from "../util/toc";
+ 
++// diff-match-patch@1.0.5 ships no module typings and @types/diff-match-patch@1.0.36
++// declares patch slots as constructor types; use a structural alias to keep the build alive.
++type VditorPatchObj = { diffs: [number, string][]; start1: number; start2: number; length1: number; length2: number };
++
+ interface IUndo {
+     hasUndo: boolean;
+     lastText: string;
+-    redoStack: DiffMatchPatch.patch_obj[][];
+-    undoStack: DiffMatchPatch.patch_obj[][];
++    redoStack: VditorPatchObj[][];
++    undoStack: VditorPatchObj[][];
+ }
+ 
+ class Undo {
+     private stackSize = 50;
+-    private dmp: DiffMatchPatch.diff_match_patch;
++    private dmp: InstanceType<typeof DiffMatchPatch.diff_match_patch>;
+     private wysiwyg: IUndo;
+     private ir: IUndo;
+     private sv: IUndo;
+@@ -114,7 +118,7 @@ class Undo {
+         // afterRenderEvent.ts 已经 debounce
+         const text = this.addCaret(vditor, true);
+         const diff = this.dmp.diff_main(text, this[vditor.currentMode].lastText, true);
+-        const patchList = this.dmp.patch_make(text, this[vditor.currentMode].lastText, diff);
++        const patchList = this.dmp.patch_make(text, this[vditor.currentMode].lastText, diff) as unknown as VditorPatchObj[];
+         if (patchList.length === 0 && this[vditor.currentMode].undoStack.length > 0) {
+             return;
+         }
+@@ -134,18 +138,18 @@ class Undo {
+         }
+     }
+ 
+-    private renderDiff(state: DiffMatchPatch.patch_obj[], vditor: IVditor, isRedo: boolean = false) {
++    private renderDiff(state: VditorPatchObj[], vditor: IVditor, isRedo: boolean = false) {
+         let text;
+         if (isRedo) {
+-            const redoPatchList = this.dmp.patch_deepCopy(state).reverse();
++            const redoPatchList = (this.dmp.patch_deepCopy(state as any) as unknown as VditorPatchObj[]).reverse();
+             redoPatchList.forEach((patch) => {
+                 patch.diffs.forEach((diff) => {
+                     diff[0] = -diff[0];
+                 });
+             });
+-            text = this.dmp.patch_apply(redoPatchList, this[vditor.currentMode].lastText)[0];
++            text = this.dmp.patch_apply(redoPatchList as any, this[vditor.currentMode].lastText)[0];
+         } else {
+-            text = this.dmp.patch_apply(state, this[vditor.currentMode].lastText)[0];
++            text = this.dmp.patch_apply(state as any, this[vditor.currentMode].lastText)[0];
+         }
+ 
+         this[vditor.currentMode].lastText = text;

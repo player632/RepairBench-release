@@ -1,0 +1,150 @@
+diff --git b/src/app/behaviors/movable-behavior.ts a/src/app/behaviors/movable-behavior.ts
+index e983df1..4b6ccf8 100644
+--- b/src/app/behaviors/movable-behavior.ts
++++ a/src/app/behaviors/movable-behavior.ts
+@@ -71,7 +71,7 @@ export class MovableBehavior extends TickedBehavior {
+     // Keyboard input
+     this.velocity.x = 0;
+     if (worldInput.keyDown(KeyCode.LEFT)) {
+-      this.velocity.x += 1;
++      this.velocity.x -= 1;
+     }
+     if (worldInput.keyDown(KeyCode.RIGHT)) {
+       this.velocity.x += 1;
+diff --git b/src/app/components/notification/notification.service.ts a/src/app/components/notification/notification.service.ts
+index a4e5cf4..f4ea824 100644
+--- b/src/app/components/notification/notification.service.ts
++++ a/src/app/components/notification/notification.service.ts
+@@ -109,6 +109,7 @@ export class NotificationService implements IWorldObject, IProcessObject {
+           console.warn(e);
+         }
+         this._current = null;
++        this.message = null;
+       }
+       this.paused = false;
+     });
+diff --git b/src/app/components/party-menu/party-menu.component.ts a/src/app/components/party-menu/party-menu.component.ts
+index 4e4bacd..ec3c814 100644
+--- b/src/app/components/party-menu/party-menu.component.ts
++++ a/src/app/components/party-menu/party-menu.component.ts
+@@ -74,11 +74,12 @@ export class PartyMenuComponent {
+   }
+ 
+   saveGame() {
++    this.store.dispatch(new GameStateSaveAction());
+     this.notify.show('Game state saved!  Nice.');
+   }
+ 
+   onSlideToggle($event: any) {
+-    localStorage.setItem('autoSave', String(!$event.checked));
++    localStorage.setItem('autoSave', $event.checked);
+   }
+ 
+   constructor(
+diff --git b/src/app/core/input.ts a/src/app/core/input.ts
+index 33be110..f4689ca 100644
+--- b/src/app/core/input.ts
++++ a/src/app/core/input.ts
+@@ -73,7 +73,7 @@ export class PowInput implements IWorldObject {
+       this._keysDown[ev.which] = true;
+     });
+     window.addEventListener('keyup', (ev: KeyboardEvent) => {
+-      this._keysDown[ev.which] = true;
++      this._keysDown[ev.which] = false;
+     });
+     const hooks = this._mouseElements;
+     window.addEventListener('mousemove touchmove', (ev: MouseEvent) => {
+diff --git b/src/app/models/game-data/classes.ts a/src/app/models/game-data/classes.ts
+index cc1622b..0ec4409 100644
+--- b/src/app/models/game-data/classes.ts
++++ a/src/app/models/game-data/classes.ts
+@@ -44,7 +44,7 @@ export const CLASSES_DATA: ITemplateClass[] = [
+     magicdefense: [20, 2],
+   },
+   {
+-    name: 'Wizard',
++    name: 'Healer',
+     id: 'healer',
+     icon: 'healer-[gender].png',
+     hp: 28,
+diff --git b/src/app/models/index.ts a/src/app/models/index.ts
+index d547331..deb1bcf 100644
+--- b/src/app/models/index.ts
++++ a/src/app/models/index.ts
+@@ -50,6 +50,7 @@ function stateSetter(
+         return {
+           ...action.payload,
+           gameState: gameStateFromJSON(action.payload.gameState),
++          entities: entityFromJSON(action.payload.entities),
+           combat: combatFromJSON(action.payload.combat),
+           sprites: spritesFromJSON(action.payload.sprites),
+         };
+diff --git b/src/app/models/selectors.ts a/src/app/models/selectors.ts
+index 89ef03c..7f5d8a6 100644
+--- b/src/app/models/selectors.ts
++++ a/src/app/models/selectors.ts
+@@ -241,7 +241,7 @@ export const getGamePartyWithEquipment = createSelector(
+           shield: items.get(entity.shield || '') as Armor,
+           accessory: items.get(entity.accessory || '') as Armor,
+           boots: items.get(entity.boots || '') as Armor,
+-          weapon: items.get(entity.armor || '') as Weapon,
++          weapon: items.get(entity.weapon || '') as Weapon,
+         };
+         return Object.assign({}, entity, result) as EntityWithEquipment;
+       })
+diff --git b/src/app/routes/world/behaviors/combat-encounter.behavior.ts a/src/app/routes/world/behaviors/combat-encounter.behavior.ts
+index c0b6df6..8ff0c54 100644
+--- b/src/app/routes/world/behaviors/combat-encounter.behavior.ts
++++ a/src/app/routes/world/behaviors/combat-encounter.behavior.ts
+@@ -57,6 +57,9 @@ export class CombatEncounterBehaviorComponent extends SceneObjectBehavior {
+       return;
+     }
+     const zone: IZoneMatch = this.tileMap.getCombatZones(move.to);
++    if (!zone.targets.length) {
++      return;
++    }
+     const terrain = this.tileMap.getTerrain('Terrain', move.to.x, move.to.y);
+     const isDangerous: boolean = terrain?.properties?.isDangerous;
+     const dangerValue: number = isDangerous ? 10 : 6;
+diff --git b/src/app/routes/world/world.component.ts a/src/app/routes/world/world.component.ts
+index 229f90b..89dee91 100644
+--- b/src/app/routes/world/world.component.ts
++++ a/src/app/routes/world/world.component.ts
+@@ -175,6 +175,9 @@ export class WorldComponent extends SceneView implements AfterViewInit, OnDestro
+       this.debug = !this.debug;
+     } else if (event.key === '2') {
+       this.debugMenu.open = !this.debugMenu.open;
++      if (this.debugMenu.open) {
++        this.partyMenu.open = false;
++      }
+     }
+   }
+ 
+diff --git b/src/app/services/rpg-game.ts a/src/app/services/rpg-game.ts
+index 4a47b47..92d0ba8 100644
+--- b/src/app/services/rpg-game.ts
++++ a/src/app/services/rpg-game.ts
+@@ -137,7 +137,7 @@ export class RPGGame {
+         inventory: Immutable.List<string>(),
+         battleCounter: 0,
+         keyData: Immutable.Map<string, any>(),
+-        gold: 250,
++        gold: 100,
+         combatZone: '',
+         location: 'town',
+         position: { x: 12, y: 8 },
+@@ -146,11 +146,14 @@ export class RPGGame {
+       };
+       this.store.dispatch(new GameStateNewAction(initialState));
+       this.store.dispatch(new EntityAddBeingAction(warrior));
++      this.store.dispatch(new EntityAddBeingAction(ranger));
+       this.store.dispatch(new EntityAddBeingAction(healer));
+ 
+       // Provide basic equipment
+       this.giveItemToPlayer(warrior, getWeaponById('club'), 'weapon');
+       this.giveItemToPlayer(warrior, getArmorById('clothes'), 'armor');
++      this.giveItemToPlayer(ranger, getWeaponById('slingshot'), 'weapon');
++      this.giveItemToPlayer(ranger, getArmorById('clothes'), 'armor');
+       this.giveItemToPlayer(healer, getWeaponById('short-staff'), 'weapon');
+       this.giveItemToPlayer(healer, getArmorById('cloak'), 'armor');
+ 

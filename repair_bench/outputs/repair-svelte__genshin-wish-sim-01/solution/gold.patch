@@ -1,0 +1,167 @@
+diff --git a/src/lib/helpers/banner-loader.js b/src/lib/helpers/banner-loader.js
+index 0a592eb..419ed06 100644
+--- a/src/lib/helpers/banner-loader.js
++++ b/src/lib/helpers/banner-loader.js
+@@ -67,7 +67,7 @@ const useCustomBanner = async (bannerID) => {
+ 
+ const checkBeginnerBanner = () => {
+ 	const starterRollCount = rollCounter.get('beginner');
+-	const isShowBeginner = starterRollCount < 10;
++	const isShowBeginner = starterRollCount < 20;
+ 	showBeginner.set(isShowBeginner);
+ 	return isShowBeginner;
+ };
+diff --git a/src/lib/helpers/dataAPI/storage-reader.js b/src/lib/helpers/dataAPI/storage-reader.js
+index 9c4dd07..1ccdf13 100644
+--- a/src/lib/helpers/dataAPI/storage-reader.js
++++ b/src/lib/helpers/dataAPI/storage-reader.js
+@@ -29,8 +29,8 @@ export const importLocalConfig = () => {
+ 		starglitter: sg
+ 	} = localBalance.all() || {};
+ 	if (!isNaN(pr)) primogem.set(pr);
+-	if (!isNaN(ac)) acquaint.set(iw);
+-	if (!isNaN(iw)) intertwined.set(ac);
++	if (!isNaN(ac)) acquaint.set(ac);
++	if (!isNaN(iw)) intertwined.set(iw);
+ 	if (!isNaN(gs)) genesis.set(gs);
+ 	stardust.set(isNaN(sd) ? 0 : sd);
+ 	starglitter.set(isNaN(sg) ? 0 : sg);
+diff --git a/src/lib/helpers/gacha/roll.js b/src/lib/helpers/gacha/roll.js
+index d5ac684..d168165 100644
+--- a/src/lib/helpers/gacha/roll.js
++++ b/src/lib/helpers/gacha/roll.js
+@@ -72,7 +72,7 @@ const roll = async (banner, WishInstance, indexOfBanner) => {
+ 
+ 	if (rarity === 5) {
+ 		localPity.set(`pity4-${banner}`, pity4);
+-		localPity.set(`pity5-${banner}`, pity5);
++		localPity.set(`pity5-${banner}`, 0);
+ 		pity = pity5;
+ 	}
+ 
+@@ -121,7 +121,7 @@ const saveResult = async (result) => {
+ const getMilestoneQty = (rarity, type, isFullConstellation, isNew) => {
+ 	// Always give stargliter or stardust on obtaining weapons
+ 	if (type === 'weapon') {
+-		if (rarity === 3) return 2; // *3
++		if (rarity === 3) return 15; // *3
+ 		if (rarity === 4) return 2; // *4
+ 		return 10; // *5
+ 	}
+diff --git a/src/lib/helpers/gacha/wishBeginner.js b/src/lib/helpers/gacha/wishBeginner.js
+index 35856e2..fedeb07 100644
+--- a/src/lib/helpers/gacha/wishBeginner.js
++++ b/src/lib/helpers/gacha/wishBeginner.js
+@@ -11,7 +11,7 @@ const beginerWish = (rarity) => {
+ 
+ 	if (rarity === 4) {
+ 		// Get Noelle as a first 4 star from beginner
+-		if (alreadyGetFeatured) {
++		if (!alreadyGetFeatured) {
+ 			const result = get4StarItem({
+ 				rateupNamelist: ['noelle'],
+ 				banner: 'beginner',
+diff --git a/src/lib/helpers/gacha/wishCharacter.js b/src/lib/helpers/gacha/wishCharacter.js
+index 5f88c10..a7c152b 100644
+--- a/src/lib/helpers/gacha/wishCharacter.js
++++ b/src/lib/helpers/gacha/wishCharacter.js
+@@ -75,7 +75,7 @@ const characterWish = {
+ 			const rateUpStatus = statusGuarateed ? 'guaranteed' : 'win';
+ 			const regularStatus = useRateup ? rateUpStatus : 'lose';
+ 			const status = captured ? 'captured' : regularStatus;
+-			guaranteedStatus.set('character-event-5star', useRateup || captured);
++			guaranteedStatus.set('character-event-5star', !(useRateup || captured));
+ 			if (status === 'win') rollCounter.set('radiance', 0);
+ 			return { ...result, status, captured };
+ 		}
+diff --git a/src/lib/helpers/gacha/wishWeapon.js b/src/lib/helpers/gacha/wishWeapon.js
+index 5c02bbb..ee51113 100644
+--- a/src/lib/helpers/gacha/wishWeapon.js
++++ b/src/lib/helpers/gacha/wishWeapon.js
+@@ -37,7 +37,7 @@ const fatepoint = {
+ 
+ 		// Reset Fatepoint
+ 		if (resultName === selectedWeapon) {
+-			_fatepointManager.set(point + 1, selected);
++			_fatepointManager.remove();
+ 			course.set({ point: 0, selected: null });
+ 			const maxPoint = _version >= 5.0 ? 1 : 2;
+ 			return point === maxPoint;
+diff --git a/src/routes/_gachainfo/history/_list.svelte b/src/routes/_gachainfo/history/_list.svelte
+index 041c2b7..6badacb 100644
+--- a/src/routes/_gachainfo/history/_list.svelte
++++ b/src/routes/_gachainfo/history/_list.svelte
+@@ -30,7 +30,7 @@
+ 	const readData = async (banner, filter) => {
+ 		if (!browser) return [];
+ 		const bannerList = await getListByBanner(banner);
+-		data = bannerList.map((d) => d);
++		data = bannerList.map((d) => d).reverse();
+ 		dataToShow = filter && filter !== 'All' ? filterData(filter) : data;
+ 		setDataLength(data.length, dataToShow.length);
+ 		return data;
+diff --git a/src/routes/_index/ModalConvert.svelte b/src/routes/_index/ModalConvert.svelte
+index c32a56e..c566add 100644
+--- a/src/routes/_index/ModalConvert.svelte
++++ b/src/routes/_index/ModalConvert.svelte
+@@ -24,7 +24,7 @@
+ 
+ 	const confirmConvert = () => {
+ 		primogem.update((v) => {
+-			const newVal = v - value;
++			const newVal = v + value;
+ 			localBalance.set('primogem', newVal);
+ 			return newVal;
+ 		});
+diff --git a/src/routes/_menu/Settings.svelte b/src/routes/_menu/Settings.svelte
+index 33f3399..1764990 100644
+--- a/src/routes/_menu/Settings.svelte
++++ b/src/routes/_menu/Settings.svelte
+@@ -38,7 +38,7 @@
+ 		const { selected } = detail;
+ 		const isAutoSkip = selected === 'yes';
+ 		autoskip.set(isAutoSkip);
+-		localConfig.set('autoSkip', isAutoSkip);
++		localConfig.set('autoskip', isAutoSkip);
+ 		if (isAutoSkip) return readyToPull.set(true);
+ 		const cekExpress = await meteorCheck();
+ 		readyToPull.set(cekExpress);
+diff --git a/src/routes/_shop/_modal-exchange.svelte b/src/routes/_shop/_modal-exchange.svelte
+index 41001ef..d3051f2 100644
+--- a/src/routes/_shop/_modal-exchange.svelte
++++ b/src/routes/_shop/_modal-exchange.svelte
+@@ -55,7 +55,7 @@
+ 		playSfx();
+ 		closeExchangeModal();
+ 		balance.update((v) => {
+-			const newVal = v - value;
++			const newVal = v - value * price;
+ 			localBalance.set(currency, newVal);
+ 			return newVal;
+ 		});
+diff --git a/src/routes/_wish/index.svelte b/src/routes/_wish/index.svelte
+index 5bee954..d676aed 100644
+--- a/src/routes/_wish/index.svelte
++++ b/src/routes/_wish/index.svelte
+@@ -91,7 +91,7 @@
+ 		const isAcquaint = ['beginner', 'standard'].includes(banner);
+ 		const funds = isAcquaint ? acquaint : intertwined;
+ 		funds.update((n) => {
+-			const afterUpdate = n - (banner === 'beginner' && rollCount > 1 ? 16 : rollCount);
++			const afterUpdate = n - (banner === 'beginner' && rollCount > 1 ? 8 : rollCount);
+ 			localBalance.set(isAcquaint ? 'acquaint' : 'intertwined', afterUpdate);
+ 			return afterUpdate;
+ 		});
+diff --git a/src/routes/_wish/wish-result/WishResult.svelte b/src/routes/_wish/wish-result/WishResult.svelte
+index b1b7429..bc0fadb 100644
+--- a/src/routes/_wish/wish-result/WishResult.svelte
++++ b/src/routes/_wish/wish-result/WishResult.svelte
+@@ -49,7 +49,7 @@
+ 		timer = setTimeout(() => {
+ 			isSplashOut = true;
+ 			clearTimeout(timer);
+-		}, 20000);
++		}, 1100);
+ 	};
+ 
+ 	const playRevealAudio = () => {

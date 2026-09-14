@@ -1,0 +1,84 @@
+// [RepairBench instrumentation] Test-geometry hooks for automated interaction.
+// Pure readers of layout state exposed as window.__lsTest; they never mutate
+// application data and expose nothing about task defects.
+import Store from "../store";
+
+function attachRepairBenchHooks() {
+    if (typeof window === "undefined" || window.__lsTest) {
+        return;
+    }
+
+    function jq() {
+        return window.jQuery || window.$;
+    }
+
+    function geom() {
+        const $ = jq();
+        const containerOffset = $("#" + Store.container).offset() || { left: 0, top: 0 };
+        const scrollLeft = $("#luckysheet-cell-main").scrollLeft() || 0;
+        const scrollTop = $("#luckysheet-cell-main").scrollTop() || 0;
+        return {
+            gridLeft: containerOffset.left + Store.rowHeaderWidth,
+            gridTop:
+                containerOffset.top +
+                Store.infobarHeight +
+                Store.toolbarHeight +
+                Store.calculatebarHeight +
+                Store.columnHeaderHeight,
+            headerTop:
+                containerOffset.top +
+                Store.infobarHeight +
+                Store.toolbarHeight +
+                Store.calculatebarHeight,
+            containerLeft: containerOffset.left,
+            columnHeaderHeight: Store.columnHeaderHeight,
+            rowHeaderWidth: Store.rowHeaderWidth,
+            scrollLeft: scrollLeft,
+            scrollTop: scrollTop,
+        };
+    }
+
+    function cellCenterGrid(r, c) {
+        const cpre = c === 0 ? 0 : Store.visibledatacolumn[c - 1];
+        const cend = Store.visibledatacolumn[c];
+        const rpre = r === 0 ? 0 : Store.visibledatarow[r - 1];
+        const rend = Store.visibledatarow[r];
+        return { gx: (cpre + cend) / 2, gy: (rpre + rend) / 2 };
+    }
+
+    window.__lsTest = {
+        // client coords of the center of cell (r, c) on the current sheet
+        cellPoint: function (r, c) {
+            const g = geom();
+            const m = cellCenterGrid(r, c);
+            return { x: g.gridLeft + m.gx - g.scrollLeft, y: g.gridTop + m.gy - g.scrollTop };
+        },
+        // center of the column-header band above column c
+        // (a, b) tolerant arity: evaluation/dsl_lib.mjs lsPoint() always calls with two
+        // arguments - ls-col-drag-hold passes colHeaderPoint(0, c). Accept either shape.
+        colHeaderPoint: function (a, b) {
+            const c = (b === undefined || b === null) ? a : b;
+            const g = geom();
+            const m = cellCenterGrid(0, c);
+            return { x: g.gridLeft + m.gx - g.scrollLeft, y: g.headerTop + g.columnHeaderHeight / 2 };
+        },
+        // center of the row-header band left of row r
+        rowHeaderPoint: function (r) {
+            const g = geom();
+            const m = cellCenterGrid(r, 0);
+            return { x: g.containerLeft + g.rowHeaderWidth / 2, y: g.gridTop + m.gy - g.scrollTop };
+        },
+        // current grid scroll offsets
+        scroll: function () {
+            const $ = jq();
+            return {
+                left: $("#luckysheet-cell-main").scrollLeft() || 0,
+                top: $("#luckysheet-cell-main").scrollTop() || 0,
+            };
+        },
+    };
+}
+
+attachRepairBenchHooks();
+
+export default attachRepairBenchHooks;

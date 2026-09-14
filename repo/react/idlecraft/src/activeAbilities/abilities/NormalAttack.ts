@@ -1,0 +1,71 @@
+import { ReactNode } from 'react'
+import { CharacterAdapter } from '../../characters/characterAdapter'
+import { dealDamage } from '../../characters/functions/dealDamage'
+import { selectRandomEnemy } from '../../characters/functions/selectRandomEnemy'
+import { getCharacterSelector } from '../../characters/getCharacterSelector'
+import { DAMAGE_EXP_MULTI } from '../../const'
+import { addExp } from '../../experience/expFunctions'
+import { GameState } from '../../game/GameState'
+import { Icons } from '../../icons/Icons'
+import { DamageData } from '../../items/Item'
+import { Msg } from '../../msg/Msg'
+import { selectTranslations } from '../../msg/useTranslations'
+import { AbilityParams, ActiveAbility } from '../ActiveAbility'
+import { AbilitiesEnum } from '../abilitiesEnum'
+import { sumDamage } from '../functions/sumDamage'
+
+export class NormalAttack implements ActiveAbility {
+    id = AbilitiesEnum.NormalAttack
+    nameId = 'NormalAttack' as keyof Msg
+    getDesc(params: AbilityParams): ReactNode {
+        const t = selectTranslations(params.state)
+        return t.t.NormalAttackDesc
+    }
+    getIconId(params: AbilityParams): Icons {
+        const weapon = getCharacterSelector(params.characterId).MainWeapon(params.state)
+        return weapon?.icon ?? Icons.Punch
+    }
+    getChargeTime(params: AbilityParams): number {
+        return getCharacterSelector(params.characterId).AttackSpeed(params.state)
+    }
+    getHealthCost(): number {
+        return 0
+    }
+    getStaminaCost(_params: AbilityParams): number {
+        return 0
+    }
+    getManaCost(): number {
+        return 0
+    }
+
+    getDamage(characterId: string, state: GameState): DamageData {
+        return getCharacterSelector(characterId).AllAttackDamage(state)
+    }
+
+    exec(params: AbilityParams): void {
+        const { characterId } = params
+        const { state } = params
+
+        const caster = CharacterAdapter.selectEx(state.characters, characterId)
+        const enemyId = selectRandomEnemy(state, caster.isEnemy)
+        if (!enemyId) return
+
+        const damage = this.getDamage(characterId, state)
+
+        const source = getCharacterSelector(params.characterId).Name(state)
+        const targets = getCharacterSelector(enemyId).Name(state)
+
+        if (!caster.isEnemy) {
+            const weapon = getCharacterSelector(characterId).MainWeapon(state)
+            if (weapon && weapon.weaponData)
+                addExp(state, weapon.weaponData.expType, sumDamage(damage) * DAMAGE_EXP_MULTI)
+        }
+
+        dealDamage(state, enemyId, damage, {
+            iconId: this.getIconId(params),
+            abilityId: this.nameId,
+            source,
+            targets,
+        })
+    }
+}

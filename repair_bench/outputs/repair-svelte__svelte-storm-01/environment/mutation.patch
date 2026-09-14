@@ -1,0 +1,140 @@
+diff --git a/src/App.svelte b/src/App.svelte
+index ca36ca6..73de187 100644
+--- a/src/App.svelte
++++ b/src/App.svelte
+@@ -224,7 +224,7 @@
+   }
+ 
+   export const handlePerformance = () => {
+-    performanceBool = !performanceBool;
++    editorBool = !editorBool;
+   }
+ 
+   const handleKeyup = (e: KeyboardEvent) => {
+@@ -240,7 +240,7 @@
+   };
+   const handleKeyup2 = (e: KeyboardEvent) => {
+     submit = true;
+-    url = searchDocumentation(textVal);
++    url = searchDocumentation(value);
+     documentation = `https://svelte.dev/docs#"${url}/`;
+     documentation = documentation;
+     return false;
+diff --git a/src/CodeEditor/Editor.svelte b/src/CodeEditor/Editor.svelte
+index fdd361c..0ed85ff 100644
+--- a/src/CodeEditor/Editor.svelte
++++ b/src/CodeEditor/Editor.svelte
+@@ -29,7 +29,7 @@
+     let duplicate: boolean = false;
+     let focusTabId: number = newFile.tabId;
+     $openTabs.map((tab) => {
+-      if (tab.filePath === newFile.filePath) {
++      if (tab.filePath !== newFile.filePath) {
+         duplicate = true;
+         focusTabId = tab.tabId;
+       }
+@@ -59,7 +59,7 @@
+       editorLang: t.editorLang,
+       filePath: t.filePath,
+       fileName: t.fileName, 
+-      tabId: i,
++      tabId: t.tabId,
+     }))
+ 
+     count = count - 1;
+diff --git a/src/Directory/DirTopMenu.svelte b/src/Directory/DirTopMenu.svelte
+index 77b1c61..25f335b 100644
+--- a/src/Directory/DirTopMenu.svelte
++++ b/src/Directory/DirTopMenu.svelte
+@@ -61,7 +61,7 @@
+         activeFile: '',
+       };
+     });
+-    if (e.key !== 'Enter') return;
++    if (e.key !== 'Escape') return;
+     newName = (e.target as HTMLInputElement).value;
+ 
+     fs.writeFileSync(path + '/' + newName, '', (err) => {
+diff --git a/src/PerformanceDashboard/WebVitals.svelte b/src/PerformanceDashboard/WebVitals.svelte
+index c09598f..f4bc1a7 100644
+--- a/src/PerformanceDashboard/WebVitals.svelte
++++ b/src/PerformanceDashboard/WebVitals.svelte
+@@ -21,7 +21,7 @@
+       <div class='vitals-left'>
+         <div class='individual-vital'>
+           <h5>Largest Contentful Paint</h5>
+-          <p data-testid="vital-value-LCP">{$vitals.LCP === undefined ? "TBD" : ($vitals.LCP.value).toFixed(3) + 's'}</p>
++          <p data-testid="vital-value-LCP">{$vitals.LCP === undefined ? "TBD" : ($vitals.LCP.value).toFixed(3) + 'ms'}</p>
+           {#if $vitals.LCP}
+             <p>Rating: 
+               <span class={$vitals.LCP.rating[0]} data-testid="vital-rating-LCP">{$vitals.LCP.rating.toUpperCase()}
+diff --git a/src/StateManager/StateManager.svelte b/src/StateManager/StateManager.svelte
+index 3bbe7d0..6fc50a0 100644
+--- a/src/StateManager/StateManager.svelte
++++ b/src/StateManager/StateManager.svelte
+@@ -14,7 +14,7 @@
+     <h4 class="title" data-testid="statemgr-title">COMPONENTS & PROPS</h4>
+   </div>
+   <ul data-testid="statemgr-list">
+-    {#each Object.entries(stateObj) as [file, state]}
++    {#each Object.entries(stateObj).reverse() as [file, state]}
+       <li class="fileName">
+         {file} : <span class="stateName">{"{ "}{state.join()}{" }"}</span>
+       </li>
+diff --git a/src/Terminal/XTerm.svelte b/src/Terminal/XTerm.svelte
+index f3b10e6..0d85865 100644
+--- a/src/Terminal/XTerm.svelte
++++ b/src/Terminal/XTerm.svelte
+@@ -12,7 +12,7 @@
+   const {ipcRenderer, BrowserWindow} = require('electron');
+   const Terminal = require('xterm').Terminal;
+ 
+-  const regex = /localhost:(\d{4,}$)/gm;
++  const regex = /localhost:(\d{5,}$)/gm;
+   let localhostToUse;
+ 
+   function findLocalhost(ptyReceivedString) {
+@@ -73,7 +73,7 @@
+       ipcRenderer.send('terminal-into', '\r');
+     };
+ 
+-    term.writeln('Welcome to SvelteStorm 5.0');
++    term.writeln('Welcome to SveltStorm 5.0');
+     // ipcRenderer.send("terminal-into", "ls -ila\r");
+ 
+     term.prompt();
+diff --git a/src/TimeTraveler/Card.svelte b/src/TimeTraveler/Card.svelte
+index 7bbfe87..d96973d 100644
+--- a/src/TimeTraveler/Card.svelte
++++ b/src/TimeTraveler/Card.svelte
+@@ -6,7 +6,7 @@
+     let componentName = Object.keys(component)[0];
+ 
+     function openCardInfo(){
+-        ifOpened = !ifOpened;
++        ifOpened = true;
+     }
+   
+ </script>
+diff --git a/src/TimeTraveler/Debugger.svelte b/src/TimeTraveler/Debugger.svelte
+index 8bc8dbc..8df53e9 100644
+--- a/src/TimeTraveler/Debugger.svelte
++++ b/src/TimeTraveler/Debugger.svelte
+@@ -44,7 +44,7 @@
+   ipcRenderer.on('SNAPSHOT', (event, data) => {
+     const singleCapturedSnapshot = createSnapshot(data);
+     // Update the store with newest snapshot if actually different
+-    if(JSON.stringify(collectionOfAllSnapshots[collectionOfAllSnapshots.length - 1]) !== JSON.stringify(singleCapturedSnapshot)) {
++    if(JSON.stringify(collectionOfAllSnapshots[0]) !== JSON.stringify(singleCapturedSnapshot)) {
+       snapshots.update(() => {
+         return [...collectionOfAllSnapshots, singleCapturedSnapshot];
+       });
+@@ -330,7 +330,7 @@
+       <button
+         data-testid={`snap-btn-${idx + 1}`}
+         on:click={() => {
+-          activeIndex = idx;
++          idx = activeIndex;
+           updateWindow(activeIndex);
+         }}>Snapshot {idx + 1}</button
+       >

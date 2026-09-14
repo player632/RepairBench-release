@@ -1,0 +1,129 @@
+name: 🏷️ Release to NPM
+
+on:
+  workflow_dispatch:
+    inputs:
+      dryrun:
+        type: boolean
+        description: Dry-Run
+      semver:
+        type: choice
+        description: Select the semver version bump (fix → patch, feat → minor, breaking change → major)
+        required: true
+        options:
+          - '' # empty option to force user to choose
+          - patch
+          - minor
+          - major
+          - preminor.alpha
+          - preminor.beta
+          - premajor.alpha
+          - premajor.beta
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  deploy-npm-latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Retrieve current Date Time in EST
+        shell: bash
+        run: echo "START_TIME=$(TZ=":America/New_York" date -R|sed 's/.....$//')" >> $GITHUB_ENV
+
+      - name: Current datetime - ${{ env.START_TIME }}
+        run: echo ${{ env.START_TIME }}
+
+      - name: Clone repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: ${{ !contains(fromJSON('["6pac", "ghiscoding"]'), github.actor) }}
+        name: Exit early when current actor is not allowed to push new release
+        run: |
+          echo "Error: Your GitHub username (${{ github.actor }}) is not on the allowed list of admins for this workflow"
+          exit 1
+
+      - name: Set NodeJS
+        uses: actions/setup-node@v6
+        with:
+          registry-url: 'https://registry.npmjs.org/'
+          node-version: 24
+
+      - name: Get npm cache directory path
+        id: npm-cache-dir-path
+        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ${{ steps.npm-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Current Branch name
+        run: |
+         echo ${{ github.head_ref || github.ref_name }}
+
+      - name: 🧪 Dry-Run - GitHub Release
+        if: ${{ inputs.dryrun == true }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          npm run release:ci -- --semver ${{ inputs.semver }} --branch ${{ github.head_ref || github.ref_name }} --create-release github --yes --dry-run
+
+      - name: GitHub Release 🏷️ / NPM Publish 📦
+        if: ${{ inputs.dryrun != true }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          npm run release:ci -- --semver ${{ inputs.semver }} --branch ${{ github.head_ref || github.ref_name }} --create-release github --yes
+
+      - name: Git Push with Diagnostics
+        env:
+          # Use the GitHub token for authentication
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git user
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+          # Show detailed branch information
+          echo "🔍 Current Branch Details:"
+          git branch -vv
+
+          # Show remote configurations
+          echo "🌐 Remote Configurations:"
+          git remote -v
+
+          # Show current HEAD and branch information
+          echo "📍 Current HEAD and Branch:"
+          git rev-parse HEAD
+          git rev-parse --abbrev-ref HEAD
+
+          # Attempt push
+          echo "🛫 Attempting Push:"
+          git push -u origin HEAD:master --verbose
+
+      - name: Real Last Resource Git Push
+        env:
+          # Use the GitHub token for authentication
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git user
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+          git push -u origin HEAD:master

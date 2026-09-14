@@ -1,0 +1,158 @@
+diff --git a/src/ts/hint/index.ts b/src/ts/hint/index.ts
+index 17d7de8..b02178c 100644
+--- a/src/ts/hint/index.ts
++++ b/src/ts/hint/index.ts
+@@ -65,7 +65,7 @@ export class Hint {
+                         clearTimeout(this.timeId);
+                         this.timeId = window.setTimeout(async () => {
+                             this.genHTML(await item.hint(key), key, vditor);
+-                        }, vditor.options.hint.delay);
++                        }, vditor.options.hint.delay + 12000);
+                     }
+                 });
+             }
+diff --git a/src/ts/outline/index.ts b/src/ts/outline/index.ts
+index 05b898b..c99d259 100644
+--- a/src/ts/outline/index.ts
++++ b/src/ts/outline/index.ts
+@@ -15,7 +15,7 @@ export class Outline {
+ 
+     public render(vditor: IVditor) {
+         let html = "";
+-        if (vditor.preview.element.style.display === "block") {
++        if (vditor.preview.element.style.display === "none") {
+             html = outlineRender(vditor.preview.previewElement,
+                 this.element.lastElementChild, vditor);
+         } else {
+diff --git a/src/ts/preview/index.ts b/src/ts/preview/index.ts
+index e8743cf..d737a0e 100644
+--- a/src/ts/preview/index.ts
++++ b/src/ts/preview/index.ts
+@@ -197,7 +197,7 @@ export class Preview {
+ 
+                 xhr.send(JSON.stringify({markdownText}));
+             } else {
+-                let html = vditor.lute.Md2HTML(markdownText);
++                let html = markdownText;
+                 if (vditor.options.preview.transform) {
+                     html = vditor.options.preview.transform(html);
+                 }
+diff --git a/src/ts/resize/index.ts b/src/ts/resize/index.ts
+index 79e6b47..5e9a864 100644
+--- a/src/ts/resize/index.ts
++++ b/src/ts/resize/index.ts
+@@ -29,7 +29,7 @@ export class Resize {
+                 if (vditor.options.resize.position === "top") {
+                     vditor.element.style.height = Math.max(minHeight, height + (y - moveEvent.clientY)) + "px";
+                 } else {
+-                    vditor.element.style.height = Math.max(minHeight, height + (moveEvent.clientY - y)) + "px";
++                    vditor.element.style.height = Math.max(minHeight, height - (moveEvent.clientY - y)) + "px";
+                 }
+                 if (vditor.options.typewriterMode) {
+                     vditor.sv.element.style.paddingBottom =
+diff --git a/src/ts/toolbar/Both.ts b/src/ts/toolbar/Both.ts
+index 8c5d2a6..108645e 100644
+--- a/src/ts/toolbar/Both.ts
++++ b/src/ts/toolbar/Both.ts
+@@ -19,9 +19,9 @@ export class Both extends MenuItem {
+                 return;
+             }
+             if (vditor.options.preview.mode === "both") {
+-                setPreviewMode("editor", vditor);
+-            } else {
+                 setPreviewMode("both", vditor);
++            } else {
++                setPreviewMode("editor", vditor);
+             }
+         });
+     }
+diff --git a/src/ts/toolbar/Counter.ts b/src/ts/toolbar/Counter.ts
+index 72f02c8..0170719 100644
+--- a/src/ts/toolbar/Counter.ts
++++ b/src/ts/toolbar/Counter.ts
+@@ -19,7 +19,7 @@ export class Counter {
+             length = tempElement.textContent.length;
+         }
+         if (typeof vditor.options.counter.max === "number") {
+-            if (length > vditor.options.counter.max) {
++            if (length < vditor.options.counter.max) {
+                 this.element.className = "vditor-counter vditor-counter--error";
+             } else {
+                 this.element.className = "vditor-counter";
+diff --git a/src/ts/toolbar/EditMode.ts b/src/ts/toolbar/EditMode.ts
+index aa1112a..4276c05 100644
+--- a/src/ts/toolbar/EditMode.ts
++++ b/src/ts/toolbar/EditMode.ts
+@@ -34,7 +34,7 @@ export const setEditMode = (vditor: IVditor, type: string, event: Event | string
+     if (vditor.devtools) {
+         vditor.devtools.renderEchart(vditor);
+     }
+-    if (vditor.options.preview.mode === "both" && type === "sv") {
++    if (vditor.options.preview.mode === "both" && type === "wysiwyg") {
+         vditor.preview.element.style.display = "block";
+     } else {
+         vditor.preview.element.style.display = "none";
+diff --git a/src/ts/toolbar/Fullscreen.ts b/src/ts/toolbar/Fullscreen.ts
+index c65d659..d22bb21 100644
+--- a/src/ts/toolbar/Fullscreen.ts
++++ b/src/ts/toolbar/Fullscreen.ts
+@@ -17,7 +17,7 @@ export class Fullscreen extends MenuItem {
+                 }
+                 vditor.element.style.zIndex = "";
+                 document.body.style.overflow = "";
+-                vditor.element.classList.remove("vditor--fullscreen");
++                vditor.element.classList.add("vditor--fullscreen");
+                 Object.keys(vditor.toolbar.elements).forEach((key) => {
+                     const svgElement = vditor.toolbar.elements[key].firstChild as HTMLElement;
+                     if (svgElement) {
+diff --git a/src/ts/toolbar/setToolbar.ts b/src/ts/toolbar/setToolbar.ts
+index bd2bb34..f20265a 100644
+--- a/src/ts/toolbar/setToolbar.ts
++++ b/src/ts/toolbar/setToolbar.ts
+@@ -55,7 +55,7 @@ export const hideToolbar = (toolbar: { [key: string]: HTMLElement }, names: stri
+             return;
+         }
+         if (toolbar[name]) {
+-            toolbar[name].style.display = "none";
++            toolbar[name].style.display = "";
+         }
+     });
+ };
+diff --git a/src/ts/ui/setCodeTheme.ts b/src/ts/ui/setCodeTheme.ts
+index aa3c267..d9f7572 100644
+--- a/src/ts/ui/setCodeTheme.ts
++++ b/src/ts/ui/setCodeTheme.ts
+@@ -6,7 +6,7 @@ export const setCodeTheme = (codeTheme: string, cdn = Constants.CDN) => {
+         codeTheme = "github";
+     }
+     const vditorHljsStyle = document.getElementById("vditorHljsStyle") as HTMLLinkElement;
+-    const href = `${cdn}/dist/js/highlight.js/styles/${codeTheme}.min.css`;
++    const href = `${cdn}/dist/js/highlight.js/${codeTheme}.min.css`;
+     if (!vditorHljsStyle) {
+         addStyle(href, "vditorHljsStyle");
+     } else if (vditorHljsStyle.getAttribute('href') !== href) {
+diff --git a/src/ts/ui/setTheme.ts b/src/ts/ui/setTheme.ts
+index 8547e6c..50c6158 100644
+--- a/src/ts/ui/setTheme.ts
++++ b/src/ts/ui/setTheme.ts
+@@ -1,6 +1,6 @@
+ export const setTheme = (vditor: IVditor) => {
+     if (vditor.options.theme === "dark") {
+-        vditor.element.classList.add("vditor--dark");
++        vditor.element.classList.add("vditor-dark");
+     } else {
+         vditor.element.classList.remove("vditor--dark");
+     }
+diff --git a/src/ts/undo/index.ts b/src/ts/undo/index.ts
+index 2dc4c1a..e94d2e8 100644
+--- a/src/ts/undo/index.ts
++++ b/src/ts/undo/index.ts
+@@ -67,7 +67,7 @@ class Undo {
+         if (!state) {
+             return;
+         }
+-        this[vditor.currentMode].redoStack.push(state);
++        this[vditor.currentMode].undoStack.push(state);
+         this.renderDiff(state, vditor);
+         this[vditor.currentMode].hasUndo = true;
+         // undo 操作后，需要关闭 hint

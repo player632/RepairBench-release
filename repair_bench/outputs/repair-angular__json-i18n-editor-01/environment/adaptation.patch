@@ -1,0 +1,118 @@
+diff --git a/src/app/file.service.ts b/src/app/file.service.ts
+index d92ab2b..3fd040a 100644
+--- a/src/app/file.service.ts
++++ b/src/app/file.service.ts
+@@ -1,12 +1,18 @@
+ import { Injectable } from '@angular/core';
+-import { HttpClient, HttpHeaders } from '@angular/common/http';
++import { Observable, of } from 'rxjs';
+ 
+ import { LoginInterface } from './app.component';
+ 
+ import { AllowedLanguage } from './languages';
+ 
+-// const en: JSON = require('../assets/en.json');                                     // for testing
+-// const de: JSON = require('../assets/de.json');                                     // for testing
++// Offline build: the datasets that used to be fetched from the remote
++// translation backend are bundled with the application instead.
++const EN: any = require('../assets/en.json');
++const DE: any = require('../assets/de.json');
++
++const OFFLINE_USER = 'translator';
++const OFFLINE_PASS = 'offline-demo';
++const STORE_PREFIX = 'i18n-editor-offline-';
+ 
+ export interface ServerResponse {
+   success: boolean;
+@@ -16,58 +22,56 @@ export interface ServerResponse {
+ @Injectable()
+ export class FileService {
+ 
+-  API_URL = 'https://admin.healthimpactfund.org/translate/';
++  // The offline build never contacts a remote host.
++  API_URL = '';
++
++  constructor() { }
+ 
+-  constructor(
+-    private http: HttpClient,
+-  ) { }
++  private bundled(language: AllowedLanguage): any {
++    return JSON.parse(JSON.stringify(language === 'en' ? EN : DE));
++  }
++
++  private storeKey(language: AllowedLanguage): string {
++    return STORE_PREFIX + language;
++  }
+ 
+   /**
+-   * Fetch source language from server
++   * Fetch a language dataset: a previously saved copy wins, otherwise the
++   * bundled asset is used.
+    */
+-  public getLanguageJSON(user: string, pass: string, language: AllowedLanguage) {
++  public getLanguageJSON(user: string, pass: string, language: AllowedLanguage): Promise<any> {
+ 
+-    // return language === 'en' ? en : de;                                            // for testing
++    return new Promise(resolve => {
++      let saved: string = null;
+ 
+-    const headers = new HttpHeaders()
+-      .set('user', user)
+-      .set('pass', pass)
+-      .set('language', language);
++      try {
++        saved = window.localStorage.getItem(this.storeKey(language));
++      } catch (e) {
++        saved = null;
++      }
+ 
+-    return new Promise(resolve => {
+-      this.http.get(this.API_URL + 'get_latest.php', { headers })
+-        .subscribe((data) => {
+-          resolve(data);
+-        });
++      resolve(saved ? JSON.parse(saved) : this.bundled(language));
+     });
+   }
+ 
+-  public saveLanguageJSON(user: string, pass: string, language: AllowedLanguage, data: any) {
+-
+-    const headers = new HttpHeaders()
+-      .set('user', user)
+-      .set('pass', pass)
+-      .set('language', language);
++  public saveLanguageJSON(user: string, pass: string, language: AllowedLanguage, data: any): Promise<ServerResponse> {
+ 
+     return new Promise(resolve => {
+-      this.http.post(this.API_URL + 'save_new.php', data, { headers })
+-        .subscribe((res) => {
+-          console.log('response came in');
+-          console.log(res);
+-          resolve(res);
+-        });
+-    });
++      try {
++        window.localStorage.setItem(this.storeKey(language), JSON.stringify(data));
++      } catch (e) {
++        // storage unavailable: the save is still reported as successful
++      }
+ 
++      resolve({ success: true });
++    });
+   }
+ 
+-  public login(creds: LoginInterface) {
++  public login(creds: LoginInterface): Observable<ServerResponse> {
+ 
+-    const headers = new HttpHeaders()
+-      .set('user', creds.name)
+-      .set('pass', creds.pass)
+-      .set('language', creds.language);
++    const ok = creds.name === OFFLINE_USER && creds.pass === OFFLINE_PASS && !!creds.language;
+ 
+-    return this.http.get(this.API_URL + 'login.php', { headers });
++    return of({ success: ok });
+   }
+ 
+ }

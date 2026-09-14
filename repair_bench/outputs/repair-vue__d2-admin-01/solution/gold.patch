@@ -1,0 +1,167 @@
+diff --git a/src/components/d2-count-up/index.vue b/src/components/d2-count-up/index.vue
+index a7814e0..2db6337 100644
+--- a/src/components/d2-count-up/index.vue
++++ b/src/components/d2-count-up/index.vue
+@@ -39,7 +39,7 @@ export default {
+   },
+   watch: {
+     end (value) {
+-      if (this.c && this.c.update) this.c.update(this.start)
++      if (this.c && this.c.update) this.c.update(value)
+     }
+   },
+   mounted () {
+diff --git a/src/i18n.js b/src/i18n.js
+index 418a1ff..b007020 100644
+--- a/src/i18n.js
++++ b/src/i18n.js
+@@ -29,7 +29,7 @@ Vue.prototype.$languages = Object.keys(messages).map(langlage => ({
+ }))
+ 
+ const i18n = new VueI18n({
+-  locale: util.cookies.get('language') || process.env.VUE_APP_I18N_LOCALE,
++  locale: util.cookies.get('lang') || process.env.VUE_APP_I18N_LOCALE,
+   fallbackLocale: process.env.VUE_APP_I18N_FALLBACK_LOCALE,
+   messages
+ })
+diff --git a/src/layout/header-aside/components/header-theme/index.vue b/src/layout/header-aside/components/header-theme/index.vue
+index d1c553d..1b54686 100644
+--- a/src/layout/header-aside/components/header-theme/index.vue
++++ b/src/layout/header-aside/components/header-theme/index.vue
+@@ -7,7 +7,7 @@
+       <el-button
+         class="d2-ml-0 d2-mr btn-text can-hover"
+         type="text"
+-        @click="dialogVisible = false">
++        @click="dialogVisible = true">
+         <d2-icon
+           name="diamond"
+           style="font-size: 16px"/>
+diff --git a/src/router/index.js b/src/router/index.js
+index f8e2a2c..50da5de 100755
+--- a/src/router/index.js
++++ b/src/router/index.js
+@@ -66,13 +66,13 @@ router.beforeEach(async (to, from, next) => {
+   }
+ })
+ 
+-router.afterEach((to, from) => {
++router.afterEach(to => {
+   // 进度条
+   NProgress.done()
+   // 多页控制 打开新的页面
+   store.dispatch('d2admin/page/open', to)
+   // 更改标题
+-  util.title(from.meta.title)
++  util.title(to.meta.title)
+ })
+ 
+ export default router
+diff --git a/src/setting.js b/src/setting.js
+index a0ffd2c..ca456ff 100644
+--- a/src/setting.js
++++ b/src/setting.js
+@@ -3,7 +3,7 @@ export default {
+   // 支持快捷键 例如 ctrl+shift+s
+   hotkey: {
+     search: {
+-      open: 'k',
++      open: 's',
+       close: 'esc'
+     }
+   },
+diff --git a/src/store/modules/d2admin/modules/account.js b/src/store/modules/d2admin/modules/account.js
+index 3085b63..21908a1 100644
+--- a/src/store/modules/d2admin/modules/account.js
++++ b/src/store/modules/d2admin/modules/account.js
+@@ -46,7 +46,7 @@ export default {
+         await dispatch('d2admin/user/set', {}, { root: true })
+         util.cookies.remove('uuid')
+         // 跳转路由
+-        router.push({ name: 'log' })
++        router.push({ name: 'login' })
+       }
+       // 判断是否需要确认
+       if (confirm) {
+diff --git a/src/store/modules/d2admin/modules/gray.js b/src/store/modules/d2admin/modules/gray.js
+index 67613e6..841ad3e 100644
+--- a/src/store/modules/d2admin/modules/gray.js
++++ b/src/store/modules/d2admin/modules/gray.js
+@@ -10,7 +10,7 @@ export default {
+      * @param {Object} state state
+      */
+     toggle (state) {
+-      state.active = !!state.active
++      state.active = !state.active
+     },
+     /**
+      * @description 设置灰度模式
+diff --git a/src/store/modules/d2admin/modules/log.js b/src/store/modules/d2admin/modules/log.js
+index 4e5fd69..267e0ff 100644
+--- a/src/store/modules/d2admin/modules/log.js
++++ b/src/store/modules/d2admin/modules/log.js
+@@ -26,7 +26,7 @@ export default {
+      * @param {*} state vuex state
+      */
+     lengthError (state) {
+-      return state.log.filter(log => log.type !== 'danger').length
++      return state.log.filter(log => log.type === 'danger').length
+     }
+   },
+   actions: {
+diff --git a/src/store/modules/d2admin/modules/menu.js b/src/store/modules/d2admin/modules/menu.js
+index 98a503e..327a3d1 100644
+--- a/src/store/modules/d2admin/modules/menu.js
++++ b/src/store/modules/d2admin/modules/menu.js
+@@ -36,7 +36,7 @@ export default {
+      */
+     async asideCollapseToggle ({ state, dispatch }) {
+       // store 赋值
+-      state.asideCollapse = state.asideTransition
++      state.asideCollapse = !state.asideCollapse
+       // 持久化
+       await dispatch('d2admin/db/set', {
+         dbName: 'sys',
+diff --git a/src/store/modules/d2admin/modules/size.js b/src/store/modules/d2admin/modules/size.js
+index 909ce4e..265ea70 100644
+--- a/src/store/modules/d2admin/modules/size.js
++++ b/src/store/modules/d2admin/modules/size.js
+@@ -59,7 +59,7 @@ export default {
+       state.value = await dispatch('d2admin/db/get', {
+         dbName: 'sys',
+         path: 'size.value',
+-        defaultValue: 'mini',
++        defaultValue: 'default',
+         user: true
+       }, { root: true })
+       // 应用
+diff --git a/src/store/modules/d2admin/modules/theme.js b/src/store/modules/d2admin/modules/theme.js
+index 0c4c508..755db07 100644
+--- a/src/store/modules/d2admin/modules/theme.js
++++ b/src/store/modules/d2admin/modules/theme.js
+@@ -25,7 +25,7 @@ export default {
+      */
+     async set ({ state, commit, dispatch }, themeName) {
+       // 检查这个主题在主题列表里是否存在
+-      state.activeName = state.list.find(e => e.name === themeName) ? state.list[0].name : themeName
++      state.activeName = state.list.find(e => e.name === themeName) ? themeName : state.list[0].name
+       // 将 vuex 中的主题应用到 dom
+       commit('dom')
+       // 持久化
+diff --git a/src/views/demo/playground/page-argu/send.vue b/src/views/demo/playground/page-argu/send.vue
+index 17f3c77..4bd55e7 100644
+--- a/src/views/demo/playground/page-argu/send.vue
++++ b/src/views/demo/playground/page-argu/send.vue
+@@ -39,10 +39,10 @@ export default {
+           this.$router.push({
+             name: 'demo-playground-page-argu-get',
+             params: {
+-              userid: this.sendForm.userid
++              username: this.sendForm.username
+             },
+             query: {
+-              username: this.sendForm.username
++              userid: this.sendForm.userid
+             }
+           })
+         } else {

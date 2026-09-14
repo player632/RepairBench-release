@@ -1,0 +1,507 @@
+/**
+ * Block-level table container built on prosemirror-tables. TableView is
+ * isolated so wrappers can swap it for a custom NodeView.
+ */
+
+import {
+  Node,
+  splitListForInsert,
+  Gapcursor,
+  warnOnDuplicateProseMirrorCopy,
+} from '@domternal/core';
+import type { CommandSpec, ToolbarItem, FloatingMenuItem } from '@domternal/core';
+import { TextSelection } from '@domternal/pm/state';
+import type { Transaction } from '@domternal/pm/state';
+import type { Node as PMNode } from '@domternal/pm/model';
+import type { EditorView, NodeView, NodeViewConstructor } from '@domternal/pm/view';
+import {
+  tableEditing,
+  columnResizing,
+  addColumnBefore,
+  addColumnAfter,
+  deleteColumn,
+  addRowBefore,
+  addRowAfter,
+  deleteRow,
+  deleteTable,
+  mergeCells,
+  splitCell,
+  toggleHeader,
+  toggleHeaderCell,
+  setCellAttr,
+  goToNextCell,
+  fixTables,
+  CellSelection,
+  selectedRect,
+  TableMap,
+  isInTable,
+} from '@domternal/pm/tables';
+
+import { TableView } from './TableView.js';
+import { createTable } from './helpers/createTable.js';
+import { deleteTableWhenAllCellsSelected } from './helpers/deleteTableWhenAllCellsSelected.js';
+import { constrainedAddColumn } from './helpers/constrainedColumn.js';
+import { createResizeSuppressionPlugin } from './plugins/resizeSuppressionPlugin.js';
+import { createCellSelectionPlugin } from './plugins/cellSelectionPlugin.js';
+import { TableRow } from './TableRow.js';
+import { TableCell } from './TableCell.js';
+import { TableHeader } from './TableHeader.js';
+
+declare module '@domternal/core' {
+  interface RawCommands {
+    insertTable: CommandSpec<[options?: { rows?: number; cols?: number; withHeaderRow?: boolean }]>;
+    deleteTable: CommandSpec;
+    addRowBefore: CommandSpec;
+    addRowAfter: CommandSpec;
+    deleteRow: CommandSpec;
+    addColumnBefore: CommandSpec;
+    addColumnAfter: CommandSpec;
+    deleteColumn: CommandSpec;
+    toggleHeaderRow: CommandSpec;
+    toggleHeaderColumn: CommandSpec;
+    toggleHeaderCell: CommandSpec;
+    mergeCells: CommandSpec;
+    splitCell: CommandSpec;
+    setCellAttribute: CommandSpec<[name: string, value: unknown]>;
+    goToNextCell: CommandSpec;
+    goToPreviousCell: CommandSpec;
+    fixTables: CommandSpec;
+    setCellSelection: CommandSpec<[position: { anchorCell: number; headCell?: number }]>;
+  }
+}
+
+export interface TableOptions {
+  /**
+   * Custom HTML attributes for the rendered table element.
+   */
+  HTMLAttributes: Record<string, unknown>;
+
+  /**
+   * Minimum cell width in pixels (floor when dragging).
+   * @default 25
+   */
+  cellMinWidth: number;
+
+  /**
+   * Default width for columns without an explicit colwidth attribute.
+   * Must match the columnResizing plugin default for consistent resize behavior.
+   * @default 100
+   */
+  defaultCellMinWidth: number;
+
+  /**
+   * Column resize behavior when dragging a column border.
+   * - `'neighbor'`: adjacent column compensates, table width stays constant (Google Docs style)
+   * - `'independent'`: only dragged column changes, table width grows/shrinks
+   * - `'redistribute'`: all columns redistribute to fill available width (prosemirror-tables default)
+   * @default 'neighbor'
+   */
+  resizeBehavior: 'neighbor' | 'independent' | 'redistribute';
+
+  /**
+   * Prevent the table from exceeding its container (.tableWrapper) width.
+   * When true: last-column resize is capped, add-column redistributes if needed.
+   * When false: original behavior (table can grow beyond container).
+   * Either way a table without explicit column widths is floored at
+   * defaultCellMinWidth per column: in a container narrower than that
+   * (e.g. a layout column), it keeps readable cells and the wrapper
+   * scrolls horizontally instead of crushing them.
+   * @default true
+   */
+  constrainToContainer: boolean;
+
+  /**
+   * Allow selecting the entire table as a node selection.
+   * @default false
+   */
+  allowTableNodeSelection: boolean;
+
+  /**
+   * Custom NodeView constructor. Override to provide framework-specific rendering.
+   * Set to null to disable custom NodeView.
+   */
+  View:
+    | (new (
+        node: PMNode,
+        cellMinWidth: number,
+        view: EditorView,
+        defaultCellMinWidth?: number,
+        constrainToContainer?: boolean
+      ) => NodeView)
+    | null;
+}
+
+export const Table = Node.create<TableOptions>({
+  name: 'table',
+  group: 'block',
+  content: 'tableRow+',
+  tableRole: 'table',
+  isolating: true,
+
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+      cellMinWidth: 25,
+      defaultCellMinWidth: 100,
+      resizeBehavior: 'neighbor',
+      constrainToContainer: true,
+      allowTableNodeSelection: false,
+      View: TableView,
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'table' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['table', { ...this.options.HTMLAttributes, ...HTMLAttributes }, ['tbody', 0]];
+  },
+
+  addExtensions() {
+    // Gapcursor is required to escape a table that is the document's last block:
+    // the table is `isolating`, so without a gap cursor the caret is trapped
+    // inside the last cell with no way to type below it.
+    return [TableRow, TableCell, TableHeader, Gapcursor];
+  },
+
+  addNodeView() {
+    const ViewClass = this.options.View;
+    const cellMinWidth = this.options.cellMinWidth;
+    const defaultCellMinWidth = this.options.defaultCellMinWidth;
+    const constrainToContainer = this.options.constrainToContainer;
+
+    if (!ViewClass) {
+      return undefined as unknown as NodeViewConstructor;
+    }
+
+    return (node: PMNode, view: EditorView) =>
+      new ViewClass(
+        node,
+        cellMinWidth,
+        view,
+        defaultCellMinWidth,
+        constrainToContainer
+      );
+  },
+
+  addCommands() {
+    return {
+      insertTable:
+        (options?: { rows?: number; cols?: number; withHeaderRow?: boolean }) =>
+        ({ state, tr, dispatch }) => {
+          // Prevent insertion inside tables and code blocks
+          const $from = state.selection.$from;
+          for (let d = $from.depth; d > 0; d--) {
+            const node = $from.node(d);
+            if (node.type.name === 'table') return false;
+            if (node.type.spec.code) return false;
+          }
+
+          const rows = options?.rows ?? 3;
+          const cols = options?.cols ?? 3;
+          const withHeaderRow = options?.withHeaderRow ?? true;
+          const table = createTable(state.schema, rows, cols, withHeaderRow);
+
+          // List-item-aware path: cursor in the LABEL paragraph of a
+          // list/task item. The table belongs at TOP LEVEL, not nested
+          // inside the list item. The util splits the parent list around
+          // the current item (empty label is consumed).
+          const listRange = splitListForInsert(state, tr);
+          if (listRange) {
+            if (!dispatch) return true;
+            tr.replaceWith(listRange.from, listRange.to, table);
+            tr.setSelection(TextSelection.near(tr.doc.resolve(listRange.from + 1)));
+            dispatch(tr.scrollIntoView());
+            return true;
+          }
+
+          if (!dispatch) {
+            return true;
+          }
+
+          const offset = tr.selection.from + 1;
+          tr.replaceSelectionWith(table)
+            .scrollIntoView()
+            .setSelection(TextSelection.near(tr.doc.resolve(offset)));
+          dispatch(tr);
+
+          return true;
+        },
+
+      deleteTable:
+        () =>
+        ({ state, dispatch }) => {
+          return deleteTable(state, dispatch);
+        },
+
+      addRowBefore:
+        () =>
+        ({ state, dispatch }) => {
+          return addRowBefore(state, dispatch);
+        },
+
+      addRowAfter:
+        () =>
+        ({ state, dispatch }) => {
+          return addRowAfter(state, dispatch);
+        },
+
+      deleteRow:
+        () =>
+        ({ state, dispatch }) => {
+          if (!isInTable(state)) return false;
+          const rect = selectedRect(state);
+          if (rect.top === 0 && rect.bottom === rect.map.height) {
+            return deleteTable(state, dispatch);
+          }
+          return deleteRow(state, dispatch);
+        },
+
+      addColumnBefore:
+        () =>
+        ({ state, dispatch, editor }) => {
+          if (!this.options.constrainToContainer || !dispatch) {
+            return addColumnBefore(state, dispatch);
+          }
+          const view = editor.view as EditorView;
+          return constrainedAddColumn(
+            addColumnBefore,
+            view,
+            this.options.cellMinWidth,
+            this.options.defaultCellMinWidth
+          );
+        },
+
+      addColumnAfter:
+        () =>
+        ({ state, dispatch, editor }) => {
+          if (!this.options.constrainToContainer || !dispatch) {
+            return addColumnAfter(state, dispatch);
+          }
+          const view = editor.view as EditorView;
+          return constrainedAddColumn(
+            addColumnAfter,
+            view,
+            this.options.cellMinWidth,
+            this.options.defaultCellMinWidth
+          );
+        },
+
+      deleteColumn:
+        () =>
+        ({ state, dispatch }) => {
+          if (!isInTable(state)) return false;
+          const rect = selectedRect(state);
+          if (rect.left === 0 && rect.right === rect.map.width) {
+            return deleteTable(state, dispatch);
+          }
+          if (!dispatch) return true;
+
+          let captured: Transaction | undefined;
+          deleteColumn(state, (tr) => {
+            captured = tr;
+          });
+          if (!captured) return false;
+
+          const table = captured.doc.nodeAt(rect.tableStart - 1);
+          if (table) {
+            const map = TableMap.get(table);
+            const targetCol = Math.min(rect.left, map.width - 1);
+            const cellOffset = map.map[targetCol];
+            if (cellOffset !== undefined) {
+              const $pos = captured.doc.resolve(rect.tableStart + cellOffset + 1);
+              captured.setSelection(TextSelection.near($pos));
+            }
+          }
+
+          dispatch(captured);
+          return true;
+        },
+
+      toggleHeaderRow:
+        () =>
+        ({ state, dispatch }) => {
+          return toggleHeader('row')(state, dispatch);
+        },
+
+      toggleHeaderColumn:
+        () =>
+        ({ state, dispatch }) => {
+          return toggleHeader('column')(state, dispatch);
+        },
+
+      toggleHeaderCell:
+        () =>
+        ({ state, dispatch }) => {
+          return toggleHeaderCell(state, dispatch);
+        },
+
+      mergeCells:
+        () =>
+        ({ state, dispatch }) => {
+          return mergeCells(state, dispatch);
+        },
+
+      splitCell:
+        () =>
+        ({ state, dispatch }) => {
+          return splitCell(state, dispatch);
+        },
+
+      setCellAttribute:
+        (name: string, value: unknown) =>
+        ({ state, dispatch }) => {
+          return setCellAttr(name, value)(state, dispatch);
+        },
+
+      goToNextCell:
+        () =>
+        ({ state, dispatch }) => {
+          return goToNextCell(1)(state, dispatch);
+        },
+
+      goToPreviousCell:
+        () =>
+        ({ state, dispatch }) => {
+          return goToNextCell(-1)(state, dispatch);
+        },
+
+      fixTables:
+        () =>
+        ({ state, dispatch }) => {
+          if (dispatch) {
+            const tr = fixTables(state);
+            if (tr) dispatch(tr);
+          }
+          return true;
+        },
+
+      setCellSelection:
+        (position: { anchorCell: number; headCell?: number }) =>
+        ({ tr, dispatch }) => {
+          const selection = CellSelection.create(tr.doc, position.anchorCell, position.headCell);
+          tr.setSelection(selection);
+          if (dispatch) {
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    const editor = this.editor;
+
+    /** Check if cursor is inside a list item (defer Tab/Shift-Tab to list extensions). */
+    const isInListItem = (): boolean => {
+      if (!editor) return false;
+      const { $from } = editor.state.selection;
+      for (let d = $from.depth; d >= 0; d--) {
+        const name = $from.node(d).type.name;
+        if (name === 'listItem' || name === 'taskItem') return true;
+      }
+      return false;
+    };
+
+    /** Delete the entire table when all cells are selected (Backspace/Delete). */
+    const deleteTableHandler = (): boolean => {
+      if (!editor) return false;
+      return deleteTableWhenAllCellsSelected({
+        state: editor.state,
+        dispatch: editor.view.dispatch,
+      });
+    };
+
+    return {
+      Tab: () => {
+        if (!editor || isInListItem()) return false;
+
+        // Try to move to next cell
+        if (editor.commands['goToNextCell']?.()) {
+          return true;
+        }
+
+        // If no next cell, add a row and move into it
+        if (editor.commands['addRowAfter']?.()) {
+          editor.commands['goToNextCell']?.();
+          return true;
+        }
+
+        return false;
+      },
+
+      'Shift-Tab': () => {
+        if (!editor || isInListItem()) return false;
+        return editor.commands['goToPreviousCell']?.() ?? false;
+      },
+
+      Backspace: deleteTableHandler,
+      'Mod-Backspace': deleteTableHandler,
+      Delete: deleteTableHandler,
+      'Mod-Delete': deleteTableHandler,
+    };
+  },
+
+  addToolbarItems(): ToolbarItem[] {
+    return [
+      {
+        type: 'button',
+        name: 'table',
+        command: 'insertTable',
+        icon: 'table',
+        label: 'Insert Table',
+        group: 'insert',
+        priority: 140,
+      },
+    ];
+  },
+
+  addFloatingMenuItems(): FloatingMenuItem[] {
+    return [
+      {
+        name: 'table',
+        label: 'Table',
+        description: 'Insert a simple table',
+        icon: 'table',
+        group: 'Media',
+        priority: 190,
+        keywords: ['table', 'grid', 'rows', 'columns'],
+        command: 'insertTable',
+      },
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    /* prosemirror-tables is identity-compared too, and more visibly than most:
+       every table command tests the selection with `instanceof CellSelection`,
+       so a second copy leaves the whole table toolbar inert on a selection the
+       table itself produced. Core cannot register this one, because core does
+       not import the package. */
+    warnOnDuplicateProseMirrorCopy(
+      'prosemirror-tables',
+      CellSelection,
+      '@domternal/extension-table'
+    );
+
+    return [
+      createResizeSuppressionPlugin({
+        resizeBehavior: this.options.resizeBehavior,
+        cellMinWidth: this.options.cellMinWidth,
+        defaultCellMinWidth: this.options.defaultCellMinWidth,
+        constrainToContainer: this.options.constrainToContainer,
+      }),
+
+      columnResizing({
+        cellMinWidth: this.options.cellMinWidth,
+        defaultCellMinWidth: this.options.defaultCellMinWidth,
+      }),
+
+      tableEditing({
+        allowTableNodeSelection: this.options.allowTableNodeSelection,
+      }),
+
+      createCellSelectionPlugin(),
+    ];
+  },
+});

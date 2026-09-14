@@ -1,0 +1,57 @@
+import {Component, HostListener} from '@angular/core';
+import {BreakpointObserver, Breakpoints} from '@angular/cdk/layout';
+import {ModeToggleService} from "./services/light-dark-mode/mode-toggle.service";
+import {Mode} from './services/light-dark-mode/mode-toggle.model';
+import {toSignal} from "@angular/core/rxjs-interop";
+import {map} from "rxjs/operators";
+import {TranslatePipe} from "@ngx-translate/core";
+import {LoadingBarModule} from "@ngx-loading-bar/core";
+import {SequencerComponent} from './components/sequencer/sequencer.component';
+// Repair-Bench instrumentation
+import {RbProbe} from './services/rb-probe/rb-probe.service';
+
+@Component({
+    selector: 'app-root',
+    templateUrl: './app.component.html',
+    styleUrls: ['./app.component.scss'],
+    standalone: true,
+    imports: [SequencerComponent, TranslatePipe, LoadingBarModule]
+})
+export class AppComponent {
+  isPortrait: boolean = false;
+  isLandscape: boolean = false;
+  mode: Mode = Mode.LIGHT;
+
+  //in Breakpoints.Web and in landscape 1280px is the limit
+  readonly isMobile = toSignal(
+    this.responsive.observe([Breakpoints.Web]).pipe(
+      map(result => !result.matches)
+    ),
+    { initialValue: true }
+  );
+
+  constructor(private readonly responsive: BreakpointObserver,
+              private readonly modeToggleService: ModeToggleService,
+              // Repair-Bench instrumentation: attach the window.__rb probe.
+              readonly rbProbe: RbProbe) {
+    this.modeToggleService.modeChanged$.subscribe(x => this.mode = x);
+    this.checkOrientation();
+  }
+
+  @HostListener('window:orientationchange', ['$event'])
+  onOrientationChange(): void {
+    this.checkOrientation();
+  }
+
+  checkOrientation(): void {
+    const orientation = window.screen.orientation.angle;
+    this.isPortrait = orientation === 0 || orientation === 180;
+    this.isLandscape = orientation === 90 || orientation === -90;
+  }
+
+  protected readonly Mode = Mode;
+
+  goToMainPage() {
+     window.location.reload();
+  }
+}

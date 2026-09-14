@@ -1,0 +1,88 @@
+captainVersion: 4
+services:
+  $$cap_appname:
+    caproverExtra:
+      containerHttpPort: 8080
+    image: meysam81/parse-dmarc:$$cap_PARSE_DMARC_VERSION
+    environment:
+      PARSE_DMARC_CONFIG: /app/config.json
+      PARSE_DMARC_METRICS: $$cap_PARSE_DMARC_METRICS
+      IMAP_HOST: $$cap_IMAP_HOST
+      IMAP_PORT: $$cap_IMAP_PORT
+      IMAP_USERNAME: $$cap_IMAP_USERNAME
+      IMAP_PASSWORD: $$cap_IMAP_PASSWORD
+      IMAP_MAILBOX: $$cap_IMAP_MAILBOX
+      IMAP_USE_TLS: $$cap_IMAP_USE_TLS
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      FETCH_INTERVAL: $$cap_FETCH_INTERVAL
+      DATABASE_PATH: /data/db.sqlite
+    volumes:
+      - $$cap_appname-data:/data
+
+caproverOneClickApp:
+  displayName: Parse DMARC
+  description: Monitor who's sending email on behalf of your domain. Catch spoofing. Stop phishing.
+  isOfficial: false
+  instructions:
+    start: |-
+      Parse DMARC automatically fetches DMARC reports from your inbox, parses them, and displays everything in a beautiful dashboard.
+
+      Before deploying, make sure you have:
+      1. Set up a DMARC DNS record on your domain (_dmarc.yourdomain.com)
+      2. IMAP credentials to fetch reports (Gmail, Outlook, etc.)
+
+      For Gmail, you'll need an App Password, not your regular password.
+    end: |-
+      Parse DMARC has been successfully deployed!
+
+      Next steps:
+      1. Access the dashboard at `https://$$cap_appname.$$cap_root_domain`
+      2. Configure your DMARC DNS record: `_dmarc.yourdomain.com TXT v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com`
+      3. Wait 24-48 hours for reports to start arriving
+
+      For more information, visit: https://github.com/meysam81/parse-dmarc
+  variables:
+    - id: $$cap_PARSE_DMARC_VERSION
+      label: Application | Parse DMARC Version
+      description: Check out the releases page for valid versions https://github.com/meysam81/parse-dmarc/releases
+      defaultValue: v1
+      validRegex: /.{1,}/
+    - id: $$cap_PARSE_DMARC_METRICS
+      label: Application | Enable Prometheus Metrics
+      description: Enable Prometheus metrics endpoint at /metrics
+      defaultValue: "true"
+      validRegex: /^(true|false)$/
+    - id: $$cap_IMAP_HOST
+      label: Email | IMAP Host
+      description: IMAP server hostname (e.g., imap.gmail.com for Gmail, outlook.office365.com for Outlook)
+      defaultValue: imap.gmail.com
+      validRegex: /.{1,}/
+    - id: $$cap_IMAP_PORT
+      label: Email | IMAP Port
+      description: IMAP server port (typically 993 for TLS)
+      defaultValue: "993"
+      validRegex: /^[0-9]{1,5}$/
+    - id: $$cap_IMAP_USERNAME
+      label: Email | IMAP Username
+      description: Email address to fetch DMARC reports from
+      validRegex: /.{1,}/
+    - id: $$cap_IMAP_PASSWORD
+      label: Email | IMAP Password
+      description: IMAP password or app-specific password (for Gmail, use App Password)
+      validRegex: /.{1,}/
+    - id: $$cap_IMAP_MAILBOX
+      label: Email | IMAP Mailbox
+      description: Mailbox to fetch reports from
+      defaultValue: INBOX
+      validRegex: /.{1,}/
+    - id: $$cap_IMAP_USE_TLS
+      label: Email | Use TLS
+      description: Use TLS for IMAP connection
+      defaultValue: "true"
+      validRegex: /^(true|false)$/
+    - id: $$cap_FETCH_INTERVAL
+      label: Application | Fetch Interval (seconds)
+      description: Interval in seconds between fetch cycles (default 5 minutes = 300 seconds)
+      defaultValue: "300"
+      validRegex: /^[0-9]{1,}$/

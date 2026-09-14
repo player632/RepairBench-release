@@ -1,0 +1,61 @@
+diff --git a/index.html b/index.html
+index d84485e..977b3dc 100644
+--- a/index.html
++++ b/index.html
+@@ -6,10 +6,6 @@
+     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+     <title>Minesweeper</title>
+     <link rel="stylesheet" href="css/main.css">
+-    <script
+-    src="https://code.jquery.com/jquery-3.2.1.min.js"
+-    integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+-    crossorigin="anonymous"></script>
+ </head>
+ <body>   
+     <div class="flex-container">
+diff --git a/js/main.js b/js/main.js
+index 6930208..a5f7841 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -19,6 +19,30 @@ var colors = [
+   '#7A7A7A',
+ ];
+ 
++/*----- RB adaptation: seeded entropy (replaces the seed's only nondeterministic input) -----*/
++// The seed drew BOTH mine-placement coordinates in addBombs() from Math.random(), so no board - and
++// therefore no reading of one - was reproducible across runs (measured on this host: two reloads of
++// the same page produced different mine sets). This replaces ONLY that entropy source with a
++// module-level seeded 32-bit LCG, using the constants of the delivered same-subject precedent
++//
++// 1013904223, >>> 0, / 2^32). The range arithmetic, the collision retry (`if (!currentCell.bomb)`),
++// the mine count, the loop shape and both call sites are byte-identical to the seed, and the stream
++// is a single script-level one (it is NOT reset per board), so consecutive boards still differ from
++// each other exactly as they did in the seed - they are just the same boards every run. The precedent
++// had ONE Math.random() call site; this seed has TWO (row and col, inside the same loop iteration),
++// and both draw CONSECUTIVE values from that SAME single stream: one LCG instance, never two, and
++// rbSeed is never re-seeded per board, per difficulty change or per draw.
++// `let`/`const` are deliberate: main.js is a CLASSIC script, so a top-level `let` enters the global
++// lexical environment and does NOT become a window property. The stream is therefore private to this
++// script - matching the precedent's module-level privacy - and is neither readable nor resettable
++// from the console or from the instrumentation probe, so it cannot be used as a cheat knob.
++// 0 application logic is changed by this patch.
++let rbSeed = 0x9e3779b9;
++const rbRandom = () => {
++  rbSeed = (Math.imul(rbSeed, 1664525) + 1013904223) >>> 0;
++  return rbSeed / 4294967296;
++};
++
+ /*----- app's state (variables) -----*/
+ var size = 16;
+ var board;
+@@ -166,8 +190,8 @@ function getBombCount() {
+ function addBombs() {
+   var currentTotalBombs = sizeLookup[`${size}`].totalBombs;
+   while (currentTotalBombs !== 0) {
+-    var row = Math.floor(Math.random() * size);
+-    var col = Math.floor(Math.random() * size);
++    var row = Math.floor(rbRandom() * size);
++    var col = Math.floor(rbRandom() * size);
+     var currentCell = board[row][col]
+     if (!currentCell.bomb){
+       currentCell.bomb = true

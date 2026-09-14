@@ -1,0 +1,158 @@
+diff --git a/src/app/rb-local-api.ts b/src/app/rb-local-api.ts
+new file mode 100644
+index 0000000..caf42b0
+--- /dev/null
++++ b/src/app/rb-local-api.ts
+@@ -0,0 +1,113 @@
++/* RepairBench offline transport adapter for repair-angular__ng-lite-todo-01.
++ *
++ * WHY THIS FILE EXISTS: the seed application reads and writes its todo list through a remote
++ * Azure Functions REST endpoint declared in src/environments/environment.ts. The benchmark lane
++ * is offline by construction (task.toml [environment] allow_internet = false), so the transport
++ * is replaced here and ONLY here: the three call sites in src/app/task.service.ts keep their own
++ * URL construction, their own JSON bodies, their own module-level cache and their own control
++ * flow, and every line of application logic stays under test.
++ *
++ * CONTRACT MIRRRORED (read off the seed's own call sites, not invented):
++ *   GET    <api>/users/<userId>/tasks/        -> 200, JSON array of Task
++ *   POST   <api>/users/<userId>/tasks/        -> 201, JSON Task (server assigns id, completed=false)
++ *   PATCH  <api>/users/<userId>/tasks/<id>    -> 200, JSON Task; only recognised fields are applied
++ *   anything else                             -> 404, JSON { error: 'not found' }
++ * A PATCH body that does not carry a boolean "completed" field is accepted with 200 and changes
++ * nothing, which is what a real backend of this shape does with an unknown field. That fidelity is
++ * deliberate: it is what makes a wrong request payload observable as a persisted-state difference
++ * instead of as a transport error.
++ *
++ * DETERMINISM: the row table lives in module scope only. There is no localStorage, no
++ * sessionStorage, no cookie, no IndexedDB, no timer and no randomness in here, so every document
++ * load starts from the same five rows and no checkpoint can inherit another checkpoint's writes.
++ * The passive request log is exported for the read-only observation bridge; the adapter never
++ * reads it back and the application never sees it.
++ */
++export interface RbApiTask {
++  id: number;
++  completed: boolean;
++  description: string;
++}
++
++export interface RbApiLogEntry {
++  method: string;
++  path: string;
++  body: string;
++  status: number;
++}
++
++export interface RbApiResponse {
++  status: number;
++  ok: boolean;
++  json(): Promise<any>;
++}
++
++const SEED_ROWS: RbApiTask[] = [
++  { id: 1, completed: true, description: 'buy milk' },
++  { id: 2, completed: false, description: 'walk the dog' },
++  { id: 3, completed: false, description: 'write the report' },
++  { id: 4, completed: true, description: 'call the dentist' },
++  { id: 5, completed: false, description: 'water the plants' }
++];
++
++let rows: RbApiTask[] = SEED_ROWS.map((t) => ({ id: t.id, completed: t.completed, description: t.description }));
++let nextId = 6;
++
++export const rbApiLog: RbApiLogEntry[] = [];
++
++function copyOf(t: RbApiTask): RbApiTask {
++  return { id: t.id, completed: t.completed, description: t.description };
++}
++
++function reply(status: number, payload: any): RbApiResponse {
++  return { status: status, ok: status >= 200 && status < 300, json: () => Promise.resolve(payload) };
++}
++
++function parseBody(body: string): any {
++  try {
++    const v = JSON.parse(body);
++    return v && typeof v === 'object' ? v : {};
++  } catch (e) {
++    return {};
++  }
++}
++
++function stripToPath(url: string): string {
++  const i = String(url).indexOf('/users/');
++  return i >= 0 ? String(url).slice(i) : String(url);
++}
++
++export function rbFetch(url: string, init?: { method?: string; body?: string }): Promise<RbApiResponse> {
++  const method = String((init && init.method) || 'GET').toUpperCase();
++  const body = String((init && init.body) || '');
++  const path = stripToPath(url);
++  const collectionHit = /^\/users\/[^/]+\/tasks\/?$/.exec(path);
++  const itemHit = /^\/users\/[^/]+\/tasks\/(\d+)\/?$/.exec(path);
++  let status = 404;
++  let payload: any = { error: 'not found' };
++  if (collectionHit && method === 'GET') {
++    status = 200;
++    payload = rows.map(copyOf);
++  } else if (collectionHit && method === 'POST') {
++    const data = parseBody(body);
++    const description = typeof data.description === 'string' ? data.description : '';
++    const created: RbApiTask = { id: nextId, completed: false, description: description };
++    nextId = nextId + 1;
++    rows.push(created);
++    status = 201;
++    payload = copyOf(created);
++  } else if (itemHit && method === 'PATCH') {
++    const wantedId = Number(itemHit[1]);
++    const found = rows.filter((t) => t.id === wantedId)[0];
++    if (found) {
++      const data = parseBody(body);
++      if (typeof data.completed === 'boolean') {
++        found.completed = data.completed;
++      }
++      status = 200;
++      payload = copyOf(found);
++    }
++  }
++  rbApiLog.push({ method: method, path: path, body: body, status: status });
++  return Promise.resolve(reply(status, payload));
++}
+diff --git a/src/app/task.service.ts b/src/app/task.service.ts
+index 8260507..9eeb911 100644
+--- a/src/app/task.service.ts
++++ b/src/app/task.service.ts
+@@ -1,5 +1,6 @@
+ import { Task } from './task';
+-import { environment } from '../environments/environment';
++import { environment } from '../environments/environment';
++import { rbFetch } from './rb-local-api';
+ 
+ let userId = localStorage.getItem('userId');
+ if (!userId) {
+@@ -18,7 +19,7 @@
+ 
+ export async function getTasks(filter: TaskFilter = TaskFilter.All): Promise<Task[]> {
+   if (tasks === undefined) {
+-    const response = await fetch(`${apiUrl}/tasks/`);
++    const response = await rbFetch(`${apiUrl}/tasks/`);
+     tasks = await response.json() as Task[];
+   }
+ 
+@@ -33,7 +34,7 @@
+ }
+ 
+ export async function addTask(description: string) {
+-  const response = await fetch(`${apiUrl}/tasks/`, {
++  const response = await rbFetch(`${apiUrl}/tasks/`, {
+     method: 'POST',
+     body: JSON.stringify({ description })
+   });
+@@ -43,7 +44,7 @@
+ 
+ export async function setTaskCompleted(task: Task, completed: boolean) {
+   task.completed = completed;
+-  await fetch(`${apiUrl}/tasks/${task.id}`, {
++  await rbFetch(`${apiUrl}/tasks/${task.id}`, {
+     method: 'PATCH',
+     body: JSON.stringify({ completed })
+   });

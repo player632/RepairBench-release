@@ -1,0 +1,396 @@
+name: CI
+on: [push, pull_request]
+
+# ---------------------------------------------------------------
+# Tier A — unit + diag-suite (Week 1 / v1.5.7-pre).
+#
+# unit:        gofmt, vet, frontend build, race-detector tests.
+# diag-suite:  builds the container, hits every /api/diag/<name>
+#              endpoint with a known api_key, asserts verdict==pass.
+#
+# api_key strategy: the job mints a random key per run and injects it
+# with the API_KEY environment variable, which takes precedence over
+# the value iplayer-arr would otherwise generate into BoltDB. The key
+# used to be scraped from GET /api/config; that endpoint authenticates
+# now and no longer returns the key at all (GHSA-3hfw-5v8p-p588). No
+# external secret is required: the key is throwaway and lives only for
+# the lifetime of the container.
+#
+# Readiness is polled on /api/healthz rather than /api/status, because
+# /api/status now authenticates.
+#
+# Approved plan: /home/lns/.claude/plans/i-think-we-need-clever-moth.md
+# ---------------------------------------------------------------
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: go vet
+        run: go vet ./...
+
+      # gofmt scope note: internal/bbc/subtitles_test.go and
+      # internal/download/worker_truncation_test.go are pre-existing
+      # dirty (gofmt-flagged by upstream commits before the Tier A
+      # framework landed). They're excluded here rather than blocking
+      # CI on a re-format that isn't this PR's job. Anything else
+      # gofmt-flagged is a regression and fails the build.
+      - name: gofmt
+        run: |
+          dirty=$(gofmt -l . | grep -v -E '^(internal/bbc/subtitles_test\.go|internal/download/worker_truncation_test\.go)$' || true)
+          if [ -n "$dirty" ]; then
+            echo "gofmt reported new dirty files:"
+            echo "$dirty"
+            exit 1
+          fi
+
+      # ffmpeg gives the LookPath-gated RunFFmpeg integration tests a
+      # real binary; without it they skip silently. The runner image
+      # (docker.gitea.com/runner-images:ubuntu-latest) runs as root, so
+      # no sudo is needed.
+      - name: Install ffmpeg
+        run: apt-get update && apt-get install -y --no-install-recommends ffmpeg
+
+      - name: go test
+        run: go test ./... -race
+
+  diag-suite:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build container
+        run: docker build -t iplayer-arr:ci .
+
+      - name: Run diag suite
+        id: diag
+        run: |
+          set -euo pipefail
+          NAME="iplayer-arr-ci-${{ github.run_id }}"
+
+          # The Gitea Actions act runner shares /var/run/docker.sock with
+          # the host, so spawned containers are siblings on the host's
+          # docker daemon (not on a runner-private network). From the
+          # runner, the host is reachable at the gateway IP on the
+          # runner's default route. Bind the published port to that
+          # gateway IP (not 0.0.0.0) to keep the diag container off the
+          # host's LAN-facing interfaces.
+          #
+          # The act runner image does not include iproute2, so parse
+          # /proc/net/route directly. The default route is the row with
+          # Destination "00000000"; the Gateway column is 8 hex chars
+          # in little-endian byte order (e.g. 010012AC -> 172.18.0.1).
+          echo "::group::runner /proc/net/route"
+          cat /proc/net/route
+          echo "::endgroup::"
+          ROUTE_HEX=$(awk '$2 == "00000000" {print $3; exit}' /proc/net/route)
+          if [ -z "$ROUTE_HEX" ] || [ "${#ROUTE_HEX}" -ne 8 ]; then
+            echo "Could not parse default-route gateway from /proc/net/route (got: '$ROUTE_HEX')"
+            exit 1
+          fi
+          HOST_IP="$(printf '%d' "0x${ROUTE_HEX:6:2}").$(printf '%d' "0x${ROUTE_HEX:4:2}").$(printf '%d' "0x${ROUTE_HEX:2:2}").$(printf '%d' "0x${ROUTE_HEX:0:2}")"
+          echo "Docker host gateway: $HOST_IP"
+
+          # Let Docker pick a free host port (avoids collisions with
+          # services on the runner host, e.g. cloudflare-tunnel on
+          # 62123 surfaced during PR #47 main-push). The empty host
+          # port in HOST_IP::62001 triggers automatic assignment; we
+          # read the allocated port back via `docker port`.
+          # Mint a throwaway key and inject it, rather than scraping one
+          # back out of the API. API_KEY takes precedence over the
+          # generated value; see cmd/iplayer-arr/main.go resolveAPIKey.
+          KEY=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          if [ "${#KEY}" -ne 32 ]; then
+            echo "::error::Could not generate a 32-char API key (got '${#KEY}' chars)"
+            exit 1
+          fi
+
+          docker run -d --rm \
+            --name "$NAME" \
+            --tmpfs /config:rw,size=64m \
+            --tmpfs /downloads:rw,size=64m \
+            -e API_KEY="$KEY" \
+            -p "${HOST_IP}::62001" \
+            iplayer-arr:ci
+
+          PORT=$(docker port "$NAME" 62001/tcp | head -1 | cut -d: -f2)
+          if [ -z "$PORT" ]; then
+            echo "::error::Could not read assigned host port from docker port"
+            docker logs "$NAME" || true
+            exit 1
+          fi
+          echo "Docker assigned host port: $PORT"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+
+          # Wait up to 30s for the unauthenticated liveness probe.
+          for i in $(seq 1 30); do
+            if curl -fsS "http://${HOST_IP}:${PORT}/api/healthz" >/dev/null 2>&1; then
+              echo "iplayer-arr ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "iplayer-arr did not become ready within 30s"
+              docker logs "$NAME" || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Regression assertion for GHSA-3hfw-5v8p-p588: the dashboard
+          # API must refuse an unauthenticated caller, and must not hand
+          # back the key even to an authenticated one.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://${HOST_IP}:${PORT}/api/config")
+          if [ "$code" != "401" ]; then
+            echo "::error::GET /api/config without a credential returned $code, want 401"
+            exit 1
+          fi
+          if curl -fsS -H "X-Api-Key: ${KEY}" "http://${HOST_IP}:${PORT}/api/config" | jq -e 'has("api_key")' >/dev/null; then
+            echo "::error::GET /api/config still returns an api_key field"
+            exit 1
+          fi
+
+          # storage joins the v1.5.6 set here in diag-suite (it works in a
+          # CI container against a tmpfs /downloads thanks to the tmpfs
+          # free-space carve-out). network / geo / clock are smoke-only:
+          # they need real outbound that the CI container doesn't have.
+          fail=0
+          for ep in sonarr-handshake ffmpeg bbc sab auth-paths storage; do
+            echo "::group::diag ${ep}"
+            body=$(curl -fsS "http://${HOST_IP}:${PORT}/api/diag/${ep}?apikey=${KEY}")
+            echo "$body" | jq .
+            if ! echo "$body" | jq -e '.verdict == "pass"' >/dev/null; then
+              echo "::error::/api/diag/${ep} returned non-pass verdict"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+
+          exit "$fail"
+
+      # Inline log dump rather than upload-artifact@v4: the v4 action
+      # requires GitHub Actions backing and is not GHES-compatible, which
+      # Gitea Actions emulates. The container logs are small (one boot,
+      # a handful of diag probes) so inline output in the run UI is
+      # sufficient and avoids the artifact-action mismatch entirely.
+      - name: Dump container logs
+        if: always()
+        run: |
+          if [ -n "${NAME:-}" ]; then
+            echo "::group::iplayer-arr container logs"
+            docker logs "$NAME" 2>&1 || true
+            echo "::endgroup::"
+          fi
+
+      - name: Clean up container
+        if: always()
+        run: |
+          if [ -n "${NAME:-}" ]; then
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+          fi
+
+  # ---------------------------------------------------------------
+  # Tier B — real-binary smoke + automated mirror to github.
+  #
+  # smoke:             self-hosted runner on .57 (label '57-smoke')
+  #                    builds the production container and runs the
+  #                    diag suite against it with real ffmpeg, real
+  #                    BBC, real get_iplayer — the layer that would
+  #                    have caught the v1.5.5 ffmpeg-8 binary
+  #                    regression (image-level, not code-level).
+  # mirror-to-github:  needs: [unit, diag-suite, smoke]; pushes the
+  #                    Gitea ref to the GitHub origin only when all
+  #                    three gates are green. Removes the manual
+  #                    `git push github main` step from the release
+  #                    workflow.
+  #
+  # The smoke job is gated to `main` push events only. PRs do not run
+  # smoke (cost: ~2-3min runner time per PR for limited extra signal —
+  # `diag-suite` already exercises the real binaries via DinD sibling).
+  #
+  # See /home/lns/.claude/plans/i-think-we-need-clever-moth.md
+  # ---------------------------------------------------------------
+  smoke:
+    runs-on: 57-smoke
+    needs: diag-suite
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t iplayer-arr-smoke:${{ github.sha }} .
+
+      - name: Boot smoke container against real externals
+        id: boot
+        run: |
+          set -euo pipefail
+          NAME="iplayer-arr-smoke-${{ github.run_id }}"
+
+          # Same /proc/net/route parsing as diag-suite — the smoke runner is
+          # also an act_runner DinD sibling and has no iproute2.
+          echo "::group::runner /proc/net/route"
+          cat /proc/net/route
+          echo "::endgroup::"
+          ROUTE_HEX=$(awk '$2 == "00000000" {print $3; exit}' /proc/net/route)
+          if [ -z "$ROUTE_HEX" ] || [ "${#ROUTE_HEX}" -ne 8 ]; then
+            echo "Could not parse default-route gateway (got: '$ROUTE_HEX')"
+            exit 1
+          fi
+          HOST_IP="$(printf '%d' "0x${ROUTE_HEX:6:2}").$(printf '%d' "0x${ROUTE_HEX:4:2}").$(printf '%d' "0x${ROUTE_HEX:2:2}").$(printf '%d' "0x${ROUTE_HEX:0:2}")"
+          echo "Docker host gateway: $HOST_IP"
+          echo "HOST_IP=$HOST_IP" >> "$GITHUB_ENV"
+
+          # Let Docker pick a free host port (same rationale as
+          # diag-suite — avoids collisions with services on the runner
+          # host such as cloudflare-tunnel).
+          # Same injected-key strategy as diag-suite: API_KEY beats the
+          # generated value, so nothing has to be scraped back out.
+          KEY=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          if [ "${#KEY}" -ne 32 ]; then
+            echo "::error::Could not generate a 32-char API key (got '${#KEY}' chars)"
+            exit 1
+          fi
+
+          docker run -d --rm \
+            --name "$NAME" \
+            --tmpfs /config:rw,size=64m \
+            --tmpfs /downloads:rw,size=64m \
+            -e API_KEY="$KEY" \
+            -p "${HOST_IP}::62001" \
+            iplayer-arr-smoke:${{ github.sha }}
+
+          PORT=$(docker port "$NAME" 62001/tcp | head -1 | cut -d: -f2)
+          if [ -z "$PORT" ]; then
+            echo "::error::Could not read assigned host port from docker port"
+            docker logs "$NAME" || true
+            exit 1
+          fi
+          echo "Docker assigned host port: $PORT"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+
+          for i in $(seq 1 30); do
+            if curl -fsS "http://${HOST_IP}:${PORT}/api/healthz" >/dev/null 2>&1; then
+              echo "smoke container ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "smoke container did not become ready within 30s"
+              docker logs "$NAME" || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # The api_key file is the supported out-of-band delivery
+          # channel now that GET /api/config no longer returns the key.
+          # Assert it exists, matches, and is not world-readable.
+          FILE_KEY=$(docker exec "$NAME" cat /config/api_key | tr -d '\r\n')
+          if [ "$FILE_KEY" != "$KEY" ]; then
+            echo "::error::/config/api_key does not match the injected API_KEY"
+            exit 1
+          fi
+          MODE=$(docker exec "$NAME" stat -c '%a' /config/api_key)
+          if [ "$MODE" != "600" ]; then
+            echo "::error::/config/api_key mode is $MODE, want 600"
+            exit 1
+          fi
+
+          # Regression assertion for GHSA-3hfw-5v8p-p588.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://${HOST_IP}:${PORT}/api/config")
+          if [ "$code" != "401" ]; then
+            echo "::error::GET /api/config without a credential returned $code, want 401"
+            exit 1
+          fi
+          if curl -fsS -H "X-Api-Key: ${KEY}" "http://${HOST_IP}:${PORT}/api/config" | jq -e 'has("api_key")' >/dev/null; then
+            echo "::error::GET /api/config still returns an api_key field"
+            exit 1
+          fi
+
+          echo "KEY=$KEY" >> "$GITHUB_ENV"
+
+      - name: Probe diag endpoints against real binaries
+        run: |
+          set -euo pipefail
+          # smoke gets the full env-health set: the v1.5.6 regression
+          # anchors plus the v1.5.7 environment-health endpoints
+          # (storage, network, geo, clock). The latter four need real
+          # outbound + a healthy host clock that the smoke runner has
+          # but the CI container doesn't.
+          fail=0
+          for ep in sonarr-handshake ffmpeg bbc sab auth-paths storage network geo clock; do
+            echo "::group::smoke diag ${ep}"
+            body=$(curl -fsS "http://${HOST_IP}:${PORT}/api/diag/${ep}?apikey=${KEY}")
+            echo "$body" | jq .
+            if ! echo "$body" | jq -e '.verdict == "pass"' >/dev/null; then
+              echo "::error::smoke /api/diag/${ep} returned non-pass verdict"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
+      - name: Dump smoke container logs
+        if: always()
+        run: |
+          if [ -n "${NAME:-}" ]; then
+            echo "::group::smoke container logs"
+            docker logs "$NAME" 2>&1 || true
+            echo "::endgroup::"
+          fi
+
+      - name: Clean up smoke container
+        if: always()
+        run: |
+          if [ -n "${NAME:-}" ]; then
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+          fi
+
+  # mirror-to-github authenticates with a PAT stored as the Gitea
+  # Actions secret GH_PAT (source of truth: 1Password item
+  # `gh-pat-iplayer-mirror` in Server-Keys vault). The PAT only needs
+  # `repo:write` on Will-Luck/iplayer-arr.
+  #
+  # Push semantics: HEAD:main, no force. Tags are NOT mirrored
+  # automatically yet — first prove the contract on commit pushes,
+  # then add `git push github --tags` once a few releases have flown
+  # cleanly through the pipeline.
+  mirror-to-github:
+    runs-on: ubuntu-latest
+    needs: [unit, diag-suite, smoke]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitHub mirror
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_PAT:-}" ]; then
+            echo "::error::GH_PAT secret missing — cannot mirror"
+            exit 1
+          fi
+          git config user.email "ci@willluck.uk"
+          git config user.name "Gitea CI"
+          git remote add github "https://x-access-token:${GH_PAT}@github.com/Will-Luck/iplayer-arr.git"
+          git push github HEAD:main

@@ -1,0 +1,257 @@
+/**
+ * Keyboard indent across list boundaries. `Tab` on a top-level block whose
+ * previous sibling is a list moves the block INTO the last item as a nested
+ * child; `Shift-Tab` lifts the last child of a list item back out to a
+ * top-level sibling, splitting the list when that item is not the last one.
+ *
+ * Trigger is intentionally narrow so ListKeymap retains in-list Tab/Shift-Tab
+ * (`sinkListItem` / `liftListItem`). Schema is validated via `canReplaceWith`;
+ * invalid placements are a clean no-op so the keymap chain falls through.
+ *
+ * Intentional design restrictions (NOT bugs to "fix"):
+ *  - Tab indents into the IMMEDIATE last item only, not recursively into a
+ *    deeper "deepest last item". Users get deeper nesting via repeated Tab
+ *    inside the now-nested context (then ListKeymap takes over).
+ *  - Tab only fires for cursors in TOP-LEVEL blocks (depth === 1). Cursors
+ *    inside other containers (blockquote, table cell) fall through.
+ *  - Shift-Tab fires for the LAST child of a list item; a non-last item is
+ *    split so the parent survives (Notion parity). Mid children-zone blocks
+ *    are still deferred.
+ *
+ * Registration order: must come AFTER ListKeymap so this extension's keymap
+ * runs FIRST and can defer to ListKeymap for in-list flows.
+ */
+import { Extension } from '../Extension.js';
+import { NodeSelection, Selection } from '@domternal/pm/state';
+import type { EditorState, Transaction } from '@domternal/pm/state';
+import type { Node as PMNode } from '@domternal/pm/model';
+import { insertAsListItemChild } from '../utils/insertAsListItemChild.js';
+
+const LIST_ITEM_TYPES = new Set(['listItem', 'taskItem']);
+const LIST_WRAPPER_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
+
+/**
+ * Returns true when ANY ancestor of the cursor's resolved position is
+ * a list item. Used to defer Tab/Shift-Tab to ListKeymap whenever the
+ * cursor is somewhere inside a list (nested heading, label paragraph,
+ * deeply nested block, etc.).
+ */
+function isCursorInsideListItem(state: EditorState): boolean {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if (LIST_ITEM_TYPES.has($from.node(d).type.name)) return true;
+  }
+  return false;
+}
+
+/**
+ * `Tab` handler: indent a top-level block as the last child of the
+ * last item of the immediately-preceding list wrapper. Returns true
+ * when the operation succeeded (and dispatched, if `dispatch` is
+ * provided), false when any precondition fails so the keymap chain
+ * can fall through to the next handler.
+ */
+export function indentBlockAsListChild(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const { selection } = state;
+
+  // Identify the top-level "subject" block to indent. Two paths:
+  //  - TextSelection with empty caret in a top-level textblock: the
+  //    block is the cursor's depth-1 ancestor.
+  //  - NodeSelection on a top-level atom block (hr, image, etc.):
+  //    user explicitly selected the block; treat it as the subject.
+  // Anything else (range selection, deeper nesting, in-list-item)
+  // bails so the keymap chain falls through.
+  let blockIndex: number;
+  let blockNode: PMNode;
+  let blockStart: number;
+  let blockEnd: number;
+
+  if (selection instanceof NodeSelection) {
+    const node = selection.node;
+    const $pos = selection.$from;
+    // Atom block selected at top-level: the selected node is a direct
+    // child of the doc; the parent depth is 0.
+    if ($pos.depth !== 0) return false;
+    if (isCursorInsideListItem(state)) return false;
+    blockIndex = $pos.index(0);
+    blockNode = node;
+    blockStart = selection.from;
+    blockEnd = selection.to;
+  } else {
+    if (!selection.empty) return false;
+    if (isCursorInsideListItem(state)) return false;
+    const { $from } = selection;
+    if ($from.depth !== 1) return false;
+    blockIndex = $from.index(0);
+    blockNode = $from.node(1);
+    blockStart = $from.before(1);
+    blockEnd = $from.after(1);
+  }
+
+  if (blockIndex === 0) return false;
+
+  const prevSibling = state.doc.child(blockIndex - 1);
+  if (!LIST_WRAPPER_TYPES.has(prevSibling.type.name)) return false;
+
+  // Position of the previous sibling (= the list wrapper) at the doc
+  // level. Pre-computed here so a dry-run (no dispatch) and the
+  // dispatch path share the same value.
+  let wrapperPos = 0;
+  for (let i = 0; i < blockIndex - 1; i++) {
+    wrapperPos += state.doc.child(i).nodeSize;
+  }
+
+  const tr = state.tr;
+  const result = insertAsListItemChild({
+    tr,
+    wrapperPos,
+    blockNode,
+    sourceRange: { from: blockStart, to: blockEnd },
+  });
+  if (!result.ok || result.insertedAt === undefined) return false;
+  if (!dispatch) return true;
+
+  // Caret in the (now nested) block at offset 0 of its content.
+  tr.setSelection(Selection.near(tr.doc.resolve(result.insertedAt + 1)));
+  dispatch(tr.scrollIntoView());
+  return true;
+}
+
+/**
+ * `Shift-Tab` handler: lift the last child of a list item out to a
+ * top-level sibling. Lands after the whole list when the item is last
+ * in its wrapper, else splits the wrapper and lands between the halves.
+ *
+ * Precondition table:
+ *   - cursor empty
+ *   - cursor textblock parent is NOT a paragraph (so we never
+ *     accidentally outdent the label; ListKeymap.Shift-Tab handles
+ *     in-label cases via liftListItem)
+ *   - the cursor's enclosing list item exists in the ancestry
+ *   - the cursor's containing block is a DIRECT child of the list
+ *     item (depth = listItemDepth + 1) - keeps the math local to
+ *     immediate li children rather than reaching deeper into nested
+ *     containers
+ *   - the block is the LAST child of the list item
+ *   - the wrapper's parent accepts the block as a sibling (schema)
+ */
+export function outdentBlockFromListItem(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const { selection } = state;
+  if (!selection.empty) return false;
+
+  const { $from } = selection;
+
+  // Find the immediate list item ancestor.
+  let listItemDepth = -1;
+  for (let d = $from.depth; d > 0; d--) {
+    if (LIST_ITEM_TYPES.has($from.node(d).type.name)) {
+      listItemDepth = d;
+      break;
+    }
+  }
+  if (listItemDepth === -1) return false;
+
+  // The block to outdent is the DIRECT child of the list item that
+  // contains the cursor - identified by walking from the cursor's
+  // depth down to listItemDepth + 1. The cursor itself can be deeper
+  // (e.g. cursor in a paragraph INSIDE a blockquote that sits as a
+  // direct li child); we still treat the blockquote as the subject.
+  const blockDepth = listItemDepth + 1;
+  if ($from.depth < blockDepth) return false;
+
+  const listItem = $from.node(listItemDepth);
+  const blockIndexInItem = $from.index(listItemDepth);
+  // Skip first-child (the label paragraph slot). Defers the in-label
+  // case to ListKeymap.Shift-Tab (`liftListItem`).
+  if (blockIndexInItem === 0) return false;
+  // Only outdent when the block is the LAST child of the item. A block in the
+  // MIDDLE of the children zone is deferred (rare; would need to re-home the
+  // trailing siblings), so it falls through to the default keymap.
+  if (blockIndexInItem !== listItem.childCount - 1) return false;
+
+  // The wrapper is the list item's parent, at depth = listItemDepth - 1.
+  const wrapperDepth = listItemDepth - 1;
+  if (wrapperDepth < 0) return false;
+  // `$from.index(wrapperDepth)` is the list item's index inside its wrapper.
+  // (A previous attempt used `wrapperDepth - 1`, the wrapper's own index in ITS
+  // parent - the wrong number.)
+  const liIndexInWrapper = $from.index(wrapperDepth);
+  const wrapper = $from.node(wrapperDepth);
+  // Whether the list item is the LAST in its wrapper decides the strategy:
+  //   - last item  → the block just lands after the whole wrapper (no split).
+  //   - mid/first  → split the wrapper AFTER this item so the block lands right
+  //                  after it at the wrapper's parent level, KEEPING the parent
+  //                  item (and the rest of the list) intact. Mirrors Notion's
+  //                  "Shift+Tab outdents only the targeted block".
+  const isLastItem = liIndexInWrapper === wrapper.childCount - 1;
+
+  // Schema check: the wrapper's parent must accept the block as a sibling right
+  // after the wrapper's position (same target index for the no-split and the
+  // split-between-halves cases). `wrapperDepth - 1` is -1 only when the wrapper
+  // sits at depth 0 (the wrapper IS the doc); guarded defensively.
+  if (wrapperDepth - 1 < 0) return false;
+  const wrapperParent = $from.node(wrapperDepth - 1);
+  const wrapperIndexInParent = $from.index(wrapperDepth - 1);
+  const blockNode = $from.node(blockDepth);
+  if (
+    !wrapperParent.canReplaceWith(
+      wrapperIndexInParent + 1,
+      wrapperIndexInParent + 1,
+      blockNode.type,
+    )
+  ) {
+    return false;
+  }
+
+  if (!dispatch) return true;
+
+  const blockStart = $from.before(blockDepth);
+  const blockEnd = $from.after(blockDepth);
+  const blockSize = blockEnd - blockStart;
+  const tr = state.tr;
+  // Remove the block from inside the list item; positions after it shift left
+  // by `blockSize`, so the wrapper/item ends below are adjusted accordingly.
+  tr.delete(blockStart, blockEnd);
+
+  if (isLastItem) {
+    // No split: the block lands right after the whole wrapper at parent level.
+    const insertAt = $from.after(wrapperDepth) - blockSize;
+    tr.insert(insertAt, blockNode);
+    tr.setSelection(Selection.near(tr.doc.resolve(insertAt + 1)));
+  } else {
+    // Split the wrapper after this item: items below it move to a fresh wrapper
+    // of the same kind, and the block is inserted at parent level BETWEEN the
+    // two halves (right after the item it was nested under). `tr.split(pos, 1)`
+    // inserts a wrapper close+open at `pos`, so the parent-level gap is `pos+1`.
+    const splitPos = $from.after(listItemDepth) - blockSize;
+    tr.split(splitPos, 1);
+    tr.insert(splitPos + 1, blockNode);
+    tr.setSelection(Selection.near(tr.doc.resolve(splitPos + 2)));
+  }
+  dispatch(tr.scrollIntoView());
+  return true;
+}
+
+export const ListIndent = Extension.create({
+  name: 'listIndent',
+
+  addKeyboardShortcuts() {
+    const { editor } = this;
+    return {
+      Tab: () => {
+        if (!editor) return false;
+        return indentBlockAsListChild(editor.state, editor.view.dispatch);
+      },
+      'Shift-Tab': () => {
+        if (!editor) return false;
+        return outdentBlockFromListItem(editor.state, editor.view.dispatch);
+      },
+    };
+  },
+});

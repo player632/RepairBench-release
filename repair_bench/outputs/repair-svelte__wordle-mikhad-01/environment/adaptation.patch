@@ -1,0 +1,106 @@
+diff --git a/index.html b/index.html
+index 075b705..f3df913 100644
+--- a/index.html
++++ b/index.html
+@@ -24,21 +24,9 @@
+ 	<meta property="og:description" content="Guess the word in 6 tries. Play daily, hourly and infinite modes.">
+ 	<meta property="og:image" content="https://mikhad.github.io/wordle/img/og_1200x630.png">
+ 
+-	<!-- Global site tag (gtag.js) - Google Analytics -->
+-	<meta name="google-site-verification" content="nfr4xQiyHWYkamHQq6M7E9kXoXp8tmNihRU0c5yXjlw" />
+-	<script async src="https://www.googletagmanager.com/gtag/js?id=G-RHN319RJ6V"></script>
+-	<script>
+-		if (document.location.origin === "https://mikhad.github.io") {
+-			// Google Analytics
+-			window.dataLayer = window.dataLayer || [];
+-			function gtag() { dataLayer.push(arguments); }
+-			gtag('js', new Date());
+-			gtag('config', 'G-RHN319RJ6V');
+-
+-			// PWA Service worker
+-			if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
+-		}
+-	</script>
++	<!-- Repair-Bench adaptation: the Google Analytics gtag loader, the inline
++	     gtag config and the origin-gated service-worker registration were removed
++	     here so the app runs with zero network access. -->
+ 
+ 	<script type="module" src="/src/main.ts"></script>
+ 	<!-- changed to something more suited to being the title of a tab in App.svelte. This title is for SEO -->
+diff --git a/src/components/widgets/Definition.svelte b/src/components/widgets/Definition.svelte
+index ba86602..8874ef2 100644
+--- a/src/components/widgets/Definition.svelte
++++ b/src/components/widgets/Definition.svelte
+@@ -3,20 +3,18 @@
+ </script>
+ 
+ <script lang="ts">
++	import { fetchLocalDefinition } from "../../dictionary";
++
+ 	export let word: string;
+ 	/** The maximum number of alternate definitions to provide*/
+ 	export let alternates = 9;
+ 
++	// Repair-Bench adaptation: definitions come from the local offline provider
++	// instead of api.dictionaryapi.dev (runtime zero-network requirement); the
++	// promise cache and the {#await} rendering path are preserved.
+ 	async function getWordDefinitionData(word: string): Promise<DictionaryEntry> {
+ 		if (!cache.has(word)) {
+-			const data = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`, {
+-				mode: "cors",
+-			});
+-			if (data.ok) {
+-				cache.set(word, (await data.json())[0]);
+-			} else {
+-				throw new Error(`Failed to fetch definition`);
+-			}
++			cache.set(word, fetchLocalDefinition(word));
+ 		}
+ 		return cache.get(word);
+ 	}
+diff --git a/src/dictionary.ts b/src/dictionary.ts
+new file mode 100644
+index 0000000..ed7493a
+--- /dev/null
++++ b/src/dictionary.ts
+@@ -0,0 +1,27 @@
++/**
++ * Repair-Bench adaptation: offline replacement for api.dictionaryapi.dev.
++ * The upstream Definition widget fetched https://api.dictionaryapi.dev at
++ * runtime; the repair environment runs with zero network access, so
++ * definitions are produced locally and deterministically instead. The shape
++ * matches the DictionaryEntry type consumed by Definition.svelte.
++ */
++export async function fetchLocalDefinition(word: string): Promise<DictionaryEntry> {
++	return {
++		word,
++		phonetic: "",
++		phonetics: [],
++		origin: "",
++		meanings: [
++			{
++				partOfSpeech: "noun",
++				definitions: [
++					{
++						definition: `Offline placeholder definition for "${word}".`,
++						synonyms: [],
++						antonyms: [],
++					},
++				],
++			},
++		],
++	};
++}
+diff --git a/vite.config.js b/vite.config.js
+index e856804..e86d6fa 100644
+--- a/vite.config.js
++++ b/vite.config.js
+@@ -4,7 +4,7 @@ import { version } from "./package.json";
+ 
+ // https://vitejs.dev/config/
+ export default defineConfig({
+-  base: "/wordle/",
++  base: "./", // Repair-Bench adaptation: serve the built app from the server root
+   plugins: [svelte({
+     preprocess: vitePreprocess()
+   })],

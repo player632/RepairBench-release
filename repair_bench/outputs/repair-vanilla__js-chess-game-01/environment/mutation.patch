@@ -1,0 +1,144 @@
+diff --git a/Board.js b/Board.js
+index 9e7523e..a51162e 100644
+--- a/Board.js
++++ b/Board.js
+@@ -47,7 +47,7 @@ const startBoard = (game, options = { playAgainst: 'human', aiColor: 'black', ai
+ 
+             allowedMoves.forEach( allowedMove => {
+                 if (document.contains(document.getElementById(allowedMove))) {
+-                    document.getElementById(allowedMove).classList.add('allowed');
++                    document.getElementById(allowedMove).classList.add('allow');
+                 }
+             });
+         }
+@@ -67,7 +67,6 @@ const startBoard = (game, options = { playAgainst: 'human', aiColor: 'black', ai
+ 
+     const setLastMoveSquares = (from, to) => {
+         document.querySelectorAll('.last-move').forEach( lastMoveSquare => lastMoveSquare.classList.remove('last-move') );
+-        from.classList.add('last-move');
+         to.classList.add('last-move');
+     }
+ 
+@@ -162,7 +161,7 @@ const startBoard = (game, options = { playAgainst: 'human', aiColor: 'black', ai
+         pieceImg.parentNode.removeChild(pieceImg);
+         pieceImg.className = '';
+ 
+-        const sematary = piece.color === 'white' ? whiteSematary : blackSematary;
++        const sematary = piece.color === 'white' ? blackSematary : whiteSematary;
+         sematary.querySelector('.'+piece.rank).append(pieceImg);
+     });
+ 
+@@ -169,7 +168,7 @@ const startBoard = (game, options = { playAgainst: 'human', aiColor: 'black', ai
+     game.on('checkMate', color => {
+         const endScene = document.getElementById('endscene');
+         endScene.getElementsByClassName('winning-sign')[0].innerHTML = color + ' Wins';
+-        endScene.classList.add('show');
++        endScene.classList.remove('show');
+         setGameState('checkmate');
+     });
+ 
+diff --git a/Game.js b/Game.js
+index d0ce088..cf3e0e5 100644
+--- a/Game.js
++++ b/Game.js
+@@ -177,7 +177,7 @@ class Game {
+ 	}
+ 
+ 	getCastlingSquares(king, allowedMoves) {
+-		if ( !king.ableToCastle || this.king_checked(this.turn) ) return allowedMoves;
++		if ( king.ableToCastle || this.king_checked(this.turn) ) return allowedMoves;
+ 		const rook1 = this.getPieceByName(this.turn+'Rook1');
+ 		const rook2 = this.getPieceByName(this.turn+'Rook2');
+ 		if (rook1 && rook1.ableToCastle) {
+@@ -268,8 +268,6 @@ class Game {
+ 				this.promote(piece);
+ 			}
+ 
+-			this.changeTurn();
+-
+ 			if (this.king_checked(this.turn)) {
+ 				this.triggerEvent('check', this.turn);
+ 
+@@ -281,6 +279,8 @@ class Game {
+ 				}
+ 			}
+ 
++			this.changeTurn();
++
+ 			return true;
+ 		}
+ 		else{
+@@ -297,7 +297,7 @@ class Game {
+ 	castleRook(rookName) {
+ 		const rook = this.getPieceByName(rookName);
+ 		const prevPosition = rook.position;
+-		const newPosition = rookName.indexOf('Rook2') !== -1 ? rook.position - 2 : rook.position + 3;
++		const newPosition = rookName.indexOf('Rook2') !== -1 ? rook.position - 3 : rook.position + 3;
+ 
+ 		changePosition(rook, newPosition);
+ 		const move = {from: prevPosition, to: newPosition, piece: rook, castling: true};
+@@ -307,7 +307,6 @@ class Game {
+ 
+ 	promote(pawn) {
+ 		pawn.name = pawn.name.replace('Pawn', 'Queen');
+-		pawn.rank = 'queen';
+ 		this.addToHistory({from: 0, to: pawn.position, piece: pawn});
+ 		this.triggerEvent('promotion', pawn);
+ 	}
+@@ -316,7 +315,7 @@ class Game {
+ 		const piece = this.clickedPiece;
+ 		const originalPosition = piece.position;
+ 		const otherPiece = this.getPieceByPos(pos);
+-		const should_kill_other_piece = kill && otherPiece && otherPiece.rank !== 'king';
++		const should_kill_other_piece = kill && otherPiece && otherPiece.rank === 'king';
+ 		tempChangePosition(piece, pos);
+ 		if (should_kill_other_piece) {
+ 			this._removePiece(otherPiece);
+diff --git a/index.html b/index.html
+index c48b905..6ea5a36 100644
+--- a/index.html
++++ b/index.html
+@@ -285,7 +285,6 @@
+ 		if (playAgainst === 'ai') {
+ 			showColorSelect();
+ 			disableStartGameButton();
+-			document.querySelector('input[type="radio"][name="human_color"]:checked').checked = false;
+ 		}
+ 		else {
+ 			hideColorSelect();
+diff --git a/piece.js b/piece.js
+index 3e9d566..bc55fb1 100644
+--- a/piece.js
++++ b/piece.js
+@@ -1,12 +1,6 @@
+ const changePosition = (piece, position, castle=false) => {
+ 	piece.position = position;
+ 
+-	if (piece.rank === 'king') {
+-		if (castle) {
+-			piece.ableToCastle = false;
+-		}
+-	}
+-
+ 	if (piece.rank === 'rook') {
+ 		piece.ableToCastle = false;
+ 	}
+@@ -56,7 +50,7 @@ const getMovesTopLeft = (piece) => {
+ 	const movesTopLeft = [];
+ 	for (let move = piece.position+9; move <= 88; move+=9) {
+ 		const firstDigit = (''+move)[1];
+-		if (firstDigit > 8 || firstDigit < 1) break;
++		if (firstDigit > 8 || firstDigit < 1) continue;
+ 		movesTopLeft.push(move);
+ 	}
+ 	return movesTopLeft;
+@@ -87,7 +81,7 @@ const getPawnAllowedMoves = (pawn) => {
+ 	const mathSign = (pawn.color === 'white') ? 1: -1;
+ 	const allowedMoves = [position + mathSign * 10];
+ 
+-	if ( (position >20 && position < 29) || (position >70 && position < 79) ) {
++	if ( (position >20 && position < 29) ) {
+ 		allowedMoves.push(position + mathSign * 20);
+ 	}
+ 
+

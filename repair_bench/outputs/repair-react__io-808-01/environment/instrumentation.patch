@@ -1,0 +1,234 @@
+diff --git a/src/components/button/index.js b/src/components/button/index.js
+index 0e523bb..92eaeca 100644
+--- a/src/components/button/index.js
++++ b/src/components/button/index.js
+@@ -62,6 +62,7 @@ const Button = props => {
+   return (
+     <button
+       ref={ref}
++      data-testid={props["data-testid"]}
+       {...stylex.props(
+         styles.button,
+         !disabled && styles.interactive,
+diff --git a/src/components/knob/index.js b/src/components/knob/index.js
+index aea58b7..8ac99e8 100644
+--- a/src/components/knob/index.js
++++ b/src/components/knob/index.js
+@@ -294,6 +294,7 @@ const Knob = props => {
+         });
+         return (
+           <select
++            data-testid={props.testid}
+             ref={accessibilityElementRef}
+             onChange={handleAccessibleValueUpdate}
+             value={selectedValue}
+@@ -306,6 +307,7 @@ const Knob = props => {
+         const { value, min, max, step } = props;
+         return (
+           <input
++            data-testid={props.testid}
+             ref={accessibilityElementRef}
+             type="range"
+             onChange={handleAccessibleValueUpdate}
+diff --git a/src/components/masterVolumeKnob/index.js b/src/components/masterVolumeKnob/index.js
+index 8f6036f..ae7dfc6 100644
+--- a/src/components/masterVolumeKnob/index.js
++++ b/src/components/masterVolumeKnob/index.js
+@@ -77,6 +77,7 @@ const MasterVolumeKnob = props => {
+         />
+         <div {...stylex.props(themeStyles.ring, styles.knob)}>
+           <Knob
++            testid="volume-range"
+             value={value}
+             onChange={onChange}
+             xstyle={styles.knob}
+diff --git a/src/components/modeKnob/index.js b/src/components/modeKnob/index.js
+index e3918a1..017c1e0 100644
+--- a/src/components/modeKnob/index.js
++++ b/src/components/modeKnob/index.js
+@@ -75,6 +75,7 @@ const ModeKnob = props => {
+         />
+         <div {...stylex.props(themeStyles.ring, styles.knobWrapper)}>
+           <Knob
++            testid="mode-select"
+             type="select"
+             value={value}
+             onChange={onChange}
+diff --git a/src/components/stepButton/index.js b/src/components/stepButton/index.js
+index 1fe69c4..2f4f3d8 100644
+--- a/src/components/stepButton/index.js
++++ b/src/components/stepButton/index.js
+@@ -107,6 +107,7 @@ const StepButton = props => {
+         onDrop={handleDrop}
+       >
+         <Button
++          data-testid="step-btn"
+           xstyle={[styles.button, toneStyles[tone], xstyle]}
+           onClick={onClick}
+         >
+@@ -119,6 +120,7 @@ const StepButton = props => {
+   return (
+     <div {...stylex.props(styles.dragWrapper)}>
+       <Button
++        data-testid="step-btn"
+         xstyle={[styles.button, toneStyles[tone], xstyle]}
+         onClick={onClick}
+       >
+diff --git a/src/components/switch/index.js b/src/components/switch/index.js
+index 3e5a7a6..532e40d 100644
+--- a/src/components/switch/index.js
++++ b/src/components/switch/index.js
+@@ -72,6 +72,7 @@ const AccessibilityRadioInput = React.memo(props => {
+       <label htmlFor={id}>{label}</label>
+       <input
+         ref={inputRef}
++        data-testid={name + "-radio-" + value}
+         type="radio"
+         id={id}
+         name={name}
+diff --git a/src/components/tempoKnob/index.js b/src/components/tempoKnob/index.js
+index d195b6c..0ce6333 100644
+--- a/src/components/tempoKnob/index.js
++++ b/src/components/tempoKnob/index.js
+@@ -108,6 +108,7 @@ const TempoKnob = props => {
+             <Guides num={41} distance={71} hideCount={7} values={guideValues} />
+             <div {...stylex.props(themeStyles.ring, styles.knob)}>
+               <Knob
++              testid="tempo-range"
+                 value={value}
+                 onChange={onChange}
+                 xstyle={styles.knob}
+diff --git a/src/instrumentationProbe.js b/src/instrumentationProbe.js
+new file mode 100644
+index 0000000..1207227
+--- /dev/null
++++ b/src/instrumentationProbe.js
+@@ -0,0 +1,65 @@
++// instrumentation: read-only probe bridge for verification (window.__IO808__)
++import variationSelector from "selectors/variation";
++import { stepKey, patternLengthKey } from "helpers";
++
++export function installProbe(store) {
++  const read = () => {
++    const s = store.getState();
++    return {
++      playing: s.playing,
++      selectedMode: s.selectedMode,
++      currentStep: s.currentStep,
++      currentPart: s.currentPart,
++      currentVariation: s.currentVariation,
++      currentPattern: s.currentPattern,
++      currentMeasure: s.currentMeasure,
++      basicVariationPosition: s.basicVariationPosition,
++      introFillVariationPosition: s.introFillVariationPosition,
++      autoFillInPosition: s.autoFillInPosition,
++      selectedInstrumentTrack: s.selectedInstrumentTrack,
++      selectedPattern: s.selectedPattern,
++      selectedPlayPattern: s.selectedPlayPattern,
++      selectedPlayFillPattern: s.selectedPlayFillPattern,
++      masterVolume: s.masterVolume,
++      tempo: s.tempo,
++      fineTempo: s.fineTempo,
++      blinkState: s.blinkState,
++      fillScheduled: s.fillScheduled,
++      stepsCount: Object.keys(s.steps).length,
++      variationLight: variationSelector(s),
++      persistKeyList: Object.keys(window.localStorage).filter(k =>
++        k.indexOf("persist:") === 0
++      )
++    };
++  };
++  window.__IO808__ = {
++    read,
++    step: (pattern, instrument, part, variation, step) =>
++      store.getState().steps[
++        stepKey(pattern, instrument, part, variation, step)
++      ],
++    length: (pattern, part) =>
++      store.getState().patternLengths[patternLengthKey(pattern, part)],
++    toggledKeys: () =>
++      Object.keys(store.getState().steps).filter(
++        k => store.getState().steps[k]
++      ),
++    snapshot: () => {
++      const s = store.getState();
++      const out = {};
++      // mirror of the seed save filter (store-constants PERSISTANCE_FILTER)
++      ["instrumentState","patternLengths","steps","masterVolume","tempo","fineTempo"].forEach(k => { out[k] = s[k]; });
++      return out;
++    },
++    alerts: [],
++    confirms: []
++  };
++  // instrumentation: record-and-dismiss modal dialogs so headless runs never hang
++  window.alert = msg => {
++    window.__IO808__.alerts.push(String(msg));
++  };
++  window.confirm = msg => {
++    window.__IO808__.confirms.push(String(msg));
++    return false;
++  };
++}
+diff --git a/src/layouts/app/index.js b/src/layouts/app/index.js
+index 5988b03..4962597 100644
+--- a/src/layouts/app/index.js
++++ b/src/layouts/app/index.js
+@@ -192,14 +192,16 @@ const AppLayout = React.memo(
+           <div {...stylex.props(styles.headerWrapper)}>
+             <div {...stylex.props(styles.saveLoadClearWrapper)}>
+               <ConnectedLoadButton
++                data-testid="load-btn"
+                 xstyle={styles.headerButton}
+                 iconXstyle={styles.headerButtonIcon}
+               />
+               <ConnectedSaveButton
++                data-testid="save-btn"
+                 xstyle={styles.headerButton}
+                 iconXstyle={styles.headerButtonIcon}
+               />
+-              <ConnectedResetButton xstyle={styles.resetButton} />
++              <ConnectedResetButton data-testid="reset-btn" xstyle={styles.resetButton} />
+             </div>
+             <GithubLink />
+           </div>
+diff --git a/src/layouts/bottomSection/connectedComponents.js b/src/layouts/bottomSection/connectedComponents.js
+index 99f3207..f8e05dc 100644
+--- a/src/layouts/bottomSection/connectedComponents.js
++++ b/src/layouts/bottomSection/connectedComponents.js
+@@ -67,7 +67,7 @@ export const ConnectedStartStopButton = props => {
+     dispatch(onStartStopButtonClick());
+   }, [dispatch, requestInit]);
+ 
+-  return <Button {...props} disabled={disabled} onClick={onClick} />;
++  return <Button {...props} data-testid="start-stop-btn" disabled={disabled} onClick={onClick} />;
+ };
+ 
+ export const ConnectedIFVariationSwitch = props => {
+@@ -104,7 +104,7 @@ export const ConnectedTapButton = props => {
+     dispatch
+   ]);
+ 
+-  return <Button {...props} disabled={disabled} onClick={onClick} />;
++  return <Button {...props} data-testid="tap-btn" disabled={disabled} onClick={onClick} />;
+ };
+ 
+ export const ConnectedPreScaleSwitch = props => {
+diff --git a/src/store.js b/src/store.js
+index c862b68..6f80fdd 100644
+--- a/src/store.js
++++ b/src/store.js
+@@ -9,6 +9,8 @@ import initialState from "initialState";
+ 
+ import { PERSISTANCE_FILTER } from "store-constants";
+ 
++import { installProbe } from "instrumentationProbe";
++
+ setAutoFreeze(false);
+ 
+ const middleware = [];
+@@ -29,3 +31,5 @@ const enhancer = compose(...middleware);
+ 
+ export const store = createStore(persistedReducer, initialState, enhancer);
+ export const persistor = persistStore(store);
++
++installProbe(store);

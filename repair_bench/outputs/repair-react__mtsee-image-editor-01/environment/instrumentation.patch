@@ -1,0 +1,52 @@
+diff --git a/index.html b/index.html
+index f1d4f2a..8ece357 100644
+--- a/index.html
++++ b/index.html
+@@ -20,4 +20,35 @@
+     <div id="root"></div>
+   </body>
+   <script type="module" src="/src/main.tsx"></script>
++  <script>
++    // [WLB instrumentation] state bridge: fresh snapshot per call
++    window.__MTSEE__ = function () {
++      var out = { ready: false, error: null };
++      try {
++        var ed = window.__mtsee_editor;
++        if (!ed || !ed.store || !ed.store.data) return out;
++        var st = ed.store;
++        out.ready = true;
++        out.pageId = ed.selectPageId;
++        out.pageCount = ed.data && ed.data.pages ? ed.data.pages.length : 0;
++        out.layers = (st.data.layers || []).map(function (l) {
++          return {
++            id: l.id, type: l.type, name: l.name,
++            x: Math.round(l.x), y: Math.round(l.y),
++            width: l.width != null ? Math.round(l.width) : null,
++            height: l.height != null ? Math.round(l.height) : null,
++            opacity: l.opacity, rotation: l.rotation,
++            locked: !!l._lock,
++            visible: l._hide !== true, flipx: !!l.flipx, flipy: !!l.flipy,
++            text: l.type === 'text' ? String(l.text == null ? '' : l.text) : null
++          };
++        });
++        var tgt = st.editor && st.editor.target;
++        out.selection = (tgt && tgt.map ? tgt.map(function (t) { return t.id; }) : []);
++        out.zoom = st.app ? st.app.scale : null;
++        out.clipboard = ed.copyTempData ? ed.copyTempData.length : 0;
++      } catch (e) { out.error = String((e && e.message) || e); }
++      return out;
++    };
++  </script>
+ </html>
+diff --git a/src/stores/editor.ts b/src/stores/editor.ts
+index 9b509bf..7b56e41 100644
+--- a/src/stores/editor.ts
++++ b/src/stores/editor.ts
+@@ -386,4 +386,7 @@ class Editor {
+ 
+ const editor = new Editor();
+ 
++// [WLB instrumentation] expose the editor singleton for state probes
++(window as any).__mtsee_editor = editor;
++
+ export { editor, Editor };

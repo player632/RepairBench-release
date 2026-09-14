@@ -1,0 +1,251 @@
+diff --git a/src/editor/index.vue b/src/editor/index.vue
+index f753843..0123e65 100644
+--- a/src/editor/index.vue
++++ b/src/editor/index.vue
+@@ -21,15 +21,15 @@
+               </div>
+             </el-option>
+           </el-select>
+-          <el-button class="btn-add" link icon="plus" @click="dialogVisible = true">新建场景</el-button>
++          <el-button class="btn-add" link icon="plus" data-testid="btn-new-scene" @click="dialogVisible = true">新建场景</el-button>
+           <el-upload class="upload" ref="myUpload" :auto-upload="false" action="" :on-change="uploadChange">
+             <el-button class="btn-add" link icon="Upload">本地导入</el-button></el-upload>
+           <el-dialog v-model="dialogVisible" title="命名场景" width="500">
+-            <el-input v-model="inputSceneName" placeholder="请输入场景名称" />
++            <el-input v-model="inputSceneName" data-testid="input-new-scene" placeholder="请输入场景名称" />
+             <template #footer>
+               <div class="dialog-footer">
+-                <el-button @click="dialogVisible = false">取消</el-button>
+-                <el-button @click="createEditor">
++                <el-button data-testid="btn-scene-cancel" @click="dialogVisible = false">取消</el-button>
++                <el-button data-testid="btn-scene-confirm" @click="createEditor">
+                   确认
+                 </el-button>
+               </div>
+@@ -43,7 +43,7 @@
+             @click="openUrl('https://z2586300277.github.io/three-editor/dist/#/editor')">🍁旧编辑器</el-link>&nbsp;&nbsp;
+           - &nbsp;
+           <img class="logo" src="/site.png" alt="logo" width="18px" height="18px">
+-          &nbsp;{{ dataCores.sceneName || ' - - - - ' }}&nbsp;-&nbsp;&nbsp;
++          &nbsp;<span data-testid="header-scene-name">{{ dataCores.sceneName || ' - - - - ' }}</span>&nbsp;-&nbsp;&nbsp;
+           <el-link @click="openUrl('https://z2586300277.github.io/threejs-editor/apply.html')"
+             style="font-size: 16px;">🌾嵌入项目</el-link>
+             &nbsp;&nbsp;
+@@ -56,7 +56,7 @@
+           <el-button class="btn-add" link icon="download" @click="exportGLTF">导出</el-button>
+           <el-button @click="pict" icon="camera"></el-button>
+           <el-button @click="openPanel">控制板</el-button>
+-          <el-button @click="saveScene">保存</el-button>
++          <el-button data-testid="btn-save" @click="saveScene">保存</el-button>
+         </div>
+       </div>
+     </div>
+@@ -64,11 +64,11 @@
+     <!-- 主体内容区域 -->
+     <div class="main-container">
+       <!-- 左侧面板 - 可收缩 -->
+-      <div class="side-panel left-panel" :class="{ 'collapsed': leftCollapsed }">
++      <div class="side-panel left-panel" data-testid="left-panel" :class="{ 'collapsed': leftCollapsed }">
+         <div style="height: 100%;width: 100%;" v-show="!leftCollapsed">
+           <LeftPanel />
+         </div>
+-        <div class="panel-toggle" @click="leftCollapsed = !leftCollapsed">
++        <div class="panel-toggle" data-testid="toggle-left" @click="leftCollapsed = !leftCollapsed">
+           <el-icon>
+             <component :is="leftCollapsed ? 'ArrowRight' : 'ArrowLeft'" />
+           </el-icon>
+@@ -78,31 +78,31 @@
+       <!-- 中间区域 -->
+       <div class="center-panel">
+         <!-- 顶部工具栏 -->
+-        <div class="top-toolbar" v-show="!previewScene">
+-          <el-checkbox v-model="selectChildMode">子级</el-checkbox>
++        <div class="top-toolbar" data-testid="mode-toolbar" :data-mode="currentMode" v-show="!previewScene">
++          <el-checkbox v-model="selectChildMode" data-testid="chk-child">子级</el-checkbox>
+           <span class="divider"></span>
+           <el-radio-group v-model="currentMode" size="small">
+-            <el-radio-button label="选中" value="选中">
++            <el-radio-button label="选中" value="选中" data-testid="mode-radio-select">
+               <el-icon>
+                 <Pointer />
+               </el-icon>选择
+             </el-radio-button>
+-            <el-radio-button label="平移" value="平移">
++            <el-radio-button label="平移" value="平移" data-testid="mode-radio-translate">
+               <el-icon>
+                 <Position />
+               </el-icon>平移
+             </el-radio-button>
+-            <el-radio-button label="旋转" value="旋转">
++            <el-radio-button label="旋转" value="旋转" data-testid="mode-radio-rotate">
+               <el-icon>
+                 <Refresh />
+               </el-icon>旋转
+             </el-radio-button>
+-            <el-radio-button label="缩放" value="缩放">
++            <el-radio-button label="缩放" value="缩放" data-testid="mode-radio-scale">
+               <el-icon>
+                 <ZoomIn />
+               </el-icon>缩放
+             </el-radio-button>
+-            <el-radio-button label="预览" value="预览">
++            <el-radio-button label="预览" value="预览" data-testid="mode-radio-preview">
+               <el-icon>
+                 <Remove  />
+               </el-icon>预览
+@@ -110,10 +110,10 @@
+           </el-radio-group>
+             <span class="divider"></span>
+             <el-button-group size="small">
+-            <el-button @click="handleUndo" title="撤销 (Ctrl+Z)">
++            <el-button data-testid="btn-undo" @click="handleUndo" title="撤销 (Ctrl+Z)">
+               <el-icon><RefreshLeft /></el-icon>
+             </el-button>
+-            <el-button @click="handleRedo" title="重做 (Ctrl+Y)">
++            <el-button data-testid="btn-redo" @click="handleRedo" title="重做 (Ctrl+Y)">
+               <el-icon><RefreshRight /></el-icon>
+             </el-button>
+             </el-button-group>
+@@ -121,11 +121,11 @@
+       </div>
+ 
+       <!-- 右侧面板 - 可收缩 -->
+-      <div class="side-panel right-panel" :class="{ 'collapsed': rightCollapsed }">
++      <div class="side-panel right-panel" data-testid="right-panel" :class="{ 'collapsed': rightCollapsed }">
+         <div style="height: 100%;width: 100%;" v-show="!rightCollapsed">
+           <RightPanel ref="rightPanel" />
+         </div>
+-        <div class="panel-toggle" @click="rightCollapsed = !rightCollapsed">
++        <div class="panel-toggle" data-testid="toggle-right" @click="rightCollapsed = !rightCollapsed">
+           <el-icon>
+             <component :is="rightCollapsed ? 'ArrowLeft' : 'ArrowRight'" />
+           </el-icon>
+@@ -137,14 +137,14 @@
+       <div class="control-panel">
+         <div class="switches-container">
+           <div class="switch-item">
+-            <el-switch inactive-text="预览" v-model="previewScene" active-color="#a8d4fd" />
++            <el-switch inactive-text="预览" v-model="previewScene" data-testid="switch-preview" active-color="#a8d4fd" />
+           </div>
+           <div class="switch-item" :class="{ 'disabled': previewScene }">
+-            <el-switch inactive-text="右键菜单" v-model="rightClickMenusEnable" active-color="#a8d4fd"
++            <el-switch inactive-text="右键菜单" v-model="rightClickMenusEnable" data-testid="switch-rightclick" active-color="#a8d4fd"
+               :disabled="previewScene" />
+           </div>
+           <div class="switch-item" :class="{ 'disabled': previewScene }">
+-            <el-switch inactive-text="快捷键" v-model="openKeyEnable" active-color="#a8d4fd" :disabled="previewScene" />
++            <el-switch inactive-text="快捷键" v-model="openKeyEnable" data-testid="switch-hotkey" active-color="#a8d4fd" :disabled="previewScene" />
+           </div>
+           <div class="switch-item">
+             <el-link type="primary" @click="shareLink">
+@@ -153,7 +153,7 @@
+           </div>
+         </div>
+         <div class="shortcuts-guide" :class="{ 'disabled': previewScene }">
+-          <div class="shortcuts-content" v-show="openKeyEnable">
++          <div class="shortcuts-content" data-testid="shortcut-guide" v-show="openKeyEnable">
+             <div class="shortcuts-grid">
+               <div class="shortcuts-section">
+                 <div class="shortcut-row"><span class="key">Shift+Tab</span><span class="desc">根/子 切换</span></div>
+diff --git a/src/editor/left.vue b/src/editor/left.vue
+index 00c8b4c..4716486 100644
+--- a/src/editor/left.vue
++++ b/src/editor/left.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <div class="left">
+     <div class="nav-menu">
+-      <div class="menu-item" v-for="item in data" :key="item.title" @click="setActive(item)">
++      <div class="menu-item" v-for="item in data" :key="item.title" :data-testid="'navtab-' + item.title" @click="setActive(item)">
+         <el-button :class="{ 'active-icon': active == item.title, 'normal-icon': active != item.title }" link
+           :icon="item.icon" :title="item.title" />
+         <span :class="{ 'active-text': active == item.title }">{{ item.title }}</span>
+@@ -10,12 +10,12 @@
+ 
+     <div class="content-panel">
+       <div class="search-box">
+-        <el-input v-model="searchText" placeholder="搜索..." clearable size="small" />
++        <el-input v-model="searchText" data-testid="input-search" placeholder="搜索..." clearable size="small" />
+       </div>
+-      <div class="build">
+-        <div class="back" v-for="i in filteredList">
++      <div class="build" data-testid="left-list">
++        <div class="back" v-for="i in filteredList" data-testid="left-item">
+           <div class="item" draggable="true" @dragend="e => dragAdd(e, i)">
+-            <el-link @click="clickLeft(i)">
++            <el-link :data-testid="'lib-' + i.split('/').pop()" @click="clickLeft(i)">
+               {{ i.split('/').pop() }}
+             </el-link>
+           </div>
+diff --git a/src/editor/right.vue b/src/editor/right.vue
+index 1db6e15..c5e5a9a 100644
+--- a/src/editor/right.vue
++++ b/src/editor/right.vue
+@@ -3,23 +3,23 @@
+         <span class="group-title"> &nbsp;&nbsp; &nbsp;&nbsp;场景树 <el-button title="清理缓存" link style="margin-right: 25px;" :icon="BrushFilled " @click="clear"></el-button></span> 
+         <div class="divider"></div>
+     </div>
+-    <div class="scene-tree">
+-        <div v-for="value,k in sceneObjList" class="item"
++    <div class="scene-tree" data-testid="scene-tree">
++        <div v-for="value,k in sceneObjList" class="item" data-testid="scene-item"
+             :key="k">
+             <el-icon v-if="value.children.length" class="coin" style="font-size:16px;">
+                 <ArrowRightBold />&nbsp;
+             </el-icon>
+-            <el-icon class="coin" @click="value.visible = !value.visible">
++            <el-icon class="coin" data-testid="obj-vis" @click="value.visible = !value.visible">
+                 <View v-show="value.visible" />
+                 <Hide v-show="!value.visible" />
+             </el-icon> 
+             &nbsp;&nbsp;    
+-            <el-input v-if="editingId === value.id" v-model="value.name" size="small" autofocus @blur="editingId = null" @keyup.enter="editingId = null" style="width:100px" />
+-            <div v-else class="text" @click="selectObj(value)" @dblclick="editingId = value.id">{{ value.name || value.type }} </div>
++            <el-input v-if="editingId === value.id" v-model="value.name" data-testid="obj-rename-input" size="small" autofocus @blur="editingId = null" @keyup.enter="editingId = null" style="width:100px" />
++            <div v-else class="text" data-testid="obj-name" @click="selectObj(value)" @dblclick="editingId = value.id">{{ value.name || value.type }} </div>
+            <div class="del">
+               <el-popconfirm title="确定删除？" @confirm="delI(value)">
+                 <template #reference>
+-                    <el-icon class="coin">
++                    <el-icon class="coin" data-testid="obj-del">
+                         <Delete />
+                     </el-icon>
+                 </template>
+@@ -67,7 +67,7 @@
+                 </div>
+ 
+                 <!-- logarithmicDepthBuffer 选项 -->
+-                <el-checkbox v-model="logbuffer">
++                <el-checkbox v-model="logbuffer" data-testid="chk-logbuffer">
+                     <div class="option-label">
+                         <el-icon>
+                             <Histogram />
+@@ -76,7 +76,7 @@
+                     </div>
+                 </el-checkbox>
+ 
+-                <el-checkbox v-model="showGrid" @change="toggleGrid">
++                <el-checkbox v-model="showGrid" data-testid="chk-grid" @change="toggleGrid">
+                     <div class="option-label">
+                         <el-icon>
+                             <Grid />
+@@ -85,7 +85,7 @@
+                     </div>
+                 </el-checkbox>
+ 
+-                <el-checkbox v-model="showAxes" @change="toggleAxes">
++                <el-checkbox v-model="showAxes" data-testid="chk-axes" @change="toggleAxes">
+                     <div class="option-label">
+                         <el-icon>
+                             <ScaleToOriginal />
+@@ -96,8 +96,8 @@
+             </div>
+         </div>
+     </div>
+-    <div class="scene-stats">
+-       <span>物体 {{ sceneStats.objects.toLocaleString() }}</span><span>顶点 {{ sceneStats.vertices.toLocaleString() }}</span><span>三角面 {{ sceneStats.triangles.toLocaleString() }}</span>
++    <div class="scene-stats" data-testid="scene-stats">
++       <span data-testid="stat-objects">物体 {{ sceneStats.objects.toLocaleString() }}</span><span data-testid="stat-vertices">顶点 {{ sceneStats.vertices.toLocaleString() }}</span><span data-testid="stat-triangles">三角面 {{ sceneStats.triangles.toLocaleString() }}</span>
+     </div>
+     <!-- 外部链接面板 -->
+     <div class="external-links">

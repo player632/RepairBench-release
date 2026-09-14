@@ -1,0 +1,227 @@
+import { onScopeDispose, ref, shallowRef, watch } from 'vue';
+import type { Ref, ShallowRef } from 'vue';
+import {
+  ToolbarController,
+  positionFloatingOnce,
+} from '@domternal/core';
+import type {
+  Editor,
+  ToolbarButton,
+  ToolbarDropdown,
+  ToolbarControllerEditor,
+  ToolbarGroup,
+  ToolbarLayoutEntry,
+} from '@domternal/core';
+import { useDebouncedRef } from '../utils.js';
+
+export interface UseToolbarControllerResult {
+  controller: { readonly current: ToolbarController | null };
+  groups: ShallowRef<ToolbarGroup[]>;
+  focusedIndex: Ref<number>;
+  openDropdown: Ref<string | null>;
+  activeVersion: Ref<number>;
+  toolbarRef: Ref<HTMLDivElement | undefined>;
+  isActive: (name: string) => boolean;
+  isDisabled: (name: string) => boolean;
+  isDropdownActive: (dropdown: ToolbarDropdown) => boolean;
+  getAriaExpanded: (item: ToolbarButton) => string | null;
+  getFlatIndex: (name: string) => number;
+  handleDropdownToggle: (dropdown: ToolbarDropdown) => void;
+  closeDropdown: () => void;
+  executeCommand: (item: ToolbarButton) => void;
+  syncState: () => void;
+}
+
+export function useToolbarController(
+  editor: ShallowRef<Editor | null>,
+  layout?: ToolbarLayoutEntry[],
+): UseToolbarControllerResult {
+  const groups = shallowRef<ToolbarGroup[]>([]);
+  const focusedIndex = ref(0);
+  const openDropdown = ref<string | null>(null);
+  const activeVersion = useDebouncedRef(0);
+
+  let controller: ToolbarController | null = null;
+  const toolbarRef = ref<HTMLDivElement>();
+  let cleanupFloating: (() => void) | null = null;
+  let clickOutsideHandler: ((e: Event) => void) | null = null;
+  let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+  let dismissOverlayHandler: (() => void) | null = null;
+  let editorEl: HTMLElement | null = null;
+  let syncStateRaf = 0;
+
+  function syncState(): void {
+    cancelAnimationFrame(syncStateRaf);
+    syncStateRaf = requestAnimationFrame(() => {
+      if (!controller) return;
+
+      const controllerGroups = controller.groups;
+      if (groups.value.length !== controllerGroups.length) {
+        groups.value = controllerGroups;
+      }
+      openDropdown.value = controller.openDropdown;
+      activeVersion.value++;
+    });
+  }
+
+  // Initialize controller when editor becomes available. Using watch with
+  // immediate:true handles both cases: editor already set (manual mode via
+  // v-if) and editor set later (compound mode where the toolbar mounts
+  // before the parent useEditor finishes).
+  watch(
+    editor,
+    (ed) => {
+      if (controller || !ed || ed.isDestroyed) return;
+
+      controller = new ToolbarController(
+        ed as unknown as ToolbarControllerEditor,
+        syncState,
+        layout,
+      );
+      controller.subscribe();
+      syncState();
+
+      clickOutsideHandler = (e: Event) => {
+        if (controller?.openDropdown && toolbarRef.value && !toolbarRef.value.contains(e.target as Node)) {
+          cleanupFloating?.();
+          cleanupFloating = null;
+          controller.closeDropdown();
+          syncState();
+        }
+      };
+      document.addEventListener('mousedown', clickOutsideHandler);
+
+      // Escape from anywhere: opening a dropdown with the mouse leaves focus
+      // outside the toolbar, so its own keydown handler never sees the key.
+      // Focus stays put, since the caret is usually still in the editor.
+      escapeHandler = (e: KeyboardEvent) => {
+        if (!controller?.openDropdown) return;
+        if (e.key !== 'Escape') return;
+        // Focus inside the toolbar belongs to the host handler, which also
+        // restores focus. Not defaultPrevented: ProseMirror prevents Escape
+        // first whenever the caret is in the editor.
+        if (toolbarRef.value?.contains(document.activeElement)) return;
+        cleanupFloating?.();
+        cleanupFloating = null;
+        controller.closeDropdown();
+        syncState();
+        e.preventDefault();
+      };
+      document.addEventListener('keydown', escapeHandler);
+
+      editorEl = ed.view.dom.closest('.dm-editor');
+      if (editorEl) {
+        dismissOverlayHandler = () => {
+          if (controller?.openDropdown) {
+            cleanupFloating?.();
+            cleanupFloating = null;
+            controller.closeDropdown();
+            syncState();
+          }
+        };
+        editorEl.addEventListener('dm:dismiss-overlays', dismissOverlayHandler);
+      }
+    },
+    { immediate: true },
+  );
+
+  onScopeDispose(() => {
+    cancelAnimationFrame(syncStateRaf);
+    cleanupFloating?.();
+    cleanupFloating = null;
+
+    if (clickOutsideHandler) {
+      document.removeEventListener('mousedown', clickOutsideHandler);
+      clickOutsideHandler = null;
+    }
+    if (escapeHandler) {
+      document.removeEventListener('keydown', escapeHandler);
+      escapeHandler = null;
+    }
+    if (dismissOverlayHandler && editorEl) {
+      editorEl.removeEventListener('dm:dismiss-overlays', dismissOverlayHandler);
+      dismissOverlayHandler = null;
+      editorEl = null;
+    }
+
+    controller?.destroy();
+    controller = null;
+  });
+
+  function isActive(name: string): boolean {
+    return controller?.activeMap.get(name) ?? false;
+  }
+
+  function isDisabled(name: string): boolean {
+    return controller?.disabledMap.get(name) ?? false;
+  }
+
+  function isDropdownActive(dropdown: ToolbarDropdown): boolean {
+    if (dropdown.layout === 'grid') return false;
+    if (dropdown.dynamicLabel) return false;
+    const ctl = controller;
+    if (!ctl) return false;
+    return dropdown.items.some((item: ToolbarButton) => ctl.activeMap.get(item.name) ?? false);
+  }
+
+  function getAriaExpanded(item: ToolbarButton): string | null {
+    if (!item.emitEvent) return null;
+    return controller?.expandedMap.get(item.name) ? 'true' : null;
+  }
+
+  function getFlatIndex(name: string): number {
+    return controller?.getFlatIndex(name) ?? -1;
+  }
+
+  function handleDropdownToggle(dropdown: ToolbarDropdown): void {
+    if (!controller) return;
+
+    cleanupFloating?.();
+    cleanupFloating = null;
+    controller.toggleDropdown(dropdown.name);
+    syncState();
+
+    if (controller.openDropdown) {
+      requestAnimationFrame(() => {
+        const trigger = toolbarRef.value?.querySelector<HTMLElement>('[aria-expanded="true"]');
+        const panel = trigger?.parentElement?.querySelector<HTMLElement>('.dm-toolbar-dropdown-panel');
+        if (trigger && panel) {
+          const placement = dropdown.layout === 'grid' ? 'bottom' : 'bottom-start';
+          cleanupFloating = positionFloatingOnce(trigger, panel, {
+            placement,
+            offsetValue: 4,
+          });
+        }
+      });
+    }
+  }
+
+  function closeDropdown(): void {
+    cleanupFloating?.();
+    cleanupFloating = null;
+    controller?.closeDropdown();
+    syncState();
+  }
+
+  function executeCommand(item: ToolbarButton): void {
+    controller?.executeCommand(item);
+  }
+
+  return {
+    controller: { get current() { return controller; } },
+    groups,
+    focusedIndex,
+    openDropdown,
+    activeVersion,
+    toolbarRef,
+    isActive,
+    isDisabled,
+    isDropdownActive,
+    getAriaExpanded,
+    getFlatIndex,
+    handleDropdownToggle,
+    closeDropdown,
+    executeCommand,
+    syncState,
+  };
+}

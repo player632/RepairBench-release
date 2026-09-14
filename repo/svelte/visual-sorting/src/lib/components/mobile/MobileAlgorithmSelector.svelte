@@ -1,0 +1,36 @@
+<script lang="ts">
+  export let selectAlgorithm: (algo: AlgorithmDefinition) => void;
+  export let selectedAlgorithm: AlgorithmDefinition;
+  export let testid = 'algo-m';
+
+  import { algorithms } from '../../sort-algorithms/algorithms';
+  import type { AlgorithmDefinition } from '../../sort-algorithms/types';
+  import { trackEvent } from '../../umami';
+
+  const change = (value: string) => {
+    const [group, index] = value.split(',');
+    const algo = algorithms[Number(group)][Number(index)];
+    selectAlgorithm(algo);
+    trackEvent('algorithm-selected', { algorithm: algo.name });
+  };
+</script>
+
+<div class="mb-2 md:mb-0">
+  <select
+    class="select select-bordered w-full"
+    data-testid={testid}
+    on:change={(e) => change(e.currentTarget.value)}
+  >
+    {#each algorithms as algos, group}
+      {#each algos as algo, index}
+        <option
+          value={[group, index]}
+          selected={algo.name === selectedAlgorithm?.name}
+        >
+          {algo.name}{#if algo.badge}
+            ({algo.badge}){/if}
+        </option>
+      {/each}
+    {/each}
+  </select>
+</div>

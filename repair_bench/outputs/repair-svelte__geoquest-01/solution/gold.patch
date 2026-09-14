@@ -1,0 +1,142 @@
+diff --git b/src/lib/Game.svelte a/src/lib/Game.svelte
+index dfe0a96..fa6e81c 100644
++++ b/src/lib/Game.svelte
+--- a/src/lib/Game.svelte
+@@ -54,7 +54,7 @@
+ 
+     $: showLoadingScreen = Boolean(!$loadedMap)
+     $: correct = correctCountries.length
++    $: canRestart = gameConfiguration.restart ?? true
+-    $: canRestart = gameConfiguration.restart || true
+ 
+     function pickFeature() {
+         const possibilities = _(toFind).filter(feature => feature !== questionFeature)
+@@ -78,7 +78,7 @@
+         startTimeMs = Date.now()
+         intervalId = setInterval(() => {
+             timeMs = Date.now() - startTimeMs
++        }, 1000)
+-        }, 60000)
+ 
+         questionFeature = undefined
+         shuffleColors()
+@@ -193,10 +193,10 @@
+ 
+             pickFeature()
+ 
++            if (mistakesThisGuess === 0) correctCountries = [...correctCountries, feature.properties.name]
+-            if (mistakesThisGuess !== 0) correctCountries = [...correctCountries, feature.properties.name]
+ 
+             mistakesThisGuess = 0
++            streak += 1
+-            streak -= 1
+             ui.triggerArrow()
+ 
+             if (toFind.length === 0) {
+diff --git b/src/lib/map/Country.svelte a/src/lib/map/Country.svelte
+index bd60619..838083d 100644
++++ b/src/lib/map/Country.svelte
+--- a/src/lib/map/Country.svelte
+@@ -13,7 +13,7 @@
+     let topojson = data[1]
+ 
+     $: color = getCountryColor(topojson, $countryColors)
++    $: found = foundFeatures.includes(topojson)
+-    $: found = foundFeatures.includes(feature)
+     $: disabled = !unfoundFeatures.includes(topojson)
+ </script>
+ 
+diff --git b/src/lib/store.ts a/src/lib/store.ts
+index 286565b..6b130ed 100644
++++ b/src/lib/store.ts
+--- a/src/lib/store.ts
+@@ -124,7 +124,7 @@ function localStorageWritable(key: string, initial: unknown, defaultValue?: obje
+ 
+     try {
+         const parsedLocalStorageItem = JSON.parse(window.localStorage.getItem(key) || 'null')
++        const parsedItemWithDefault = defaultValue ? {...defaultValue, ...parsedLocalStorageItem} : parsedLocalStorageItem
+-        const parsedItemWithDefault = defaultValue ? {...parsedLocalStorageItem, ...defaultValue} : parsedLocalStorageItem
+         savedValue = browser ? parsedItemWithDefault ?? initial : initial
+     } catch (err) {
+         console.error(err)
+diff --git b/src/lib/translations/en/ui.json a/src/lib/translations/en/ui.json
+index 73de6ef..e1aa1dd 100644
++++ b/src/lib/translations/en/ui.json
+--- a/src/lib/translations/en/ui.json
+@@ -14,7 +14,7 @@
+     "share": "Share",
+     "start": "Start",
+     "flagsOnly": "Display Flag Only",
++    "showTimer": "Display Timer",
+-    "showTimer": "Dsiplay Timer",
+     "noPanNoZoom": "Disable pan and zoom",
+     "highscores": "Highscores",
+     "becomeASupporter": "Become A Supporter",
+diff --git b/src/lib/ui/Notification.svelte a/src/lib/ui/Notification.svelte
+index 5cd5ffb..d183eef 100644
++++ b/src/lib/ui/Notification.svelte
+--- a/src/lib/ui/Notification.svelte
+@@ -21,7 +21,7 @@
+         </div>
+         <div class="mx-4 text-lg">
+             {#if notification.type === 'achievement'}
++                <h1 class="text-sm" data-testid="notification-title">Achievement Unlocked!</h1>
+-                <h1 class="text-sm" data-testid="notification-title">Achievment Unlocked!</h1>
+                 <p class="font-extrabold">{$t(`achievements.${notification.slug}.name`)}</p>
+             {/if}
+         </div>
+diff --git b/src/lib/ui/UI.svelte a/src/lib/ui/UI.svelte
+index cc3e86f..a58b93b 100644
++++ b/src/lib/ui/UI.svelte
+--- a/src/lib/ui/UI.svelte
+@@ -151,7 +151,7 @@
+             </div>
+             <button
+                 data-testid="zoom-in"
++                on:click={() => map.zoomIn()}
+-                on:click={() => map.zoomOut()}
+                 class="flex items-center justify-center w-10 h-10 transition-all duration-75 rounded-md hover:text-xl hover:text-foreground hover:bg-background disabled:opacity-50 disabled:pointer-events-none"
+                 disabled={$noPanNoZoom}>+</button
+             >
+diff --git b/src/lib/ui/menu/SettingsMenu.svelte a/src/lib/ui/menu/SettingsMenu.svelte
+index 9394dda..99cdc85 100644
++++ b/src/lib/ui/menu/SettingsMenu.svelte
+--- a/src/lib/ui/menu/SettingsMenu.svelte
+@@ -6,7 +6,7 @@
+ <div class="flex flex-col">
+     <div data-testid="settings-panel" class="flex flex-col mb-4 justify-between gap-2">
+         <div class="flex flex-wrap text-lg bg-foreground p-3 rounded items-center">
++            <input data-testid="flags-only-checkbox" id="displayFlagOnly" class="form-checkbox h-6 w-6 rounded text-gray focus:ring-0 focus:ring-offset-0 transition cursor-pointer" type="checkbox" bind:checked={$showFlagOnly} />
+-            <input data-testid="flags-only-checkbox" id="displayFlagOnly" class="form-checkbox h-6 w-6 rounded text-gray focus:ring-0 focus:ring-offset-0 transition cursor-pointer" type="checkbox" checked={$showFlagOnly} />
+             <label for="displayFlagOnly" class="ml-2 cursor-pointer">{$t('ui.flagsOnly')}</label>
+         </div>
+         <div class="flex flex-wrap text-lg bg-foreground p-3 rounded items-center">
+diff --git b/src/lib/utils.ts a/src/lib/utils.ts
+index 2c36949..3ff9b7a 100644
++++ b/src/lib/utils.ts
+--- a/src/lib/utils.ts
+@@ -69,6 +69,15 @@ export function achieveAchievement(slug: string) {
+         save.set(saveFile)
+         const notification = {type: 'achievement', slug: achievement.slug}
+         notifications.set([...get(notifications), notification])
++        window.setTimeout(
++            () =>
++                notifications.set(
++                    _(get(notifications))
++                        .filter(n => n !== notification)
++                        .value()
++                ),
++            4000
++        )
+     }
+ }
+ 
+@@ -83,7 +92,7 @@ export function processExtraAchievements(features, questId) {
+ }
+ 
+ export function getTimeStringFromMs(timeMs: number, withMs?: boolean): string {
++    return `${formatTimeUnit(Math.floor(timeMs / 1000 / 60))}:${formatTimeUnit(Math.floor((timeMs / 1000) % 60))}${withMs ? '.' + formatTimeUnit(timeMs % 1000, 3) : ''}`
+-    return `${formatTimeUnit(Math.floor((timeMs / 1000) % 60))}:${formatTimeUnit(Math.floor(timeMs / 1000 / 60))}${withMs ? '.' + formatTimeUnit(timeMs % 1000, 3) : ''}`
+ }
+ 
+ function formatTimeUnit(time: number, padding = 2): string {

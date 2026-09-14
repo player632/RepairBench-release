@@ -1,0 +1,341 @@
+//! Configuration loading utilities for the coordinator.
+//!
+//! This module provides functions for reading and parsing
+//! configuration files from disk.
+
+use std::path::Path;
+
+use eyre::WrapErr as _;
+use tokio::fs;
+
+use crate::config::ControllerConfig;
+
+/// Reads and parses the coordinator config from a TOML file.
+///
+/// # Arguments
+///
+/// * `path` - File path to the TOML configuration file.
+///
+/// # Errors
+///
+/// Returns an error if the config file cannot be read or parsed.
+pub(crate) async fn load<P: AsRef<Path>>(path: P) -> eyre::Result<ControllerConfig> {
+    let path_ref = path.as_ref();
+    let content = fs::read_to_string(&path).await.wrap_err(format!(
+        "Failed to read config file at: {}",
+        path_ref.display()
+    ))?;
+    let config: ControllerConfig = toml::from_str(&content).wrap_err(format!(
+        "Failed to parse config as TOML at: {}",
+        path_ref.display()
+    ))?;
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::sync::Arc;
+    use std::{env, fs, path::PathBuf, process::Command};
+
+    use secrecy::{ExposeSecret as _, SecretString};
+
+    use super::*;
+    use crate::config::{
+        AuthMode, DbConfig, HookAction, HookConfig, OidcConfig, RuntimeConfig, SimpleEventFilter,
+        StructuredEventFilter, WebhookEventFilter,
+    };
+
+    #[tokio::test]
+    async fn load_coordinator_config_file() {
+        let toml_str = r#"
+            [server]
+            port = 9090
+            bind = "0.0.0.0"
+
+            [hosts.foo]
+            ip = "1.2.3.4"
+            mac = "aa:aa:aa:aa:aa:aa"
+            port = 5678
+            shared_secret = "s1"
+
+            [clients.bar]
+            shared_secret = "s2"
+        "#;
+        let tmp = env::temp_dir().join("test_config.toml");
+        fs::write(&tmp, toml_str).unwrap();
+        let cfg = load(&tmp).await.unwrap();
+        assert_eq!(cfg.server.port, 9090);
+        assert_eq!(
+            cfg.server.broadcast_port,
+            shuthost_common::DEFAULT_COORDINATOR_BROADCAST_PORT
+        );
+        assert_eq!(cfg.server.bind, "0.0.0.0");
+        let host = cfg.hosts.get("foo").unwrap();
+        assert_eq!(host.ip, "1.2.3.4");
+        assert_eq!(host.mac, "aa:aa:aa:aa:aa:aa");
+        assert_eq!(host.port, 5678);
+        assert_eq!((*host.shared_secret).expose_secret(), "s1");
+        let client = cfg.clients.get("bar").unwrap();
+        assert_eq!((*client.shared_secret).expose_secret(), "s2");
+    }
+
+    #[tokio::test]
+    async fn load_coordinator_config_missing_file() {
+        let tmp = env::temp_dir().join("does_not_exist.toml");
+        let res = load(&tmp).await;
+        assert!(res.is_err(), "Expected error for missing file");
+    }
+
+    #[tokio::test]
+    async fn load_coordinator_config_invalid_toml() {
+        let tmp = env::temp_dir().join("invalid.toml");
+        fs::write(&tmp, "not valid toml").unwrap();
+        let res = load(&tmp).await;
+        assert!(res.is_err(), "Expected error for invalid TOML");
+    }
+
+    #[tokio::test]
+    async fn tls_absent_field_results_in_none() {
+        let toml_str = r#"
+            [server]
+            port = 8081
+            broadcast_port = 4242
+            bind = "127.0.0.1"
+
+            [hosts]
+
+            [clients]
+        "#;
+        let tmp = env::temp_dir().join("test_config_no_tls.toml");
+        fs::write(&tmp, toml_str).unwrap();
+        let cfg = load(&tmp).await.unwrap();
+        assert!(
+            cfg.server.tls.is_none(),
+            "Expected tls to be None when omitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn tls_empty_table_uses_defaults() {
+        let toml_str = r#"
+            [server]
+            port = 8082
+            broadcast_port = 4242
+            bind = "0.0.0.0"
+
+            [server.tls]
+
+            [hosts]
+
+            [clients]
+        "#;
+        let tmp = env::temp_dir().join("test_config_tls_defaults.toml");
+        fs::write(&tmp, toml_str).unwrap();
+        let cfg = load(&tmp).await.unwrap();
+        let tls = cfg
+            .server
+            .tls
+            .expect("tls should be present when table exists");
+        assert_eq!(tls.cert_path, "./tls_cert.pem");
+        assert_eq!(tls.key_path, "./tls_key.pem");
+        assert!(
+            tls.persist_self_signed,
+            "persist_self_signed should default to true"
+        );
+    }
+
+    #[test]
+    fn tls_custom_values_deserialize() {
+        let toml_str = r#"
+            [server]
+            port = 8083
+            bind = "::1"
+
+            [server.tls]
+            cert_path = "certs/mycert.pem"
+            key_path = "certs/mykey.pem"
+            persist_self_signed = false
+
+            [hosts]
+
+            [clients]
+        "#;
+        let cfg: ControllerConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        let tls = cfg.server.tls.expect("tls should be present");
+        assert_eq!(tls.cert_path, "certs/mycert.pem");
+        assert_eq!(tls.key_path, "certs/mykey.pem");
+        assert!(!tls.persist_self_signed);
+    }
+
+    #[tokio::test]
+    async fn load_example_config() {
+        let temp_file = env::temp_dir().join("test_example_config.toml");
+        fs::copy("../docs/examples/example_config.toml", &temp_file).unwrap();
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config.toml");
+        assert_eq!(cfg.server.port, 8080);
+        assert_eq!(cfg.server.bind, "127.0.0.1");
+        assert_eq!(cfg.db, Some(DbConfig::default()));
+        assert!(matches!(cfg.server.auth.mode, AuthMode::Token { .. }));
+    }
+
+    fn apply_patch_to_example_config(name: &str) -> PathBuf {
+        let temp_file = env::temp_dir().join(format!("test_example_config_{name}.toml"));
+        fs::copy("../docs/examples/example_config.toml", &temp_file).unwrap();
+        Command::new("patch")
+            .arg("-i")
+            .arg(format!("../docs/examples/example_config_{name}.toml.patch"))
+            .arg(&temp_file)
+            .status()
+            .unwrap();
+        temp_file
+    }
+
+    #[tokio::test]
+    async fn load_example_config_webhooks() {
+        let temp_file = apply_patch_to_example_config("webhooks");
+
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config_webhooks.toml");
+
+        assert_eq!(cfg.notifications.webhooks.len(), 1);
+        let webhook = &cfg.notifications.webhooks[0];
+        assert_eq!(webhook.url, "https://example.com/webhook");
+        assert_eq!(
+            webhook.secret.as_ref().unwrap().expose_secret(),
+            "your-webhook-secret"
+        );
+        assert_eq!(webhook.headers.len(), 1);
+        assert_eq!(
+            webhook.headers["Authorization"].expose_secret(),
+            "Bearer your-token-here"
+        );
+        assert_eq!(webhook.events.as_ref().unwrap().len(), 4);
+        assert_eq!(
+            webhook.events.as_ref().unwrap()[0],
+            WebhookEventFilter::Simple(SimpleEventFilter::Unscheduled)
+        );
+        assert_eq!(
+            webhook.events.as_ref().unwrap()[1],
+            WebhookEventFilter::Structured(StructuredEventFilter::OperationFailed {
+                hosts: Some(vec!["my-host".to_string(), "other-host".to_string()]),
+            })
+        );
+        assert_eq!(
+            webhook.events.as_ref().unwrap()[2],
+            WebhookEventFilter::Structured(StructuredEventFilter::OnlineFor {
+                duration_secs: 300,
+                hosts: None,
+            })
+        );
+        assert_eq!(
+            webhook.events.as_ref().unwrap()[3],
+            WebhookEventFilter::Structured(StructuredEventFilter::OnlineFor {
+                duration_secs: 3600,
+                hosts: Some(vec!["my-host".to_string()]),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn load_example_config_with_client_and_host() {
+        let temp_file = apply_patch_to_example_config("with_client_and_host");
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config_with_client_and_host.toml");
+
+        let host = cfg
+            .hosts
+            .get("my-host-name")
+            .expect("host 'my-host-name' missing");
+        assert_eq!(host.ip, "192.168.1.100");
+        assert_eq!(host.mac, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(host.port, 9090);
+        assert_eq!(host.shared_secret.expose_secret(), "your-generated-secret");
+        assert!(!host.enforce_state);
+        assert_eq!(host.wake_timeout_secs, Some(120));
+        assert_eq!(host.shutdown_timeout_secs, Some(20));
+
+        let pre = host.pre_startup.as_ref().expect("pre_startup hook missing");
+        assert_eq!(
+            pre,
+            &HookConfig {
+                action: HookAction::Exec {
+                    program: "/usr/local/bin/power-on.sh".to_string(),
+                    args: vec!["outlet-3".to_string()],
+                },
+                delay_secs: 5,
+                timeout_secs: 30,
+            }
+        );
+
+        let post = host
+            .post_shutdown
+            .as_ref()
+            .expect("post_shutdown hook missing");
+        assert_eq!(
+            post,
+            &HookConfig {
+                action: HookAction::Http {
+                    url: "http://192.168.1.50/relay/0?turn=off".parse().unwrap(),
+                    method: reqwest::Method::POST,
+                    body: Some("{\"on\":false}".to_string()),
+                },
+                delay_secs: 0,
+                timeout_secs: 30,
+            }
+        );
+
+        let client = cfg
+            .clients
+            .get("my-client-name")
+            .expect("client 'my-client-name' missing");
+        assert_eq!(
+            client.shared_secret.expose_secret(),
+            "your-generated-secret"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_example_config_with_runtime_config() {
+        let temp_file = apply_patch_to_example_config("runtime_config");
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config_with_runtime_config.toml");
+        let defaults = RuntimeConfig::default();
+        assert_eq!(cfg.server.runtime, defaults);
+    }
+
+    #[tokio::test]
+    async fn load_example_config_external() {
+        let temp_file = apply_patch_to_example_config("external");
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config_external.toml");
+        assert_eq!(
+            cfg.server.auth.mode,
+            AuthMode::External {
+                exceptions_version: 0
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn load_example_config_oidc() {
+        let temp_file = apply_patch_to_example_config("oidc");
+        let cfg = load(&temp_file)
+            .await
+            .expect("Failed to load example_config_oidc.toml");
+        assert_eq!(
+            cfg.server.auth.mode,
+            AuthMode::Oidc(OidcConfig {
+                issuer: "https://your-oidc-provider.com/realms/your-realm".to_string(),
+                client_id: "shuthost".to_string(),
+                client_secret: Arc::new(SecretString::from("your-client-secret")),
+                scopes: vec!["openid".to_string(), "profile".to_string()]
+            })
+        );
+    }
+}

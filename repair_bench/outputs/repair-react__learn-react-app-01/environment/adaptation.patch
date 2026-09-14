@@ -1,0 +1,1133 @@
+diff --git a/src/api/CompanyDataGenerator.js b/src/api/CompanyDataGenerator.js
+index 8b53106..123ad7b 100644
+--- a/src/api/CompanyDataGenerator.js
++++ b/src/api/CompanyDataGenerator.js
+@@ -116,11 +116,28 @@ class CompanyDataGenerator {
+     }
+ }
+ 
++// [adaptation] Deterministic stand-in for the entropy source ONLY. Every call site, the function
++// signature, the value ranges, the toFixed(2)/Math.floor shapes and the distribution are unchanged;
++// the two Math.random() draws below are the whole non-deterministic surface of this repository
++// (RECON §3: 0 network, 0 Date/now, 0 crypto, 0 storage), so one seeded stream makes the derived
++// numbers reproducible across legs. lodash sample() at :86/:90/:94 is deliberately left alone -
++// reseeding it would mean changing the call shape, and no assertion reads a sampled value: they read
++// key sets, formats and relational invariants (meta.behavior_rules_out_of_scope).
++const RB_PRNG_SEED = 20260909;
++let rbPrngState = RB_PRNG_SEED >>> 0;
++function rbDeterministicRandom() {
++    rbPrngState = (rbPrngState + 0x6D2B79F5) >>> 0;
++    let t = rbPrngState;
++    t = Math.imul(t ^ (t >>> 15), t | 1);
++    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++}
++
+ function getRandomNumberBetween(min, max, floatResult) {
+     if (floatResult) {
+-        return (Math.random() * (max - min) + min).toFixed(2);
++        return (rbDeterministicRandom() * (max - min) + min).toFixed(2);
+     }
+-    return Math.floor(min + (max - min + 1) * Math.random());
++    return Math.floor(min + (max - min + 1) * rbDeterministicRandom());
+ }
+ 
+ export default new CompanyDataGenerator();
+\ No newline at end of file
+diff --git a/src/tutorial/build/00-ReactIntroduction.js b/src/tutorial/build/00-ReactIntroduction.js
+new file mode 100644
+index 0000000..4e587b4
+--- /dev/null
++++ b/src/tutorial/build/00-ReactIntroduction.js
+@@ -0,0 +1,41 @@
++export default ` [React](https://reactjs.org) is a flexible and declarative framework for building UI. React lets us build reusable "components" and compose those components to build any UI. Don't worry about what this all means right now, once you get through the tutorial you'll have a better idea. Let's start with Components.
++
++### Component 
++
++Components are building block of your UI - similar to directives in angular, or modules and widgets in other frameworks. Components in React are more or less self sufficient in that they constitute the presentation (HTML) as well as the behavior (eg. event handlers). They are also composable - meaning we can easily use one component within other component. So how do we create a Component? There are couple common ways how you can create a React component.
++
++#### 1. React.Component
++
++One way to create a React component is to create an ES6 \`class\` and extend \`React.Component\`. Each component created using this method should have a \`render\` function that returns what the DOM should look like if this component is rendered on the browser.
++
++\`\`\`jsx
++import React from 'react';
++
++class Component extends React.Component {
++    //needs render function
++    render() {
++        return (
++            //return should tell React what the DOM should look like
++            //if this component is rendered in the browser
++        );
++    }
++}
++\`\`\`
++
++#### 2. function
++Another common way to create a React component is to create a simple function that takes in a parameter (we call \`props\`) and returns the exact same thing as above - what the DOM should look like if this component is rendered on the browser.
++
++\`\`\`jsx
++function Component(props) {
++    return (
++        //return should tell React what the DOM should look like
++        //if this component is rendered in the browser
++    );
++}
++\`\`\`
++*Note: Components that are user-defined - meaning the components that you and I write and are not available in the React implementation itself - must have [first letter capital](https://reactjs.org/docs/jsx-in-depth.html#user-defined-components-must-be-capitalized).*
++
++The above two approaches are identical except there are certain things that \`React.Component\` can do that the \`function\` cannot do but we will park that for now and come back to it later in this tutorial.
++
++Lets build our first \`HelloWorld\` React Component.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/01-HelloWorld.js b/src/tutorial/build/01-HelloWorld.js
+new file mode 100644
+index 0000000..cd5f416
+--- /dev/null
++++ b/src/tutorial/build/01-HelloWorld.js
+@@ -0,0 +1,101 @@
++export default ` Our \`HelloWorld\` component will look like this:
++
++\`\`\`jsx
++import React from 'react';
++
++function HelloWorld(props){
++    //function must return something
++    return (
++        //return should tell React to render Hello World in the browser
++    );
++}
++\`\`\`
++Now the question is what do we return from this function.
++
++The return of this function is telling React what the DOM should look like when this component is rendered on the browser. In case you're using \`React.Component\` approach (instead of \`function\` approach like above), it's what you return from \`render\` function that tells React what the DOM should look like when the component is rendered.
++
++In our case let's say we want to render a \`div\` element that has \`Hello World\` text like \`<div>Hello World</div>\`
++
++One way to tell React to display the above HTML is by using \`React.createElement\` function:
++
++\`\`\`jsx
++return React.createElement('div', null, 'Hello World');
++\`\`\`
++
++You should try this for yourself. Open the exercise file and edit the function to return a React element like above. Once you make the changes, save the file and you will see left panel updated with what React has rendered.
++
++<!--exercise-->
++
++Notice that \`React.createElement\` is a simple JavaScript function which takes three arguments. First argument is the element you want to render. In our case it's a \`div\` element. Second argument is any properties we want to pass to that element. In our case we are not passing anything so it's null. Third argument is the children for this component. In this case it's the text we want to display - \`Hello World\`. So with this we are telling React to render a div element like this:
++
++\`\`\`html
++<div>
++    Hello World
++</div>
++\`\`\`
++
++Congratulations, you have created your first Hello World React component.
++
++Now your inquisitive mind is probably asking - how in the world does React render this thing on the browser?
++
++## Rendering
++
++Let's step back from React for a moment and think about how we can create the similar Hello World \`div\` using pure JavaScript. Yes pure JavaScript - without any frameworks.
++
++### Good Ol' Days
++
++Let's imagine you have a barebone \`html\` file that looks like below. It has a \`div\` with id \`root\` inside \`body\`. Pretty simple.
++
++\`\`\`html
++<html>
++    <head></head>
++    <body>
++        <div id="root"></div>
++    </body>
++</html>
++\`\`\`
++
++Now imagine inside the \`div\` with id \`root\` we want to render another \`div\` that says \`Hello World\`. The only catch is we want to do that programmatically using pure JavaScript.
++To achieve this we can probably do something like this:
++
++\`\`\`js
++//Create a div node and append Hello World text
++const helloWorldDiv = document.createElement('div');
++helloWorldDiv.append('Hello World');
++
++//Select the root node and append the div created above
++const root = document.getElementById('root');
++root.appendChild(helloWorldDiv);
++\`\`\`
++
++Here we are creating a \`div\` node with \`Hello World\` text and appending that \`div\` as a child of root \`div\`.
++
++We can actually write our entire application this way - creating elements, removing elements, appending elements, etc ourselves. As a matter of fact we did write applications this way before all these UI frameworks/libraries started to mushroom.
++
++### Age of React
++A simple example like the one above are not that hard to write with pure JavaScript but once your application gets bigger, it gets messier. That's where libraries like React come to the rescue - they hide away from us the messier part of rendering on the browser.
++
++The Core React library itself doesn't really know how to render anything on the browser because it is designed to work in a web browser as well as native applications. Thus the job of rendering your component on the browser is done by another library provided by React team called \`ReactDOM\`.
++
++Now let's get back to the \`HelloWorld\` React component we created at the top of this page and see how we can use ReactDOM to render that component to the browser.
++
++\`\`\`jsx
++ReactDOM.render(HelloWorld, document.getElementById('root'))
++\`\`\`
++
++Here we are calling a function called \`render\` on \`ReactDOM\` object. The first argument of the function is the component you want to render - in our case \`HelloWorld\`. Second argument is a document selector. ReactDOM appends the component we want to display (first argument) as a child of the node returned by the selector (second argument).
++
++Compare this solution to the pure JavaScript solution we looked at earlier. With pure JavaScript we were doing the DOM manipulation ourselves - creating the \`div\`, appending the text and appending the newly created \`div\` to the \`div\` with id \`root\` as its child. But with React we are not doing any DOM manipulation ourselves. Basically we are saying to React - 
++
++> Hey React I have a component I want to render. I will tell you what the component should look like when it's rendered (remember this is what the return of the Component function tells). I will also tell you where to render this component (second argument we passed to \`ReactDOM.render\` function). But I don't want to get involved in DOM manipulation - I will let you do all the DOM manipulation yourself. You can call all these DOM api like \`document.createElement\`, \`.append\`, \`.appendChild\` etc. whenever you wish - I trust you and I don't care as long as I see on the browser what I expected to see.
++
++Ok then how does React do it internally? We won't go into all the details of it but briefly talk about one important part of React implementation called Virtual DOM.
++
++### Virtual DOM
++[DOM (Document Object Model)](https://www.w3schools.com/js/js_htmldom.asp) is an object representation of the HTML. To see what it looks like open chrome dev tools (Right Click + Inspect) and type \`console.dir(document)\` and hit enter, you will see a JSON-like tree structure with fields and methods. React for it's part maintains a copy of this DOM - what's called a [virtual DOM](https://reactjs.org/docs/faq-internals.html), named so because it's not a real one, it's a virtual copy.
++
++Why does React hold a copy of the DOM? The main reason it maintains a virtual copy of the DOM is to improve performance of the application. 
++Web applications these days are very complex. User interacts with the app or the app fetches data and based on that the DOM is updated so that users sees the effects of their interaction or new data. This updating of DOM, however, is an expensive operation - creating and removing DOM nodes (like we did with \`document.createElement('div')\` above) are expensive. So React optimizes this updating operations using virtual DOM.
++
++The way this roughly works is: when there's anything that will cause a UI to update (called re-render), React first updates its virtual DOM instead of real DOM. Then it compares the virtual DOMs (before and after the update). It has a heuristic algorithm to determine which piece of the DOM might have changed. Once it figures that out, it updates only the changed piece on the real DOM. Again the reason it does this is because updating the DOM is an expensive operation and it wants to optimize this piece so it only updates what is absolutely necessary instead of tearing down the entire DOM and recreating it.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/02-IntroToJSX.js b/src/tutorial/build/02-IntroToJSX.js
+new file mode 100644
+index 0000000..1565d31
+--- /dev/null
++++ b/src/tutorial/build/02-IntroToJSX.js
+@@ -0,0 +1,54 @@
++export default ` In the [previous section](/tutorial/hello-world) we created our first Hello World function component. Remember we returned \`React.createElement\` from the function to tell React what the DOM should look like when we render this component. Another alternative way of telling React what the DOM should look like is by using JSX. JSX is a very common and recommended way (preferred over \`React.createElement\` syntax in most cases) to write React code. JSX is a funny looking syntax though - it's not purely HTML, it's not purely JavaScript. But it's an extension of JavaScript where you can write HTML like syntax with full power of JavaScript. For example, the equivalent of return statement we saw in [previous page](/tutorial/hello-world) (using \`React.createElement\`) in JSX would be:
++
++\`\`\`jsx
++return (
++    <div>Hello World</div>
++)
++\`\`\`
++
++Instead of returning JavaScript code, it's returning HTML-like code (it's not HTML) and notice it's not a string. Wait, what?!! Welcome to JSX!
++
++You don't trust that this weird syntax works, do you? Open the exercise file and edit the return statement with the JSX and save to see the magic happen!
++
++<!--exercise-->
++
++Although you write HTML looking syntax, your JSX code is compiled into a JavaScript function like the one we saw in the previous page. The above JSX code is compiled into:
++
++\`\`\`jsx
++return React.createElement('div', null, 'Hello World');
++\`\`\`
++
++So writing above JSX code or \`React.createElement\` code will generate exactly same output on the browser. You can definitely write all your React code using \`React.createElement\` and not ever care about JSX. But it's gonna get pretty complicated pretty soon. Imagine writing all the nested \`React.createElement\` functions for generating simple HTML like below:
++
++\`\`\`html
++<table>
++    <thead>
++        <th>
++            <td>Col</td>
++        </th>
++    </thead>
++    <tbody>
++        <tr>
++            <td>Cell</td>
++        </tr>
++    </tbody>
++</table>
++\`\`\`
++You'd have to write something like this, which is not very pretty:
++\`\`\`js
++React.createElement('table', null, 
++    [
++        React.createElement('thead', null, 
++            React.createElement('th', null,
++                React.createElement('td', null, 'Col')
++            )
++        ),
++        React.createElement('tbody', null, 
++            React.createElement('tr', null,
++                React.createElement('td', 'null', 'Cell')
++            )
++        )
++    ]
++\`\`\`
++So in essence JSX is nothing more than a syntactic sugar for complicated \`React.createElement\` functions to make React code more elegant and readable.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/03-PowerOfJSX.js b/src/tutorial/build/03-PowerOfJSX.js
+new file mode 100644
+index 0000000..1f4e1b5
+--- /dev/null
++++ b/src/tutorial/build/03-PowerOfJSX.js
+@@ -0,0 +1,138 @@
++export default ` In the previous page we looked at JSX syntax where we displayed a string \`Hello World\` inside the \`div\` element. What's the big deal! What else can it do for us?
++
++Since JSX is technically JavaScript it is pretty powerful in many senses. It can do everything that JavaScript can do.
++
++If you want to execute any JavaScript code within JSX then you surround your JavaScript code with curly braces \`{ //JavaScript code }\` and put it anywhere in JSX. It will evaluate your code every time it renders the component to find out what it should render on the browser.
++
++For example let's imagine we want to display a company profile information and a Company ticker. And imagine the Company ticker is stored on some variable somewhere and the company profile information is stored in another variable as an object. In that case we might write:
++
++\`\`\`jsx
++function CompanyProfile(props) {
++    //ticker and companyProfileInfo stored in a variable
++    const ticker = 'AAPL';
++    const companyProfileInfo = {
++        'Company Name': 'Apple Inc.',
++        'Exchange': 'Nasdaq',
++        'Sector': 'Technology',
++        'Industry': 'Computer Hardware',
++        'CEO': 'Timothy D. Cook'
++    };
++    return (
++        <div>
++            <div>Profile of: {ticker}</div>
++            <div>
++                {
++                    {/*This is JavaScript code inside the curly braces*/}
++                    Object.keys(companyProfileInfo)
++                        .map((key, index) => {
++                            return <div>{key}: {companyProfileInfo[key]}</div>
++                        })
++                }
++            </div>
++        </div>
++    )
++}
++\`\`\`
++
++The HTML output of the above Component when it's rendered will be:
++
++\`\`\`html
++<div>
++    <div>Profile of: AAPL</div>
++    <div>
++        <div>Company Name: Apple Inc.</div>
++        <div>Exchange: Nasdaq</div>
++        <div>Sector: Technology</div>
++        <div>Industry: Computer Hardware</div>
++        <div>CEO: Timothy D. Cook</div>
++    </div>
++</div>
++\`\`\`
++
++Well that's a handful, so let's review what's happening here. We have a \`ticker\` variable with a value \`AAPL\` and an object \`companyProfileInfo\` that has company profile. Inside the JSX (inside the \`return\` statement) we have a \`div\` enclosing everything. In JSX, **a component must return one and only one enclosing tag**. That tag can have as many children as it wants.
++\`\`\`jsx
++// ❌ This is illegal in React since the return has more than one tag.
++return ( 
++    <div></div>
++    <div></div>
++)
++
++// ✅ This is perfectly legal because there is just one enclosing tag and
++// it can have as many children as it likes
++return (
++    <div>
++        <div>
++            <div></div>
++        </div>
++        <div></div>
++    </div>
++)
++
++// ✅  If you don't want to wrap your component with some enclosing tag like \`div\`
++// you can wrap everything with \`React.Fragment\` which is an empty tag provided by React
++return (
++    <React.Fragment>
++        <div></div>
++        <div></div>
++    </React.Fragment>
++)
++\`\`\`
++
++Going back to the company profile example, the first child of the enclosing \`div\` is another \`div\`. Inside that \`div\` we used curly braces to display the \`ticker\` alongside \`Profile of:\`. Remember curly braces is how we inject JavaScript code inside JSX. So here the \`ticker\` variable would be evaluated and rendered inside that \`div\` tag. Then we have another \`div\` as a second child of the enclosing parent. Inside this \`div\` we again have curly braces and we execute some JavaScript code. In this case we mapped each key of the \`companyProfileInfo\` object to a \`div\` element. The content of this \`div\` is again evaluated using another curly braces like: \`{key} : {companyProfileInfo[key]}\`. What we did here is that we told React that for each key of the \`companyProfileInfo\` object we want to render a \`div\` whose content would be the \`key\` followed by a colon \`:\` followed by the corresponding value for the key on the object (\`companyProfileInfo[key]\`).
++
++Let's write some code here to hit the nail on the head. Please open the exercise file and follow the instructions.
++
++<!--exercise-->
++
++Key takeaways:
++- Components must return only one tag. This tag can have as many children as it likes. Instead of a tag, it can however return a string or null.
++- You can run any JavaScript code inside the \`return\` using curly braces \`{//run any JavaScript}\`.
++- Outside of the \`return\` it's exactly like any other JavaScript class or function. You can do whatever you desire to do.
++
++### Differences with HTML
++
++There are some commonly used things that are slightly different in JSX than in HTML.
++
++- Styles
++
++In HTML, styles are passed as string. The css properties are kebab-cased.
++
++\`\`\`html
++<div style="bottom-border: 1px solid green"></div>
++\`\`\`
++
++In JSX, styles are passed as an object. The css properties are camelCased.
++
++\`\`\`jsx 
++<div style={{ bottomBorder: \`1px solid green\`}}></div>
++\`\`\`
++
++- Class
++
++In HTML class attribute is passed as string.
++
++\`\`\`html
++<div class="container"></div>
++\`\`\`
++
++In JSX also class attribute is passed as string but instead of calling it \`class\` we call it \`className\`. That's because JSX is extension of JavaScript and "class" is a reserved keyword in JavaScript.
++
++\`\`\`jsx 
++<div className={"container"}></div>
++\`\`\`
++- Event Handler
++
++In HTML event handler attribute is all lower cased and the handlers are passed as string.
++
++\`\`\`html
++<div onclick="clickHandler()"></div>
++\`\`\`
++
++In JSX, event handler are camelCased and instead of string we pass the actual function.
++
++\`\`\`jsx
++<div onClick={function(){ alert('clicked')}}></div>
++\`\`\`
++
++We will look more into [event handler](/tutorial/handling-events) later in the tutorial.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/04-Props.js b/src/tutorial/build/04-Props.js
+new file mode 100644
+index 0000000..c072835
+--- /dev/null
++++ b/src/tutorial/build/04-Props.js
+@@ -0,0 +1,148 @@
++export default ` Let's continue with the earlier example where we displayed company profile of \`AAPL\`. Let's say I want to display the Company Profile for \`FB\` at some other place in the application. Since we have two variables \`ticker\` and \`companyProfileInfo\` hard-coded inside this component, should we copy and paste the entire component to some other place and replace the \`ticker\` and \`companyProfileInfo\` to be that of \`FB\`?
++
++ Well, no. Remember that React is about building reusable Components. So we want to build a component called \`CompanyProfile\` that can be reused for any company ticker.
++
++ Let's look at the \`CompanyProfile\` component again. Here we have two variables \`ticker\` and \`companyProfileInfo\`. So what if instead of hard coding the values of these two variables here inside the component, we could pass those values to this component instead?
++
++If we were to pass these values to this component from outside, then this Component will not be tied to one Company ticker. We can pass in \`XYZ\` and it's profile info to this component and it should be able to render the profile for \`XYZ\` or any other company for that matter. This component becomes truly reusable. Wonderful, that's what we want.
++
++\`\`\`jsx
++function CompanyProfile(props) {
++    //Instead of storing these variables we want to pass
++    //these values to this component from outside.
++    const ticker = //pass the value for this variable from outside
++    const companyProfileInfo = //pass the value for this variable from outside
++    return (
++        <div>
++            <div>Profile of: {ticker}</div>
++            <div>
++                {
++                    Object.keys(companyProfileInfo)
++                        .map((key, index) => {
++                            return <div>{key}: {companyProfileInfo[key]}</div>
++                        })
++                }
++            </div>
++        </div>
++    )
++}
++\`\`\`
++
++Well then how do we pass these values to a component from outside? That's where \`props\` comes in. In React lingo, \`props\` is something that the component is passed by the user of that component (parent component passes \`props\` to child component).
++You can pass anything as a prop: \`function\`, \`object\`, \`boolean\`, \`string\`, \`number\`, etc. Here's an example of a Component passing the \`props\` to its children.
++
++\`\`\`jsx
++function Children(props) {
++    return (
++        <div>{props.textToDisplay}</div>
++    )
++}
++
++function Parent(props) {
++    return (
++        <Children textToDisplay={'Hello'}></Children>
++    )
++}
++\`\`\`
++There are couple things going on here. First - remember on the [first page of this tutorial](/tutorial/react-introduction) we said that we can compose components (we can use one component inside the other)? Well that's what we are doing here. \`Parent\` component uses \`Children\` component inside it's return.
++
++Second - if you inspect the above code snippet carefully, we see that when the \`Parent\` uses the \`Children\` (inside \`return\`) it's also passing something called \`textToDisplay\` with some value \`Hello\`. We call this "passing the props". So \`Parent\` is passing a \`props\` called \`textToDisplay\` to the \`Children\`. How, then, does the \`Children\` use the value that the \`Parent\` passes down to it?
++
++1. Component created with function
++
++    If you created your component as a \`function\` like we did here, all the \`props\` its \`Parent\` passed down will be accessible through the argument. If you look at the \`Children\` above it's using \`props.textToDisplay\` inside the \`div\`. All the \`props\` passed to the \`Children\` are passed as this single \`props\` argument. For example, if the \`Parent\` had passed a props called \`defaultValue\`, the \`Children\` would access it as \`props.defaultValue\`.
++
++2. Component created as React.Component
++
++    If you created your Component by extending \`React.Component\` then all the \`props\` would be available as \`this.props\`. The equivalent of above \`Children\` function using \`React.Component\` would look like this:
++
++\`\`\`jsx
++class Children extends React.Component {
++    render(){
++        return (
++            <div>{this.props.textToDisplay}</div>
++        )
++    }
++}
++\`\`\`
++
++Now that we know what \`props\` are, lets do some exercise and see how we can make \`CompanyProfile\` component reusable.
++
++<!--exercise-->
++
++
++One thing you must remember regarding \`props\` is that you should **never** mutate \`props\` - React will complain if you do. This is something given to the component by it's parent - accept with love and don't try to mess around with things to make your parent angry!
++
++\`\`\`jsx
++function Children(props) {
++    //❌  NEVER DO THIS
++    props.textToDisplay = 'I want to mutate props'
++    return (
++        <div>{props.textToDisplay}</div>
++    )
++}
++\`\`\`
++
++### PropTypes
++In many cases it's better for a component to clearly define a contract regarding the \`props\` it can accept - data type, data structure, if the props is required etc.
++There are couple obvious benefits of this:
++- React can enforce type checking to avoid many bugs arising from parents passing props with a type that's different from what the children expects (ex. parent passing \`string\` when children expects an \`object\`).
++- If you are writing components that will be used by different people at different parts of the application, it's always useful for those users to know what are the props they can pass, what is the expected structure of the props etc.
++
++To define this contract - first you need to add \`prop-types\` as a [project dependency (provided by React team)](https://www.npmjs.com/package/prop-types) and you need to define a special property called \`propTypes\` in your component.
++
++\`\`\`jsx
++import React from 'react';
++import PropTypes from 'prop-types';
++
++class SoftwareEngineer extends React.Component {
++    render(){
++        return (...)
++    }
++}
++
++//defines "propTypes" property in this component
++SoftwareEngineer.propTypes = {
++    name: PropTypes.string.isRequired, //expects string and is required
++    hobbies: PropTypes.arrayOf(PropTypes.string), //expects array of string
++    address: PropTypes.shape({
++        street: PropTypes.string,
++        city: PropTypes.string
++    }) //must be an object with 'street' and 'city' fields
++}
++\`\`\`
++Here we have defined the \`propTypes\` property and assigned an object. Each key in this object represents the name of the \`props\` the user of this component can pass. The value defines the "type" of the \`props\` - you know: \`string\`, \`number\`, \`array\`, etc. All \`props\` are optional (user of the component doesn't have to pass them) except the one that has \`.isRequired\`. Here's a quick explanation on three \`props\` defined above:
++- \`name\` - It expects the value of this \`props\` to be a \`string\` and it's required because, well, it has \`.isRequired\`.
++- \`hobbies\` - It's optional but if passed it must be an array of strings.
++- \`address\` - It's also optional but if passed it must be an object with two fields - \`street\` and \`city\` - and both must be string.
++
++These are just some examples of what you can do to enable type checking. There are plenty more types you can define - please check out [the documentation](https://reactjs.org/docs/typechecking-with-proptypes.html#proptypes) for more.
++
++### Default Props
++In some cases you might want to define a default value for a \`props\` in case it is not passed to you.
++You can use \`defaultProps\` property to define your defaults. With this you're basically saying - "if someone doesn't pass me a value for a \`props\` that I'm expecting, then I want the value of that \`props\` to be what I have defined in the \`defaultProps\`". For example - for the above component we can define \`defaultProps\` as follows:
++
++\`\`\`jsx
++import React from 'react';
++import PropTypes from 'prop-types';
++
++class SoftwareEngineer extends React.Component {
++    render(){
++        //if this props is not passed, it will print default value as defined by \`defaultProps\`
++        console.log(this.props.hobbies);
++
++        //if this props is not passed, it will print \`undefined\` because we haven't defined any default value for this props
++        console.log(this.props.address);
++        return (...)
++    }
++}
++
++//defines "defaultProps" property in this component
++SoftwareEngineer.defaultProps = {
++    hobbies: ['Writing React code']
++}
++\`\`\`
++
++Let's say if the user of this component doesn't pass any value for \`hobbies\`, then it will be defaulted to \`['Writing React code']\`.
++And if the user of the component doesn't pass any value for \`address\` then it will resolve to \`undefined\` because we haven't defined the default value for it.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/05-State.js b/src/tutorial/build/05-State.js
+new file mode 100644
+index 0000000..42c13a0
+--- /dev/null
++++ b/src/tutorial/build/05-State.js
+@@ -0,0 +1,129 @@
++export default ` React Components can have local state. This state is not shared with the component's parent or the component's child by default. It is fully owned and controlled by the component itself.
++
++Remember when we looked at different ways of creating React component in the first page of this tutorial, we said there are things that component extending \`React.Component\` can do that a \`function\` component cannot do? Well state is one of them. \`React.Component\` can have states but \`function\` cannot have states.
++
++*Note: There's a new feature in React called hooks that let's us use state within function component but that's still in alpha so if we want to use state right now on a component we still need to use \`React.Component\`.*
++
++Below is a simple component that has a state.
++
++\`\`\`jsx
++class Component extends React.Component {
++    constructor(props){
++        super(props);
++        this.state = {
++            counter: 0
++        }
++    }
++
++    render() {
++        return <div>{this.state.counter}</div>
++    }
++}
++\`\`\`
++
++\`state\` is just an object. If you notice the constructor, we initialized the state with \`{counter: 0}\`. And we used the state inside the \`return\` of the \`render\` function as \`{this.state.counter}\`.
++
++We initialized the \`state\` in the constructor, but how do we update it? For example in the above example, how do we change the \`counter\` to let's say 1? For that React provides a function called \`setState\`. You should **always** use the \`setState\` function to change \`state\` and **never** mutate it directly.
++
++\`\`\`jsx
++//❌  NEVER DO THIS
++this.state.counter = 2;
++
++// ✅  ALWAYS DO THIS
++this.setState({
++    counter: 2
++});
++\`\`\`
++
++If \`state\` is just an instance variable in the component, can we call it some other name? And why do we **have** to use \`setState\`? Well no we cannot call it by some other name, and we have to use \`setState\` to update the \`state\` mainly because React understands \`state\`. When \`state\` of your component changes, React re-renders your component (by re-render I mean calls the \`render\` function again to see if the DOM will change as a result of change in \`state\`). This is fundamental to the declarative nature of React.
++
++### setState
++
++Let's look deeper into \`setState\` function. The first argument of \`setState\` function can take either a new state object or a function. It also has an optional second argument, a callback which is executed when the state is updated.
++
++\`\`\`jsx
++setState(newState || function, optional callback)
++\`\`\`
++
++The way \`setState\` updates the state is:
++- If the first argument of the \`setState\` function is an object, it merges the current \`state\` object with whatever you passed to the \`setState\` function. For example:
++
++\`\`\`jsx
++state = { a: 1, b: 2, c: 3} //current state
++this.setState({ a: 3 }); //we call setState with just one key value pair
++
++//it will **merge** the initial state with the object passed to setState
++//as a result only the value for that one key is updated
++state = { a: 3, b: 2, c: 3 } //state after setState is flushed
++\`\`\`
++
++- If the first argument is a function, then it first executes the function by passing the current \`state\` as it's argument. The function must return an object. It then merges this output with the current \`state\` just like it did above. For example:
++
++\`\`\`jsx
++state = { a: 1, b: 2, c: 3} //initial state
++//we called setState with a function
++this.setState(currentState => ({
++    a: currentState.a + 1
++}));
++//it executes the function by passing the current state object as argument.
++//since currentState.a is 1, function returns { a: 2 }
++//it now merges this returned object with the original state
++state = { a: 2, b: 2, c: 3 } //state after setState is called
++\`\`\`
++
++One thing you must know about \`setState\` function is that it may be asynchronous. So **do not** rely on it to update the state immediately. This is not a bug, it's by design. If you want to read up on the design decision behind \`setState\` call being asynchonous, here's a [nice explanation](https://github.com/facebook/react/issues/11527#issuecomment-360199710).
++
++Since \`setState\` can be asynchronous below code will not give you the right result because by the time we \`console.log\` the \`state.counter\` value, it won't be updated.
++
++\`\`\`jsx
++//❌ WRONG RESULT. Do not rely on setState to be synchronous
++console.log(this.state.counter);//prints 0
++this.setState({
++    counter: this.state.counter + 1
++}); //this is asynchronous call
++console.log(this.state.counter);//still prints 0
++\`\`\`
++
++Also if you want to update \`state\` using the current state value, **always** use the updater function inside \`setState\` instead of passing object. For example below code will not work.
++
++\`\`\`jsx
++//❌  DONT DO THIS
++//If you are using the current state value to update the state, never use this.state directly inside setState
++console.log(this.state.counter); //prints 0
++this.setState({ counter: this.state.counter + 1 });
++this.setState({ counter: this.state.counter + 1 });
++this.setState({ counter: this.state.counter + 1 });
++//the state will be 1 when all of the calls are flushed
++//because since the calls were asynchronous, this.state.counter
++//on all three calls were 0 and adding 1 resulted in 1.
++
++
++//✅  ALWAYS DO THIS
++//If you are using current state value to update the state, always use updater function
++console.log(this.state.counter); //prints 0
++this.setState((state) => ({ counter: state.counter + 1}) );
++this.setState((state) => ({ counter: state.counter + 1}) );
++this.setState((state) => ({ counter: state.counter + 1}) );
++//this is guaranted to work!
++//when all three calls are flushed the value of
++//this.state.counter will be 3
++\`\`\`
++
++Let's look at an exercise. Click the '+', '-' on the right side to see the expected behavior. Now please open the exercise file and make changes as instructed in the exercise file to achieve the expected behavior.
++
++<!--exercise-->
++
++I know we discussed several things about \`state\` and it must be overwhelming. Let's just recap the rules:
++- Never mutate \`this.state\` directly. Always use \`this.setState\` to update the \`state\`.
++- If your new \`state\` doesn't depend on the old \`state\` then you can use \`this.setState(object)\` construct.
++- If your new \`state\` depends on the old \`state\` then use \`this.setState(function(currentState){ .. })\` construct.
++
++#### Props and State
++Since we now have looked into both \`state\` and \`props\` how are they different and how are they similar?
++
++The difference between \`state\` and \`props\` is that \`state\` is owned by the component itself while \`props\` is something that is passed down to the component by it's parent.
++
++And the similarity (sort of) is that React automatically re-renders your component when either the component's \`state\` changes or when the component's \`props\` changes.
++
++Your component's \`render\` function is a function of both \`state\` and \`props\` meaning it defines what your component should look like given the \`state\` and \`props\`. It should be pure function in a sense that if the component has same \`state\` and \`props\` it should render exactly same content no matter how many times it's called and shouldn't have any side effects.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/06-LifecycleMethods.js b/src/tutorial/build/06-LifecycleMethods.js
+new file mode 100644
+index 0000000..ee43889
+--- /dev/null
++++ b/src/tutorial/build/06-LifecycleMethods.js
+@@ -0,0 +1,91 @@
++export default ` React provides a way to take some actions on different lifecycle phases of the component. There are several benefits to that. For example, we may want to fetch some data when a component is rendered, or clean up some resources before the component is removed from the DOM. React calls these lifecycle methods (if we have defined them) during these lifecycle phases. You are not required to implement any of these lifecycle methods, you implement only those that you need on your particular component.
++
++\`\`\`jsx
++class ComponentWithLifecycle extends React.Component {
++    constructor(props){
++        super(props);
++    }
++
++    componentDidMount(){
++        //This will be called after the component is mounted to the DOM
++    }
++
++    componentDidUpdate(prevProps, prevState){
++        //This will be called after the component is updated
++        //Remember component can only be updated when the state changes
++        //or the props changes
++    }
++
++    componentWillUnmount(){
++        //This will be called right before this component is unmounted from
++        //the DOM
++    }
++}
++\`\`\`
++
++Lets look at some common use cases where these lifecycle methods comes in handy.
++
++Let's consider the \`CompanyProfile\` example we looked at earlier where we were displaying the \`ticker\` and the \`companyProfileInformation\`. In the example, the parent of the component passed both \`ticker\` and \`companyProfileInformation\` as \`props\`. But let's assume that the parent only has the \`ticker\` information, which it will pass as \`props\`, but it doesn't have the profile information data. Assume there's an API that the \`CompanyProfile\` component can use to fetch the profile information data. This is a very common use case. So how/when should the \`CompanyProfile\` component fetch the data?
++
++\`componentDidMount\` is the right lifecycle method to make the network call (fetch data using the API). This method is called only once - when the component is mounted on the DOM. After the API returns the data, we can set the data to the \`state\` and use \`this.state.companyProfileInformation\` instead of \`this.props.companyProfileInformation\` inside the \`render\` function.
++Remember that in this case the parent didn't pass the \`companyProfileInformation\` props but instead \`CompanyProfile\` fetched that data itself and stored in the \`state\`.
++
++\`\`\`jsx
++import DataApi from '../api';
++
++class CompanyProfile extends React.Component {
++    componentDidMount() {
++        DataApi.getCompanyProfile(this.props.ticker)
++        .then(profile => {
++            this.setState({
++                companyProfileInformation: profile
++            })
++        })
++    }
++}
++\`\`\`
++
++Let's do the same exercise. Please open the exercise file and make the change as instructed on the file.
++
++<!--exercise-->
++
++That works for the initial value of \`ticker\` passed by parent because \`componentDidMount\` is called only once. But what happens when the \`props\` changes (meaning the parent component passes a new \`ticker\` value)? How/when would \`CompanyProfile\` component know to fetch data again for the new \`ticker\`? In that case you can use \`componentDidUpdate\`. This lifecycle method is called every time component is updated. Remember component is updated every time the \`props\` or the \`state\` changes.
++
++You're probably thinking - 'This doesn't sound good'. If you were to fetch the data inside \`componentDidUpdate\` (which would be called every time your component updates), your component will make a lot of repetitive network calls to get the profile information for same ticker because the component might have updated, not just when \`ticker\` props changed but when any other \`props\` changes or some other \`state\` changes.
++Well you're thinking correctly. That's the reason why you should **always** check if the \`props\` you are interested in changed (in this case \`ticker\` changed) before making the network request.
++
++\`\`\`jsx
++import DataApi from '../api';
++
++class CompanyProfile extends React.Component {
++    //when react calls componentDidUpdate, it gives as argument the value of
++    // props and state before the update happened so you can do the comparision
++    componentDidUpdate(prevProps, prevState) {
++        //always be defensive, otherwise you will make a lot of
++        //unnecessary network calls
++        //in this case we only make the network call if the
++        //ticker props before and after the component updated are not same
++        if (prevProps.ticker !== this.props.ticker) {
++            DataApi.getCompanyProfile(this.props.ticker)
++            .then(profile => {
++                this.setState({
++                    companyProfileInformation: profile
++                })
++            })
++        }
++    }
++}
++\`\`\`
++
++These are just some common use cases when you want to use the lifecycle methods provided by React. Please refer to the
++[React documentations](https://reactjs.org/docs/react-component.html#the-component-lifecycle)
++for an extensive list of all the lifecycle methods available.
++
++Also note that there are some lifecycle methods that were available as part of earlier versions of React (16 and earlier), and they will be deprecated as part of version 17.0, so **DO NOT** use them:
++
++- componentWillMount
++- componentWillUpdate
++- componentWillReceiveProps
++
++Please refer to this [blog post](https://reactjs.org/blog/2018/03/27/update-on-async-rendering.html) to understand why these lifecycle methods are being deprecated and also more about some best practices regarding usage of lifecycle methods.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/07-HandlingEvents.js b/src/tutorial/build/07-HandlingEvents.js
+new file mode 100644
+index 0000000..e7449f1
+--- /dev/null
++++ b/src/tutorial/build/07-HandlingEvents.js
+@@ -0,0 +1,99 @@
++export default ` Handling events in JSX is pretty similar to handling events in actual DOM.
++For example if we have a \`button\` element and we want to pass an event handler for a \`click\` event, we can pass a props called \`onClick\` to the button element.
++
++
++\`\`\`jsx
++function ClickableButton(props){
++    //callback function that's called when button is clicked
++    const handleClick = () => { alert('Clicked') }
++    return (
++        <button onClick={handleClick}></button>
++    )
++}
++\`\`\`
++
++Notice there are couple difference between how events are handled in HTML vs JSX.
++
++1. With HTML we would have an attribute called \`onclick\` (all lowercased), but with JSX have a camelCased \`props\` called \`onClick\`. In JSX always use camelCase instead of lowercase like in HTML.
++Ex:
++- \`onclick\` => \`onClick\`
++- \`onmouseover\` => \`onMouseOver\`
++- \`onselect\` => \`onSelect\`
++- \`onchange\` => \`onChange\`
++
++2. With HTML we would pass a string as a value of the attribute, but in JSX we pass the actual function. For example compare the above \`button\` in JSX to the following HTML equivalent:
++
++\`\`\`html
++<button onclick="handleClick()"></button>
++\`\`\`
++
++### Synthetic events
++
++When React invokes the event-handler, it provides a [SyntheticEvent](https://reactjs.org/docs/events.html) as an argument. Not to worry about any of the details, it's a wrapper around browser's native event and it has the same interface as the native event.
++
++\`\`\`jsx
++function InputComponent(props){
++    //callback function that's called when input changes
++    //It gets synthetic event as an argument
++    //SyntheticEvent has interface just like the native browser event
++    //In this case - to get the value of the input we did e.target.value
++    const handleChange = (e) => { alert(e.target.value) }
++    return (
++        <input onChange={handleChange} />
++    )
++}
++\`\`\`
++### Function Binding
++
++One gotcha when using event handlers with components created as \`ES6\` classes (by extending \`React.Component\`) is the method binding. This has nothing to do with React or JSX - it's a new JavaScript feature in \`ES6\` and trips even many experienced folks.
++
++Class functions in \`ES6\` are not bound to anything by default. For example take below example of \`Input\` component. Here we just have an input element whose value is assigned to \`this.state.inputValue\`, and we are handling the \`onChange\` event on this \`input\` by passing our \`this.handleChange\` function. Inside the \`handleChange\` function we are calling \`setState\` with the new value typed by the user. Now if we run this code it will error out saying something like "Cannot read property setState of undefined". Weird huh? The reason is because \`handleChange\` is not bound to anything. So \`this\` inside \`handleChange\` is \`undefined\`.
++
++\`\`\`jsx
++class Input extends React.Component {
++
++    handleChange(e){
++        this.setState({
++            inputValue: e.target.value
++        });
++    }
++
++    render(){
++        return(
++            <input onChange={this.handleChange} value={this.state.inputValue}/>
++        )
++    }
++}
++\`\`\`
++
++To fix above issue we just need to \`bind\` the function to proper \`this\`. The common practice is to do that in the constructor. So below we added a line in a constructor \`this.handleChange = this.handleChange.bind(this)\` to bind the \`handleChange\` function and it would work like a charm.
++
++\`\`\`jsx
++class Input extends React.Component {
++    constructor(props){
++        super(props);
++        
++        //bind handleChange function to proper this
++        this.handleChange = this.handleChange.bind(this);
++    }
++
++    handleChange(e){
++        this.setState({
++            inputValue: e.target.value
++        });
++    }
++
++    render(){
++        return(
++            <input onChange={this.handleChange} value={this.state.inputValue}/>
++        )
++    }
++}
++\`\`\`
++
++Let's write some code. Please open the exercise file and follow the instruction on the file.
++
++<!--exercise-->
++
++Please read [this article](https://cmichel.io/es6-class-methods-differences/) to get more idea on the \`ES6\` binding dilemma.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/08-ComposingComponents.js b/src/tutorial/build/08-ComposingComponents.js
+new file mode 100644
+index 0000000..0d88578
+--- /dev/null
++++ b/src/tutorial/build/08-ComposingComponents.js
+@@ -0,0 +1,144 @@
++export default ` One of the most important characteristics of React is that it lets you compose different components to build your UI.
++
++Let's think about a use case. Imagine we want to build a reusable \`Dialog\` component. Assume it's a simple dialog component - nothing fancy. When this component is rendered we want to display some content within a modal window.
++
++\`\`\`jsx
++class Dialog extends React.Component {
++    render(){
++        return (
++            <div className={'dialog'}>
++                //display content of dialog
++                //????? but we don't know what to display
++            </div>
++        )
++    }
++}
++\`\`\`
++That sounds simple except we don't know what the content of the dialog is going to be. Imagine at one place we might want to display an employee contact within a dialog and at some other place we might want to display a grid. This component itself has no knowledge of it beforehand. And if we wanted to make this component truly reusable it **should not** have any knowledge of it beforehand.
++
++The job of the \`Dialog\` component is to render a modal window but it shouldn't care about the content - we should be able to use this component at different places to render different things.
++
++How do we tell this dialog to display different things?
++
++There are a couple of common patterns used in React to do this:
++
++1. props.children
++
++One way to achieve this goal of reusing \`Dialog\` anywhere we like without \`Dialog\` having to know what it's displaying, is by using the \`children\` props. Let's look at one potential usage of \`Dialog\` component below to understand this:
++
++\`\`\`jsx
++//Displays EmployeeProfile inside a Dialog
++class EmployeeProfileDialog extends React.Component {
++    render(){
++        //We have passed a child component inside the Dialog
++        return (
++            <Dialog>
++                <EmployeeProfile />
++            </Dialog>
++        )
++    }
++}
++\`\`\`
++Here we have a component called \`EmployeeProfile\` (any other valid React component would also work here) as a "child" of \`Dialog\`. When we pass a "child" to a component it will be available inside that component as a \`props\` called \`children\`. So in this case, \`EmployeeProfile\` will be available inside the \`Dialog\` component as \`props.children\`. We can rewrite the render function of \`Dialog\` so that it renders \`props.children\`:
++
++\`\`\`jsx
++class Dialog extends React.Component {
++    render(){
++        //Render the children provided to this component
++        //Here we don't really care what the children is
++        return (
++            <div className={'dialog'}>
++                {this.props.children}
++            </div>
++        )
++    }
++}
++\`\`\`
++Think about what we did here. The \`Dialog\` component really doesn't know what it's \`children\` would be beforehand. Whoever is using this \`Dialog\` component can pass in any \`children\` that they like. Within the \`render\` function \`Dialog\` says "Hey, I'll display anything my user passes me as \`children\`, I don't need to know what that is."
++
++This my friend is composition and this is mighty powerful if you want to write reusable components.
++
++2. render props
++
++Another pattern to achieve a similar thing in React is by using what's known as the "render props" pattern.
++
++So now let's take the same dialog example, but let's make it more sophisticated. Imagine the dialog has a header, body and footer section. We want the user of this component to be able to display anything they like within either of those three sections.
++
++\`\`\`jsx
++class Dialog extends React.Component {
++    render(){
++        return (
++            <div className={'dialog'}>
++                <div className={'dialogHeader'}>
++                {
++                /** user of this component should be able to display any header inside here */
++                }
++                </div>
++                <div className={'dialogBody'}>
++                {
++                /** user of this component should be able to display any body inside here */
++                }
++                </div>
++                <div className={'dialogFooter'}>
++                {
++                /** user of this component should be able to display any footer inside here */
++                }
++                </div>
++            </div>
++        )
++    }
++}
++\`\`\`
++
++The \`props.children\` approach we used above might not work well here. All the children we pass as "children" would be available as \`props.children\` and it might be little cumbersome to split the children into our three segments - "header", "body" and "footer". Wouldn't it be nice if we could tell the \`Dialog\` component explicitly what it should render within each "header", "body" and "footer" section?
++
++We can use the "render props" pattern to do exactly that. All this means is that we can pass three render functions as \`props\` that tells the dialog what it should render inside each segment. For example, lets look at a usage:
++
++\`\`\`jsx
++class EmployeeProfileDialog extends React.Component {
++    render(){
++        return (
++            <Dialog
++                renderHeader={() => <EmployeeProfileHeader />}
++                renderBody={() => <EmployeeProfileBody />}
++                renderFooter={() => <EmployeeProfileFooter />}
++            />
++        )
++    }
++}
++\`\`\`
++Here, all we are really doing is passing three different \`props\` called \`renderHeader\`, \`renderBody\` and \`renderFooter\`. They are all just functions, and when called will return the appropriate React component to display. Now we can edit the \`Dialog\` component to get it working as expected:
++
++\`\`\`jsx
++class Dialog extends React.Component {
++    render(){
++        return (
++            <div className={'dialog'}>
++                <div className={'dialogHeader'}>
++                    {this.props.renderHeader()}
++                </div>
++                <div className={'dialogBody'}>
++                    {this.props.renderBody()}
++                </div>
++                <div className={'dialogFooter'}>
++                    {this.props.renderFooter()}
++                </div>
++            </div>
++        )
++    }
++}
++\`\`\`
++
++Here, instead of displaying \`this.props.children\` like we did previously, we executed the different \`props\` functions as appropriate on the different sections. Whatever is returned from that function during runtime will be displayed within that section. The \`Dialog\` component remains completely agnostic to what it's displaying.
++
++Let's do some exercises shall we? Please open the exercise file and follow the instructions to make the appropriate changes.
++
++<!--exercise-->
++
++There are three things I would like you to note here:
++
++1. We named those props above with \`render\` prefix (\`renderHeader\`, \`renderFooter\` etc) but it's just a naming convention, we could have named it anything. It's just nice to prefix it with \`render\` because someone looking at our code would easily be able tell that we are using this \`props\` function to render something.
++
++2. The "render" props we passed is just any regular javascript function, its just that it's returning some component. We can do really anything here that we can do in a javascript function. When we called these function inside the \`Dialog\` we could pass some arguments if we like. The only limit here really is your imagination.
++
++3. We can pass around components in React as \`props\`, just like we can pass an object or string or function. At the end of the day, React components are just functions. So take the liberty of passing it around. `
+\ No newline at end of file
+diff --git a/src/tutorial/build/09-Capstone.js b/src/tutorial/build/09-Capstone.js
+new file mode 100644
+index 0000000..d9eb8ad
+--- /dev/null
++++ b/src/tutorial/build/09-Capstone.js
+@@ -0,0 +1,38 @@
++export default ` Now that you have mastered the fundamentals of React, we will build something that brings together the concepts we have learned throughout this tutorial.
++
++#### Project Description
++For this capstone project will build a simple feature that will allow users to search for a publicly traded company using their "stock ticker". Once the user clicks the "Search" button, we will then display the company profile and company financial.
++
++**Note: The API provided here uses a random data generator to generate company profile and the financial information.
++Please do not rely on the accuracy of the data because it is guaranteed to be inaccurate (it's random).
++The API expects the ticker to be *3 characters* long. It will give you results if the ticker is 3 characters long and it will throw an error if the ticker is less than or greater than 3 characters. 
++It also does not check if the ticker is actually a valid ticker. So any random 3 character would work.**
++
++Below on the left is your solution, and on the right is the final solution. Try a ticker like \`XYZ\` on the right-hand side and click \`Search\` to see the expected behavior of this component.
++
++<!--exercise-->
++
++Don't worry about styling, it's already provided for you.
++
++There's also an API provided to you that has two methods -
++- \`getCompanyProfile(ticker)\` - Returns a \`Promise\` that resolves to the company profile information for the ticker you passed. It has fields like - description, exchange, industry, sector etc.
++- \`getCompanyFinancial(ticker)\` -  Returns a \`Promise\` that resolves to the financial information for the ticker you passed. The response has fields like - price, beta, volAvg, MktCap etc.
++
++For this project, the component skeleton is provided inside the 'src/capstone' folder, and as always, the files are heavily commented to guide you with the tasks. Please start with the \`Capstone.js\` file and you can go to any of the other files next. The final solution is provided in the solution folder (src/capstone/solution), however, I strongly recommend you to try on your own before looking at the solution. If you don't remember some of the concepts, please feel free to go back and refer to the appropriate tutorial page.
++
++There are four components in this project. Just a brief word on what those components are used for:
++
++- \`Capstone\` - Just named Capstone to signify that this component encapsulates our entire project. We import and use below components inside this to build our feature.
++- \`Search\` - This component has search input and the search button.
++- \`CompanyProfile\` - This component renders company profile. It takes a company ticker as \`props\` and fetches the profile data from the API and renders that data.
++- \`CompanyFinancial\` - This component renders company financial information. It takes a company ticker as \`props\` and fetches the financial information data from the API and renders it.
++- \`DataAPI\` - This is the API used to fetch the required data. You don't need to change anything on this API. Under the hood it uses a random data generator so please do not believe the data. Like mentioned above, this API will give you results as long as the ticker is 3 characters long and it will throw an error if the ticker is longer than or shorter than 3 characters. It also does not check whether or not the ticker is valid. In real life this would call an actual API that will fetch actual data, but as long as the data structure doesn't change our React code would not change. So don't worry about the API not giving actual data. It's not relevant for us to complete the task at hand.
++
++#### Disclaimer
++How we break down components to build this feature is not set in stone. The component decomposition is more often art than science. We can most definitely build this feature with just one component instead of four, or we could easily break these components into more granular pieces. Please read this [excellent article](https://reactjs.org/docs/thinking-in-react.html) on how to think about components in React.
++
++In this project, there are certain decisions that have been made to incorporate most of the concepts we have touched on this tutorial. While what we have done definitely works, we could also achieve the same outcomes using different approaches.
++
++#### Extra Credit
++For example, one of the best practices in React is to create "stateless" components (components that do not have \`state\`) as possible. This doesn't necessarily mean having \`state\` is bad, it just means that components will be less cluttered. Stateless components receive \`props\` from their parent components and render something based on the provided \`props\`. It will make your component really dumb and that should be your goal - **make dumb components**. They are easier to test, easier to reuse and easier to reason about. So in this project, we could've created all of our child components (CompanyProfile, CompanyFinancial, Search) stateless, and [lifted all the state](https://reactjs.org/docs/lifting-state-up.html) to the parent component (Capstone). I will leave this to you as extra credit. You can refactor the code so that the child components are stateless and only the parent component has state. The parent component passes these state down to the child component as \`props\`.
++ `
+\ No newline at end of file
+diff --git a/src/tutorial/build/10-Conclusion.js b/src/tutorial/build/10-Conclusion.js
+new file mode 100644
+index 0000000..060ad12
+--- /dev/null
++++ b/src/tutorial/build/10-Conclusion.js
+@@ -0,0 +1,37 @@
++export default ` Congratulations! Thank you for sticking around 'til the end. I hope you enjoyed the tutorial, and I hope it helped you get off the ground with some React fundamentals.
++This tutorial is by no means a comprehensive one. I have tried to cover some grounds on the most basic fundamentals you must know about React.
++
++If you liked this tutorial, please feel free to share this with others who are trying to learn React. If there is anything you didn't particularly like, or thought was confusing, please feel free to drop me a note or create a PR. Needless to say, your suggestions would help several other folks trying to learn React.
++
++## What's next?
++
++As with anything in software engineering, the best way to learn is by doing. I hope in this tutorial you were able to do the exercises on each section, and also complete the capstone project at the end. The next step is to create your own application and starting fiddling with it. The easiest way to get going is by using [create-react-app](https://github.com/facebook/create-react-app). With this, you don't have to waste a single minute doing any configuration/setup to create a new react application. Everything is configured for you.
++
++### Real World example
++Also, if you want to explore some real world application written in React, guess what? You have already checked one out. I'm not sure if you noticed, but this tutorial application is written in React. So it's not a bad idea to navigate the code base. Start from \`index.js\` and explore - see how things are done, play with components, make changes, try to make improvements and see where it leads you. If you think the changes you made locally are useful to the community, please [create a PR](https://github.com/tyroprogrammer/learn-react-app). It will help you and it will help others! 😊
++
++## Resources
++
++**The best place to find further details on any given React related topic is the official [React website](https://reactjs.org/).** It's a highly valuable resource, and you'll find yourself referring to this website long after being comfortable with React.
++
++There are several resources that I think are extremely helpful - some are linked to during the tutorial and some are not:
++
++### Fundamentals
++- Go to the official [React documentation](https://reactjs.org/docs/hello-world.html) and go through the "Main concept" sections. There are useful nuggets of information that I may have missed in this tutorial.
++- Go through the [official tutorial](https://reactjs.org/tutorial/tutorial.html) on the React website.
++- [Some usage and best practices on lifecycle methods](https://reactjs.org/blog/2018/03/27/update-on-async-rendering.html)
++
++### Advanced
++*(You don't need to know any of this to be able to write applications in React.)*
++- [Decisions made by React for it's diffing algorithm](https://reactjs.org/docs/reconciliation.html) to figure out what changed in the DOM.
++- [Why is the setState function asynchronous?](https://github.com/facebook/react/issues/11527#issuecomment-360199710)
++- [How does setState know what to do?](https://overreacted.io/how-does-setstate-know-what-to-do/)
++- We briefly glossed over [how React conceptually works](/tutorial/hello-world) but if you are itching to go deeper into it [you can hear straight from the horse's mouth](https://overreacted.io/react-as-a-ui-runtime/).
++
++
++### Misc
++- [ES6 method binding](https://cmichel.io/es6-class-methods-differences/)
++
++This is not an exhaustive list, and I am sure there are plenty of other good resources on the web. If you find any resources that you think will be useful for beginners please [create a PR](https://github.com/tyroprogrammer/learn-react-app) 😊.
++
++Happy coding and good luck! `
+\ No newline at end of file

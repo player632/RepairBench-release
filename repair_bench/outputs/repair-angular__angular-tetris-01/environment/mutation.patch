@@ -1,0 +1,137 @@
+diff --git a/src/app/components/matrix/matrix.component.ts b/src/app/components/matrix/matrix.component.ts
+index e95ddfe..0e641ca 100644
+--- a/src/app/components/matrix/matrix.component.ts
++++ b/src/app/components/matrix/matrix.component.ts
+@@ -51,11 +51,6 @@ export class MatrixComponent implements OnInit {
+                 ...MatrixUtil.FullRow
+               );
+             }
+-            if (gridIndex > MatrixUtil.Height && gridIndex <= rowsLength) {
+-              const startIdx =
+-                (MatrixUtil.Height - (gridIndex - MatrixUtil.Height)) * MatrixUtil.Width;
+-              newMatrix.splice(startIdx, MatrixUtil.Width, ...MatrixUtil.EmptyRow);
+-            }
+ 
+             return of(newMatrix);
+           })
+diff --git a/src/app/components/next/next.component.html b/src/app/components/next/next.component.html
+index b5cfdcf..f12a0ff 100644
+--- a/src/app/components/next/next.component.html
++++ b/src/app/components/next/next.component.html
+@@ -1,10 +1,10 @@
+ <p>Next</p>
+ <div class="next">
+     <div class="row"
+-         *ngFor="let row of next(); let r = index">
++         *ngFor="let row of next(); let r = index; trackBy: trackByIndex">
+         <t-tile [tile]='tile'
+                 [attr.data-testid]="'next-tile-' + (r * 4 + c)"
+-                *ngFor="let tile of row; let c = index">
++                *ngFor="let tile of row; let c = index; trackBy: trackByIndex">
+         </t-tile>
+     </div>
+ </div>
+\ No newline at end of file
+diff --git a/src/app/components/next/next.component.ts b/src/app/components/next/next.component.ts
+index 4417ede..8b1e264 100644
+--- a/src/app/components/next/next.component.ts
++++ b/src/app/components/next/next.component.ts
+@@ -18,4 +18,8 @@ export class NextComponent {
+   next = computed(() =>
+     this.tetrisState.next().next.map((row) => row.map((value) => new Tile(value as TileValue)))
+   );
++
++  trackByIndex(index: number) {
++    return index;
++  }
+ }
+diff --git a/src/app/components/point/point.component.ts b/src/app/components/point/point.component.ts
+index 8189e50..d35b263 100644
+--- a/src/app/components/point/point.component.ts
++++ b/src/app/components/point/point.component.ts
+@@ -30,7 +30,7 @@ export class PointComponent {
+           const isOdd = val % 2 === 0;
+           const points = this.tetrisState.points();
+           const max = this.tetrisState.max();
+-          return isOdd ? new LabelAndNumber('Score', points) : new LabelAndNumber('Max ', max);
++          return new LabelAndNumber('Score', points);
+         })
+       );
+     })
+diff --git a/src/app/containers/angular-tetris/angular-tetris.component.ts b/src/app/containers/angular-tetris/angular-tetris.component.ts
+index 754ad05..dad2884 100644
+--- a/src/app/containers/angular-tetris/angular-tetris.component.ts
++++ b/src/app/containers/angular-tetris/angular-tetris.component.ts
+@@ -191,9 +191,7 @@ export class AngularTetrisComponent implements OnInit {
+ 
+   @HostListener(`${KeyUp}.${TetrisKeyboard.Space}`)
+   keyUpSpace() {
+-    this.keyboardService.setKeỵ({
+-      drop: false
+-    });
++    this.keyboardService.setKeỵ({});
+   }
+ 
+   @HostListener(`${KeyDown}.${TetrisKeyboard.C}`)
+@@ -235,9 +233,9 @@ export class AngularTetrisComponent implements OnInit {
+       pause: true
+     });
+     if (this.tetrisState.canStartGame()) {
+-      this.tetrisService.resume();
+-    } else {
+       this.tetrisService.pause();
++    } else {
++      this.tetrisService.resume();
+     }
+   }
+ 
+diff --git a/src/app/state/tetris/tetris.service.ts b/src/app/state/tetris/tetris.service.ts
+index 34e9393..8669a3d 100644
+--- a/src/app/state/tetris/tetris.service.ts
++++ b/src/app/state/tetris/tetris.service.ts
+@@ -69,7 +69,6 @@ export class TetrisService {
+       locked: true,
+       gameState: GameState.Paused
+     });
+-    this.stopGameInterval();
+   }
+ 
+   reset() {
+@@ -180,7 +179,7 @@ export class TetrisService {
+ 
+   increaseStartLine() {
+     const initLine = this.tetrisState.initLine();
+-    const startLine = initLine + 1 > 10 ? 1 : initLine + 1;
++    const startLine = initLine + 1 > 10 ? 0 : initLine + 1;
+     this.tetrisState.updateState({
+       initLine: startLine
+     });
+@@ -211,7 +210,6 @@ export class TetrisService {
+       this.clearFullLines();
+       this.setCurrentPiece(this.tetrisState.next());
+       this.setNext();
+-      this.setCanHold(true);
+       if (this.isGameOver) {
+         this.onGameOver();
+         return;
+@@ -253,10 +251,9 @@ export class TetrisService {
+     this.pause();
+     this.soundManager.gameOver();
+     const maxPoint = Math.max(this.tetrisState.points(), this.tetrisState.max());
+-    LocalStorageService.setMaxPoint(maxPoint);
+     this.tetrisState.resetState({
+       max: maxPoint,
+-      gameState: GameState.Over,
++      gameState: GameState.Paused,
+       sound: this.tetrisState.isEnableSound()
+     });
+   }
+@@ -346,7 +343,7 @@ export class TetrisService {
+   }
+ 
+   private getPoints(numberOfClearedLines: number, points: number): number {
+-    const addedPoints = MatrixUtil.Points[numberOfClearedLines - 1];
++    const addedPoints = MatrixUtil.Points[numberOfClearedLines];
+     const newPoints = points + addedPoints;
+     return newPoints > MatrixUtil.MaxPoint ? MatrixUtil.MaxPoint : newPoints;
+   }

@@ -1,0 +1,400 @@
+<!doctype html>
+<!-- Copyright (C) 2026 Aron Sommer. See LICENSE file for full license details. -->
+<html lang="en">
+  <head>
+    <!-- Google tag (gtag.js) -->
+    <!-- [ADAPTATION] the remote analytics tag is gone: task.toml sets allow_internet = false,
+         and that googletagmanager URL was the only https:// script reference in the document
+         (measured: 1 remote of 69 local refs). The local window.dataLayer / gtag() definitions
+         right below are kept verbatim, so any gtag(...) call site still resolves instead of
+         turning into a ReferenceError. -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+
+      gtag("config", "GA_MEASUREMENT_ID");
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>__APP_TITLE__</title>
+    <meta name="description" content="__APP_DESCRIPTION__" />
+
+    <link rel="icon" href="/img/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png" />
+
+    <link rel="manifest" href="/manifest.json" />
+
+    <link rel="stylesheet" href="/codemirror-6.65.7/lib/codemirror.css" />
+    <link rel="stylesheet" href="/codemirror-6.65.7/addon/fold/foldgutter.css" />
+    <link rel="stylesheet" href="/codemirror-6.65.7/theme/eclipse.css" />
+    <link rel="stylesheet" href="/codemirror-6.65.7/theme/dracula.css" />
+    <script src="/codemirror-6.65.7/lib/codemirror.js"></script>
+    <script src="/codemirror-6.65.7/mode/javascript/javascript.js"></script>
+    <script src="/codemirror-6.65.7/addon/edit/matchbrackets.js"></script>
+    <script src="/codemirror-6.65.7/addon/fold/foldcode.js"></script>
+    <script src="/codemirror-6.65.7/addon/fold/foldgutter.js"></script>
+    <script src="/codemirror-6.65.7/addon/fold/brace-fold.js"></script>
+    <script src="/codemirror-6.65.7/addon/selection/active-line.js"></script>
+    <link rel="stylesheet" href="/codemirror-6.65.7/addon/lint/lint.css" />
+    <script src="/codemirror-6.65.7/addon/lint/lint.js"></script>
+
+    <script src="/d3-7.9.0/d3.v7.min.js"></script>
+
+    <link rel="stylesheet" href="/flag-icons-7.5.0/css/flag-icons.min.css" />
+
+    <script src="/idb-keyval-6.2.2/umd.js"></script>
+
+    <script src="/jszip-3.10.1/jszip.min.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-1.9.4/leaflet.css" />
+    <script src="/leaflet-1.9.4/leaflet.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-draw-1.0.4/leaflet.draw.css" />
+    <script src="/leaflet-draw-1.0.4/leaflet.draw.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-geosearch-4.2.2/geosearch.css" />
+    <script src="/leaflet-geosearch-4.2.2/geosearch.umd.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-locatecontrol-0.85.1/L.Control.Locate.min.css" />
+    <script src="/leaflet-locatecontrol-0.85.1/L.Control.Locate.min.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-markercluster-1.5.3/MarkerCluster.css" />
+    <link rel="stylesheet" href="/leaflet-markercluster-1.5.3/MarkerCluster.Default.css" />
+    <script src="/leaflet-markercluster-1.5.3/leaflet.markercluster.js"></script>
+
+    <link rel="stylesheet" href="/leaflet-routing-machine-3.2.12/leaflet-routing-machine.css" />
+    <script src="/leaflet-routing-machine-3.2.12/leaflet-routing-machine.min.js"></script>
+
+    <script src="/polyline-encoded-0.0.9/Polyline.encoded.js"></script>
+
+    <script src="/proj4-2.20.2/proj4.js"></script>
+
+    <script src="/simplify-js-1.2.4/simplify.js"></script>
+
+    <script src="/sortablejs-1.15.6/Sortable.min.js"></script>
+
+    <link rel="stylesheet" href="/sweetalert2-11.26.25/sweetalert2.min.css" />
+    <script src="/sweetalert2-11.26.25/sweetalert2.min.js"></script>
+
+    <script src="/togeojson-0.16.2/togeojson.js"></script>
+
+    <link rel="stylesheet" href="/style.css?v=__BUILD_TIMESTAMP__" />
+  </head>
+  <body data-nosnippet>
+    <div id="map">
+      <div id="top-right-container">
+        <button id="fullscreen-btn" class="top-right-btn" title="Toggle Fullscreen (f)">
+          <span class="icon-fullscreen-enter material-symbols">fullscreen</span>
+          <span class="icon-fullscreen-exit material-symbols">fullscreen_exit</span>
+        </button>
+        <button id="sidebar-toggle-btn" class="top-right-btn panels-visible" title="Toggle Sidebar">
+          <span class="icon-chevron-right material-symbols">keyboard_arrow_right</span>
+          <span class="icon-chevron-left material-symbols">keyboard_arrow_left</span>
+        </button>
+        <button id="poi-finder-btn" class="top-right-btn" title="Find Places">Find Places</button>
+        <button id="search-btn" class="top-right-btn" title="Search for addresses and coordinates">
+          <span class="material-symbols">search</span>
+        </button>
+        <div id="offline-indicator">
+          <span class="material-symbols">sentiment_dissatisfied</span>OFFLINE
+        </div>
+      </div>
+
+      <div id="main-right-container">
+        <div id="sheet-handle">
+          <span class="sheet-arrow-up material-symbols">keyboard_arrow_up</span>
+          <span class="sheet-arrow-down material-symbols">keyboard_arrow_down</span>
+        </div>
+        <div id="info-panel">
+          <textarea id="info-panel-name" rows="1"></textarea>
+          <p id="info-panel-details"></p>
+          <p id="info-panel-edit-hint" style="display: none"></p>
+          <a id="info-panel-strava-link" href="" target="_blank" rel="noopener noreferrer"></a>
+          <div id="info-panel-style-row">
+            <div id="info-panel-color-swatch" title="Change color"></div>
+            <span id="info-panel-layer-name"></span>
+          </div>
+          <div id="color-picker"></div>
+        </div>
+
+        <div id="tab-container">
+          <div id="tab-buttons">
+            <button id="tab-btn-overview" class="tab-button active" data-target="overview-panel">
+              Contents
+            </button>
+            <button id="tab-btn-routing" class="tab-button" data-target="routing-panel">
+              Routing
+              <span id="routing-info-icon" class="material-symbols" title="Routing Help">help</span>
+            </button>
+            <button id="tab-btn-strava" class="tab-button" data-target="strava-panel">
+              Strava
+            </button>
+            <button
+              id="tab-btn-data"
+              class="tab-button"
+              data-target="data-editor-panel"
+              title="GeoJSON Editor"
+            >
+              <span class="material-symbols">data_object</span>
+            </button>
+            <button
+              id="tab-btn-settings"
+              class="tab-button"
+              data-target="settings-panel"
+              title="Settings"
+            >
+              <span class="material-symbols material-symbols-fill">settings</span>
+            </button>
+            <button id="tab-btn-credits" class="js-show-credits" title="About">
+              <span class="material-symbols">info</span>
+            </button>
+          </div>
+
+          <div id="tab-content">
+            <div id="overview-panel" class="tab-panel active">
+              <div id="overview-panel-controls"></div>
+              <div id="overview-panel-list"></div>
+            </div>
+
+            <div id="routing-panel" class="tab-panel">
+              <div id="routing-panel-content">
+                <div class="panel-input-group">
+                  <input type="text" id="route-start" placeholder="Start" autocomplete="off" />
+                  <button id="select-start-on-map" title="Select start point on map">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >location_on</span
+                    >
+                  </button>
+                  <button
+                    id="use-current-location-start"
+                    title="Use my current location for start point"
+                  >
+                    <span class="material-symbols routing-panel-icon">my_location</span>
+                  </button>
+                  <button id="clear-point-start" title="Clear start point">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >cancel</span
+                    >
+                  </button>
+                </div>
+                <div class="panel-input-group" id="routing-via-group">
+                  <input
+                    type="text"
+                    id="route-via"
+                    placeholder="Via (optional)"
+                    autocomplete="off"
+                  />
+                  <button id="select-via-on-map" title="Select via point on map">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >location_on</span
+                    >
+                  </button>
+                  <button
+                    id="use-current-location-via"
+                    title="Use my current location for via point"
+                  >
+                    <span class="material-symbols routing-panel-icon">my_location</span>
+                  </button>
+                  <button id="clear-point-via" title="Clear via point">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >cancel</span
+                    >
+                  </button>
+                </div>
+                <div class="panel-input-group">
+                  <input type="text" id="route-end" placeholder="End" autocomplete="off" />
+                  <button id="select-end-on-map" title="Select end point on map">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >location_on</span
+                    >
+                  </button>
+                  <button
+                    id="use-current-location-end"
+                    title="Use my current location for end point"
+                  >
+                    <span class="material-symbols routing-panel-icon">my_location</span>
+                  </button>
+                  <button id="clear-point-end" title="Clear end point">
+                    <span class="material-symbols material-symbols-fill routing-panel-icon"
+                      >cancel</span
+                    >
+                  </button>
+                </div>
+                <div class="panel-input-group">
+                  <div id="routing-profile-selector" class="routing-profile-selector">
+                    <button class="profile-btn active" data-profile="driving" title="Driving">
+                      <span class="material-symbols">directions_car</span>
+                    </button>
+                    <button class="profile-btn" data-profile="bike" title="Cycling">
+                      <span class="material-symbols">directions_bike</span>
+                    </button>
+                    <button class="profile-btn" data-profile="foot" title="Walking">
+                      <span class="material-symbols">directions_walk</span>
+                    </button>
+                  </div>
+                  <button
+                    id="routing-pen-btn"
+                    title="Draw route step by step: first click sets start, second sets end, each next click extends the route"
+                  >
+                    <span class="material-symbols routing-panel-icon">draw</span>
+                  </button>
+                  <button id="save-route-btn" title="Save current route to the map">Save</button>
+                  <button id="clear-route-btn" title="Clear the current route and all points">
+                    Clear
+                  </button>
+                </div>
+                <div
+                  id="routing-summary-container"
+                  style="
+                    display: none;
+                    font-size: var(--font-size-12);
+                    margin: 0;
+                    text-align: center;
+                    padding: 0;
+                  "
+                ></div>
+                <div id="directions-panel" class="collapsed">
+                  <div id="directions-panel-header">
+                    <span class="directions-panel-header-arrow material-symbols"></span>Directions
+                    <span id="directions-copy-btn" class="material-symbols" title="Copy directions"
+                      >content_copy</span
+                    >
+                  </div>
+                  <div id="directions-list"></div>
+                </div>
+              </div>
+            </div>
+            <div id="strava-panel" class="tab-panel">
+              <div id="strava-panel-content">
+                <p style="padding: 15px; text-align: center">
+                  Connect with Strava to see your activities on the map.
+                </p>
+              </div>
+            </div>
+            <div id="data-editor-panel" class="tab-panel">
+              <div id="data-editor-notice">
+                Excludes Strava activities and unsaved routes.<br />
+                Apply moves all features into the Drawn Items layer.
+              </div>
+              <textarea
+                id="data-editor-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div id="data-editor-error" role="alert"></div>
+              <div id="data-editor-actions">
+                <button id="data-editor-restore" title="Discard edits and reset to map">
+                  Reset
+                </button>
+                <button id="data-editor-apply" title="Apply to map">Apply</button>
+                <button id="data-editor-find" title="Jump to selected feature">
+                  Go to Selected
+                </button>
+                <button id="data-editor-copy" title="Copy GeoJSON with all properties">
+                  Copy Raw
+                </button>
+                <button id="data-editor-copy-clean" title="Copy GeoJSON without properties">
+                  Copy Clean
+                </button>
+              </div>
+            </div>
+            <div id="settings-panel" class="tab-panel"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="custom-layers-panel"></div>
+      <div id="elevation-div"></div>
+      <div id="bottom-left-credits">
+        <a href="#" id="credits-link" class="js-show-credits" title="Credits"
+          ><span class="material-symbols material-symbols-fill credits-heart-icon"
+            >favorite</span
+          ></a
+        ><a href="#" id="install-pwa-link" title="Install App" style="display: none">Install</a>
+      </div>
+      <div id="custom-cursor-start" class="custom-cursor">
+        <span class="material-symbols material-symbols-fill material-symbols-map-marker"
+          >location_on</span
+        >
+      </div>
+      <div id="custom-cursor-end" class="custom-cursor">
+        <span class="material-symbols material-symbols-fill material-symbols-map-marker"
+          >location_on</span
+        >
+      </div>
+      <div id="custom-cursor-via" class="custom-cursor">
+        <span class="material-symbols material-symbols-fill material-symbols-map-marker"
+          >location_on</span
+        >
+      </div>
+    </div>
+
+    <!-- START-BUNDLE -->
+    <script src="/js/secrets.js"></script>
+    <script>
+      /* [ADAPTATION] pin the first-visit basemap to the seed's own offline entry.
+         getSavedBasemapKey() (js/map-layers.js:91) falls back to BASEMAP_CONFIG[0].key, which is
+         "OpenStreetMap" - a remote XYZ tile layer that initMapView() adds to the map, so the
+         pristine face would fire tile requests on every load. BASEMAP_CONFIG already ships an
+         offline entry (key "Empty" / label "No Base Map", js/map-layers.js:77) and js/map-view.js:50
+         turns a url-less entry into a plain L.layerGroup(), so writing the seed's own storage key
+         selects it with zero new code paths and zero tile requests. Only written when unset, so a
+         user's own choice still wins. */
+      try {
+        if (!localStorage.getItem("lastBasemap")) localStorage.setItem("lastBasemap", "Empty");
+      } catch (e) { /* storage disabled: the map still boots on the default layer */ }
+    </script>
+    <script src="/js/config.js"></script>
+    <script src="/js/color-utils.js"></script>
+    <script src="/js/mode-manager.js"></script>
+    <script src="/js/sweetalert2-config.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/path-simplification.js"></script>
+    <script src="/js/elevation-profile.js"></script>
+    <script src="/js/elevation.js"></script>
+    <script src="/js/map-interactions.js"></script>
+    <script src="/js/rectangle-select.js"></script>
+    <script src="/js/ui-handlers.js"></script>
+    <script src="/js/file-handlers.js"></script>
+    <script src="/js/share-link.js"></script>
+    <script src="/js/autosave.js"></script>
+    <script src="/js/routing.js"></script>
+    <script src="/js/strava.js"></script>
+    <script src="/js/osm.js"></script>
+    <script src="/js/contextmenu.js"></script>
+    <script src="/js/leaflet-wms-gutter.js"></script>
+    <script src="/js/custom-layers.js"></script>
+    <script src="/js/wms-import.js"></script>
+    <script src="/js/xyz-import.js"></script>
+    <script src="/js/search.js"></script>
+    <script src="/js/poi-finder.js"></script>
+    <script src="/js/dev-panel.js"></script>
+    <script src="/js/data-editor.js"></script>
+    <script src="/js/map-layers.js"></script>
+    <script src="/js/attribution.js"></script>
+    <script src="/js/credits-popup.js"></script>
+    <script src="/js/map-view.js"></script>
+    <script src="/js/layer-control-panel.js"></script>
+    <script src="/js/tab-navigation.js"></script>
+    <script src="/js/locate-control.js"></script>
+    <script src="/js/file-controls.js"></script>
+    <script src="/js/distance-labels.js"></script>
+    <script src="/js/draw-tools.js"></script>
+    <script src="/js/path-extend.js"></script>
+    <script src="/js/top-right-buttons.js"></script>
+    <script src="/js/settings-panel.js"></script>
+    <script src="/js/leaflet-core-patches.js"></script>
+    <script src="/js/leaflet-draw-patches.js"></script>
+    <script src="/js/offline-indicator.js"></script>
+    <script src="/js/pwa-install.js"></script>
+    <script src="/js/bottom-sheet.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/rb-probe.js"></script>
+    <!-- END-BUNDLE -->
+  </body>
+</html>

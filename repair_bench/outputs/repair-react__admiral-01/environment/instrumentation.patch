@@ -1,0 +1,3870 @@
+diff --git a/admiral/actions/FilterButton.tsx b/admiral/actions/FilterButton.tsx
+index 1228195..364afff 100644
+--- a/admiral/actions/FilterButton.tsx
++++ b/admiral/actions/FilterButton.tsx
+@@ -12,7 +12,12 @@ export const FilterButton = ({ children }: FilterButtonProps) => {
+     }, [])
+ 
+     return (
+-        <Button type="button" iconLeft={<FiFilter />} onClick={showDrawer}>
++        <Button
++            type="button"
++            iconLeft={<FiFilter />}
++            onClick={showDrawer}
++            data-testid="filter-open"
++        >
+             {children}
+         </Button>
+     )
+diff --git a/admiral/filters/Filters.tsx b/admiral/filters/Filters.tsx
+index 7c924a1..7cea2de 100644
+--- a/admiral/filters/Filters.tsx
++++ b/admiral/filters/Filters.tsx
+@@ -90,10 +90,21 @@ export function Filters({ locale, fetchInitialData, children }: FiltersProps) {
+             title={filtersLocale.title}
+             footer={
+                 <div className={styles.footer}>
+-                    <Button type="button" view="secondary" onClick={onReset} iconLeft={<FiX />}>
++                    <Button
++                        type="button"
++                        view="secondary"
++                        onClick={onReset}
++                        iconLeft={<FiX />}
++                        data-testid="filter-clear"
++                    >
+                         {filtersLocale.clear}
+                     </Button>
+-                    <Button type="button" onClick={onSubmit} iconLeft={<FiSave />}>
++                    <Button
++                        type="button"
++                        onClick={onSubmit}
++                        iconLeft={<FiSave />}
++                        data-testid="filter-apply"
++                    >
+                         {filtersLocale.submit}
+                     </Button>
+                 </div>
+diff --git a/admiral/form/Form.tsx b/admiral/form/Form.tsx
+index 5456df3..b2800c5 100644
+--- a/admiral/form/Form.tsx
++++ b/admiral/form/Form.tsx
+@@ -380,6 +380,7 @@ function Submit({ className, children }: { className?: string; children?: React.
+             type="submit"
+             disabled={isFetching || isSubmitting}
+             loading={isSubmitting}
++            data-testid="form-submit"
+         >
+             {children}
+         </Button>
+diff --git a/admiral/form/Item.tsx b/admiral/form/Item.tsx
+index 5b36cda..8d96cc6 100644
+--- a/admiral/form/Item.tsx
++++ b/admiral/form/Item.tsx
+@@ -26,8 +26,22 @@ function Item({
+ }: FormItemProps) {
+     const errorId = useId()
+ 
++    // RepairBench instrumentation: a stable, label-derived test id so the
++    // verifier can address a form field without depending on CSS-module hashes.
++    // Purely additive - it derives from a prop the component already receives
++    // and changes no behaviour.
++    const rbTestId = label
++        ? `form-item-${String(label)
++              .toLowerCase()
++              .replace(/[^a-z0-9]+/g, '-')
++              .replace(/^-+|-+$/g, '')}`
++        : undefined
++
+     return (
+-        <div className={cn(styles.item, { [styles.item__ColumnSpanTwo]: columnSpan === 2 })}>
++        <div
++            className={cn(styles.item, { [styles.item__ColumnSpanTwo]: columnSpan === 2 })}
++            data-testid={rbTestId}
++        >
+             <LabelComponent onClick={onLabelClick}>
+                 <span
+                     className={cn(styles.item_Label, { [styles.item_Label__Required]: required })}
+diff --git a/admiral/ui/Layout/LayoutHeader/index.tsx b/admiral/ui/Layout/LayoutHeader/index.tsx
+index 3ffbd24..d5ad977 100644
+--- a/admiral/ui/Layout/LayoutHeader/index.tsx
++++ b/admiral/ui/Layout/LayoutHeader/index.tsx
+@@ -23,6 +23,7 @@ function LayoutHeader({ logo = LogoDefault }: { logo?: LogoType }) {
+         >
+             <NavLink
+                 to="/"
++                data-testid="app-logo"
+                 className={({ isActive }) => cn(styles.logo, { [styles.logo__Active]: isActive })}
+                 end
+                 onClick={closeNav}
+@@ -41,6 +42,7 @@ function LayoutHeader({ logo = LogoDefault }: { logo?: LogoType }) {
+                 })}
+                 aria-label="Toggle sidebar"
+                 aria-expanded={!collapsed}
++                data-testid="nav-collapse-toggle"
+                 onClick={toggleCollapsed}
+             >
+                 <FiArrowLeft aria-hidden />
+@@ -51,6 +53,7 @@ function LayoutHeader({ logo = LogoDefault }: { logo?: LogoType }) {
+                 className={cn(styles.collapseToggle, styles.collapseToggle__Mobile)}
+                 aria-label="Toggle navigation"
+                 aria-expanded={visible}
++                data-testid="nav-mobile-toggle"
+                 onClick={toggleNav}
+             >
+                 {visible ? <FiX aria-hidden /> : <FiMenu aria-hidden />}
+diff --git a/admiral/ui/Menu/Menu.tsx b/admiral/ui/Menu/Menu.tsx
+index 7f62f6d..1dfaf8e 100644
+--- a/admiral/ui/Menu/Menu.tsx
++++ b/admiral/ui/Menu/Menu.tsx
+@@ -109,6 +109,7 @@ export const MenuItemLink = ({ icon, name, to, exact = false, badge }: MenuItemL
+             <Tooltip placement="right" content={name} interactive={false} disabled={!collapsed}>
+                 <NavLink
+                     to={to as string}
++                    data-testid="menu-item"
+                     className={({ isActive }) =>
+                         cn(styles.link, {
+                             [styles.link__Collapsible]: true,
+diff --git a/admiral/ui/Table/hooks/useSelection.tsx b/admiral/ui/Table/hooks/useSelection.tsx
+index cd7ad1b..30026e3 100644
+--- a/admiral/ui/Table/hooks/useSelection.tsx
++++ b/admiral/ui/Table/hooks/useSelection.tsx
+@@ -230,7 +230,7 @@ export default function useSelection<RecordType>(
+             const titleCheckboxProps = getTitleCheckboxProps?.() ?? {}
+ 
+             const title = !hideSelectAll && (
+-                <div className={`${prefixCls}-selection`}>
++                <div className={`${prefixCls}-selection`} data-testid="table-select-all">
+                     <Checkbox
+                         {...titleCheckboxProps}
+                         checked={
+diff --git a/admiral/ui/ThemeSwitch/ThemeSwitch.tsx b/admiral/ui/ThemeSwitch/ThemeSwitch.tsx
+index 920278a..fafe647 100644
+--- a/admiral/ui/ThemeSwitch/ThemeSwitch.tsx
++++ b/admiral/ui/ThemeSwitch/ThemeSwitch.tsx
+@@ -8,7 +8,13 @@ export function ThemeSwitch() {
+     const handleChange = () => setTheme(themeName === 'light' ? 'dark' : 'light')
+ 
+     return (
+-        <button className={styles.button} type="button" onClick={handleChange}>
++        <button
++            className={styles.button}
++            type="button"
++            onClick={handleChange}
++            data-testid="theme-switch"
++            data-theme-name={themeName}
++        >
+             <span className={styles.icon}>{themeName === 'light' ? <FiMoon /> : <FiSun />}</span>
+         </button>
+     )
+diff --git a/src/main.tsx b/src/main.tsx
+index f4a6a09..ad87639 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,6 +1,7 @@
+ import { createRoot } from 'react-dom/client'
+ import { worker } from './mocks/browser'
+ import App from './App'
++import { publishRbProbe } from './rbProbe'
+ 
+ async function prepare() {
+     return worker.start()
+@@ -8,4 +9,6 @@ async function prepare() {
+ 
+ prepare().then(() => {
+     createRoot(document.getElementById('root')!).render(<App />)
++    // RepairBench instrumentation: publish the read-only probe object once.
++    publishRbProbe()
+ })
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+index 0000000..18f1f3a
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,259 @@
++// RepairBench instrumentation: a strictly READ-ONLY probe published once as
++// `window.__rb`.
++//
++// Contract:
++//   * published exactly once, after the first render is scheduled (see main.tsx);
++//   * every member is a pure read of the DOM / location / performance timeline
++//     that the application itself already produced - the probe never writes
++//     application state, never dispatches an event, never touches storage, never
++//     mutates the DOM and never changes what is rendered;
++//   * every member is fail-closed: on any error it returns an inert sentinel
++//     ('' / -1 / false) instead of throwing, so a probe bug can never be
++//     mistaken for an application behaviour.
++//
++// It exists so the verifier can read scalars off the existing render path
++// instead of scraping framework-internal CSS class names.
++export interface RbProbe {
++    version: number
++    boot: {
++        rootKids: () => number
++        ready: () => boolean
++    }
++    loc: {
++        path: () => string
++        search: () => string
++        href: () => string
++    }
++    dom: {
++        count: (sel: string) => number
++        text: (sel: string) => string
++        attr: (sel: string, name: string) => string
++        texts: (sel: string, limit: number) => string
++        checked: (sel: string) => number
++    }
++    nav: {
++        collapseExpanded: () => string
++        menuItems: () => number
++    }
++    theme: {
++        name: () => string
++    }
++    table: {
++        rows: () => number
++        headerCells: () => number
++        cell: (row: number, col: number) => string
++        ariaSort: (col: number) => string
++        totalText: () => string
++        sizeChanger: () => number
++        pageItems: () => number
++        activePage: () => string
++        checkedRows: () => number
++        selectAllPresent: () => boolean
++    }
++    net: {
++        count: (substr: string) => number
++    }
++    storage: {
++        localKeys: () => string
++        sessionKeys: () => string
++        raw: (key: string) => string
++    }
++    globals: {
++        rbKeys: () => string
++    }
++}
++
++const norm = (v: unknown) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim()
++
++const q = (sel: string) => {
++    try {
++        return document.querySelector(sel)
++    } catch {
++        return null
++    }
++}
++
++const qa = (sel: string) => {
++    try {
++        return Array.from(document.querySelectorAll(sel))
++    } catch {
++        return []
++    }
++}
++
++// The table prefix this app configures for rc-table is "admiral-table" and the
++// pagination prefix is "pagination"; both are read through these helpers so the
++// probe has exactly one place that knows about them.
++const TBODY_ROW = '.admiral-table-tbody tr.admiral-table-row'
++const THEAD_TH = '.admiral-table-thead th.admiral-table-cell'
++
++const probe: RbProbe = {
++    version: 1,
++    boot: {
++        rootKids: () => {
++            try {
++                const r = document.getElementById('root')
++                return r ? r.children.length : -1
++            } catch {
++                return -1
++            }
++        },
++        ready: () => {
++            try {
++                const r = document.getElementById('root')
++                if (!r || r.children.length === 0) return false
++                return document.body.textContent != null && document.body.textContent.length > 0
++            } catch {
++                return false
++            }
++        },
++    },
++    loc: {
++        path: () => {
++            try {
++                return location.pathname
++            } catch {
++                return ''
++            }
++        },
++        search: () => {
++            try {
++                return location.search
++            } catch {
++                return ''
++            }
++        },
++        href: () => {
++            try {
++                return location.href
++            } catch {
++                return ''
++            }
++        },
++    },
++    dom: {
++        count: (sel) => qa(sel).length,
++        text: (sel) => norm((q(sel) as HTMLElement | null)?.textContent ?? ''),
++        attr: (sel, name) => {
++            const el = q(sel)
++            if (!el) return ''
++            const v = el.getAttribute(name)
++            return v == null ? '' : String(v)
++        },
++        texts: (sel, limit) =>
++            qa(sel)
++                .slice(0, Number(limit) || 0)
++                .map((el) => norm((el as HTMLElement).textContent ?? ''))
++                .join('|'),
++        checked: (sel) => qa(sel + ':checked').length,
++    },
++    nav: {
++        collapseExpanded: () => {
++            const el = q('[data-testid="nav-collapse-toggle"]')
++            if (!el) return ''
++            const v = el.getAttribute('aria-expanded')
++            return v == null ? '' : String(v)
++        },
++        menuItems: () => qa('[data-testid="menu-item"]').length,
++    },
++    theme: {
++        name: () => {
++            const el = q('[data-testid="theme-switch"]')
++            if (!el) return ''
++            const v = el.getAttribute('data-theme-name')
++            return v == null ? '' : String(v)
++        },
++    },
++    table: {
++        rows: () => qa(TBODY_ROW).length,
++        headerCells: () => qa(THEAD_TH).length,
++        cell: (row, col) => {
++            const rows = qa(TBODY_ROW)
++            const tr = rows[Number(row)]
++            if (!tr) return ''
++            const td = (tr as HTMLElement).querySelectorAll('td')[Number(col)]
++            return norm((td as HTMLElement | undefined)?.textContent ?? '')
++        },
++        ariaSort: (col) => {
++            const th = qa(THEAD_TH)[Number(col)]
++            if (!th) return ''
++            const v = th.getAttribute('aria-sort')
++            return v == null ? '' : String(v)
++        },
++        totalText: () => norm((q('.pagination-total-text') as HTMLElement | null)?.textContent ?? ''),
++        sizeChanger: () => qa('.pagination-options').length,
++        pageItems: () => qa('.pagination-item').length,
++        activePage: () => {
++            const el = q('.pagination-item-active')
++            return norm((el as HTMLElement | null)?.textContent ?? '')
++        },
++        checkedRows: () => qa(TBODY_ROW + ' input[type="checkbox"]').filter((i) => (i as HTMLInputElement).checked).length,
++        selectAllPresent: () => q('[data-testid="table-select-all"] input[type="checkbox"]') !== null,
++    },
++    net: {
++        count: (substr) => {
++            try {
++                const needle = String(substr)
++                return performance
++                    .getEntriesByType('resource')
++                    .filter((e) => String(e.name).indexOf(needle) >= 0).length
++            } catch {
++                return -1
++            }
++        },
++    },
++    storage: {
++        localKeys: () => {
++            try {
++                return Object.keys(localStorage).sort().join(',')
++            } catch {
++                return ''
++            }
++        },
++        sessionKeys: () => {
++            try {
++                return Object.keys(sessionStorage).sort().join(',')
++            } catch {
++                return ''
++            }
++        },
++        raw: (key) => {
++            try {
++                const v = localStorage.getItem(String(key))
++                return v == null ? '' : String(v)
++            } catch {
++                return ''
++            }
++        },
++    },
++    globals: {
++        rbKeys: () => {
++            try {
++                return Object.keys(window)
++                    .filter((k) => k.indexOf('__rb') === 0)
++                    .sort()
++                    .join(',')
++            } catch {
++                return ''
++            }
++        },
++    },
++}
++
++let published = false
++
++export function publishRbProbe(): boolean {
++    if (published) return false
++    published = true
++    try {
++        Object.defineProperty(window, '__rb', {
++            value: probe,
++            writable: false,
++            configurable: false,
++            enumerable: true,
++        })
++        return true
++    } catch {
++        return false
++    }
++}
+diff --git a/tests/ajaxCascade.test.tsx b/tests/ajaxCascade.test.tsx
+deleted file mode 100644
+index 661b9df..0000000
+--- a/tests/ajaxCascade.test.tsx
++++ /dev/null
+@@ -1,565 +0,0 @@
+-import React, { StrictMode, createRef } from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { ThemeProvider } from '../admiral/theme'
+-import { Form, FormRef } from '../admiral/form/Form'
+-import { SelectInput } from '../admiral/form/fields/SelectInput'
+-import { AjaxSelectInput } from '../admiral/form/fields/AjaxSelectInput'
+-import { ArrayInput } from '../admiral/form/fields/ArrayInput'
+-import { useForm } from '../admiral/form/FormContext'
+-import type { OptionType } from '../admiral/dataProvider'
+-
+-/**
+- * U6 — cascade selects (`resetOnChangeOf` + `fetchOptions(values)`).
+- *
+- * Parents are real `SelectInput`s so a change flows through the field HOC's
+- * wrapped `onChange` → `fieldChange.notify`, exactly as in production (KTD9):
+- * `notify` fires synchronously before the parent's `setValues` is applied, which
+- * is what the event-value overlay in the cascade handler defends against (AE6).
+- */
+-
+-const renderForm = (
+-    children: React.ReactNode,
+-    props?: Partial<React.ComponentProps<typeof Form>>,
+-    options?: { strict?: boolean },
+-) => {
+-    const ref = createRef<FormRef>()
+-    const tree = (
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form ref={ref} {...props}>
+-                    {children}
+-                </Form>
+-            </ThemeProvider>
+-        </MemoryRouter>
+-    )
+-    const { container } = render(options?.strict ? <StrictMode>{tree}</StrictMode> : tree)
+-    return { ref, container }
+-}
+-
+-const setValues = async (ref: React.RefObject<FormRef | null>, values: Record<string, unknown>) => {
+-    await act(async () => {
+-        ref.current?.setValues(values)
+-    })
+-}
+-
+-const submit = async (ref: React.RefObject<FormRef | null>) => {
+-    let result: boolean | undefined
+-    await act(async () => {
+-        result = await ref.current?.handleSubmit()
+-    })
+-    return result
+-}
+-
+-/** All `.select` comboboxes in document order (one per rendered SelectInput). */
+-const comboboxes = (container: HTMLElement) =>
+-    Array.from(container.querySelectorAll<HTMLElement>('.select input'))
+-
+-/**
+- * Drive a real operator selection: open the `comboboxIndex`-th select and click
+- * the `optionIndex`-th option of its (now open) dropdown. rc-select keeps only
+- * the one open dropdown mounted, so any previously open dropdown is closed first
+- * (Escape) to guarantee the options we click belong to the target select.
+- */
+-const selectOption = async (container: HTMLElement, comboboxIndex: number, optionIndex: number) => {
+-    const all = comboboxes(container)
+-    // Close any currently-open dropdown so its options can't be clicked by mistake.
+-    await act(async () => {
+-        all.forEach((cb) => fireEvent.keyDown(cb, { key: 'Escape', keyCode: 27 }))
+-    })
+-    const combobox = all[comboboxIndex]
+-    await act(async () => {
+-        fireEvent.mouseDown(combobox)
+-    })
+-    const items = document.querySelectorAll<HTMLElement>('.select-item-option')
+-    await act(async () => {
+-        fireEvent.click(items[optionIndex])
+-    })
+-}
+-
+-const flush = async () => {
+-    await act(async () => {
+-        await Promise.resolve()
+-    })
+-}
+-
+-const opts = (...labels: string[]): OptionType[] =>
+-    labels.map((label) => ({ value: label.toLowerCase(), label }))
+-
+-type FetchOptions = (
+-    field: string,
+-    query?: string,
+-    values?: Record<string, any>,
+-) => Promise<OptionType[]>
+-
+-/** A typed `fetchOptions` mock, so `mock.calls[n]` is the `[field, query, values]` tuple. */
+-const fetchMock = (impl: FetchOptions = async () => []) => vi.fn<FetchOptions>(impl)
+-
+-/**
+- * Dispatches a parent change exactly as the field HOC does (KTD9): `notify`
+- * fires synchronously, THEN `setValues` is applied. Used where a single rendered
+- * AjaxSelect is wanted (rc-select reuses one dropdown id, so two open selects
+- * cross-contaminate the queried options); driving the bus avoids a second
+- * rc-select without weakening the contract under test.
+- */
+-const BusDriver = ({
+-    onReady,
+-}: {
+-    onReady: (drive: (path: string, value: unknown) => void) => void
+-}) => {
+-    const { setValues, fieldChange } = useForm()
+-    React.useEffect(() => {
+-        onReady((path, value) => {
+-            fieldChange?.notify({ path, value })
+-            setValues((v: Record<string, unknown>) => ({ ...v, [path]: value }))
+-        })
+-    }, [fieldChange, setValues, onReady])
+-    return null
+-}
+-
+-afterEach(() => {
+-    cleanup()
+-    vi.restoreAllMocks()
+-    vi.useRealTimers()
+-    Object.defineProperty(window, 'matchMedia', {
+-        writable: true,
+-        value: vi.fn().mockImplementation((query: string) => ({
+-            matches: false,
+-            media: query,
+-            onchange: null,
+-            addListener: vi.fn(),
+-            removeListener: vi.fn(),
+-            addEventListener: vi.fn(),
+-            removeEventListener: vi.fn(),
+-            dispatchEvent: vi.fn(),
+-        })),
+-    })
+-})
+-
+-describe('AE5: initial load (fetchInitialData) does NOT reset or refetch', () => {
+-    test('seeding country+city via FormRef.setValues fires no city fetch', async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow', 'Kazan'))
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Simulate an edit form hydrated by fetchInitialData (goes through
+-        // setValues, not any field's onChange → the bus never fires).
+-        await setValues(ref, { country: 'ru', city: 'moscow' })
+-        await flush()
+-
+-        expect(fetchCity).not.toHaveBeenCalled()
+-        expect(ref.current?.values.city).toBe('moscow')
+-    })
+-})
+-
+-describe('AE6: changing country resets city and refetches with the NEW country', () => {
+-    test('city → null, options refetched, fetchOptions gets values.country = new value', async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Seed an already-chosen country+city (edit form), no fetch yet.
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-        expect(fetchCity).not.toHaveBeenCalled()
+-
+-        // Operator picks USA (index 1) → city resets, options refetch.
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        expect(ref.current?.values.city).toBeNull()
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-        // The 3rd arg is the scope snapshot with the NEW country overlaid — the
+-        // stale-snapshot-overlay regression guard.
+-        const [field, query, values] = fetchCity.mock.calls[0]
+-        expect(field).toBe('city')
+-        expect(query).toBe('')
+-        expect((values as Record<string, unknown>).country).toBe('us')
+-    })
+-})
+-
+-describe('AE13: country→region→city chain cascades, then terminates', () => {
+-    test('changing country resets both region and city; re-change terminates the notify', async () => {
+-        const fetchRegion = fetchMock(async () => opts('Center', 'North'))
+-        const fetchCity = fetchMock(async () => opts('Moscow', 'Tver'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="region"
+-                    label="Region"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchRegion}
+-                />
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['region']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Seed a full chain (edit form).
+-        await setValues(ref, { country: 'ru', region: 'center', city: 'moscow' })
+-        expect(fetchRegion).not.toHaveBeenCalled()
+-        expect(fetchCity).not.toHaveBeenCalled()
+-
+-        // Change country → region resets (non-empty) → notifies region path →
+-        // city resets down the chain. Both refetch.
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        expect(ref.current?.values.region).toBeNull()
+-        expect(ref.current?.values.city).toBeNull()
+-        expect(fetchRegion).toHaveBeenCalledTimes(1)
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-        // The chained city refetch saw region overlaid to null (the notify value).
+-        expect((fetchCity.mock.calls[0][2] as Record<string, unknown>).region).toBeNull()
+-
+-        fetchRegion.mockClear()
+-        fetchCity.mockClear()
+-
+-        // Change country AGAIN while region/city are already empty: region
+-        // refetches, but its value is already empty → no cascade notify → city
+-        // is NOT touched and does NOT refetch (termination).
+-        await selectOption(container, 0, 0)
+-        await flush()
+-
+-        expect(fetchRegion).toHaveBeenCalledTimes(1)
+-        expect(fetchCity).not.toHaveBeenCalled()
+-    })
+-})
+-
+-describe('AE14: after a reset, submit sends city: null (key present)', () => {
+-    test('payload contains an explicit null city', async () => {
+-        const submitData = vi.fn(async (_v: Record<string, unknown>) => ({}))
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-            { submitData },
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        await submit(ref)
+-        const payload = submitData.mock.calls[0][0] as Record<string, unknown>
+-        expect('city' in payload).toBe(true)
+-        expect(payload.city).toBeNull()
+-        // JSON.stringify keeps an explicit null (the reason we write null, not
+-        // undefined): the backend sees the reset rather than the stale value.
+-        expect(JSON.parse(JSON.stringify(payload)).city).toBeNull()
+-    })
+-})
+-
+-describe('AE15: ArrayInput rows are scope-isolated', () => {
+-    test("changing row 0's country does not touch row 1's city", async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <ArrayInput name="rows" label="Rows">
+-                    <SelectInput name="country" label="Country">
+-                        <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                        <SelectInput.Option value="us">USA</SelectInput.Option>
+-                    </SelectInput>
+-                    <AjaxSelectInput
+-                        name="city"
+-                        label="City"
+-                        resetOnChangeOf={['country']}
+-                        fetchOptions={fetchCity}
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, {
+-            rows: [
+-                { country: 'ru', city: 'spb' },
+-                { country: 'us', city: 'nyc' },
+-            ],
+-        })
+-
+-        // Comboboxes in document order: [row0.country, row0.city, row1.country,
+-        // row1.city]. Change row 0's country (index 0) to USA.
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        const rows = ref.current?.values.rows as Array<Record<string, unknown>>
+-        expect(rows[0].city).toBeNull() // row 0 reset
+-        expect(rows[1].city).toBe('nyc') // row 1 untouched
+-        // Only row 0's city refetched.
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-        expect((fetchCity.mock.calls[0][2] as Record<string, unknown>).country).toBe('us')
+-    })
+-})
+-
+-describe('Race: a pending debounced search is dropped when the parent changes', () => {
+-    test('stale search response is discarded; options come from the new refetch', async () => {
+-        vi.useFakeTimers()
+-        // city fetch resolves on the next microtask but returns parent-specific
+-        // options so we can tell which call won.
+-        const fetchCity = fetchMock(async (_field, query, values) => {
+-            if (query === 'sea') return opts('Old-Search-Result')
+-            return values?.country === 'us' ? opts('New-York') : opts('Saint-Petersburg')
+-        })
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        act(() => {
+-            ref.current?.setValues({ country: 'ru', city: 'spb' })
+-        })
+-
+-        // Operator types into the city search → schedules a debounced fetch.
+-        const cityCombobox = comboboxes(container)[1]
+-        act(() => {
+-            fireEvent.change(cityCombobox, { target: { value: 'sea' } })
+-        })
+-
+-        // Before the 500ms debounce elapses, the operator changes the country.
+-        // The handler cancels the pending search and eager-refetches.
+-        await selectOption(container, 0, 1)
+-
+-        // Advance past the debounce: the cancelled search must NOT fire.
+-        await act(async () => {
+-            vi.advanceTimersByTime(600)
+-            await Promise.resolve()
+-        })
+-
+-        // The search ('sea') was cancelled; only the cascade refetch ran.
+-        expect(fetchCity.mock.calls.every((c) => c[1] !== 'sea')).toBe(true)
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-        expect((fetchCity.mock.calls[0][2] as Record<string, unknown>).country).toBe('us')
+-    })
+-})
+-
+-describe('Reject: a failed refetch leaves options empty, not the old parent’s', () => {
+-    test('refetch rejects → options empty, console.error called', async () => {
+-        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+-        // The first parent change populates city options; the second rejects. A
+-        // single rendered AjaxSelect is used (see BusDriver) so the dropdown we
+-        // open at the end unambiguously belongs to the city field.
+-        let shouldReject = false
+-        const fetchCity = fetchMock(async () => {
+-            if (shouldReject) throw new Error('boom')
+-            return opts('Old-City-A', 'Old-City-B')
+-        })
+-        let drive!: (path: string, value: unknown) => void
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-                <BusDriver onReady={(fn) => (drive = fn)} />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-
+-        // First change populates city options, so there ARE old options that a
+-        // later failed refetch must NOT leave selectable.
+-        await act(async () => {
+-            drive('country', 'us')
+-        })
+-        await flush()
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-
+-        // Second change: the refetch now rejects. The handler clears options
+-        // synchronously (setOptions([])) and the catch never replaces them.
+-        shouldReject = true
+-        await act(async () => {
+-            drive('country', 'ru')
+-        })
+-        await flush()
+-
+-        expect(fetchCity).toHaveBeenCalledTimes(2)
+-        expect(error).toHaveBeenCalled()
+-
+-        // Open the city dropdown: no options of the old country remain.
+-        await act(async () => {
+-            fireEvent.mouseDown(comboboxes(container)[0])
+-        })
+-        expect(document.querySelectorAll('.select-item-option').length).toBe(0)
+-    })
+-})
+-
+-describe('Identical value: re-selecting the same country does not reset', () => {
+-    test('the HOC suppresses an identical-value notify → no cascade fires', async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-
+-        // Re-select Russia (index 0) — the current value. The HOC's onChange
+-        // wrapper sees an identical value and does not notify, so no reset.
+-        await selectOption(container, 0, 0)
+-        await flush()
+-
+-        expect(ref.current?.values.city).toBe('spb')
+-        expect(fetchCity).not.toHaveBeenCalled()
+-    })
+-})
+-
+-describe('Backward compat: a two-argument fetchOptions works (type + runtime)', () => {
+-    test('a callback ignoring the 3rd arg still resolves options on cascade', async () => {
+-        // A two-argument callback (the legacy shape). Assigning it to a 2-arg type
+-        // first proves it is still accepted by the 3-arg-accepting `fetchOptions`
+-        // prop at the type level; the mock is asserted on below at runtime.
+-        const legacyFetch = vi.fn(async (_field: string, _query?: string) =>
+-            opts('Moscow', 'Kazan'),
+-        )
+-        const _typecheck: (field: string, query?: string) => Promise<OptionType[]> = legacyFetch
+-        void _typecheck
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={legacyFetch}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        expect(ref.current?.values.city).toBeNull()
+-        expect(legacyFetch).toHaveBeenCalledTimes(1)
+-        // It received a 3rd arg at runtime (the scope values) but ignored it.
+-        expect(legacyFetch.mock.calls[0].length).toBe(3)
+-    })
+-})
+-
+-describe('value={null} renders the placeholder cleanly (no normalization needed)', () => {
+-    test('a reset to null shows no chosen option', async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    placeholder="Pick a city"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        expect(ref.current?.values.city).toBeNull()
+-        // No selection item is rendered for the city select (null → placeholder).
+-        const citySelect = container.querySelectorAll('.select')[1]
+-        expect(citySelect.querySelector('.select-selection-item')).toBeNull()
+-    })
+-})
+-
+-describe('StrictMode: subscription survives double-mount; cascade still resets once', () => {
+-    test('changing country resets city once under StrictMode', async () => {
+-        const fetchCity = fetchMock(async () => opts('Moscow'))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="country" label="Country">
+-                    <SelectInput.Option value="ru">Russia</SelectInput.Option>
+-                    <SelectInput.Option value="us">USA</SelectInput.Option>
+-                </SelectInput>
+-                <AjaxSelectInput
+-                    name="city"
+-                    label="City"
+-                    resetOnChangeOf={['country']}
+-                    fetchOptions={fetchCity}
+-                />
+-            </Form.Fields>,
+-            undefined,
+-            { strict: true },
+-        )
+-
+-        await setValues(ref, { country: 'ru', city: 'spb' })
+-        await selectOption(container, 0, 1)
+-        await flush()
+-
+-        expect(ref.current?.values.city).toBeNull()
+-        // Effect cleanup unsubscribes the first mount's handler, so the reset
+-        // refetch runs exactly once even though StrictMode mounts twice.
+-        expect(fetchCity).toHaveBeenCalledTimes(1)
+-    })
+-})
+diff --git a/tests/dataTableSort.test.tsx b/tests/dataTableSort.test.tsx
+deleted file mode 100644
+index 51aaf33..0000000
+--- a/tests/dataTableSort.test.tsx
++++ /dev/null
+@@ -1,62 +0,0 @@
+-import { describe, expect, test, vi } from 'vitest'
+-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+-import { MemoryRouter, useLocation } from 'react-router-dom'
+-import { DataTable } from '../admiral/dataTable'
+-import { CrudIndexPageContextProvider } from '../admiral/crud/CrudIndexPageContext'
+-import { DataProviderContextProvider, DataProvider } from '../admiral/dataProvider'
+-import { TopLocationContextProvider } from '../admiral/router'
+-import { ThemeProvider } from '../admiral/theme'
+-
+-const getList = vi.fn(async (_resource: string, _params: Record<string, any>) => ({
+-    items: [{ id: 1, name: 'Alpha' }],
+-    meta: { current_page: 1, per_page: 10, total: 1 },
+-}))
+-
+-const dataProvider = { getList } as unknown as DataProvider
+-
+-function LocationProbe() {
+-    const location = useLocation()
+-    return <div data-testid="search">{location.search}</div>
+-}
+-
+-function Page() {
+-    const location = useLocation()
+-    return (
+-        <TopLocationContextProvider value={location}>
+-            <CrudIndexPageContextProvider>
+-                <DataTable
+-                    resource="users"
+-                    columns={[{ title: 'Name', dataIndex: 'name', key: 'name', sorter: true }]}
+-                />
+-            </CrudIndexPageContextProvider>
+-            <LocationProbe />
+-        </TopLocationContextProvider>
+-    )
+-}
+-
+-describe('DataTable sorting', () => {
+-    test('header click writes flat sort to the url and to getList params', async () => {
+-        render(
+-            <MemoryRouter>
+-                <ThemeProvider>
+-                    <DataProviderContextProvider value={dataProvider}>
+-                        <Page />
+-                    </DataProviderContextProvider>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-
+-        await waitFor(() => expect(getList).toHaveBeenCalled())
+-
+-        fireEvent.click(screen.getAllByText('Name')[0])
+-
+-        await waitFor(() => {
+-            expect(screen.getByTestId('search').textContent).toContain('sort[name]=asc')
+-        })
+-
+-        await waitFor(() => {
+-            const params = getList.mock.calls.at(-1)?.[1]
+-            expect(params?.sort).toEqual({ field: 'name', order: 'asc' })
+-        })
+-    })
+-})
+diff --git a/tests/fieldRules.test.tsx b/tests/fieldRules.test.tsx
+deleted file mode 100644
+index d57a046..0000000
+--- a/tests/fieldRules.test.tsx
++++ /dev/null
+@@ -1,580 +0,0 @@
+-import React, { StrictMode, createRef } from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { ThemeProvider } from '../admiral/theme'
+-import { Form, FormRef } from '../admiral/form/Form'
+-import { TextInput } from '../admiral/form/fields/TextInput'
+-import { BooleanInput } from '../admiral/form/fields/BooleanInput'
+-import { SelectInput } from '../admiral/form/fields/SelectInput'
+-import { ArrayInput } from '../admiral/form/fields/ArrayInput'
+-import { useFieldRules } from '../admiral/form/fieldRules'
+-import { useForm } from '../admiral/form/FormContext'
+-import { scanFormChildren, evaluateVisibility } from '../admiral/form/rulesScan'
+-import { CrudIndexPageContextProvider, useCrudIndex } from '../admiral/crud/CrudIndexPageContext'
+-import type { FormTabItem } from '../admiral/form/FormTabs'
+-import type { FormRulesMap } from '../admiral/form/rules'
+-
+-const renderForm = (
+-    children: React.ReactNode,
+-    props?: Partial<React.ComponentProps<typeof Form>>,
+-    options?: { strict?: boolean },
+-) => {
+-    const ref = createRef<FormRef>()
+-    const tree = (
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form ref={ref} {...props}>
+-                    {children}
+-                </Form>
+-            </ThemeProvider>
+-        </MemoryRouter>
+-    )
+-    const { container } = render(options?.strict ? <StrictMode>{tree}</StrictMode> : tree)
+-    return { ref, container }
+-}
+-
+-const setValues = async (ref: React.RefObject<FormRef | null>, values: Record<string, unknown>) => {
+-    await act(async () => {
+-        ref.current?.setValues(values)
+-    })
+-}
+-
+-const submit = async (ref: React.RefObject<FormRef | null>) => {
+-    let result: boolean | undefined
+-    await act(async () => {
+-        result = await ref.current?.handleSubmit()
+-    })
+-    return result
+-}
+-
+-const input = (container: HTMLElement, name: string) =>
+-    container.querySelector<HTMLInputElement>(`input[name="${name}"]`)
+-
+-const isRequiredMarked = (container: HTMLElement, name: string): boolean => {
+-    const el = input(container, name)
+-    if (!el) return false
+-    // Walk up to the Form.Item root and find the label span by its stable
+-    // substring (CSS modules hash the suffix under vitest).
+-    let node: HTMLElement | null = el
+-    while (node && !node.querySelector('[class*="item_Label"]')) node = node.parentElement
+-    const label = node?.querySelector('[class*="item_Label"]')
+-    return !!label && (label.className || '').includes('item_Label__Required')
+-}
+-
+-const spyWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
+-
+-afterEach(() => {
+-    cleanup()
+-    vi.restoreAllMocks()
+-    Object.defineProperty(window, 'matchMedia', {
+-        writable: true,
+-        value: vi.fn().mockImplementation((query: string) => ({
+-            matches: false,
+-            media: query,
+-            onchange: null,
+-            addListener: vi.fn(),
+-            removeListener: vi.fn(),
+-            addEventListener: vi.fn(),
+-            removeEventListener: vi.fn(),
+-            dispatchEvent: vi.fn(),
+-        })),
+-    })
+-})
+-
+-describe('AE1: hidden field value persists across unmount → remount', () => {
+-    test('legal → fill INN → person (unmount) → legal again → INN visible with prior value', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="ae1_type" label="Type" />
+-                <TextInput
+-                    name="ae1_inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'ae1_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { ae1_type: 'legal' })
+-        const innEl = input(container, 'ae1_inn')!
+-        fireEvent.change(innEl, { target: { value: '7701234567' } })
+-        expect(input(container, 'ae1_inn')!.value).toBe('7701234567')
+-
+-        // Switch to person → INN unmounts; its value persists in form context.
+-        await setValues(ref, { ae1_type: 'person', ae1_inn: '7701234567' })
+-        expect(input(container, 'ae1_inn')).toBeNull()
+-
+-        // Back to legal → INN visible again with the previously typed value.
+-        await setValues(ref, { ae1_type: 'legal', ae1_inn: '7701234567' })
+-        expect(input(container, 'ae1_inn')!.value).toBe('7701234567')
+-    })
+-})
+-
+-describe('AE3 / AE18: required + hidden → no marker, no block, key omitted', () => {
+-    test('a required field hidden by a rule shows no required marker', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="ae3_type" label="Type" />
+-                <TextInput
+-                    name="ae3_inn"
+-                    label="INN"
+-                    required
+-                    visibleWhen={{ field: 'ae3_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Visible: the required marker is present.
+-        await setValues(ref, { ae3_type: 'legal' })
+-        expect(isRequiredMarked(container, 'ae3_inn')).toBe(true)
+-
+-        // Hidden: no input at all → no marker, nothing to block submit.
+-        await setValues(ref, { ae3_type: 'person' })
+-        expect(input(container, 'ae3_inn')).toBeNull()
+-    })
+-
+-    test('AE18: visibleWhen(false) + requiredWhen(true) → hidden wins; key omitted', async () => {
+-        const submitData = vi.fn(async (_v: Record<string, unknown>) => ({}))
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="ae18_type" label="Type" />
+-                <TextInput
+-                    name="ae18_inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'ae18_type', is: 'legal' }}
+-                    requiredWhen={{ field: 'ae18_type', is: 'person' }}
+-                />
+-            </Form.Fields>,
+-            { submitData },
+-        )
+-
+-        await setValues(ref, { ae18_type: 'person', ae18_inn: 'x' })
+-        // requiredWhen would be true, but visibleWhen is false → hidden wins.
+-        expect(input(container, 'ae18_inn')).toBeNull()
+-
+-        await submit(ref)
+-        const payload = submitData.mock.calls[0][0] as Record<string, unknown>
+-        expect('ae18_inn' in payload).toBe(false)
+-    })
+-})
+-
+-describe('AE17: disabledWhen OR-merge with static disabled', () => {
+-    test('static disabled={false} + disabledWhen→true → control disabled', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="ae17_type" label="Type" />
+-                <TextInput
+-                    name="ae17_inn"
+-                    label="INN"
+-                    disabled={false}
+-                    disabledWhen={{ field: 'ae17_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { ae17_type: 'person' })
+-        expect(input(container, 'ae17_inn')!.disabled).toBe(false)
+-
+-        await setValues(ref, { ae17_type: 'legal' })
+-        expect(input(container, 'ae17_inn')!.disabled).toBe(true)
+-    })
+-
+-    test('static disabled={true} stays disabled regardless of the rule (OR-merge)', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="ae17b_type" label="Type" />
+-                <TextInput
+-                    name="ae17b_inn"
+-                    label="INN"
+-                    disabled
+-                    disabledWhen={{ field: 'ae17b_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Rule false, but static disabled=true → still disabled.
+-        await setValues(ref, { ae17b_type: 'person' })
+-        expect(input(container, 'ae17b_inn')!.disabled).toBe(true)
+-    })
+-})
+-
+-describe('requiredWhen toggles the Form.Item marker; static required ignored when set', () => {
+-    test('marker follows the requiredWhen rule as values change', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="rw_type" label="Type" />
+-                <TextInput
+-                    name="rw_inn"
+-                    label="INN"
+-                    requiredWhen={{ field: 'rw_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { rw_type: 'person' })
+-        expect(isRequiredMarked(container, 'rw_inn')).toBe(false)
+-
+-        await setValues(ref, { rw_type: 'legal' })
+-        expect(isRequiredMarked(container, 'rw_inn')).toBe(true)
+-    })
+-
+-    test('when requiredWhen is set, static required is ignored', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="rw2_type" label="Type" />
+-                <TextInput
+-                    name="rw2_inn"
+-                    label="INN"
+-                    required
+-                    requiredWhen={{ field: 'rw2_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-        )
+-
+-        // Static required=true, but requiredWhen evaluates false → no marker.
+-        await setValues(ref, { rw2_type: 'person' })
+-        expect(isRequiredMarked(container, 'rw2_inn')).toBe(false)
+-    })
+-})
+-
+-describe('Row scope (F3, AE7-render): a rule in an ArrayInput row reads its own row', () => {
+-    test('two rows with different values → different per-row visibility', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    <BooleanInput name="has_discount" label="Discount" />
+-                    <TextInput
+-                        name="discount"
+-                        label="Amount"
+-                        visibleWhen={{ field: 'has_discount', is: true }}
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, {
+-            variants: [{ has_discount: true }, { has_discount: false }],
+-        })
+-
+-        const discounts = container.querySelectorAll<HTMLInputElement>('input[name="discount"]')
+-        // Row 0 (has_discount true) shows its discount; row 1 (false) does not.
+-        expect(discounts.length).toBe(1)
+-    })
+-})
+-
+-describe('Statics preserved through the wrapper', () => {
+-    test('U3 static scan reads rule props off a wrapped element', () => {
+-        const scan = scanFormChildren(
+-            <Form.Fields>
+-                <TextInput name="x" label="X" visibleWhen={{ field: 'y', is: 1 }} />
+-            </Form.Fields>,
+-        )
+-        expect(scan.hasRules).toBe(true)
+-        const evaluated = evaluateVisibility(scan, { y: 2 })
+-        expect(evaluated.hiddenPaths.has('x')).toBe(true)
+-        expect(evaluated.scannedPaths.has('x')).toBe(true)
+-    })
+-
+-    test('Form.Tabs collectFieldNames discovers a wrapped field and badges its error', async () => {
+-        const items: FormTabItem[] = [
+-            { key: 'main', label: 'Main', children: <TextInput name="name" label="Name" /> },
+-            {
+-                key: 'details',
+-                label: 'Details',
+-                children: <TextInput name="tab_inn" label="INN" />,
+-            },
+-        ]
+-        const ref = createRef<FormRef>()
+-        render(
+-            <MemoryRouter>
+-                <ThemeProvider>
+-                    <Form
+-                        ref={ref}
+-                        submitData={async () => {
+-                            throw {
+-                                response: {
+-                                    status: 422,
+-                                    data: { errors: { tab_inn: ['Required'] } },
+-                                },
+-                            }
+-                        }}
+-                    >
+-                        <Form.Tabs defaultActiveKey="main" items={items} />
+-                    </Form>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-
+-        await act(async () => {
+-            await ref.current?.handleSubmit()
+-        })
+-
+-        // The wrapped TextInput kept its inputName static → collectFieldNames
+-        // found `tab_inn` → the Details tab is badged and auto-selected.
+-        expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe(
+-            'true',
+-        )
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-    })
+-
+-    test('CRUD-filter scanner still recognizes a wrapped field by inputName', () => {
+-        // CrudIndexPageContextProvider reads child.type.inputName / child.props.
+-        let captured: ReturnType<typeof useCrudIndex>['filter']['fields'] = []
+-        const Probe = () => {
+-            captured = useCrudIndex().filter.fields
+-            return null
+-        }
+-        render(
+-            <MemoryRouter>
+-                <ThemeProvider>
+-                    <CrudIndexPageContextProvider
+-                        filterFields={
+-                            <>
+-                                <TextInput name="q" label="Query" />
+-                                <SelectInput name="status" label="Status" />
+-                            </>
+-                        }
+-                    >
+-                        <Probe />
+-                    </CrudIndexPageContextProvider>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-        expect(captured.map((f) => f.name)).toEqual(['q', 'status'])
+-        expect(captured.map((f) => f.type)).toEqual(['TextInput', 'SelectInput'])
+-    })
+-
+-    test('SelectInput.Option renders inside a wrapped SelectInput without crashing', () => {
+-        const { container } = renderForm(
+-            <Form.Fields>
+-                <SelectInput name="group" label="Group">
+-                    <SelectInput.Option value="a">Admins</SelectInput.Option>
+-                    <SelectInput.Option value="b">Bots</SelectInput.Option>
+-                </SelectInput>
+-            </Form.Fields>,
+-        )
+-        // The select rendered (its combobox is present); no throw on Option access.
+-        expect(SelectInput.Option).toBeTruthy()
+-        expect(SelectInput.OptGroup).toBeTruthy()
+-        expect(container.querySelector('[class*="select"]')).not.toBeNull()
+-    })
+-})
+-
+-describe('Escape hatch + conflict warnings (KTD3, KTD10)', () => {
+-    test('a rule only in the Form `rules` map hides the field without any JSX prop', async () => {
+-        const rules: FormRulesMap = { esc_inn: { visible: { field: 'esc_type', is: 'legal' } } }
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="esc_type" label="Type" />
+-                <TextInput name="esc_inn" label="INN" />
+-            </Form.Fields>,
+-            { rules },
+-        )
+-
+-        await setValues(ref, { esc_type: 'person' })
+-        expect(input(container, 'esc_inn')).toBeNull()
+-
+-        await setValues(ref, { esc_type: 'legal' })
+-        expect(input(container, 'esc_inn')).not.toBeNull()
+-    })
+-
+-    test('JSX prop + map entry for the same field → JSX wins + warn once', async () => {
+-        const warn = spyWarn()
+-        const rules: FormRulesMap = {
+-            conflict_inn: { visible: { field: 'conflict_type', is: 'person' } },
+-        }
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="conflict_type" label="Type" />
+-                <TextInput
+-                    name="conflict_inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'conflict_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-            { rules },
+-        )
+-
+-        // JSX rule wins: visible only when type === 'legal'.
+-        await setValues(ref, { conflict_type: 'legal' })
+-        expect(input(container, 'conflict_inn')).not.toBeNull()
+-        await setValues(ref, { conflict_type: 'person' })
+-        expect(input(container, 'conflict_inn')).toBeNull()
+-
+-        const conflictWarns = warn.mock.calls.filter((c) =>
+-            String(c[0]).includes('both a JSX rule prop and a Form'),
+-        )
+-        expect(conflictWarns.length).toBe(1)
+-    })
+-})
+-
+-describe('Excluded-prop & misuse warnings (KTD11, KTD3, KTD10)', () => {
+-    test('requiredWhen on ArrayInput warns and is ignored', async () => {
+-        const warn = spyWarn()
+-        // ArrayInputProps omits `requiredWhen` at the type level (KTD11); a JS
+-        // consumer that ignores the type still gets a runtime warn. Typing the
+-        // misuse props as `any` mirrors that (and avoids an `@ts-expect-error`
+-        // that prettier can detach from the offending line when it reflows JSX).
+-        const misuse: any = { name: 'arr_rw', label: 'Arr', requiredWhen: { field: 'z', is: 1 } }
+-        renderForm(
+-            <Form.Fields>
+-                <ArrayInput {...misuse}>
+-                    <TextInput name="x" label="X" />
+-                </ArrayInput>
+-            </Form.Fields>,
+-        )
+-        expect(
+-            warn.mock.calls.some((c) => String(c[0]).includes('`requiredWhen` is not supported')),
+-        ).toBe(true)
+-    })
+-
+-    test('disabledWhen on SlugInput warns and is ignored', async () => {
+-        const warn = spyWarn()
+-        const { SlugInput } = await import('../admiral/form/fields/SlugInput')
+-        // SlugInputProps omits `disabledWhen` at the type level (KTD11).
+-        const misuse: any = {
+-            name: 'slug',
+-            from: 'title',
+-            label: 'Slug',
+-            disabledWhen: { field: 'z', is: 1 },
+-        }
+-        renderForm(
+-            <Form.Fields>
+-                <TextInput name="title" label="Title" />
+-                <SlugInput {...misuse} />
+-            </Form.Fields>,
+-        )
+-        expect(
+-            warn.mock.calls.some((c) => String(c[0]).includes('`disabledWhen` is not supported')),
+-        ).toBe(true)
+-    })
+-
+-    test('self-reference rule warns', async () => {
+-        const warn = spyWarn()
+-        renderForm(
+-            <Form.Fields>
+-                <TextInput
+-                    name="selfref"
+-                    label="Self"
+-                    visibleWhen={{ field: 'selfref', is: 'x' }}
+-                />
+-            </Form.Fields>,
+-        )
+-        expect(warn.mock.calls.some((c) => String(c[0]).includes('references its own value'))).toBe(
+-            true,
+-        )
+-    })
+-
+-    test('scan-invisibility: a ruled field in a custom wrapper the scan cannot see → warn', async () => {
+-        const warn = spyWarn()
+-        // A custom component renders the field inside its body — the static scan
+-        // walks props.children of known nodes but cannot see into a foreign
+-        // component's render output, so `scan_hidden` is never scanned.
+-        const CustomWrapper = ({ children }: { children?: React.ReactNode }) => (
+-            <div>{children}</div>
+-        )
+-        const TreeWithCustom = () => (
+-            <Form.Fields>
+-                <CustomWrapper>
+-                    <TextInput
+-                        name="scan_hidden"
+-                        label="Hidden from scan"
+-                        visibleWhen={{ field: 'other', is: 1 }}
+-                    />
+-                </CustomWrapper>
+-            </Form.Fields>
+-        )
+-        renderForm(<TreeWithCustom />)
+-        expect(
+-            warn.mock.calls.some(
+-                (c) => String(c[0]).includes('static scan') && String(c[0]).includes('scan_hidden'),
+-            ),
+-        ).toBe(true)
+-    })
+-})
+-
+-describe('useFieldRules public hook', () => {
+-    test('returns hidden/disabled/required from JSX props against current values', async () => {
+-        spyWarn() // `p_field` is not a scannable field → expected scan-invisibility warn.
+-        let result: { hidden: boolean; disabled: boolean; required: boolean } | null = null
+-        const Probe = () => {
+-            result = useFieldRules('p_field', {
+-                visibleWhen: { field: 'flag', is: true },
+-                disabledWhen: { field: 'lock', is: true },
+-                requiredWhen: { field: 'req', is: true },
+-            })
+-            return null
+-        }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <Probe />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { flag: false, lock: true, req: true })
+-        expect(result).toEqual({ hidden: true, disabled: true, required: true })
+-
+-        await setValues(ref, { flag: true, lock: false, req: false })
+-        expect(result).toEqual({ hidden: false, disabled: false, required: false })
+-    })
+-})
+-
+-describe('StrictMode: hide → show with no value loss', () => {
+-    test('value persists across a rule-driven unmount/remount under StrictMode', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="sm_type" label="Type" />
+-                <TextInput
+-                    name="sm_inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'sm_type', is: 'legal' }}
+-                />
+-            </Form.Fields>,
+-            undefined,
+-            { strict: true },
+-        )
+-
+-        await setValues(ref, { sm_type: 'legal' })
+-        fireEvent.change(input(container, 'sm_inn')!, { target: { value: 'kept' } })
+-        expect(input(container, 'sm_inn')!.value).toBe('kept')
+-
+-        await setValues(ref, { sm_type: 'person', sm_inn: 'kept' })
+-        expect(input(container, 'sm_inn')).toBeNull()
+-
+-        await setValues(ref, { sm_type: 'legal', sm_inn: 'kept' })
+-        expect(input(container, 'sm_inn')!.value).toBe('kept')
+-    })
+-})
+-
+-describe('Cascade dispatch (KTD9): onChange notifies the bus, identical value does not', () => {
+-    test('a real change notifies; re-typing the same value does not', async () => {
+-        const events: Array<{ path: string; value: unknown }> = []
+-        const Subscriber = () => {
+-            const { fieldChange } = useForm()
+-            React.useEffect(
+-                () => fieldChange?.subscribe('cd_field', (e) => events.push(e)),
+-                [fieldChange],
+-            )
+-            return null
+-        }
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="cd_field" label="Field" />
+-                <Subscriber />
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { cd_field: '' })
+-        const el = input(container, 'cd_field')!
+-        await act(async () => {
+-            fireEvent.change(el, { target: { value: 'a' } })
+-        })
+-        expect(events).toEqual([{ path: 'cd_field', value: 'a' }])
+-
+-        // Re-fire the same value: getValueByPath now reads 'a' → no new notify.
+-        await act(async () => {
+-            fireEvent.change(el, { target: { value: 'a' } })
+-        })
+-        expect(events.length).toBe(1)
+-    })
+-})
+diff --git a/tests/formRulesSubmit.test.tsx b/tests/formRulesSubmit.test.tsx
+deleted file mode 100644
+index ee4bca1..0000000
+--- a/tests/formRulesSubmit.test.tsx
++++ /dev/null
+@@ -1,388 +0,0 @@
+-import React, { createRef } from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+-import { ThemeProvider } from '../admiral/theme'
+-import { Form, FormRef } from '../admiral/form/Form'
+-import { TextInput as TextInputBase, type TextInputProps } from '../admiral/form/fields/TextInput'
+-import type { FormRulesMap, RuleInput } from '../admiral/form/rules'
+-import { enUS } from '../admiral/form/locale'
+-import { createCRUD } from '../admiral/crud'
+-import { DataProviderContextProvider, type DataProvider } from '../admiral/dataProvider'
+-
+-afterEach(() => {
+-    cleanup()
+-    // Restore console spies but leave the global matchMedia stub (setup.ts) in
+-    // place — restoreAllMocks would otherwise strip it and break ThemeProvider.
+-    vi.restoreAllMocks()
+-    Object.defineProperty(window, 'matchMedia', {
+-        writable: true,
+-        value: vi.fn().mockImplementation((query: string) => ({
+-            matches: false,
+-            media: query,
+-            onchange: null,
+-            addListener: vi.fn(),
+-            removeListener: vi.fn(),
+-            addEventListener: vi.fn(),
+-            removeEventListener: vi.fn(),
+-            dispatchEvent: vi.fn(),
+-        })),
+-    })
+-})
+-
+-const spyWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
+-
+-/**
+- * Field-level rule props (`visibleWhen` / `keepInPayload`) land on the field
+- * types in U5; until then this re-types TextInput by reference (the runtime
+- * component and its `inputName` static are untouched) so these tests drive
+- * hiding through field props exactly as U5 consumers will. The no-keep cases
+- * drive hiding through the Form `rules` map prop, which is fully live in U4.
+- */
+-type RuleProps = {
+-    visibleWhen?: RuleInput
+-    keepInPayload?: boolean
+-}
+-const TextInput = TextInputBase as React.FC<TextInputProps & RuleProps>
+-
+-const renderForm = (
+-    children: React.ReactNode,
+-    props?: Partial<React.ComponentProps<typeof Form>>,
+-) => {
+-    const ref = createRef<FormRef>()
+-    const { container } = render(
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form ref={ref} {...props}>
+-                    {children}
+-                </Form>
+-            </ThemeProvider>
+-        </MemoryRouter>,
+-    )
+-    return { ref, container }
+-}
+-
+-const setValues = async (ref: React.RefObject<FormRef | null>, values: Record<string, unknown>) => {
+-    await act(async () => {
+-        ref.current?.setValues(values)
+-    })
+-}
+-
+-const submit = async (ref: React.RefObject<FormRef | null>) => {
+-    let result: boolean | undefined
+-    await act(async () => {
+-        result = await ref.current?.handleSubmit()
+-    })
+-    return result
+-}
+-
+-describe('payload omission (AE2, AE4, R4, R5)', () => {
+-    test('AE2: a field hidden by the rules-map is omitted from the payload', async () => {
+-        const submitData = vi.fn(async (_values: Record<string, unknown>) => ({}))
+-        const rules: FormRulesMap = { inn: { visible: { field: 'type', is: 'legal' } } }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>,
+-            { submitData, rules },
+-        )
+-
+-        await setValues(ref, { type: 'person', inn: '7701234567' })
+-        await submit(ref)
+-
+-        const payload = submitData.mock.calls[0][0] as Record<string, unknown>
+-        expect('inn' in payload).toBe(false)
+-        expect(payload.type).toBe('person')
+-    })
+-
+-    test('AE2: keepInPayload keeps a hidden field in the payload', async () => {
+-        const submitData = vi.fn(async (_values: Record<string, unknown>) => ({}))
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput
+-                    name="inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'type', is: 'legal' }}
+-                    keepInPayload
+-                />
+-            </Form.Fields>,
+-            { submitData },
+-        )
+-
+-        await setValues(ref, { type: 'person', inn: '7701234567' })
+-        await submit(ref)
+-
+-        const payload = submitData.mock.calls[0][0] as Record<string, unknown>
+-        expect(payload.inn).toBe('7701234567')
+-    })
+-
+-    test('AE4: a field driven by the rules-map `disabled` (never hides) stays in the payload', async () => {
+-        const submitData = vi.fn(async (_values: Record<string, unknown>) => ({}))
+-        const rules: FormRulesMap = { inn: { disabled: { field: 'type', is: 'person' } } }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>,
+-            { submitData, rules },
+-        )
+-
+-        await setValues(ref, { type: 'person', inn: '7701234567' })
+-        await submit(ref)
+-
+-        const payload = submitData.mock.calls[0][0] as Record<string, unknown>
+-        // disabled ≠ hidden — the value is still submitted.
+-        expect(payload.inn).toBe('7701234567')
+-    })
+-})
+-
+-describe('fast path (AE19, R18)', () => {
+-    test('a form with no rules submits the exact `values` object (reference identity)', async () => {
+-        let received: unknown
+-        const submitData = vi.fn(async (values: unknown) => {
+-            received = values
+-            return {}
+-        })
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="a" label="A" />
+-                <TextInput name="b" label="B" />
+-            </Form.Fields>,
+-            { submitData },
+-        )
+-
+-        const values = { a: '1', b: '2' }
+-        await setValues(ref, values)
+-        await submit(ref)
+-
+-        // Same object the form holds in state — not a structural copy.
+-        expect(received).toBe(ref.current?.values)
+-        expect(received).toEqual(values)
+-    })
+-})
+-
+-describe('422 partition (AE16, AE8-part, R12)', () => {
+-    test('hidden-field errors move to _global with a console.warn; visible stay inline', async () => {
+-        const warn = spyWarn()
+-        const submitData = vi.fn(async () => {
+-            throw {
+-                response: {
+-                    status: 422,
+-                    data: { errors: { visibleField: ['e1'], inn: ['e2'] } },
+-                },
+-            }
+-        })
+-        const rules: FormRulesMap = { inn: { visible: { field: 'type', is: 'legal' } } }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="visibleField" label="Visible" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>,
+-            { submitData, rules },
+-        )
+-
+-        await setValues(ref, { type: 'person', visibleField: 'v', inn: 'x' })
+-        await submit(ref)
+-
+-        // Visible field error is rendered inline (Form.Item error text).
+-        expect(screen.getByText('e1')).toBeTruthy()
+-        // Hidden field error is surfaced in _global (localized), not inline.
+-        expect(screen.getByText('e2 (hidden field "inn")')).toBeTruthy()
+-        // The raw inline "e2" must NOT be present (it moved to _global wrapped).
+-        expect(screen.queryByText('e2')).toBeNull()
+-
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('inn'))
+-    })
+-
+-    test('a 422 with no rules surfaces errors verbatim (no partition)', async () => {
+-        const submitData = vi.fn(async () => {
+-            throw { response: { status: 422, data: { errors: { name: ['Required'] } } } }
+-        })
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="name" label="Name" />
+-            </Form.Fields>,
+-            { submitData },
+-        )
+-
+-        await submit(ref)
+-        // Inline error rendered as today.
+-        expect(screen.getByText('Required')).toBeTruthy()
+-    })
+-})
+-
+-describe('_global rendering (System-Wide Impact)', () => {
+-    test('a server _global plus a transferred hidden-field error render as multiple messages', async () => {
+-        const submitData = vi.fn(async () => {
+-            throw {
+-                response: {
+-                    status: 422,
+-                    data: { errors: { _global: ['g1'], inn: ['e2'] } },
+-                },
+-            }
+-        })
+-        const rules: FormRulesMap = { inn: { visible: { field: 'type', is: 'legal' } } }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>,
+-            { submitData, rules },
+-        )
+-
+-        await setValues(ref, { type: 'person', inn: 'x' })
+-        await submit(ref)
+-
+-        // Both the server _global and the transferred hidden-field message show.
+-        expect(screen.getByText('g1')).toBeTruthy()
+-        expect(screen.getByText('e2 (hidden field "inn")')).toBeTruthy()
+-    })
+-})
+-
+-describe('snapshot semantics (KTD7/KTD8)', () => {
+-    test('a rule flipping mid-request classifies the 422 by the pre-submit snapshot', async () => {
+-        // At submit start `type:person` → `inn` hidden. submitData flips the rule
+-        // to `type:legal` (inn would now be VISIBLE) before throwing the 422.
+-        // The partition must still treat `inn` as hidden (snapshot wins).
+-        let setValuesRef: FormRef['setValues'] | null = null
+-        const submitData = vi.fn(async () => {
+-            // mutate the form mid-flight, between the snapshot and the catch
+-            await act(async () => {
+-                setValuesRef?.({ type: 'legal', inn: 'x' })
+-            })
+-            throw {
+-                response: { status: 422, data: { errors: { inn: ['e2'] } } },
+-            }
+-        })
+-        const rules: FormRulesMap = { inn: { visible: { field: 'type', is: 'legal' } } }
+-        const { ref } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>,
+-            { submitData, rules },
+-        )
+-
+-        await setValues(ref, { type: 'person', inn: 'x' })
+-        setValuesRef = ref.current!.setValues
+-        await submit(ref)
+-
+-        // Classified hidden by the snapshot → moved to _global, not inline.
+-        expect(screen.getByText('e2 (hidden field "inn")')).toBeTruthy()
+-        expect(screen.queryByText('e2')).toBeNull()
+-    })
+-})
+-
+-describe('ChildForm back-compat (R13)', () => {
+-    test('a Form.ChildForm with only the old prop set compiles and renders', () => {
+-        // The OLD prop set: no rules / hiddenFields / scannedFields / scopePath /
+-        // fieldChange — those are inherited from the parent context.
+-        const { container } = render(
+-            <MemoryRouter>
+-                <ThemeProvider>
+-                    <Form>
+-                        <Form.ChildForm
+-                            values={{ inn: '1' }}
+-                            setValues={vi.fn()}
+-                            options={{}}
+-                            setOptions={vi.fn()}
+-                            errors={{}}
+-                            setErrors={vi.fn()}
+-                            isFetching={false}
+-                            isSubmitting={false}
+-                            locale={enUS}
+-                        >
+-                            <TextInput name="inn" label="INN" />
+-                        </Form.ChildForm>
+-                    </Form>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-        // The child field rendered with the row-scoped value.
+-        const innInput = container.querySelector<HTMLInputElement>('input[name="inn"]')
+-        expect(innInput).not.toBeNull()
+-        expect(innInput!.value).toBe('1')
+-    })
+-})
+-
+-describe('CRUD config threads `form.create.rules` to the Form (AE2 via createCRUD)', () => {
+-    test('a field hidden by the create rules-map is omitted from the create-page payload', async () => {
+-        const create = vi.fn(async () => ({ data: { id: 1 } }))
+-        const getCreateFormData = vi.fn(async () => ({ data: {}, values: {} }))
+-
+-        const dataProvider = {
+-            getCreateFormData,
+-            create,
+-        } as unknown as DataProvider
+-
+-        const CRUD = createCRUD({
+-            path: '/widgets',
+-            resource: 'widgets',
+-            index: {
+-                title: 'Widgets',
+-                newButtonText: 'New',
+-                tableColumns: [],
+-            },
+-            create: { title: 'Create widget' },
+-            form: {
+-                create: {
+-                    fields: (
+-                        <>
+-                            <TextInput name="type" label="Type" />
+-                            <TextInput name="inn" label="INN" />
+-                        </>
+-                    ),
+-                    rules: { inn: { visible: { field: 'type', is: 'legal' } } },
+-                },
+-                edit: { fields: <TextInput name="type" label="Type" /> },
+-            },
+-        })
+-
+-        const { CreatePage } = CRUD
+-
+-        render(
+-            <MemoryRouter initialEntries={['/widgets/create']}>
+-                <ThemeProvider>
+-                    <DataProviderContextProvider value={dataProvider}>
+-                        <Routes>
+-                            <Route path="/widgets/create" element={<CreatePage />} />
+-                            <Route path="/widgets" element={<div>list</div>} />
+-                        </Routes>
+-                    </DataProviderContextProvider>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-
+-        // Wait for fetchInitialData to settle (enables the Submit button).
+-        await act(async () => {})
+-
+-        // The CreatePage owns its own <Form> (no ref injectable), so drive it
+-        // through the DOM. Since U5 the rules-map hides at render too: open the
+-        // field first (type=legal → inn visible), fill it, then hide it
+-        // (type=person → inn unmounts, value persists in form context), submit.
+-        const typeInput = document.querySelector<HTMLInputElement>('input[name="type"]')!
+-        fireEvent.change(typeInput, { target: { value: 'legal' } })
+-        const innInput = document.querySelector<HTMLInputElement>('input[name="inn"]')!
+-        fireEvent.change(innInput, { target: { value: '7701234567' } })
+-        fireEvent.change(typeInput, { target: { value: 'person' } })
+-        // inn is now unmounted by the rules-map `visible` rule.
+-        expect(document.querySelector('input[name="inn"]')).toBeNull()
+-
+-        await act(async () => {
+-            fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+-        })
+-
+-        expect(create).toHaveBeenCalledTimes(1)
+-        // makeCreatePage calls create(resource, { data: payload }) — 2nd arg.
+-        const payload = (create.mock.calls[0] as unknown[])[1] as {
+-            data: Record<string, unknown>
+-        }
+-        // `form.create.rules` reached the Form → `inn` hidden → omitted.
+-        expect('inn' in payload.data).toBe(false)
+-        expect(payload.data.type).toBe('person')
+-    })
+-})
+diff --git a/tests/formSubmit.test.tsx b/tests/formSubmit.test.tsx
+deleted file mode 100644
+index 799e6c3..0000000
+--- a/tests/formSubmit.test.tsx
++++ /dev/null
+@@ -1,82 +0,0 @@
+-import { createRef } from 'react'
+-import { describe, expect, test, vi } from 'vitest'
+-import { act, render } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { Form, FormRef } from '../admiral/form/Form'
+-
+-const renderForm = (submitData: (values: Record<string, unknown>) => Promise<unknown>) => {
+-    const ref = createRef<FormRef>()
+-    render(
+-        <MemoryRouter>
+-            <Form ref={ref} submitData={submitData}>
+-                <div />
+-            </Form>
+-        </MemoryRouter>,
+-    )
+-    return ref
+-}
+-
+-describe('Form.handleSubmit', () => {
+-    test('resolves true on success', async () => {
+-        const ref = renderForm(vi.fn(async () => ({})))
+-
+-        let result: boolean | undefined
+-        await act(async () => {
+-            result = await ref.current?.handleSubmit()
+-        })
+-
+-        expect(result).toBe(true)
+-    })
+-
+-    test('resolves false and survives a 422 without an errors body', async () => {
+-        const ref = renderForm(
+-            vi.fn(async () => {
+-                throw { response: { status: 422, data: {} } }
+-            }),
+-        )
+-
+-        let result: boolean | undefined
+-        await act(async () => {
+-            result = await ref.current?.handleSubmit()
+-        })
+-
+-        expect(result).toBe(false)
+-    })
+-
+-    test('resolves false on a network error without response', async () => {
+-        const ref = renderForm(
+-            vi.fn(async () => {
+-                throw new Error('network down')
+-            }),
+-        )
+-
+-        let result: boolean | undefined
+-        await act(async () => {
+-            result = await ref.current?.handleSubmit()
+-        })
+-
+-        expect(result).toBe(false)
+-    })
+-
+-    test('R18/AE19: a no-rules form submits the exact `values` object (no copy)', async () => {
+-        let received: unknown
+-        const ref = renderForm(
+-            vi.fn(async (values: unknown) => {
+-                received = values
+-                return {}
+-            }),
+-        )
+-
+-        const values = { name: 'Ann', age: 30 }
+-        await act(async () => {
+-            ref.current?.setValues(values)
+-        })
+-        await act(async () => {
+-            await ref.current?.handleSubmit()
+-        })
+-
+-        // Reference identity: the fast path forwards state untouched.
+-        expect(received).toBe(ref.current?.values)
+-        expect(received).toEqual(values)
+-    })
+-})
+diff --git a/tests/formTabs.test.tsx b/tests/formTabs.test.tsx
+deleted file mode 100644
+index 4a7e7be..0000000
+--- a/tests/formTabs.test.tsx
++++ /dev/null
+@@ -1,213 +0,0 @@
+-import { createRef } from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { act, cleanup, render, screen } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { ThemeProvider } from '../admiral/theme'
+-import { Form, FormRef } from '../admiral/form/Form'
+-import { TextInput } from '../admiral/form/fields/TextInput'
+-import type { FormTabItem } from '../admiral/form/FormTabs'
+-import type { FormRulesMap } from '../admiral/form/rules'
+-
+-const defaultItems = (): FormTabItem[] => [
+-    { key: 'main', label: 'Main', children: <TextInput label="Name" name="name" /> },
+-    { key: 'details', label: 'Details', children: <TextInput label="Bio" name="bio" /> },
+-]
+-
+-const renderTabbedForm = (errors: Record<string, string[]>, items: FormTabItem[]) => {
+-    const ref = createRef<FormRef>()
+-    render(
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form
+-                    ref={ref}
+-                    submitData={async () => {
+-                        throw { response: { status: 422, data: { errors } } }
+-                    }}
+-                >
+-                    <Form.Tabs defaultActiveKey="main" items={items} />
+-                </Form>
+-            </ThemeProvider>
+-        </MemoryRouter>,
+-    )
+-    return ref
+-}
+-
+-const submit = async (ref: React.RefObject<FormRef | null>) => {
+-    await act(async () => {
+-        await ref.current?.handleSubmit()
+-    })
+-}
+-
+-const tabSelected = (name: RegExp) =>
+-    screen.getByRole('tab', { name }).getAttribute('aria-selected')
+-
+-describe('Form.Tabs', () => {
+-    afterEach(cleanup)
+-
+-    test('switches to the tab with errors and marks it with a badge', async () => {
+-        const ref = renderTabbedForm({ bio: ['Required'] }, defaultItems())
+-
+-        expect(tabSelected(/Main/)).toBe('true')
+-        await submit(ref)
+-
+-        expect(tabSelected(/Details/)).toBe('true')
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-    })
+-
+-    test('stays on the active tab when it has errors of its own', async () => {
+-        const ref = renderTabbedForm({ name: ['Required'], bio: ['Required'] }, defaultItems())
+-
+-        await submit(ref)
+-
+-        expect(tabSelected(/Main/)).toBe('true')
+-        expect(screen.getAllByText('1 error')).toHaveLength(2)
+-    })
+-
+-    test('counts nested error keys (name.*) toward the parent field', async () => {
+-        const ref = renderTabbedForm(
+-            { 'bio.en': ['Required'], 'bio.ru': ['Required'] },
+-            defaultItems(),
+-        )
+-
+-        await submit(ref)
+-
+-        expect(tabSelected(/Details/)).toBe('true')
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-    })
+-
+-    test('the fields prop extends discovery with inputs it cannot see', async () => {
+-        const Opaque = () => <TextInput label="Bio" name="bio" />
+-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+-        const items: FormTabItem[] = [
+-            ...defaultItems().slice(0, 1),
+-            {
+-                key: 'details',
+-                label: 'Details',
+-                fields: ['bio'],
+-                children: (
+-                    <>
+-                        <TextInput label="City" name="city" />
+-                        <Opaque />
+-                    </>
+-                ),
+-            },
+-        ]
+-        const ref = renderTabbedForm({ bio: ['Required'], city: ['Required'] }, items)
+-
+-        await submit(ref)
+-
+-        expect(tabSelected(/Details/)).toBe('true')
+-        // city is discovered, bio comes from `fields` — both are counted
+-        expect(screen.getByText('2 errors')).toBeTruthy()
+-        expect(warn).not.toHaveBeenCalled()
+-        warn.mockRestore()
+-    })
+-
+-    test('warns when error keys match no tab', async () => {
+-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+-        const ref = renderTabbedForm({ surname: ['Required'] }, defaultItems())
+-
+-        await submit(ref)
+-
+-        expect(tabSelected(/Main/)).toBe('true')
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"surname"'))
+-        warn.mockRestore()
+-    })
+-})
+-
+-const renderWithRules = (
+-    errors: Record<string, string[]>,
+-    items: FormTabItem[],
+-    rules: FormRulesMap,
+-) => {
+-    const ref = createRef<FormRef>()
+-    render(
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form
+-                    ref={ref}
+-                    rules={rules}
+-                    submitData={async () => {
+-                        throw { response: { status: 422, data: { errors } } }
+-                    }}
+-                >
+-                    <Form.Tabs defaultActiveKey="main" items={items} />
+-                </Form>
+-            </ThemeProvider>
+-        </MemoryRouter>,
+-    )
+-    return ref
+-}
+-
+-const setValues = async (ref: React.RefObject<FormRef | null>, values: Record<string, unknown>) => {
+-    await act(async () => {
+-        ref.current?.setValues(values)
+-    })
+-}
+-
+-const twoTabs = (): FormTabItem[] => [
+-    { key: 'main', label: 'Main', children: <TextInput label="Name" name="name" /> },
+-    { key: 'details', label: 'Details', children: <TextInput label="Bio" name="bio" /> },
+-]
+-
+-describe('Form.Tabs + hidden fields (R11)', () => {
+-    afterEach(cleanup)
+-
+-    test("AE8: a hidden field's 422 error does not badge its tab; a visible one still does", async () => {
+-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+-        // `bio` is hidden (no `mode` value → rule false); `name` is visible.
+-        const ref = renderWithRules({ name: ['Required'], bio: ['Required'] }, twoTabs(), {
+-            bio: { visible: { field: 'mode', is: 'full' } },
+-        })
+-
+-        await submit(ref)
+-
+-        // `name` badges Main; `bio` was partitioned to _global (hidden) → Details has no badge.
+-        expect(tabSelected(/Main/)).toBe('true')
+-        expect(screen.queryAllByText('1 error')).toHaveLength(1)
+-        // U4 warns once per hidden 422 key.
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('bio'))
+-        warn.mockRestore()
+-    })
+-
+-    test('post-submit visibility flip recomputes the badge in real time', async () => {
+-        const ref = renderWithRules({ bio: ['Required'] }, twoTabs(), {
+-            bio: { visible: { field: 'mode', is: 'full' } },
+-        })
+-
+-        // Visible at submit → the error stays inline → Details badged + auto-selected.
+-        await setValues(ref, { mode: 'full' })
+-        await submit(ref)
+-        expect(tabSelected(/Details/)).toBe('true')
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-
+-        // Hide `bio` after submit → its error is filtered out → badge gone.
+-        await setValues(ref, { mode: 'short' })
+-        expect(screen.queryByText('1 error')).toBeNull()
+-
+-        // Show it again → the badge returns.
+-        await setValues(ref, { mode: 'full' })
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-    })
+-
+-    test('auto-switch skips a tab whose every error field is hidden', async () => {
+-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+-        // `name` (Main) is hidden; `bio` (Details) is visible.
+-        const ref = renderWithRules({ name: ['Required'], bio: ['Required'] }, twoTabs(), {
+-            name: { visible: { field: 'mode', is: 'full' } },
+-        })
+-
+-        await submit(ref)
+-
+-        // Main's only error is hidden → skipped; Details (visible error) becomes active.
+-        expect(tabSelected(/Details/)).toBe('true')
+-        warn.mockRestore()
+-    })
+-
+-    test('the existing no-rules path is unaffected (hiddenFields empty)', async () => {
+-        const ref = renderTabbedForm({ bio: ['Required'] }, twoTabs())
+-        await submit(ref)
+-        expect(tabSelected(/Details/)).toBe('true')
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-    })
+-})
+diff --git a/tests/formWhen.test.tsx b/tests/formWhen.test.tsx
+deleted file mode 100644
+index df6c16f..0000000
+--- a/tests/formWhen.test.tsx
++++ /dev/null
+@@ -1,195 +0,0 @@
+-import { createRef } from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { act, cleanup, render, screen } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { ThemeProvider } from '../admiral/theme'
+-import { Form, FormRef } from '../admiral/form/Form'
+-import { TextInput } from '../admiral/form/fields/TextInput'
+-import type { FormTabItem } from '../admiral/form/FormTabs'
+-import type { RuleInput } from '../admiral/form/rules'
+-
+-const renderForm = (children: React.ReactNode) => {
+-    const ref = createRef<FormRef>()
+-    const { container } = render(
+-        <MemoryRouter>
+-            <ThemeProvider>
+-                <Form ref={ref}>{children}</Form>
+-            </ThemeProvider>
+-        </MemoryRouter>,
+-    )
+-    return { ref, container }
+-}
+-
+-const setValues = async (ref: React.RefObject<FormRef | null>, values: Record<string, unknown>) => {
+-    await act(async () => {
+-        ref.current?.setValues(values)
+-    })
+-}
+-
+-const input = (container: HTMLElement, name: string) =>
+-    container.querySelector<HTMLInputElement>(`input[name="${name}"]`)
+-
+-// Climb from an input to its enclosing Form.Item root div:
+-// input → div.wrapper (Input) → div.item_Field → label → div.item
+-const fieldItem = (el: HTMLInputElement) =>
+-    el.parentElement!.parentElement!.parentElement!.parentElement!
+-
+-describe('Form.When', () => {
+-    afterEach(cleanup)
+-
+-    test('shows/hides a group of fields when a DSL rule flips', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                    <TextInput name="inn" label="INN" />
+-                    <TextInput name="kpp" label="KPP" />
+-                </Form.When>
+-            </Form.Fields>,
+-        )
+-
+-        // Initial values are empty → rule false → group hidden.
+-        expect(input(container, 'inn')).toBeNull()
+-        expect(input(container, 'kpp')).toBeNull()
+-
+-        await setValues(ref, { type: 'legal' })
+-        expect(input(container, 'inn')).not.toBeNull()
+-        expect(input(container, 'kpp')).not.toBeNull()
+-
+-        await setValues(ref, { type: 'person' })
+-        expect(input(container, 'inn')).toBeNull()
+-        expect(input(container, 'kpp')).toBeNull()
+-    })
+-
+-    test('accepts a function rule', async () => {
+-        const rule: RuleInput = (values) => values.type === 'legal'
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <Form.When rule={rule}>
+-                    <TextInput name="inn" label="INN" />
+-                </Form.When>
+-            </Form.Fields>,
+-        )
+-
+-        expect(input(container, 'inn')).toBeNull()
+-        await setValues(ref, { type: 'legal' })
+-        expect(input(container, 'inn')).not.toBeNull()
+-    })
+-
+-    test('nested When combine as AND — inner visible only when both rules hold', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <Form.When rule={{ field: 'a', is: true }}>
+-                    <Form.When rule={{ field: 'b', is: true }}>
+-                        <TextInput name="inner" label="Inner" />
+-                    </Form.When>
+-                </Form.When>
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { a: true, b: false })
+-        expect(input(container, 'inner')).toBeNull()
+-
+-        await setValues(ref, { a: false, b: true })
+-        expect(input(container, 'inner')).toBeNull()
+-
+-        await setValues(ref, { a: true, b: true })
+-        expect(input(container, 'inner')).not.toBeNull()
+-    })
+-
+-    test('values of a hidden group persist across hide → show', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                    <TextInput name="inn" label="INN" />
+-                </Form.When>
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { type: 'legal', inn: '7701234567' })
+-        expect(input(container, 'inn')!.value).toBe('7701234567')
+-
+-        // Hide the group, then show it again — the value typed earlier is intact.
+-        await setValues(ref, { type: 'person', inn: '7701234567' })
+-        expect(input(container, 'inn')).toBeNull()
+-
+-        await setValues(ref, { type: 'legal', inn: '7701234567' })
+-        expect(input(container, 'inn')!.value).toBe('7701234567')
+-    })
+-
+-    test('a visible When adds no DOM node between the grid and the fields', async () => {
+-        const { ref, container } = renderForm(
+-            <Form.Fields>
+-                <TextInput name="bare" label="Bare" />
+-                <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                    <TextInput name="wrapped" label="Wrapped" />
+-                </Form.When>
+-            </Form.Fields>,
+-        )
+-
+-        await setValues(ref, { type: 'legal' })
+-
+-        const bare = fieldItem(input(container, 'bare')!)
+-        const wrapped = fieldItem(input(container, 'wrapped')!)
+-
+-        // Both Form.Item roots are direct children of the same grid container:
+-        // a Fragment introduces no wrapper, so the wrapped field shares the
+-        // bare field's parent. A wrapper element would give it a different one.
+-        expect(wrapped.parentElement).toBe(bare.parentElement)
+-    })
+-
+-    test('Form.Tabs discovers field names inside a When and badges its errors', async () => {
+-        const items: FormTabItem[] = [
+-            { key: 'main', label: 'Main', children: <TextInput name="name" label="Name" /> },
+-            {
+-                key: 'details',
+-                label: 'Details',
+-                children: (
+-                    <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                        <TextInput name="inn" label="INN" />
+-                    </Form.When>
+-                ),
+-            },
+-        ]
+-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+-        const ref = createRef<FormRef>()
+-        render(
+-            <MemoryRouter>
+-                <ThemeProvider>
+-                    <Form
+-                        ref={ref}
+-                        submitData={async () => {
+-                            throw {
+-                                response: { status: 422, data: { errors: { inn: ['Required'] } } },
+-                            }
+-                        }}
+-                    >
+-                        <Form.Tabs defaultActiveKey="main" items={items} />
+-                    </Form>
+-                </ThemeProvider>
+-            </MemoryRouter>,
+-        )
+-
+-        // Open the When so `inn` is genuinely visible: a hidden field's 422
+-        // error is moved to _global by U4's partition (R12), which would defeat
+-        // the badge — this test exercises When *discovery*, so the field must
+-        // be visible for its error to stay inline and badge the tab.
+-        await act(async () => {
+-            ref.current?.setValues({ type: 'legal' })
+-        })
+-        await act(async () => {
+-            await ref.current?.handleSubmit()
+-        })
+-
+-        // collectFieldNames recursed through Form.When (props.children) and
+-        // found `inn`, so the Details tab is badged and auto-selected.
+-        expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe(
+-            'true',
+-        )
+-        expect(screen.getByText('1 error')).toBeTruthy()
+-        expect(warn).not.toHaveBeenCalled()
+-        warn.mockRestore()
+-    })
+-})
+diff --git a/tests/rules.test.ts b/tests/rules.test.ts
+deleted file mode 100644
+index 6755c63..0000000
+--- a/tests/rules.test.ts
++++ /dev/null
+@@ -1,431 +0,0 @@
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import {
+-    compileRule,
+-    getValueByPath,
+-    isEmptyValue,
+-    matchesField,
+-    omitPaths,
+-    type Primitive,
+-    type Rule,
+-} from '../admiral/form/rules'
+-
+-afterEach(() => {
+-    vi.restoreAllMocks()
+-})
+-
+-const spyWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
+-
+-// The full value matrix every operator is exercised against.
+-const MATRIX: Record<string, unknown> = {
+-    undefined: undefined,
+-    null: null,
+-    emptyString: '',
+-    zero: 0,
+-    false: false,
+-    emptyArray: [],
+-    emptyObject: {},
+-    stringA: 'a',
+-    one: 1,
+-    nan: NaN,
+-}
+-
+-const evalWith = (rule: Rule, value: unknown) => compileRule(rule)({ f: value })
+-
+-describe('isEmptyValue (KTD6 matrix)', () => {
+-    test('undefined / null / "" / [] are empty', () => {
+-        expect(isEmptyValue(undefined)).toBe(true)
+-        expect(isEmptyValue(null)).toBe(true)
+-        expect(isEmptyValue('')).toBe(true)
+-        expect(isEmptyValue([])).toBe(true)
+-    })
+-
+-    test('0 / false / {} / non-empty array / non-empty string are NOT empty', () => {
+-        expect(isEmptyValue(0)).toBe(false)
+-        expect(isEmptyValue(false)).toBe(false)
+-        expect(isEmptyValue({})).toBe(false)
+-        expect(isEmptyValue([1])).toBe(false)
+-        expect(isEmptyValue('a')).toBe(false)
+-        expect(isEmptyValue(NaN)).toBe(false)
+-    })
+-})
+-
+-describe('getValueByPath', () => {
+-    test('exact key takes priority over dot-path traversal', () => {
+-        expect(getValueByPath({ 'seo.title': 1 }, 'seo.title')).toBe(1)
+-        // exact key wins even when a nested object could also resolve it
+-        expect(getValueByPath({ 'seo.title': 1, seo: { title: 2 } }, 'seo.title')).toBe(1)
+-    })
+-
+-    test('dot-path traversal of nested objects', () => {
+-        expect(getValueByPath({ name: { en: 'x' } }, 'name.en')).toBe('x')
+-    })
+-
+-    test('numeric segments index arrays', () => {
+-        expect(getValueByPath({ items: [{ x: 1 }, { x: 2 }] }, 'items.0.x')).toBe(1)
+-        expect(getValueByPath({ items: [{ x: 1 }, { x: 2 }] }, 'items.1.x')).toBe(2)
+-    })
+-
+-    test('missing intermediate yields undefined (no throw)', () => {
+-        expect(getValueByPath({}, 'name.en')).toBeUndefined()
+-        expect(getValueByPath({ name: undefined }, 'name.en')).toBeUndefined()
+-        expect(getValueByPath({ items: [{ x: 1 }] }, 'items.5.x')).toBeUndefined()
+-    })
+-
+-    test('flat top-level key', () => {
+-        expect(getValueByPath({ type: 'legal' }, 'type')).toBe('legal')
+-    })
+-})
+-
+-describe('condition: is', () => {
+-    test('strict equality across the value matrix', () => {
+-        expect(evalWith({ field: 'f', is: 'a' }, 'a')).toBe(true)
+-        expect(evalWith({ field: 'f', is: 'a' }, 'b')).toBe(false)
+-        expect(evalWith({ field: 'f', is: 1 }, 1)).toBe(true)
+-        expect(evalWith({ field: 'f', is: 1 }, '1')).toBe(false) // no coercion
+-        expect(evalWith({ field: 'f', is: 0 }, 0)).toBe(true)
+-        expect(evalWith({ field: 'f', is: false }, false)).toBe(true)
+-        expect(evalWith({ field: 'f', is: false }, 0)).toBe(false) // strict
+-        expect(evalWith({ field: 'f', is: null }, null)).toBe(true)
+-        expect(evalWith({ field: 'f', is: '' }, '')).toBe(true)
+-        // NaN !== NaN
+-        expect(evalWith({ field: 'f', is: NaN as unknown as number }, NaN)).toBe(false)
+-    })
+-
+-    test('is on an array value is always false (use `in` for multiselects)', () => {
+-        expect(evalWith({ field: 'f', is: 'a' }, ['a'])).toBe(false)
+-        expect(evalWith({ field: 'f', is: 1 }, [1])).toBe(false)
+-    })
+-})
+-
+-describe('condition: not', () => {
+-    test('strict inequality is the inverse of `is`', () => {
+-        expect(evalWith({ field: 'f', not: 'a' }, 'a')).toBe(false)
+-        expect(evalWith({ field: 'f', not: 'a' }, 'b')).toBe(true)
+-        expect(evalWith({ field: 'f', not: 1 }, '1')).toBe(true)
+-        expect(evalWith({ field: 'f', not: false }, 0)).toBe(true)
+-    })
+-
+-    test('not on an array value is always true (inverse of is→false)', () => {
+-        expect(evalWith({ field: 'f', not: 'a' }, ['a'])).toBe(true)
+-    })
+-})
+-
+-describe('condition: in', () => {
+-    test('membership in the operand array', () => {
+-        expect(evalWith({ field: 'f', in: ['a', 'b'] }, 'a')).toBe(true)
+-        expect(evalWith({ field: 'f', in: ['a', 'b'] }, 'c')).toBe(false)
+-        expect(evalWith({ field: 'f', in: [0, 1] }, 0)).toBe(true)
+-        expect(evalWith({ field: 'f', in: [false] }, false)).toBe(true)
+-        expect(evalWith({ field: 'f', in: ['a'] }, undefined)).toBe(false)
+-    })
+-
+-    test('non-array operand → false + exactly one warn per rule object', () => {
+-        const warn = spyWarn()
+-        const rule = { field: 'f', in: 'a' as unknown as Primitive[] }
+-        const predicate = compileRule(rule)
+-        expect(predicate({ f: 'a' })).toBe(false)
+-        expect(predicate({ f: 'a' })).toBe(false)
+-        expect(warn).toHaveBeenCalledTimes(1)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-    })
+-})
+-
+-describe('condition: empty', () => {
+-    test('empty:true matches the empty matrix, fails the non-empty matrix', () => {
+-        for (const key of ['undefined', 'null', 'emptyString', 'emptyArray']) {
+-            expect(evalWith({ field: 'f', empty: true }, MATRIX[key])).toBe(true)
+-        }
+-        for (const key of ['zero', 'false', 'emptyObject', 'stringA', 'one', 'nan']) {
+-            expect(evalWith({ field: 'f', empty: true }, MATRIX[key])).toBe(false)
+-        }
+-    })
+-
+-    test('empty:false is the inverse', () => {
+-        expect(evalWith({ field: 'f', empty: false }, '')).toBe(false)
+-        expect(evalWith({ field: 'f', empty: false }, 0)).toBe(true)
+-        expect(evalWith({ field: 'f', empty: false }, 'a')).toBe(true)
+-        expect(evalWith({ field: 'f', empty: false }, [])).toBe(false)
+-    })
+-})
+-
+-describe('conditions: gt / gte / lt / lte', () => {
+-    test('strictly numeric comparison', () => {
+-        expect(evalWith({ field: 'f', gt: 5 }, 6)).toBe(true)
+-        expect(evalWith({ field: 'f', gt: 5 }, 5)).toBe(false)
+-        expect(evalWith({ field: 'f', gte: 5 }, 5)).toBe(true)
+-        expect(evalWith({ field: 'f', lt: 5 }, 4)).toBe(true)
+-        expect(evalWith({ field: 'f', lt: 5 }, 5)).toBe(false)
+-        expect(evalWith({ field: 'f', lte: 5 }, 5)).toBe(true)
+-        expect(evalWith({ field: 'f', gt: 0 }, -1)).toBe(false)
+-        expect(evalWith({ field: 'f', gt: -1 }, 0)).toBe(true)
+-    })
+-
+-    test('string field value → false + warn (no coercion)', () => {
+-        const warn = spyWarn()
+-        expect(evalWith({ field: 'f', gt: 5 }, '6')).toBe(false)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-    })
+-
+-    test('Date field value → false + warn (no coercion)', () => {
+-        const warn = spyWarn()
+-        expect(evalWith({ field: 'f', gt: 0 }, new Date())).toBe(false)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-    })
+-
+-    test('NaN field value → false + warn', () => {
+-        const warn = spyWarn()
+-        expect(evalWith({ field: 'f', gt: 5 }, NaN)).toBe(false)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-    })
+-
+-    test('non-finite operand → false + warn', () => {
+-        const warn = spyWarn()
+-        expect(evalWith({ field: 'f', gt: Infinity }, 5)).toBe(false)
+-        expect(evalWith({ field: 'f', gt: NaN as unknown as number }, 5)).toBe(false)
+-        expect(warn).toHaveBeenCalled()
+-    })
+-
+-    test('warns at most once per rule object', () => {
+-        const warn = spyWarn()
+-        const rule = { field: 'f', gt: 5 }
+-        const predicate = compileRule(rule)
+-        predicate({ f: 'x' })
+-        predicate({ f: 'y' })
+-        predicate({ f: 'z' })
+-        expect(warn).toHaveBeenCalledTimes(1)
+-    })
+-})
+-
+-describe('combinators', () => {
+-    test('and: all sub-rules must hold', () => {
+-        const rule: Rule = {
+-            and: [
+-                { field: 'a', is: 1 },
+-                { field: 'b', is: 2 },
+-            ],
+-        }
+-        const predicate = compileRule(rule)
+-        expect(predicate({ a: 1, b: 2 })).toBe(true)
+-        expect(predicate({ a: 1, b: 3 })).toBe(false)
+-    })
+-
+-    test('or: at least one sub-rule must hold', () => {
+-        const rule: Rule = {
+-            or: [
+-                { field: 'a', is: 1 },
+-                { field: 'b', is: 2 },
+-            ],
+-        }
+-        const predicate = compileRule(rule)
+-        expect(predicate({ a: 1, b: 9 })).toBe(true)
+-        expect(predicate({ a: 9, b: 2 })).toBe(true)
+-        expect(predicate({ a: 9, b: 9 })).toBe(false)
+-    })
+-
+-    test('not-combinator (no `field` key) inverts its sub-rule', () => {
+-        const rule: Rule = { not: { field: 'a', is: 1 } }
+-        const predicate = compileRule(rule)
+-        expect(predicate({ a: 1 })).toBe(false)
+-        expect(predicate({ a: 2 })).toBe(true)
+-    })
+-
+-    test('not-combinator vs not-condition are distinguished by the `field` key', () => {
+-        // condition: { field, not } — strict inequality
+-        expect(evalWith({ field: 'f', not: 1 }, 2)).toBe(true)
+-        expect(evalWith({ field: 'f', not: 1 }, 1)).toBe(false)
+-        // combinator: { not: Rule } — inversion
+-        const combinator: Rule = { not: { field: 'f', is: 1 } }
+-        expect(compileRule(combinator)({ f: 1 })).toBe(false)
+-        expect(compileRule(combinator)({ f: 2 })).toBe(true)
+-    })
+-
+-    test('nested and/or/not three levels deep', () => {
+-        const rule: Rule = {
+-            and: [
+-                { field: 'type', is: 'legal' },
+-                {
+-                    or: [
+-                        { field: 'country', in: ['ru', 'by'] },
+-                        { not: { field: 'vip', is: true } },
+-                    ],
+-                },
+-            ],
+-        }
+-        const predicate = compileRule(rule)
+-        expect(predicate({ type: 'legal', country: 'ru', vip: true })).toBe(true)
+-        expect(predicate({ type: 'legal', country: 'us', vip: false })).toBe(true)
+-        expect(predicate({ type: 'legal', country: 'us', vip: true })).toBe(false)
+-        expect(predicate({ type: 'person', country: 'ru', vip: false })).toBe(false)
+-    })
+-})
+-
+-describe('dot-path resolution inside conditions', () => {
+-    test('name.en', () => {
+-        expect(evalWith({ field: 'name.en' as string, is: 'x' } as Rule, undefined)).toBe(false)
+-        expect(compileRule({ field: 'name.en', is: 'x' })({ name: { en: 'x' } })).toBe(true)
+-    })
+-
+-    test('items.0.x', () => {
+-        expect(compileRule({ field: 'items.0.x', is: 1 })({ items: [{ x: 1 }] })).toBe(true)
+-        expect(compileRule({ field: 'items.1.x', is: 1 })({ items: [{ x: 1 }] })).toBe(false)
+-    })
+-
+-    test('missing intermediate resolves to undefined and stays well-defined', () => {
+-        expect(compileRule({ field: 'a.b.c', empty: true })({})).toBe(true)
+-        expect(compileRule({ field: 'a.b.c', is: 1 })({})).toBe(false)
+-    })
+-
+-    test('exact-key priority: scope { "seo.title": 1 } resolves by the flat key', () => {
+-        expect(compileRule({ field: 'seo.title', is: 1 })({ 'seo.title': 1 })).toBe(true)
+-    })
+-})
+-
+-describe('malformed rules → fail-open (true) + exactly one warn per object', () => {
+-    test('empty object {}', () => {
+-        const warn = spyWarn()
+-        const rule = {} as Rule
+-        const predicate = compileRule(rule)
+-        expect(predicate({})).toBe(true)
+-        expect(predicate({})).toBe(true)
+-        expect(warn).toHaveBeenCalledTimes(1)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-    })
+-
+-    test('typo in field key { feild: "x", is: 1 }', () => {
+-        const warn = spyWarn()
+-        const rule = { feild: 'x', is: 1 } as unknown as Rule
+-        expect(compileRule(rule)({ x: 1 })).toBe(true)
+-        expect(warn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    test('field with no operator { field: "x" }', () => {
+-        const warn = spyWarn()
+-        const rule = { field: 'x' } as unknown as Rule
+-        expect(compileRule(rule)({ x: 1 })).toBe(true)
+-        expect(warn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    test('null / non-object rule fails open', () => {
+-        const warn = spyWarn()
+-        expect(compileRule(null as unknown as Rule)({})).toBe(true)
+-        expect(warn).toHaveBeenCalled()
+-    })
+-})
+-
+-describe('compileRule', () => {
+-    test('passes functions through unchanged', () => {
+-        const fn = (values: Record<string, unknown>) => values.x === 1
+-        expect(compileRule(fn)).toBe(fn)
+-    })
+-
+-    test('memoizes by object reference: same object → same predicate (toBe)', () => {
+-        const rule: Rule = { field: 'f', is: 1 }
+-        expect(compileRule(rule)).toBe(compileRule(rule))
+-    })
+-
+-    test('a structurally-equal new object yields a new predicate', () => {
+-        const a: Rule = { field: 'f', is: 1 }
+-        const b: Rule = { field: 'f', is: 1 }
+-        expect(compileRule(a)).not.toBe(compileRule(b))
+-    })
+-})
+-
+-describe('omitPaths', () => {
+-    test('removes a top-level key without mutating the source', () => {
+-        const source = { a: 1, b: 2 }
+-        const result = omitPaths(source, ['a'])
+-        expect(result).toEqual({ b: 2 })
+-        expect(source).toEqual({ a: 1, b: 2 })
+-        expect(result).not.toBe(source)
+-    })
+-
+-    test('nested removal items.2.discount does not mutate the source', () => {
+-        const source = {
+-            items: [{ x: 0 }, { x: 1 }, { x: 2, discount: 50 }],
+-            other: { keep: true },
+-        }
+-        const result = omitPaths(source, ['items.2.discount'])
+-
+-        expect(result).toEqual({
+-            items: [{ x: 0 }, { x: 1 }, { x: 2 }],
+-            other: { keep: true },
+-        })
+-        // source untouched
+-        expect((source.items[2] as Record<string, unknown>).discount).toBe(50)
+-    })
+-
+-    test('untouched branches keep the same reference (copy-on-write)', () => {
+-        const source = {
+-            items: [{ x: 0 }, { x: 1 }, { x: 2, discount: 50 }],
+-            other: { keep: true },
+-            list: [1, 2, 3],
+-        }
+-        const result = omitPaths(source, ['items.2.discount'])
+-
+-        // sibling branches are NOT cloned
+-        expect(result.other).toBe(source.other)
+-        expect(result.list).toBe(source.list)
+-        // sibling rows inside the touched array are NOT cloned
+-        expect((result.items as unknown[])[0]).toBe(source.items[0])
+-        expect((result.items as unknown[])[1]).toBe(source.items[1])
+-        // the row on the removal path IS a fresh copy
+-        expect((result.items as unknown[])[2]).not.toBe(source.items[2])
+-        // ...but the containers along the path are fresh
+-        expect(result.items).not.toBe(source.items)
+-        expect(result).not.toBe(source)
+-    })
+-
+-    test('a File-like value in a sibling key stays the same reference', () => {
+-        const file = { name: 'a.png', size: 10 } // File-like stand-in
+-        const source = { avatar: file, secret: 'x' }
+-        const result = omitPaths(source, ['secret'])
+-
+-        expect(result.avatar).toBe(file)
+-        expect(result).toEqual({ avatar: file })
+-    })
+-
+-    test('literal-key removal: flat "seo.title" key', () => {
+-        const source = { 'seo.title': 'x', 'seo.desc': 'y' }
+-        const result = omitPaths(source, ['seo.title'])
+-
+-        expect(result).toEqual({ 'seo.desc': 'y' })
+-        expect(source).toEqual({ 'seo.title': 'x', 'seo.desc': 'y' })
+-    })
+-
+-    test('removing a missing path is a no-op clone', () => {
+-        const source = { a: 1 }
+-        const result = omitPaths(source, ['b.c'])
+-        expect(result).toEqual({ a: 1 })
+-    })
+-
+-    test('empty paths returns the source untouched (same reference)', () => {
+-        const source = { a: 1 }
+-        expect(omitPaths(source, [])).toBe(source)
+-    })
+-
+-    test('removes multiple paths', () => {
+-        const source = { a: 1, b: 2, c: { d: 3, e: 4 } }
+-        const result = omitPaths(source, ['a', 'c.d'])
+-        expect(result).toEqual({ b: 2, c: { e: 4 } })
+-    })
+-})
+-
+-describe('matchesField (moved from FormTabs, semantics preserved)', () => {
+-    test('exact key match', () => {
+-        expect(matchesField('name', 'name')).toBe(true)
+-    })
+-
+-    test('prefix match on a dot-segment boundary', () => {
+-        expect(matchesField('name.en', 'name')).toBe(true)
+-        expect(matchesField('items.0.title', 'items')).toBe(true)
+-    })
+-
+-    test('does not match a partial-name prefix', () => {
+-        expect(matchesField('username', 'name')).toBe(false)
+-        expect(matchesField('names', 'name')).toBe(false)
+-    })
+-
+-    test('does not match an unrelated key', () => {
+-        expect(matchesField('surname', 'name')).toBe(false)
+-    })
+-})
+diff --git a/tests/rulesScan.test.tsx b/tests/rulesScan.test.tsx
+deleted file mode 100644
+index 7361974..0000000
+--- a/tests/rulesScan.test.tsx
++++ /dev/null
+@@ -1,673 +0,0 @@
+-import React from 'react'
+-import { afterEach, describe, expect, test, vi } from 'vitest'
+-import { scanFormChildren, evaluateVisibility, omitHiddenValues } from '../admiral/form/rulesScan'
+-import type { FormRulesMap, RuleInput } from '../admiral/form/rules'
+-import { Form } from '../admiral/form/Form'
+-import { TextInput as TextInputBase, type TextInputProps } from '../admiral/form/fields/TextInput'
+-import {
+-    BooleanInput as BooleanInputBase,
+-    type BooleanInputProps,
+-} from '../admiral/form/fields/BooleanInput'
+-import { SelectInput } from '../admiral/form/fields/SelectInput'
+-import {
+-    ArrayInput as ArrayInputBase,
+-    type ArrayInputProps,
+-} from '../admiral/form/fields/ArrayInput'
+-import { TranslatableInput as TranslatableInputBase } from '../admiral/form/fields/TranslatableInput'
+-import type { FormTabItem } from '../admiral/form/FormTabs'
+-
+-afterEach(() => {
+-    vi.restoreAllMocks()
+-})
+-
+-const spyWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
+-
+-/**
+- * Rule props (`visibleWhen` / `disabledWhen` / `requiredWhen` / `keepInPayload`)
+- * become first-class props on every field type in U5; until then the scan reads
+- * them off `child.props` purely as data. To keep these structural tests writing
+- * real admiral inputs the same way U5 consumers will — props inline in JSX —
+- * each field is re-typed once here to accept the rule props. The cast is by
+- * reference, so the runtime component (and the `inputName` static the scan reads
+- * off it) is unchanged; no field file is touched.
+- */
+-type RuleProps = {
+-    visibleWhen?: RuleInput
+-    disabledWhen?: RuleInput
+-    requiredWhen?: RuleInput
+-    keepInPayload?: boolean
+-}
+-
+-const TextInput = TextInputBase as React.FC<TextInputProps & RuleProps>
+-const BooleanInput = BooleanInputBase as React.FC<BooleanInputProps & RuleProps>
+-const ArrayInput = ArrayInputBase as React.FC<ArrayInputProps & RuleProps>
+-const TranslatableInput = TranslatableInputBase as unknown as React.FC<
+-    Record<string, unknown> & RuleProps
+->
+-
+-// Convenience: scan + evaluate in one step.
+-const visibility = (
+-    children: React.ReactNode,
+-    values: Record<string, unknown>,
+-    rulesMap?: FormRulesMap,
+-) => evaluateVisibility(scanFormChildren(children, rulesMap), values)
+-
+-describe('scanFormChildren is a pure structural pass (no values)', () => {
+-    test('returns the same scan shape regardless of values', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" visibleWhen={{ field: 'type', is: 'legal' }} />
+-            </Form.Fields>
+-        )
+-        const scan = scanFormChildren(tree)
+-        expect(scan.hasRules).toBe(true)
+-        expect(scan.nodes).toHaveLength(2)
+-        expect(scan.nodes[0]).toMatchObject({ kind: 'field', name: 'type' })
+-        expect(scan.nodes[1]).toMatchObject({ kind: 'field', name: 'inn' })
+-    })
+-})
+-
+-describe('root fields: visibleWhen DSL and function', () => {
+-    test('DSL rule — hidden field is in hiddenPaths, visible field is not', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" visibleWhen={{ field: 'type', is: 'legal' }} />
+-            </Form.Fields>
+-        )
+-
+-        const hiddenForPerson = visibility(tree, { type: 'person' }).hiddenPaths
+-        expect(hiddenForPerson.has('inn')).toBe(true)
+-        expect(hiddenForPerson.has('type')).toBe(false)
+-
+-        const hiddenForLegal = visibility(tree, { type: 'legal' }).hiddenPaths
+-        expect(hiddenForLegal.has('inn')).toBe(false)
+-    })
+-
+-    test('function rule behaves the same', () => {
+-        const rule: RuleInput = (values) => values.type === 'legal'
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="passport" label="Passport" visibleWhen={rule} />
+-            </Form.Fields>
+-        )
+-
+-        expect(visibility(tree, { type: 'person' }).hiddenPaths.has('passport')).toBe(true)
+-        expect(visibility(tree, { type: 'legal' }).hiddenPaths.has('passport')).toBe(false)
+-    })
+-
+-    test('scannedPaths contains every discovered field, ruled or not', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" visibleWhen={{ field: 'type', is: 'legal' }} />
+-            </Form.Fields>
+-        )
+-        const { scannedPaths } = visibility(tree, {})
+-        expect(scannedPaths).toEqual(new Set(['type', 'inn']))
+-    })
+-})
+-
+-describe('deny-list omit (AE11, R16)', () => {
+-    test('unknown keys pass through untouched and keep reference identity', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" visibleWhen={{ field: 'type', is: 'legal' }} />
+-            </Form.Fields>
+-        )
+-        const createdAt = { at: '2026-06-13', tz: 'UTC' }
+-        const values = { id: 42, created_at: createdAt, type: 'person', inn: '7701234567' }
+-
+-        const { hiddenPaths } = visibility(tree, values)
+-        expect(hiddenPaths).toEqual(new Set(['inn']))
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set())
+-        // id and created_at were never scanned → present.
+-        expect(payload.id).toBe(42)
+-        expect(payload.created_at).toBe(createdAt) // same reference (untouched branch)
+-        // the hidden field is gone, but its value still lived in `values`.
+-        expect('inn' in payload).toBe(false)
+-        expect(values.inn).toBe('7701234567')
+-    })
+-})
+-
+-describe('Form.Tabs (AE12)', () => {
+-    test('a ruled field inside items[1].children is discovered and omitted', () => {
+-        const items: FormTabItem[] = [
+-            { key: 'main', label: 'Main', children: <TextInput name="name" label="Name" /> },
+-            {
+-                key: 'legal',
+-                label: 'Legal',
+-                children: (
+-                    <TextInput
+-                        name="inn"
+-                        label="INN"
+-                        visibleWhen={{ field: 'type', is: 'legal' }}
+-                    />
+-                ),
+-            },
+-        ]
+-        const tree = <Form.Tabs items={items} />
+-
+-        const { scannedPaths, hiddenPaths } = visibility(tree, {
+-            type: 'person',
+-            inn: 'x',
+-            name: 'A',
+-        })
+-        // traversed items[].children, not props.children
+-        expect(scannedPaths).toEqual(new Set(['name', 'inn']))
+-        expect(hiddenPaths.has('inn')).toBe(true)
+-
+-        const payload = omitHiddenValues(
+-            { type: 'person', inn: 'x', name: 'A' },
+-            hiddenPaths,
+-            new Set(),
+-        )
+-        expect('inn' in payload).toBe(false)
+-        expect(payload.name).toBe('A')
+-    })
+-})
+-
+-describe('Form.When', () => {
+-    test('false When — enclosed names are collected and omitted', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <SelectInput name="type" label="Type" />
+-                <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                    <TextInput name="inn" label="INN" />
+-                    <TextInput name="kpp" label="KPP" />
+-                </Form.When>
+-            </Form.Fields>
+-        )
+-
+-        const { scannedPaths, hiddenPaths } = visibility(tree, { type: 'person' })
+-        // both branches are walked structurally (names needed for omit)
+-        expect(scannedPaths).toEqual(new Set(['type', 'inn', 'kpp']))
+-        expect(hiddenPaths).toEqual(new Set(['inn', 'kpp']))
+-
+-        // When true → neither hidden
+-        expect(visibility(tree, { type: 'legal' }).hiddenPaths.size).toBe(0)
+-    })
+-
+-    test('nested When combine as AND (inner hidden unless both true)', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <Form.When rule={{ field: 'a', is: true }}>
+-                    <Form.When rule={{ field: 'b', is: true }}>
+-                        <TextInput name="inner" label="Inner" />
+-                    </Form.When>
+-                </Form.When>
+-            </Form.Fields>
+-        )
+-
+-        expect(visibility(tree, { a: true, b: false }).hiddenPaths.has('inner')).toBe(true)
+-        expect(visibility(tree, { a: false, b: true }).hiddenPaths.has('inner')).toBe(true)
+-        expect(visibility(tree, { a: true, b: true }).hiddenPaths.has('inner')).toBe(false)
+-    })
+-
+-    test('a field rule still applies under a visible When', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <Form.When rule={{ field: 'a', is: true }}>
+-                    <TextInput name="x" label="X" visibleWhen={{ field: 'b', is: true }} />
+-                </Form.When>
+-            </Form.Fields>
+-        )
+-        // When true but field's own rule false → hidden (AND across layers)
+-        expect(visibility(tree, { a: true, b: false }).hiddenPaths.has('x')).toBe(true)
+-        expect(visibility(tree, { a: true, b: true }).hiddenPaths.has('x')).toBe(false)
+-    })
+-})
+-
+-describe('ArrayInput (AE7)', () => {
+-    test('children-nodes template: rule true only in the second row', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    <BooleanInput name="has_discount" label="Discount" />
+-                    <TextInput
+-                        name="discount"
+-                        label="Discount size"
+-                        visibleWhen={{ field: 'has_discount', is: true }}
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const values = {
+-            variants: [{ has_discount: false }, { has_discount: true, discount: '10' }],
+-        }
+-
+-        const { scannedPaths, hiddenPaths } = visibility(tree, values)
+-        // row paths are prefixed with name.idx.
+-        expect(scannedPaths.has('variants')).toBe(true)
+-        expect(scannedPaths.has('variants.0.has_discount')).toBe(true)
+-        expect(scannedPaths.has('variants.0.discount')).toBe(true)
+-        expect(scannedPaths.has('variants.1.discount')).toBe(true)
+-
+-        // row 0 has_discount:false → discount hidden; row 1 true → kept
+-        expect(hiddenPaths.has('variants.0.discount')).toBe(true)
+-        expect(hiddenPaths.has('variants.1.discount')).toBe(false)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set()) as typeof values
+-        expect('discount' in payload.variants[0]).toBe(false)
+-        expect(payload.variants[1].discount).toBe('10')
+-    })
+-
+-    test('children-function template is resolved per row', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    {(_row, _idx) => (
+-                        <>
+-                            <BooleanInput name="has_discount" label="Discount" />
+-                            <TextInput
+-                                name="discount"
+-                                label="Discount size"
+-                                visibleWhen={{ field: 'has_discount', is: true }}
+-                            />
+-                        </>
+-                    )}
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const values = {
+-            variants: [{ has_discount: true, discount: '5' }, { has_discount: false }],
+-        }
+-
+-        const { hiddenPaths } = visibility(tree, values)
+-        expect(hiddenPaths.has('variants.0.discount')).toBe(false)
+-        expect(hiddenPaths.has('variants.1.discount')).toBe(true)
+-    })
+-
+-    test('phantom row: values[name] === undefined → no crash, no omit', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    <TextInput
+-                        name="discount"
+-                        label="Discount size"
+-                        visibleWhen={{ field: 'has_discount', is: true }}
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const { scannedPaths, hiddenPaths } = visibility(tree, {})
+-        expect(scannedPaths).toEqual(new Set(['variants']))
+-        expect(hiddenPaths.size).toBe(0)
+-    })
+-
+-    test('nested ArrayInput recurses with compound prefixes', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="orders" label="Orders">
+-                    <ArrayInput name="lines" label="Lines">
+-                        <TextInput
+-                            name="note"
+-                            label="Note"
+-                            visibleWhen={{ field: 'flagged', is: true }}
+-                        />
+-                    </ArrayInput>
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const values = {
+-            orders: [{ lines: [{ flagged: false }, { flagged: true, note: 'hi' }] }],
+-        }
+-
+-        const { scannedPaths, hiddenPaths } = visibility(tree, values)
+-        expect(scannedPaths.has('orders.0.lines')).toBe(true)
+-        expect(scannedPaths.has('orders.0.lines.0.note')).toBe(true)
+-        expect(scannedPaths.has('orders.0.lines.1.note')).toBe(true)
+-        expect(hiddenPaths.has('orders.0.lines.0.note')).toBe(true)
+-        expect(hiddenPaths.has('orders.0.lines.1.note')).toBe(false)
+-    })
+-
+-    test('a rule on the ArrayInput element hides the whole name', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput
+-                    name="variants"
+-                    label="Variants"
+-                    visibleWhen={{ field: 'show', is: true }}
+-                >
+-                    <TextInput name="discount" label="Discount" />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const values = { show: false, variants: [{ discount: '1' }] }
+-
+-        const { hiddenPaths } = visibility(tree, values)
+-        expect(hiddenPaths.has('variants')).toBe(true)
+-        // rows inside a hidden array are also hidden
+-        expect(hiddenPaths.has('variants.0.discount')).toBe(true)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set())
+-        expect('variants' in payload).toBe(false)
+-    })
+-})
+-
+-describe('TranslatableInput', () => {
+-    test('visibleWhen on the input hides `name` wholesale; languages in scannedPaths', () => {
+-        const languages = [
+-            { label: 'EN', value: 'en' },
+-            { label: 'RU', value: 'ru' },
+-        ]
+-        const tree = (
+-            <Form.Fields>
+-                <TranslatableInput
+-                    field="text"
+-                    name="title"
+-                    label="Title"
+-                    languages={languages}
+-                    visibleWhen={{ field: 'translated', is: true }}
+-                />
+-            </Form.Fields>
+-        )
+-        const values = { translated: false, title: { en: 'Hi', ru: 'Привет' } }
+-
+-        const { scannedPaths, hiddenPaths } = visibility(tree, values)
+-        // name itself + name.<lang> for each language
+-        expect(scannedPaths).toEqual(new Set(['title', 'title.en', 'title.ru']))
+-        expect(hiddenPaths.has('title')).toBe(true)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set())
+-        expect('title' in payload).toBe(false)
+-    })
+-
+-    test('visible TranslatableInput is not hidden', () => {
+-        const languages = [{ label: 'EN', value: 'en' }]
+-        const tree = (
+-            <Form.Fields>
+-                <TranslatableInput
+-                    field="text"
+-                    name="title"
+-                    label="Title"
+-                    languages={languages}
+-                    visibleWhen={{ field: 'translated', is: true }}
+-                />
+-            </Form.Fields>
+-        )
+-        expect(visibility(tree, { translated: true }).hiddenPaths.has('title')).toBe(false)
+-    })
+-})
+-
+-describe('keepInPayload (AE2-override)', () => {
+-    test('a hidden field with keepInPayload stays in the omit result', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput
+-                    name="inn"
+-                    label="INN"
+-                    visibleWhen={{ field: 'type', is: 'legal' }}
+-                    keepInPayload
+-                />
+-            </Form.Fields>
+-        )
+-        const values = { type: 'person', inn: '7701234567' }
+-
+-        const { hiddenPaths, keepPaths } = visibility(tree, values)
+-        expect(hiddenPaths.has('inn')).toBe(true)
+-        // evaluateVisibility surfaces the keep-set so the caller never re-walks the scan.
+-        expect(keepPaths.has('inn')).toBe(true)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, keepPaths)
+-        expect(payload.inn).toBe('7701234567')
+-    })
+-
+-    test('keepInPayload inside an array row is surfaced with the name.idx prefix', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    <TextInput
+-                        name="discount"
+-                        label="Discount"
+-                        visibleWhen={{ field: 'has_discount', is: true }}
+-                        keepInPayload
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const values = { variants: [{ has_discount: false, discount: '1' }] }
+-
+-        const { hiddenPaths, keepPaths } = visibility(tree, values)
+-        // hidden by its own rule, but rescued by the prefixed keep path —
+-        // this is why evaluateVisibility owns the prefixing, not the caller.
+-        expect(hiddenPaths.has('variants.0.discount')).toBe(true)
+-        expect(keepPaths.has('variants.0.discount')).toBe(true)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, keepPaths) as typeof values
+-        expect(payload.variants[0].discount).toBe('1')
+-    })
+-})
+-
+-describe('rules-map', () => {
+-    test('a root key hides the value (escape hatch — field not in the tree)', () => {
+-        const rulesMap: FormRulesMap = {
+-            legacy_code: { visible: { field: 'type', is: 'legal' } },
+-        }
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-            </Form.Fields>
+-        )
+-        const values = { type: 'person', legacy_code: 'L-1' }
+-
+-        const { hiddenPaths } = visibility(tree, values, rulesMap)
+-        // legacy_code is not a discovered field, but it exists in values → hidden.
+-        expect(hiddenPaths.has('legacy_code')).toBe(true)
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set())
+-        expect('legacy_code' in payload).toBe(false)
+-
+-        // When the rule is true, the escape-hatch path is not hidden.
+-        expect(
+-            visibility(tree, { type: 'legal', legacy_code: 'L-1' }, rulesMap).hiddenPaths.size,
+-        ).toBe(0)
+-    })
+-
+-    test('rules-map applies to a discovered field with no JSX rule', () => {
+-        const rulesMap: FormRulesMap = { inn: { visible: { field: 'type', is: 'legal' } } }
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-                <TextInput name="inn" label="INN" />
+-            </Form.Fields>
+-        )
+-        expect(visibility(tree, { type: 'person' }, rulesMap).hiddenPaths.has('inn')).toBe(true)
+-        expect(visibility(tree, { type: 'legal' }, rulesMap).hiddenPaths.has('inn')).toBe(false)
+-    })
+-
+-    test('JSX visibleWhen wins over rules-map for the same field (no AND)', () => {
+-        // JSX says visible-when-legal; map says visible-when-vip. JSX must win.
+-        const rulesMap: FormRulesMap = { inn: { visible: { field: 'vip', is: true } } }
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="inn" label="INN" visibleWhen={{ field: 'type', is: 'legal' }} />
+-            </Form.Fields>
+-        )
+-        // type legal, vip false → JSX wins → visible
+-        expect(
+-            visibility(tree, { type: 'legal', vip: false }, rulesMap).hiddenPaths.has('inn'),
+-        ).toBe(false)
+-        // type person, vip true → JSX wins → hidden
+-        expect(
+-            visibility(tree, { type: 'person', vip: true }, rulesMap).hiddenPaths.has('inn'),
+-        ).toBe(true)
+-    })
+-
+-    test('a key with no corresponding value path → exactly one warn', () => {
+-        const warn = spyWarn()
+-        const rulesMap: FormRulesMap = { ghost: { visible: { field: 'type', is: 'legal' } } }
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-            </Form.Fields>
+-        )
+-        visibility(tree, { type: 'person' }, rulesMap)
+-
+-        expect(warn).toHaveBeenCalledTimes(1)
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('[Admiral]'))
+-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('ghost'))
+-    })
+-
+-    test('hasRules is true for a non-empty rules-map even with no rule props', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="type" label="Type" />
+-            </Form.Fields>
+-        )
+-        const scan = scanFormChildren(tree, { foo: { visible: { field: 'type', is: 'a' } } })
+-        expect(scan.hasRules).toBe(true)
+-    })
+-
+-    test('hasRules is false for a tree with no rules at all', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="a" label="A" />
+-                <TextInput name="b" label="B" />
+-                <ArrayInput name="rows" label="Rows">
+-                    <TextInput name="x" label="X" />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const { hasRules } = visibility(tree, {})
+-        expect(hasRules).toBe(false)
+-    })
+-})
+-
+-describe('hasRules structural flag', () => {
+-    test('true when a field carries disabledWhen (counts toward hasRules, not hiddenPaths)', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="x" label="X" disabledWhen={{ field: 'y', is: true }} />
+-            </Form.Fields>
+-        )
+-        const result = visibility(tree, { y: true })
+-        expect(result.hasRules).toBe(true)
+-        // disabledWhen never hides
+-        expect(result.hiddenPaths.size).toBe(0)
+-    })
+-
+-    test('true when a field carries requiredWhen', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <TextInput name="x" label="X" requiredWhen={{ field: 'y', is: true }} />
+-            </Form.Fields>
+-        )
+-        const result = visibility(tree, { y: true })
+-        expect(result.hasRules).toBe(true)
+-        expect(result.hiddenPaths.size).toBe(0)
+-    })
+-
+-    test('true when a Form.When node is present even with no field rules', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <Form.When rule={{ field: 'a', is: true }}>
+-                    <TextInput name="x" label="X" />
+-                </Form.When>
+-            </Form.Fields>
+-        )
+-        expect(scanFormChildren(tree).hasRules).toBe(true)
+-    })
+-
+-    test('true when an ArrayInput uses a function row-template (opaque to the scan)', () => {
+-        // Inner rule props are invisible until eval, so hasRules must be
+-        // conservative — otherwise U4 would fast-path past a hidden row field (R4).
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="rows" label="Rows">
+-                    {(_r, _i) => (
+-                        <TextInput name="x" label="X" visibleWhen={{ field: 'y', is: true }} />
+-                    )}
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        expect(scanFormChildren(tree).hasRules).toBe(true)
+-    })
+-})
+-
+-describe('transparent wrappers', () => {
+-    test('Fragments and plain DOM are walked through', () => {
+-        const tree = (
+-            <>
+-                <div className="wrapper">
+-                    <TextInput name="a" label="A" visibleWhen={{ field: 'show', is: true }} />
+-                </div>
+-                <TextInput name="b" label="B" />
+-            </>
+-        )
+-        const { scannedPaths, hiddenPaths } = visibility(tree, { show: false })
+-        expect(scannedPaths).toEqual(new Set(['a', 'b']))
+-        expect(hiddenPaths).toEqual(new Set(['a']))
+-    })
+-})
+-
+-describe('identity (copy-on-write)', () => {
+-    test('untouched payload branches are the same references (toBe)', () => {
+-        const tree = (
+-            <Form.Fields>
+-                <ArrayInput name="variants" label="Variants">
+-                    <TextInput
+-                        name="discount"
+-                        label="Discount"
+-                        visibleWhen={{ field: 'has_discount', is: true }}
+-                    />
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        const sibling = { keep: true }
+-        const file = { name: 'a.png', size: 10 }
+-        const row1 = { has_discount: true, discount: '5' }
+-        const values = {
+-            other: sibling,
+-            avatar: file,
+-            variants: [{ has_discount: false, discount: '1' }, row1],
+-        }
+-
+-        const { hiddenPaths } = visibility(tree, values)
+-        expect(hiddenPaths).toEqual(new Set(['variants.0.discount']))
+-
+-        const payload = omitHiddenValues(values, hiddenPaths, new Set()) as typeof values
+-        // sibling branches untouched
+-        expect(payload.other).toBe(sibling)
+-        expect(payload.avatar).toBe(file)
+-        // the untouched row keeps its reference; the touched row is a fresh copy
+-        expect(payload.variants[1]).toBe(row1)
+-        expect(payload.variants[0]).not.toBe(values.variants[0])
+-    })
+-
+-    test('omitHiddenValues with an all-kept hidden set returns the same object', () => {
+-        const values = { a: 1, b: 2 }
+-        // hidden but kept → nothing to omit → same reference (omitPaths identity)
+-        expect(omitHiddenValues(values, new Set(['a']), new Set(['a']))).toBe(values)
+-    })
+-
+-    test('omitHiddenValues with an empty hidden set returns the same object', () => {
+-        const values = { a: 1 }
+-        expect(omitHiddenValues(values, new Set(), new Set())).toBe(values)
+-    })
+-})
+-
+-describe('scan does not render or call hooks', () => {
+-    test('scanning a tree of real inputs produces no React act warnings and needs no provider', () => {
+-        const warn = spyWarn()
+-        const tree = (
+-            <Form.Fields>
+-                <SelectInput name="type" label="Type" />
+-                <Form.When rule={{ field: 'type', is: 'legal' }}>
+-                    <TextInput name="inn" label="INN" />
+-                </Form.When>
+-                <ArrayInput name="rows" label="Rows">
+-                    {(_r, _i) => <TextInput name="x" label="X" />}
+-                </ArrayInput>
+-            </Form.Fields>
+-        )
+-        // No Form/ThemeProvider mounted: if scanFormChildren rendered or called
+-        // hooks, useForm() would throw. It must not.
+-        const scan = scanFormChildren(tree)
+-        expect(() => evaluateVisibility(scan, { type: 'legal', rows: [{}] })).not.toThrow()
+-        expect(warn).not.toHaveBeenCalled()
+-    })
+-})
+diff --git a/tests/setup.ts b/tests/setup.ts
+deleted file mode 100644
+index f719b2d..0000000
+--- a/tests/setup.ts
++++ /dev/null
+@@ -1,24 +0,0 @@
+-import { vi } from 'vitest'
+-
+-// jsdom has no ResizeObserver; the table layout hooks rely on it.
+-class ResizeObserverStub {
+-    observe() {}
+-    unobserve() {}
+-    disconnect() {}
+-}
+-globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+-
+-// jsdom has no matchMedia; ThemeProvider relies on it via useMedia.
+-Object.defineProperty(window, 'matchMedia', {
+-    writable: true,
+-    value: vi.fn().mockImplementation((query: string) => ({
+-        matches: false,
+-        media: query,
+-        onchange: null,
+-        addListener: vi.fn(),
+-        removeListener: vi.fn(),
+-        addEventListener: vi.fn(),
+-        removeEventListener: vi.fn(),
+-        dispatchEvent: vi.fn(),
+-    })),
+-})
+diff --git a/tests/tableExpandable.test.tsx b/tests/tableExpandable.test.tsx
+deleted file mode 100644
+index 210b5dd..0000000
+--- a/tests/tableExpandable.test.tsx
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import { describe, expect, test } from 'vitest'
+-import { render, screen } from '@testing-library/react'
+-import { Table } from '../admiral/ui/Table'
+-
+-describe('Table expandable', () => {
+-    test('forwards the expandable config to rc-table', () => {
+-        render(
+-            <Table
+-                rowKey="id"
+-                dataSource={[{ id: 1, name: 'Alpha' }]}
+-                columns={[{ title: 'Name', dataIndex: 'name', key: 'name' }]}
+-                expandable={{
+-                    defaultExpandedRowKeys: [1],
+-                    expandedRowRender: (record) => <div>expanded {record.name}</div>,
+-                }}
+-            />,
+-        )
+-
+-        expect(screen.getByText('expanded Alpha')).toBeTruthy()
+-    })
+-})
+diff --git a/tests/uploadLabelClick.test.tsx b/tests/uploadLabelClick.test.tsx
+deleted file mode 100644
+index 575aee1..0000000
+--- a/tests/uploadLabelClick.test.tsx
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import { describe, expect, test, vi } from 'vitest'
+-import { render, fireEvent } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import { Form } from '../admiral/form/Form'
+-import { FilePictureInput } from '../admiral/form/fields'
+-
+-const renderInput = () => {
+-    const utils = render(
+-        <MemoryRouter>
+-            <Form submitData={async () => ({})}>
+-                <FilePictureInput label="Avatar" name="avatar" maxCount={1} />
+-            </Form>
+-        </MemoryRouter>,
+-    )
+-    const fileInput = utils.container.querySelector('input[type="file"]') as HTMLInputElement
+-    const clicks = vi.fn()
+-    fileInput.addEventListener('click', clicks)
+-    return { ...utils, fileInput, clicks }
+-}
+-
+-describe('FilePictureInput trigger area', () => {
+-    test('a click on the form-item label/empty area does not open the file dialog', () => {
+-        const { container, clicks } = renderInput()
+-
+-        const label = container.querySelector('label')
+-        expect(label).not.toBeNull()
+-        fireEvent.click(label!)
+-
+-        expect(clicks).not.toHaveBeenCalled()
+-    })
+-
+-    test('a click on the upload button still opens the file dialog', () => {
+-        const { container, clicks } = renderInput()
+-
+-        const button = container.querySelector('button') as HTMLButtonElement
+-        fireEvent.click(button)
+-
+-        expect(clicks).toHaveBeenCalled()
+-    })
+-})
+diff --git a/tests/useUrlState.test.tsx b/tests/useUrlState.test.tsx
+deleted file mode 100644
+index d0b2d58..0000000
+--- a/tests/useUrlState.test.tsx
++++ /dev/null
+@@ -1,60 +0,0 @@
+-import React from 'react'
+-import { describe, expect, test } from 'vitest'
+-import { act, renderHook } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router-dom'
+-import useUrlState from '../admiral/utils/hooks/useUrlState'
+-
+-const wrapper = ({ children }: { children: React.ReactNode }) => (
+-    <MemoryRouter>{children}</MemoryRouter>
+-)
+-
+-describe('useUrlState', () => {
+-    test('round-trips filter values with &, =, #, + and cyrillic', () => {
+-        const filter = {
+-            name: 'Tom & Jerry',
+-            formula: 'a=b',
+-            tag: '#1',
+-            tz: '2024-01-01T00:00:00+03:00',
+-            city: 'Москва',
+-        }
+-        const { result } = renderHook(() => useUrlState({ filter: {} }), { wrapper })
+-
+-        act(() => {
+-            result.current[1]({ filter })
+-        })
+-
+-        expect(result.current[0].filter).toEqual(filter)
+-    })
+-
+-    test('decodes + as space in externally crafted urls', () => {
+-        const externalUrlWrapper = ({ children }: { children: React.ReactNode }) => (
+-            <MemoryRouter initialEntries={['/?filter[name]=John+Doe']}>{children}</MemoryRouter>
+-        )
+-        const { result } = renderHook(() => useUrlState({ filter: {} }), {
+-            wrapper: externalUrlWrapper,
+-        })
+-
+-        expect(result.current[0].filter).toEqual({ name: 'John Doe' })
+-    })
+-
+-    test('keeps unrelated keys on partial update', () => {
+-        const { result } = renderHook(
+-            () =>
+-                useUrlState<{ page: string; filter: Record<string, unknown> }>({
+-                    page: '1',
+-                    filter: {},
+-                }),
+-            { wrapper },
+-        )
+-
+-        act(() => {
+-            result.current[1]({ filter: { name: 'x' } })
+-        })
+-        act(() => {
+-            result.current[1]({ page: '2' })
+-        })
+-
+-        expect(result.current[0].filter).toEqual({ name: 'x' })
+-        expect(result.current[0].page).toBe('2')
+-    })
+-})
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index 6cd5740..0000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,10 +0,0 @@
+-import { defineConfig } from 'vitest/config'
+-
+-export default defineConfig({
+-    test: {
+-        environment: 'jsdom',
+-        include: ['tests/**/*.test.{ts,tsx}'],
+-        setupFiles: ['tests/setup.ts'],
+-        css: false,
+-    },
+-})

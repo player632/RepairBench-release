@@ -1,0 +1,32 @@
+diff --git a/src/libs/util.ts b/src/libs/util.ts
+index ca608f3..4b2f5d5 100644
+--- a/src/libs/util.ts
++++ b/src/libs/util.ts
+@@ -1,6 +1,18 @@
+ import { defaultCell } from "./constants";
+ import { Cell, Difficulty } from "./types";
+ 
++// RB adaptation: the seed drew every mine placement from Math.random(), so no board - and
++// therefore no reading of one - was reproducible across runs. This replaces ONLY that entropy
++// source with a seeded 32-bit LCG stream. The range arithmetic, the rejection retry, the mine
++// count, the exclusion contract and both call sites are byte-identical to the seed, and the
++// stream is a single module-level one (it is NOT reset per board), so consecutive boards still
++// differ from each other exactly as they did before; they are just the same boards every run.
++let rbSeed = 0x9e3779b9;
++const rbRandom = () => {
++  rbSeed = (Math.imul(rbSeed, 1664525) + 1013904223) >>> 0;
++  return rbSeed / 4294967296;
++};
++
+ export const generateRows = (rows: number, cellsPerRow: number, cell: Cell) => {
+   const r: Cell[][] = [];
+   for (let i = 0; i < rows; i++) {
+@@ -17,7 +29,7 @@ export const getRandNotInArr: (
+   max: number,
+   arr: number[],
+ ) => number = (min, max, arr) => {
+-  const num = Math.floor(Math.random() * (max - min + 1) + min);
++  const num = Math.floor(rbRandom() * (max - min + 1) + min);
+   if (Array.isArray(arr) && arr.includes(num)) {
+     return getRandNotInArr(min, max, arr);
+   }

@@ -1,0 +1,140 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 4c87637153405a0b8e3e8c12910c9ee7e047e089..4e60186a8a0ab52886e505776085cda76f9b008d 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -59,7 +59,7 @@ const App: Component = () => {
+       batch(() => {
+         cursor--;
+         setHasHistory(true);
+-        setGrid(history[cursor]);
++        setGrid(history[cursor + 1]);
+       });
+     } else {
+       const nextGrid = nextState(grid());
+@@ -116,7 +116,7 @@ const App: Component = () => {
+   };
+ 
+   const handleCellMouseEvent = (cell: Accessor<Cell>) => (e: MouseEvent) => {
+-    if (e.button === 0 && e.buttons === 1) cell().toggle();
++    if (e.button === 0 && e.buttons === 0) cell().toggle();
+   };
+ 
+   return (
+diff --git a/src/components/Button.tsx b/src/components/Button.tsx
+index be31b7882b658d666d8b0a747f8fe29a30e1c84d..79f767cc87608e2bd667d940d1e3cb5f0808816b 100644
+--- a/src/components/Button.tsx
++++ b/src/components/Button.tsx
+@@ -37,7 +37,7 @@ type Props = JSX.IntrinsicElements["button"] & VariantProps<typeof variance>;
+ const Button: Component<Props> = ({ variant, ...props }) => (
+   <button
+     role="button"
+-    class={cn(props.class, variance({ variant }))}
++    class={cn(props.class, variance({}))}
+     {...omit(["variant", "class"], props)}
+   />
+ );
+diff --git a/src/components/CellItem.tsx b/src/components/CellItem.tsx
+index d9039ac7a4ea9e5a8062096d3d4368f00261eea8..37563606b058a243d1286fc39e4effddc8896ef2 100644
+--- a/src/components/CellItem.tsx
++++ b/src/components/CellItem.tsx
+@@ -17,7 +17,7 @@ const CellItem: Component<Props> = (props) => {
+       onClick={props.onClick}
+       style={`background-color: ${
+         props.bgColor ?? DEAD_CELL_COLOR
+-      }; height: ${cellSize}; width: ${cellSize}; transition: background-color 0.1s ease-out;`}
++      }; height: ${cellSize}; width: ${cellSize}; transition: background-color 1s ease-out;`}
+       {...props}
+     />
+   );
+diff --git a/src/components/Controls.tsx b/src/components/Controls.tsx
+index 9f4adf63902c1dd348e065054f66531cf843eef6..93f833da40848c591cb335852cb69e43f6bb122e 100644
+--- a/src/components/Controls.tsx
++++ b/src/components/Controls.tsx
+@@ -15,7 +15,7 @@ type Props = {
+ 
+ const Controls: Component<Props> = (props) => {
+   function renderPreviousButton() {
+-    return props.isPlaying || !props.hasHistory ? (
++    return props.isPlaying && !props.hasHistory ? (
+       <Button variant="primary" disabled data-rb-control="previous">
+         <icons.PreviousIcon />
+       </Button>
+@@ -58,7 +58,7 @@ const Controls: Component<Props> = (props) => {
+       </Button>
+       {renderPreviousButton()}
+       {renderNextButton()}
+-      {props.isPlaying ? (
++      {!props.isPlaying ? (
+         <Button
+           onClick={props.onTogglePlay}
+           variant="destructive"
+diff --git a/src/components/Profiler.tsx b/src/components/Profiler.tsx
+index 8b1876ac8686e27c53f729bed3277dd9eba85bfd..10a0490d80f028d05e2fd48ca3379c00c43ac0e1 100644
+--- a/src/components/Profiler.tsx
++++ b/src/components/Profiler.tsx
+@@ -12,7 +12,7 @@ const Profiler: Component<Props> = (props) => {
+ 
+   function tick(initial: number) {
+     const current = props.frames;
+-    setFps(current - initial);
++    setFps(initial - current);
+ 
+     timeoutId = window.setTimeout(() => tick(current), 1000);
+   }
+diff --git a/src/lib/colors.ts b/src/lib/colors.ts
+index 01ae5f4fed39d0c6e849372f1a3a42a229216957..79aa0a58ec74a8e74adcaf51c2cbd49c15165b92 100644
+--- a/src/lib/colors.ts
++++ b/src/lib/colors.ts
+@@ -5,7 +5,7 @@ class HSLGenerator {
+   #cache: Record<string, string> = {};
+ 
+   constructor(hueLength = 100, options = { lightness: 0.6, saturation: 1 }) {
+-    this.#hueIncrement = 360 / Math.sqrt(hueLength ** 2 * 2);
++    this.#hueIncrement = 360 / (hueLength ** 2 * 2);
+     this.#saturation = options.saturation * 100;
+     this.#lightness = options.lightness * 100;
+     this.#cache = {};
+@@ -43,6 +43,6 @@ const hslGenerator = new HSLGenerator();
+ 
+ export const getRainbowHSL = (y: number, x: number, hueLength?: number) => {
+   return hueLength
+-    ? hslGenerator.withHue(hueLength).getColor(y, x)
++    ? hslGenerator.getColor(y, x)
+     : hslGenerator.getColor(y, x);
+ };
+diff --git a/src/lib/config.ts b/src/lib/config.ts
+index fe4f1f37be4db4aad391b58fb77848651ceaf0c5..906e45d509a5ccd4cdf1aa07a4e76a9fbdf17b8a 100644
+--- a/src/lib/config.ts
++++ b/src/lib/config.ts
+@@ -1,4 +1,4 @@
+-export const DEAD_CELL_COLOR = "#262626";
++export const DEAD_CELL_COLOR = "#3f3f46";
+ 
+ export const SIZES = [
+   {
+diff --git a/src/lib/game.ts b/src/lib/game.ts
+index 02a68878af4c88cf8272b67c1923d1aa21b6729e..982bb0a6414338fefdfcd00d35760a83573272be 100644
+--- a/src/lib/game.ts
++++ b/src/lib/game.ts
+@@ -28,7 +28,7 @@ export const getNeighbours = (grid: Grid, position: Point): number =>
+     .filter((x) => x.state()).length;
+ 
+ export const willLive = (isAlive: boolean, neighbours: number) =>
+-  isAlive ? neighbours >= 2 && neighbours <= 3 : neighbours === 3;
++  isAlive ? neighbours >= 2 && neighbours <= 4 : neighbours === 3;
+ 
+ export const nextState = (grid: Grid): Grid =>
+   grid.map((row, y) =>
+diff --git a/src/lib/utils.ts b/src/lib/utils.ts
+index 377058edf125aad37b49e5d81737680e464bf50f..2b93c2b25bfb65b87bf04d946bbe6ecbe36da00e 100644
+--- a/src/lib/utils.ts
++++ b/src/lib/utils.ts
+@@ -54,7 +54,7 @@ const nextDeterministicRandom = () => {
+ export const createRandomGrid = (size: number): Grid =>
+   createGrid(size).map((row) =>
+     row.map(() => ({
+-      state: () => nextDeterministicRandom() >= 0.8,
++      state: () => nextDeterministicRandom() >= 0.2,
+       toggle: () => {},
+     })),
+   );

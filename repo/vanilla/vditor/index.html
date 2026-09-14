@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vditor Repair Bench Harness</title>
+<link rel="stylesheet" href="/dist/index.css">
+<script src="/dist/js/i18n/en_US.js"></script>
+<script src="/dist/index.js"></script>
+<style>
+    body { margin: 0; padding: 16px; }
+    #vditorHost { width: 100%; }
+</style>
+</head>
+<body>
+<div id="vditorHost"></div>
+<script>
+(function () {
+    "use strict";
+    var params = new URLSearchParams(location.search);
+    var mode = params.get("mode") || "wysiwyg";
+    var theme = params.get("theme") || "classic";
+    var previewMode = params.get("previewMode") || "both";
+
+    // Fresh-read contract: the bridge is (re)installed on every render and DSL
+    // checkpoints must read window.__VDITOR__ / window.__BENCH__ anew in every
+    // evaluation - never cache a reference across interactions.
+    window.__BENCH__ = { ready: false, errors: [] };
+    window.addEventListener("error", function (event) {
+        window.__BENCH__.errors.push(String(event.message));
+    });
+    window.__VDITOR_INSTALL__ = function (instance) {
+        window.__VDITOR__ = instance;
+    };
+
+    var SEED = [
+        "# Bench Seed Heading",
+        "",
+        "Plain **bold** paragraph with a [link](https://example.com/bench).",
+        "",
+        "## Second Heading",
+        "",
+        "- alpha",
+        "- beta",
+        "",
+        "```js",
+        "const answer = 42;",
+        "```",
+        ""
+    ].join("\n");
+
+    function tagProbes(root) {
+        var probeMap = [
+            [".vditor-toolbar", "vd-toolbar"],
+            [".vditor-counter", "vd-counter"],
+            [".vditor-wysiwyg", "vd-wysiwyg"],
+            [".vditor-ir", "vd-ir"],
+            ["textarea.vditor-sv", "vd-sv"],
+            [".vditor-preview", "vd-preview"],
+            [".vditor-preview .vditor-reset", "vd-preview-content"],
+            [".vditor-outline", "vd-outline"],
+            [".vditor-tip", "vd-tip"],
+            [".vditor-resize", "vd-resize"]
+        ];
+        probeMap.forEach(function (entry) {
+            var el = root.querySelector(entry[0]);
+            if (el) {
+                el.setAttribute("data-testid", entry[1]);
+            }
+        });
+        root.querySelectorAll(".vditor-toolbar [data-type]").forEach(function (btn) {
+            var type = btn.getAttribute("data-type");
+            if (type) {
+                btn.setAttribute("data-testid", "vd-btn-" + type);
+            }
+        });
+    }
+
+    var vditor = new Vditor("vditorHost", {
+        cdn: location.origin,
+        height: 560,
+        mode: mode,
+        theme: theme,
+        cache: { enable: false },
+        counter: { enable: true, max: 600, type: "markdown" },
+        resize: { enable: true, position: "bottom" },
+        preview: { mode: previewMode, delay: 300 },
+        hint: {
+            delay: 200,
+            extend: [{
+                key: "@",
+                hint: function (value) {
+                    return ["bench-alpha", "bench-bravo", "bench-charlie"].filter(function (item) {
+                        return item.indexOf(value) === 0;
+                    }).map(function (item) {
+                        return { html: item, value: item };
+                    });
+                }
+            }]
+        },
+        toolbar: [
+            "emoji", "headings", "bold", "italic", "strike", "link", "|",
+            "list", "ordered-list", "check", "quote", "code", "inline-code", "table", "|",
+            "undo", "redo", "|",
+            "both", "edit-mode", "outline", "preview", "code-theme", "content-theme", "fullscreen"
+        ],
+        value: SEED,
+        after: function () {
+            var root = vditor.vditor.element;
+            root.setAttribute("data-testid", "vd-root");
+            tagProbes(root);
+            if (vditor.vditor && vditor.vditor.hint && vditor.vditor.hint.element) {
+                vditor.vditor.hint.element.setAttribute("data-testid", "vd-hint");
+            }
+            window.__VDITOR_INSTALL__(vditor);
+            window.__BENCH__.ready = true;
+        }
+    });
+})();
+</script>
+</body>
+</html>

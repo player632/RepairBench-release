@@ -1,0 +1,66 @@
+name: Nightly
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+jobs:
+  nighly:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Pack Chrome extension
+        run: cd ./dist && zip -r ../minimal-chrome-tab.zip ./
+      - name: Check nightly asset changes
+        id: release_check
+        run: |
+          set -euo pipefail
+          changed=true
+          if gh release view nightly >/dev/null 2>&1; then
+            tmp_download_dir="$(mktemp -d)"
+            if gh release download nightly --pattern "minimal-chrome-tab.zip" --dir "$tmp_download_dir" >/dev/null 2>&1; then
+              prev_dir="$(mktemp -d)"
+              curr_dir="$(mktemp -d)"
+              unzip -q "$tmp_download_dir/minimal-chrome-tab.zip" -d "$prev_dir"
+              unzip -q ./minimal-chrome-tab.zip -d "$curr_dir"
+              if diff -qr "$prev_dir" "$curr_dir" >/dev/null; then
+                changed=false
+              fi
+            fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update nightly release
+        if: steps.release_check.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Move the rolling tag to the tested commit so the release points at latest.
+          git tag -f nightly
+          git push -f origin nightly
+          if gh release view nightly >/dev/null 2>&1; then
+            # Editing the existing release is silent — no "release published" notification.
+            gh release upload nightly ./minimal-chrome-tab.zip --clobber
+          else
+            # First run only: creating the release notifies once, then stays in place.
+            gh release create nightly --prerelease --title "Nightly" --notes "The bleeding edge release." ./minimal-chrome-tab.zip
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Skip publishing
+        if: steps.release_check.outputs.changed == 'false'
+        run: echo "No changes detected; skipping release update."

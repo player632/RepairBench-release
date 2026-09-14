@@ -1,0 +1,940 @@
+diff --git a/app/auth/authentication.js b/app/auth/authentication.js
+index f1ab5b2..6e41ee4 100644
+--- a/app/auth/authentication.js
++++ b/app/auth/authentication.js
+@@ -1,3 +1,5 @@
++import {LocalApi} from "../local-api/emulator";
++
+ export class Authentication {
+     constructor() {
+         if (!Authentication.inst) {
+@@ -30,13 +32,9 @@ export class Authentication {
+             }
+         };
+         return new Promise((resolve, reject) => {
+-            fetch('https://conduit.productionready.io/api/users/login', {
+-                method: 'post',
+-                headers: {
+-                    'Accept': 'application/json, text/plain, */*',
+-                    'Content-Type': 'application/json'
+-                },
+-                body: JSON.stringify(user)
++            LocalApi.handle('POST', '/users/login', JSON.stringify(user), {
++                'Accept': 'application/json, text/plain, */*',
++                'Content-Type': 'application/json'
+             }).then(res=>res.json()).then(res => {
+                 if (res.user) {
+                     this.auth = res.user;
+diff --git a/app/components/comment-create.comp.js b/app/components/comment-create.comp.js
+index 1926f7f..8682a9a 100644
+--- a/app/components/comment-create.comp.js
++++ b/app/components/comment-create.comp.js
+@@ -1,10 +1,12 @@
+ import {Authentication} from "../auth/authentication";
++import {LOCAL_AVATAR_DATA_URI} from "../local-api/assets";
++
+ export class CommentCreateComponent extends HTMLElement {
+     constructor() {
+         super();
+         this.postComment = this.postComment.bind(this);
+         this.auth = Authentication.instance.auth;
+-        this.image = "https://static.productionready.io/images/smiley-cyrus.jpg";
++        this.image = LOCAL_AVATAR_DATA_URI;
+         if (this.auth) {
+             this.image = this.auth.image;
+         }
+@@ -47,7 +49,7 @@ export class CommentCreateComponent extends HTMLElement {
+             <textarea id="comment-value" class="form-control" placeholder="Write a comment..." rows="3"></textarea>
+           </div>
+           <div class="card-footer">
+-            <img src="${this.image ? this.image : 'https://static.productionready.io/images/smiley-cyrus.jpg'}" class="comment-author-img" />
++            <img src="${this.image ? this.image : LOCAL_AVATAR_DATA_URI}" class="comment-author-img" />
+             <button id="postCommentBtn" class="btn btn-sm btn-primary">
+              Post Comment
+             </button>
+@@ -71,4 +73,4 @@ export class CommentCreateComponent extends HTMLElement {
+ </div>`;
+     }
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/app/components/comments-container.comp.js b/app/components/comments-container.comp.js
+index af91964..d0a9db9 100644
+--- a/app/components/comments-container.comp.js
++++ b/app/components/comments-container.comp.js
+@@ -1,3 +1,5 @@
++import {Http} from "../http/http";
++
+ export class CommentsContainerComponent extends HTMLElement {
+     constructor() {
+         super();
+@@ -14,7 +16,7 @@ export class CommentsContainerComponent extends HTMLElement {
+ 
+     connectedCallback() {
+         this.slug = this.getAttribute('slug');
+-        fetch('https://conduit.productionready.io/api/articles/' + this.slug + '/comments')
++        Http.instance.doGet('/articles/' + this.slug + '/comments')
+             .then(response => response.json())
+             .then(r => {
+                 this.comments = r.comments;
+diff --git a/app/components/popular-tags.comp.js b/app/components/popular-tags.comp.js
+index a16382c..11d8451 100644
+--- a/app/components/popular-tags.comp.js
++++ b/app/components/popular-tags.comp.js
+@@ -1,5 +1,7 @@
+ "use strict";
+ 
++import {Http} from "../http/http";
++
+ export class PopularTagsComponent extends HTMLElement {
+ 
+     constructor() {
+@@ -26,7 +28,7 @@ export class PopularTagsComponent extends HTMLElement {
+     popularTags() {
+         let tagList = this.querySelector('#tagList');
+ 
+-        fetch('https://conduit.productionready.io/api/tags').then(function (response) {
++        Http.instance.doGet('/tags').then(function (response) {
+             return response.json();
+         }).then(r => {
+                 while (tagList.firstChild) {
+diff --git a/app/config.js b/app/config.js
+index 9988f65..4355ce3 100644
+--- a/app/config.js
++++ b/app/config.js
+@@ -1,3 +1,3 @@
+ export const config = {
+-    rest_url: 'https://api.realworld.io/api/'
++    rest_url: '/api/'
+ };
+diff --git a/app/http/http.js b/app/http/http.js
+index fe73acf..b5ea0e7 100644
+--- a/app/http/http.js
++++ b/app/http/http.js
+@@ -1,6 +1,7 @@
+ import {Authentication} from "../auth/authentication";
+ import {config} from "../config";
+ import {RouterHandler} from "../router/router-handler";
++import {LocalApi} from "../local-api/emulator";
+ 
+ export class Http {
+     constructor() {
+@@ -29,9 +30,7 @@ export class Http {
+                 headers['Authorization'] = 'Token ' + auth.token;
+             }
+         }
+-        return fetch(config.rest_url + path, {
+-            headers: headers
+-        });
++        return LocalApi.handle('GET', path, null, headers);
+     }
+ 
+     doPost(path, body, authentication) {
+@@ -54,11 +53,7 @@ export class Http {
+             }
+             headers['Authorization'] = 'Token ' + token;
+         }
+-        return fetch(config.rest_url + path, {
+-            headers: headers,
+-            method: 'POST',
+-            body: body
+-        }).then(response => {
++        return LocalApi.handle('POST', path, body, headers).then(response => {
+             if (response.status === 401) {
+                 RouterHandler.instance.router.navigate('#/login');
+             }
+@@ -86,11 +81,7 @@ export class Http {
+             }
+             headers['Authorization'] = 'Token ' + token;
+         }
+-        return fetch(config.rest_url + path, {
+-            headers: headers,
+-            method: 'PUT',
+-            body: body
+-        }).then(response => {
++        return LocalApi.handle('PUT', path, body, headers).then(response => {
+             if (response.status === 401) {
+                 RouterHandler.instance.router.navigate('#/login');
+             }
+@@ -113,10 +104,7 @@ export class Http {
+             headers['Authorization'] = 'Token ' + token;
+         }
+ 
+-        return fetch(config.rest_url + path, {
+-            headers: headers,
+-            method: 'DELETE'
+-        }).then(function (response) {
++        return LocalApi.handle('DELETE', path, null, headers).then(function (response) {
+             if (response.status === 401) {
+                 RouterHandler.instance.router.navigate('#/login');
+             }
+diff --git a/app/index.html b/app/index.html
+index 94f6db6..be539fc 100644
+--- a/app/index.html
++++ b/app/index.html
+@@ -3,12 +3,8 @@
+ <head>
+     <meta charset="utf-8">
+     <title>Conduit</title>
+-    <!-- Import Ionicon icons & Google Fonts our Bootstrap theme relies on -->
+-    <link href="//code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css" rel="stylesheet" type="text/css">
+-    <link href="//fonts.googleapis.com/css?family=Titillium+Web:700|Source+Serif+Pro:400,700|Merriweather+Sans:400,700|Source+Sans+Pro:400,300,600,700,300italic,400italic,600italic,700italic"
+-          rel="stylesheet" type="text/css">
+-    <!-- Import the custom Bootstrap 4 theme from our hosted CDN -->
+-    <link rel="stylesheet" href="//demo.productionready.io/main.css">
++    <!-- Local theme stylesheet (vendored; the app must stay fully offline) -->
++    <link rel="stylesheet" href="vendor/main.css">
+ </head>
+ <body>
+ <c-nav></c-nav>
+diff --git a/app/local-api/assets.js b/app/local-api/assets.js
+new file mode 100644
+index 0000000..90651da
+--- /dev/null
++++ b/app/local-api/assets.js
+@@ -0,0 +1,3 @@
++// Local avatar fallback. Replaces the remote
++// https://static.productionready.io/images/smiley-cyrus.jpg at every site.
++export const LOCAL_AVATAR_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' rx='18' fill='%23c8c8c8'/%3E%3Ccircle cx='13' cy='15' r='2' fill='%23555555'/%3E%3Ccircle cx='23' cy='15' r='2' fill='%23555555'/%3E%3Cpath d='M11 23 Q18 28 25 23' stroke='%23555555' stroke-width='2' fill='none'/%3E%3C/svg%3E";
+diff --git a/app/local-api/clock.js b/app/local-api/clock.js
+new file mode 100644
+index 0000000..075ebab
+--- /dev/null
++++ b/app/local-api/clock.js
+@@ -0,0 +1,17 @@
++// Deterministic monotonic clock for entities created at runtime. The base is
++// 2026-03-01T08:00:00Z, one minute per issued sequence value, so new
++// articles/comments always sort after every fixture entry and never collide.
++
++const BASE_MS = Date.parse("2026-03-01T08:00:00.000Z");
++const STEP_MS = 60000;
++
++let seq = 0;
++
++export function nextSeq() {
++    seq += 1;
++    return seq;
++}
++
++export function timestampFor(seqValue) {
++    return new Date(BASE_MS + seqValue * STEP_MS).toISOString();
++}
+diff --git a/app/local-api/emulator.js b/app/local-api/emulator.js
+new file mode 100644
+index 0000000..058c455
+--- /dev/null
++++ b/app/local-api/emulator.js
+@@ -0,0 +1,353 @@
++// In-browser emulator for the RealWorld API subset used by this app.
++// Contract parity with the original Http wrapper:
++//   - handle() resolves a Response-like object {status, json()} ;
++//   - auth is validated from the Authorization header ('Token ' + token),
++//     exactly as the wrapper sends it;
++//   - protected endpoints answer 401 {errors:{authorization:['is required']}}
++//     when the token is missing or unknown.
++// The emulator is defect-neutral: all injected defects live in original files.
++
++import { store } from "./store";
++import { nextSeq, timestampFor } from "./clock";
++
++function slugify(title) {
++    return String(title)
++        .toLowerCase()
++        .replace(/[^a-z0-9]+/g, "-")
++        .replace(/^-+|-+$/g, "");
++}
++
++function respond(status, body) {
++    return {
++        status: status,
++        json: function () {
++            return Promise.resolve(body);
++        }
++    };
++}
++
++const UNAUTHORIZED = { errors: { authorization: ["is required"] } };
++
++function parsePath(rawPath) {
++    let pathText = String(rawPath || "");
++    if (pathText.charAt(0) === "/") {
++        pathText = pathText.substring(1);
++    }
++    const query = {};
++    const qIndex = pathText.indexOf("?");
++    if (qIndex !== -1) {
++        const queryText = pathText.substring(qIndex + 1);
++        pathText = pathText.substring(0, qIndex);
++        queryText.split("&").forEach(pair => {
++            if (!pair) return;
++            const eq = pair.indexOf("=");
++            const key = eq === -1 ? pair : pair.substring(0, eq);
++            const value = eq === -1 ? "" : decodeURIComponent(pair.substring(eq + 1));
++            query[key] = value;
++        });
++    }
++    return {
++        segments: pathText.split("/").filter(s => s.length > 0),
++        query: query
++    };
++}
++
++function userByToken(headers) {
++    const header = headers && headers["Authorization"] ? String(headers["Authorization"]) : "";
++    if (header.indexOf("Token ") !== 0) {
++        return null;
++    }
++    const token = header.substring(6);
++    return store.db.users.find(u => u.token === token) || null;
++}
++
++function findUser(username) {
++    return store.db.users.find(u => u.username === username) || null;
++}
++
++function profilePayload(user, viewer) {
++    return {
++        username: user.username,
++        bio: user.bio,
++        image: user.image,
++        following: viewer ? viewer.following.indexOf(user.username) !== -1 : false
++    };
++}
++
++function userPayload(user) {
++    return {
++        email: user.email,
++        token: user.token,
++        username: user.username,
++        bio: user.bio,
++        image: user.image
++    };
++}
++
++function articlePayload(article, viewer) {
++    const author = findUser(article.authorUsername);
++    return {
++        slug: article.slug,
++        title: article.title,
++        description: article.description,
++        body: article.body,
++        tagList: article.tagList.slice(),
++        createdAt: article.createdAt,
++        updatedAt: article.updatedAt,
++        favorited: viewer ? viewer.favorites.indexOf(article.slug) !== -1 : false,
++        favoritesCount: article.favoritesCount,
++        author: profilePayload(author, viewer)
++    };
++}
++
++function commentPayload(comment, viewer) {
++    const author = findUser(comment.authorUsername);
++    return {
++        id: comment.id,
++        createdAt: comment.createdAt,
++        updatedAt: comment.createdAt,
++        body: comment.body,
++        author: profilePayload(author, viewer)
++    };
++}
++
++function queryArticles(query, viewer, extraFilter) {
++    let list = store.db.articles.filter(a => !extraFilter || extraFilter(a));
++    list.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
++    const articlesCount = list.length;
++    const limit = query.limit ? parseInt(query.limit, 10) : 20;
++    const offset = query.offset ? parseInt(query.offset, 10) : 0;
++    list = list.slice(offset, offset + limit);
++    return {
++        articles: list.map(a => articlePayload(a, viewer)),
++        articlesCount: articlesCount
++    };
++}
++
++function handle(method, rawPath, rawBody, headers) {
++    const parsed = parsePath(rawPath);
++    const seg = parsed.segments;
++    const query = parsed.query;
++    const viewer = userByToken(headers);
++
++    let parsedBody = null;
++    if (rawBody) {
++        try {
++            parsedBody = JSON.parse(rawBody);
++        } catch (e) {
++            parsedBody = null;
++        }
++    }
++
++    // ---------------- articles ----------------
++    if (seg[0] === "articles") {
++        // GET /articles/feed (authenticated)
++        if (seg.length === 2 && seg[1] === "feed" && method === "GET") {
++            if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++            const followed = viewer.following;
++            return Promise.resolve(respond(200, queryArticles(query, viewer,
++                a => followed.indexOf(a.authorUsername) !== -1)));
++        }
++
++        // GET /articles?limit&offset[&tag][&author][&favorited] (public)
++        if (seg.length === 1 && method === "GET") {
++            let filter = null;
++            if (query.tag) {
++                filter = a => a.tagList.indexOf(query.tag) !== -1;
++            } else if (query.author) {
++                filter = a => a.authorUsername === query.author;
++            } else if (query.favorited) {
++                const favoriter = findUser(query.favorited);
++                const favoritedSlugs = favoriter ? favoriter.favorites : [];
++                filter = a => favoritedSlugs.indexOf(a.slug) !== -1;
++            }
++            return Promise.resolve(respond(200, queryArticles(query, viewer, filter)));
++        }
++
++        // POST /articles (authenticated)
++        if (seg.length === 1 && method === "POST") {
++            if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++            const data = (parsedBody && parsedBody.article) || {};
++            const seq = nextSeq();
++            const now = timestampFor(seq);
++            const article = {
++                slug: slugify(data.title) + "-wlb" + seq,
++                title: data.title,
++                description: data.description,
++                body: data.body,
++                authorUsername: viewer.username,
++                tagList: data.tagList || [],
++                createdAt: now,
++                updatedAt: now,
++                favoritesCount: 0
++            };
++            store.db.articles.unshift(article);
++            store.persist();
++            return Promise.resolve(respond(200, { article: articlePayload(article, viewer) }));
++        }
++
++        const slug = seg[1];
++        const article = store.db.articles.find(a => a.slug === slug);
++
++        // GET/PUT /articles/:slug
++        if (seg.length === 2) {
++            if (method === "GET") {
++                if (!article) return Promise.resolve(respond(404, { errors: { article: ["not found"] } }));
++                return Promise.resolve(respond(200, { article: articlePayload(article, viewer) }));
++            }
++            if (method === "PUT") {
++                if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++                if (!article || article.authorUsername !== viewer.username) {
++                    return Promise.resolve(respond(403, { errors: { article: ["forbidden"] } }));
++                }
++                const data = (parsedBody && parsedBody.article) || {};
++                if (data.title !== undefined) article.title = data.title;
++                if (data.description !== undefined) article.description = data.description;
++                if (data.body !== undefined) article.body = data.body;
++                if (data.tagList !== undefined) article.tagList = data.tagList;
++                article.updatedAt = timestampFor(nextSeq());
++                store.persist();
++                return Promise.resolve(respond(200, { article: articlePayload(article, viewer) }));
++            }
++        }
++
++        // POST/DELETE /articles/:slug/favorite (authenticated)
++        if (seg.length === 3 && seg[2] === "favorite") {
++            if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++            if (!article) return Promise.resolve(respond(404, { errors: { article: ["not found"] } }));
++            const idx = viewer.favorites.indexOf(slug);
++            if (method === "POST") {
++                if (idx === -1) {
++                    viewer.favorites.push(slug);
++                    article.favoritesCount += 1;
++                }
++            } else if (method === "DELETE") {
++                if (idx !== -1) {
++                    viewer.favorites.splice(idx, 1);
++                    article.favoritesCount -= 1;
++                }
++            }
++            store.persist();
++            return Promise.resolve(respond(200, { article: articlePayload(article, viewer) }));
++        }
++
++        // GET/POST /articles/:slug/comments
++        if (seg.length === 3 && seg[2] === "comments") {
++            if (method === "GET") {
++                const comments = store.db.comments
++                    .filter(c => c.articleSlug === slug)
++                    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
++                    .map(c => commentPayload(c, viewer));
++                return Promise.resolve(respond(200, { comments: comments }));
++            }
++            if (method === "POST") {
++                if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++                const data = (parsedBody && parsedBody.comment) || {};
++                const seq = nextSeq();
++                const comment = {
++                    id: 1000 + seq,
++                    articleSlug: slug,
++                    body: data.body,
++                    authorUsername: viewer.username,
++                    createdAt: timestampFor(seq)
++                };
++                store.db.comments.push(comment);
++                store.persist();
++                return Promise.resolve(respond(200, { comment: commentPayload(comment, viewer) }));
++            }
++        }
++    }
++
++    // ---------------- tags ----------------
++    if (seg.length === 1 && seg[0] === "tags" && method === "GET") {
++        const tagSet = {};
++        store.db.articles.forEach(a => {
++            a.tagList.forEach(t => {
++                tagSet[t] = true;
++            });
++        });
++        return Promise.resolve(respond(200, { tags: Object.keys(tagSet).sort() }));
++    }
++
++    // ---------------- users ----------------
++    if (seg.length === 1 && seg[0] === "users" && method === "POST") {
++        const data = (parsedBody && parsedBody.user) || {};
++        const errors = {};
++        if (store.db.users.some(u => u.username === data.username)) {
++            errors.username = ["has already been taken"];
++        }
++        if (store.db.users.some(u => u.email === data.email)) {
++            errors.email = ["has already been taken"];
++        }
++        if (Object.keys(errors).length > 0) {
++            return Promise.resolve(respond(422, { errors: errors }));
++        }
++        const user = {
++            username: data.username,
++            email: data.email,
++            password: data.password,
++            token: "wlb-token-" + data.username,
++            bio: "",
++            image: "",
++            following: [],
++            favorites: []
++        };
++        store.db.users.push(user);
++        store.persist();
++        return Promise.resolve(respond(200, { user: userPayload(user) }));
++    }
++
++    if (seg.length === 2 && seg[0] === "users" && seg[1] === "login" && method === "POST") {
++        const data = (parsedBody && parsedBody.user) || {};
++        const user = store.db.users.find(u => u.email === data.email && u.password === data.password);
++        if (!user) {
++            return Promise.resolve(respond(401, { errors: { "email or password": ["is invalid"] } }));
++        }
++        return Promise.resolve(respond(200, { user: userPayload(user) }));
++    }
++
++    // ---------------- current user ----------------
++    if (seg.length === 1 && seg[0] === "user") {
++        if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++        if (method === "GET") {
++            return Promise.resolve(respond(200, { user: userPayload(viewer) }));
++        }
++        if (method === "PUT") {
++            const data = (parsedBody && parsedBody.user) || {};
++            if (data.email !== undefined) viewer.email = data.email;
++            if (data.username !== undefined) viewer.username = data.username;
++            if (data.bio !== undefined) viewer.bio = data.bio;
++            if (data.image !== undefined) viewer.image = data.image;
++            if (data.password) viewer.password = data.password;
++            store.persist();
++            return Promise.resolve(respond(200, { user: userPayload(viewer) }));
++        }
++    }
++
++    // ---------------- profiles ----------------
++    if (seg.length === 2 && seg[0] === "profiles" && method === "GET") {
++        const user = findUser(seg[1]);
++        if (!user) return Promise.resolve(respond(404, { errors: { profile: ["not found"] } }));
++        return Promise.resolve(respond(200, { profile: profilePayload(user, viewer) }));
++    }
++
++    if (seg.length === 3 && seg[0] === "profiles" && seg[2] === "follow") {
++        if (!viewer) return Promise.resolve(respond(401, UNAUTHORIZED));
++        const user = findUser(seg[1]);
++        if (!user) return Promise.resolve(respond(404, { errors: { profile: ["not found"] } }));
++        const idx = viewer.following.indexOf(user.username);
++        if (method === "POST") {
++            if (idx === -1) viewer.following.push(user.username);
++        } else if (method === "DELETE") {
++            if (idx !== -1) viewer.following.splice(idx, 1);
++        }
++        store.persist();
++        return Promise.resolve(respond(200, { profile: profilePayload(user, viewer) }));
++    }
++
++    return Promise.resolve(respond(404, { errors: { route: ["not found"] } }));
++}
++
++export const LocalApi = {
++    handle: handle
++};
+diff --git a/app/local-api/fixtures.js b/app/local-api/fixtures.js
+new file mode 100644
+index 0000000..dfd9008
+--- /dev/null
++++ b/app/local-api/fixtures.js
+@@ -0,0 +1,95 @@
++// Deterministic fixture database for the local API emulator (adaptation-owned).
++// All dates are 08:00Z so calendar dates stay stable for timezone offsets in
++// [-8h, +15h] (grading host runs UTC+8). Fresh browser contexts always boot
++// from these fixtures (see store.js).
++
++const MARKDOWN_BODY = [
++    "# Heading One",
++    "",
++    "Body paragraph with **bold** text and a [link](#local-anchor).",
++    "",
++    "- alpha item",
++    "- beta item"
++].join("\n");
++
++const USERS = [
++    {
++        username: "wlb-alice",
++        email: "alice@wlb.local",
++        password: "alice-pass-1",
++        token: "wlb-token-alice",
++        bio: "Fixture author one.",
++        image: "",
++        following: ["wlb-bob"],
++        favorites: ["wlb-art-02"]
++    },
++    {
++        username: "wlb-bob",
++        email: "bob@wlb.local",
++        password: "bob-pass-2",
++        token: "wlb-token-bob",
++        bio: "Fixture author two.",
++        image: "",
++        following: [],
++        favorites: ["wlb-art-01"]
++    }
++];
++
++// tag slots by (NN mod 5): 1->alpha 2->beta 3->gamma 4->delta 0->epsilon
++const TAG_BY_SLOT = {
++    1: "wlb-alpha",
++    2: "wlb-beta",
++    3: "wlb-gamma",
++    4: "wlb-delta",
++    0: "wlb-epsilon"
++};
++
++const FIRST_ARTICLE_MS = Date.UTC(2026, 1, 20, 8, 0, 0); // 2026-02-20T08:00:00Z
++const DAY_MS = 86400000;
++
++const ARTICLES = [];
++for (let nn = 1; nn <= 20; nn += 1) {
++    const padded = nn < 10 ? "0" + nn : String(nn);
++    const created = new Date(FIRST_ARTICLE_MS - (nn - 1) * DAY_MS).toISOString();
++    ARTICLES.push({
++        slug: "wlb-art-" + padded,
++        title: "Fixture Article " + padded,
++        description: "Description of fixture article " + padded + ".",
++        body: nn === 1 ? MARKDOWN_BODY : "Body of fixture article " + padded + ".",
++        authorUsername: nn % 2 === 1 ? "wlb-alice" : "wlb-bob",
++        tagList: [TAG_BY_SLOT[nn % 5]],
++        createdAt: created,
++        updatedAt: created,
++        favoritesCount: nn === 1 || nn === 2 ? 1 : 0
++    });
++}
++
++const COMMENTS = [
++    {
++        id: 101,
++        articleSlug: "wlb-art-01",
++        body: "Seed comment B",
++        authorUsername: "wlb-alice",
++        createdAt: "2026-02-19T08:00:00.000Z"
++    },
++    {
++        id: 102,
++        articleSlug: "wlb-art-01",
++        body: "Seed comment C",
++        authorUsername: "wlb-bob",
++        createdAt: "2026-02-17T08:00:00.000Z"
++    },
++    {
++        id: 103,
++        articleSlug: "wlb-art-02",
++        body: "Seed comment A",
++        authorUsername: "wlb-bob",
++        createdAt: "2026-02-18T08:00:00.000Z"
++    }
++];
++
++export const FIXTURES = {
++    users: USERS,
++    articles: ARTICLES,
++    comments: COMMENTS
++};
+diff --git a/app/local-api/store.js b/app/local-api/store.js
+new file mode 100644
+index 0000000..18f1021
+--- /dev/null
++++ b/app/local-api/store.js
+@@ -0,0 +1,34 @@
++import { FIXTURES } from "./fixtures";
++
++const STORAGE_KEY = "wlb-db-v1";
++
++function clone(value) {
++    return JSON.parse(JSON.stringify(value));
++}
++
++function hydrate() {
++    try {
++        const raw = localStorage.getItem(STORAGE_KEY);
++        if (raw) {
++            return JSON.parse(raw);
++        }
++    } catch (e) {
++        // corrupted storage falls back to fixtures
++    }
++    return clone(FIXTURES);
++}
++
++class Store {
++    constructor() {
++        this.db = hydrate();
++        // Boot-time write-back: the DB key must exist from a fresh guest boot
++        // onward (state-isolation checkpoints assert the exact key set).
++        this.persist();
++    }
++
++    persist() {
++        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
++    }
++}
++
++export const store = new Store();
+diff --git a/app/pages/article-preview.comp.js b/app/pages/article-preview.comp.js
+index b7ade22..9154647 100644
+--- a/app/pages/article-preview.comp.js
++++ b/app/pages/article-preview.comp.js
+@@ -1,4 +1,5 @@
+ import {Http} from "../http/http";
++import {LOCAL_AVATAR_DATA_URI} from "../local-api/assets";
+ var markdown = require("markdown").markdown;
+ 
+ class ArticlePreviewComponent extends HTMLElement {
+@@ -74,7 +75,7 @@ class ArticlePreviewComponent extends HTMLElement {
+     render() {
+         return `
+               <div class="article-page">
+-                <article-preview-banner following="" title="Loading .." username=".." date=".." image="https://static.productionready.io/images/smiley-cyrus.jpg" favorites-count="Loading ..." ></article-preview-banner>
++                <article-preview-banner following="" title="Loading .." username=".." date=".." image="${LOCAL_AVATAR_DATA_URI}" favorites-count="Loading ..." ></article-preview-banner>
+                 
+                   <div class="container page">
+                 
+diff --git a/app/pages/home.comp.js b/app/pages/home.comp.js
+index 09123ef..f13243b 100644
+--- a/app/pages/home.comp.js
++++ b/app/pages/home.comp.js
+@@ -3,6 +3,7 @@ import {ArticleComponent} from "../components/article.comp";
+ import {Authentication} from "../auth/authentication";
+ import {RouterHandler} from "../router/router-handler";
+ import {Http} from "../http/http";
++import {LOCAL_AVATAR_DATA_URI} from "../local-api/assets";
+ 
+ 
+ export class HomeComponent extends HTMLElement {
+@@ -118,7 +119,7 @@ export class HomeComponent extends HTMLElement {
+ 
+     generateArticle(article) {
+         if (!article.author.image) {
+-            article.author.image = 'https://static.productionready.io/images/smiley-cyrus.jpg';
++            article.author.image = LOCAL_AVATAR_DATA_URI;
+         }
+         let articleComponent = new ArticleComponent();
+         articleComponent.model = article;
+diff --git a/app/pages/profile.comp.js b/app/pages/profile.comp.js
+index 7f7a748..003be4e 100644
+--- a/app/pages/profile.comp.js
++++ b/app/pages/profile.comp.js
+@@ -1,6 +1,7 @@
+ import {ArticleComponent} from "../components/article.comp";
+ import {Http} from "../http/http";
+ import {Authentication} from "../auth/authentication";
++import {LOCAL_AVATAR_DATA_URI} from "../local-api/assets";
+ "use strict";
+ 
+ 
+@@ -75,7 +76,7 @@ export class ProfileComponent extends HTMLElement {
+ 
+     generateArticle(article) {
+         if (!article.author.image) {
+-            article.author.image = 'https://static.productionready.io/images/smiley-cyrus.jpg';
++            article.author.image = LOCAL_AVATAR_DATA_URI;
+         }
+         let articleComponent = new ArticleComponent();
+         articleComponent.model = article;
+diff --git a/app/vendor/main.css b/app/vendor/main.css
+new file mode 100644
+index 0000000..5b51e6d
+--- /dev/null
++++ b/app/vendor/main.css
+@@ -0,0 +1,106 @@
++/* app/vendor/main.css - local fallback theme (adaptation-owned).
++   demo.productionready.io/main.css was unreachable at build time (HTTP 404),
++   so this minimal stylesheet covers the Conduit layout classes used by the
++   app. Verification asserts text/attributes/counts, never pixels. */
++
++* { box-sizing: border-box; }
++body { margin: 0; font-family: "Source Sans Pro", "Segoe UI", Arial, sans-serif; color: #373a3c; line-height: 1.5; }
++a { color: #5cb85c; text-decoration: none; }
++a:hover { text-decoration: underline; }
++h1 { font-size: 1.6rem; margin: 0.5rem 0; }
++h4 { margin: 0.5rem 0; }
++p { margin: 0.5rem 0; }
++hr { border: 0; border-top: 1px solid rgba(0,0,0,.1); margin: 1rem 0; }
++
++.container { max-width: 960px; margin: 0 auto; padding: 0 15px; }
++.row { display: flex; flex-wrap: wrap; margin: 0 -15px; }
++.row > [class*="col-"] { padding: 0 15px; }
++.col-md-3 { flex: 0 0 25%; max-width: 25%; }
++.col-md-6 { flex: 0 0 50%; max-width: 50%; }
++.col-md-8 { flex: 0 0 66.6667%; max-width: 66.6667%; }
++.col-md-9 { flex: 0 0 75%; max-width: 75%; }
++.col-md-10 { flex: 0 0 83.3333%; max-width: 83.3333%; }
++.col-md-12, .col-xs-12 { flex: 0 0 100%; max-width: 100%; }
++.offset-md-1 { margin-left: 8.3333%; }
++.offset-md-2 { margin-left: 16.6667%; }
++.offset-md-3 { margin-left: 25%; }
++.pull-xs-right { float: right; }
++.text-xs-center { text-align: center; }
++
++.navbar { padding: 0.5rem 0; border-bottom: 1px solid rgba(0,0,0,.1); }
++.navbar .container { display: flex; align-items: center; }
++.navbar-brand { font-size: 1.3rem; font-weight: 700; color: #5cb85c !important; margin-right: 1rem; }
++.nav { display: flex; list-style: none; margin: 0; padding: 0; }
++.nav-item { margin-left: 0.25rem; }
++.nav-link { display: block; padding: 0.3rem 0.6rem; color: rgba(0,0,0,.3); }
++.nav-link.active { color: rgba(0,0,0,.8); }
++.nav-pills .nav-link { border: 1px solid transparent; border-radius: 0.25rem; }
++.nav-pills .nav-link.active { background: #5cb85c; color: #fff; }
++
++.banner { background: #333; color: #fff; padding: 1.5rem 0; margin-bottom: 1rem; }
++.banner h1 { text-shadow: 0 1px 2px rgba(0,0,0,.4); font-size: 2rem; margin: 0; }
++.banner p { color: #fff; margin: 0.25rem 0 0; }
++.article-page .banner { background: transparent; color: inherit; padding: 2rem 0 0; }
++.article-page .banner h1 { text-shadow: none; color: inherit; }
++
++.home-page { padding: 1rem 0; min-height: 50vh; }
++.article-preview { border: 1px solid rgba(0,0,0,.125); border-radius: 0.25rem; padding: 1rem; margin-bottom: 1rem; background: #fff; }
++.article-meta { display: flex; align-items: center; margin-bottom: 0.75rem; font-size: 0.85rem; color: #999; }
++.article-meta img { width: 32px; height: 32px; border-radius: 50%; margin-right: 0.5rem; }
++.article-meta .info { margin-right: 1rem; }
++.article-meta .author { display: block; color: #5cb85c; }
++.preview-link { display: block; color: inherit; }
++.preview-link h1 { font-size: 1.3rem; }
++.preview-link .tag-list { list-style: none; display: flex; flex-wrap: wrap; padding: 0; margin: 0.5rem 0 0; }
++.tag-default { display: inline-block; background: #818a91; color: #fff; border-radius: 10rem; padding: 0.1rem 0.6rem; font-size: 0.8rem; margin: 0.1rem; }
++.tag-pill { border-radius: 10rem; }
++.tag-outline { background: transparent; color: #aaa; border: 1px solid #ddd; }
++.tag-list .tag-pill i { cursor: pointer; margin-right: 0.25rem; }
++
++.btn { display: inline-block; padding: 0.35rem 0.75rem; font-size: 1rem; border-radius: 0.25rem; border: 1px solid transparent; cursor: pointer; background: transparent; color: #5cb85c; border-color: #5cb85c; }
++.btn-primary { background: #5cb85c; border-color: #5cb85c; color: #fff; }
++.btn-outline-primary { color: #5cb85c; border-color: #5cb85c; background: transparent; }
++.btn-outline-primary.active, .btn-outline-primary:hover { background: #5cb85c; color: #fff; }
++.btn-outline-secondary { color: #666; border-color: #ccc; }
++.btn-outline-danger { color: #b85c5c; border-color: #b85c5c; }
++.btn-sm { padding: 0.2rem 0.5rem; font-size: 0.85rem; }
++.btn-lg { padding: 0.6rem 1.2rem; font-size: 1.15rem; }
++.btn .counter { font-size: 0.8em; }
++
++.pagination { display: flex; list-style: none; padding: 0; margin: 1rem 0; }
++.page-item .page-link { display: block; padding: 0.3rem 0.7rem; border: 1px solid #ddd; color: #5cb85c; }
++.page-item.active .page-link { background: #5cb85c; color: #fff; border-color: #5cb85c; }
++
++.form-control { display: block; width: 100%; padding: 0.5rem 0.75rem; font-size: 1rem; border: 1px solid rgba(0,0,0,.15); border-radius: 0.25rem; margin-bottom: 0.25rem; }
++.form-control-lg { padding: 0.75rem 1rem; }
++fieldset { border: 0; padding: 0; margin: 0 0 0.75rem; }
++.form-group { margin-bottom: 1rem; }
++textarea.form-control { min-height: 6rem; }
++
++.card { border: 1px solid rgba(0,0,0,.125); border-radius: 0.25rem; margin-bottom: 1rem; background: #fff; }
++.card-block { padding: 1rem; }
++.card-footer { padding: 0.75rem 1rem; border-top: 1px solid rgba(0,0,0,.125); display: flex; align-items: center; }
++.comment-author-img { width: 24px; height: 24px; border-radius: 50%; margin-right: 0.5rem; }
++.comment-author { color: #5cb85c; }
++.date-posted { margin-left: auto; color: #999; font-size: 0.8rem; }
++
++.error-messages { list-style: none; padding: 0; margin: 0 0 1rem; color: #b85c5c; }
++.error-messages li { margin-bottom: 0.25rem; }
++
++.sidebar { background: #f3f3f3; border-radius: 0.25rem; padding: 0.75rem; }
++.sidebar p { font-weight: 700; margin-top: 0; }
++.sidebar .tag-list { display: flex; flex-wrap: wrap; }
++.sidebar .tag-default { background: #818a91; margin: 0.15rem; cursor: pointer; }
++
++.user-info { background: #f3f3f3; padding: 2rem 0; margin-bottom: 1rem; text-align: center; }
++.user-img { width: 64px; height: 64px; border-radius: 50%; }
++.action-btn { margin-top: 0.5rem; }
++
++.articles-toggle { margin-bottom: 1rem; }
++.feed-toggle { margin-bottom: 1rem; }
++.article-content { margin: 1.5rem 0; }
++.settings-page, .auth-page, .editor-page, .profile-page { padding: 1rem 0; }
++
++footer { border-top: 1px solid rgba(0,0,0,.1); padding: 1rem 0; margin-top: 2rem; background: #f3f3f3; }
++footer .logo-font { color: #5cb85c; font-weight: 700; margin-right: 0.5rem; }
++footer .attribution { color: #bbb; font-size: 0.85rem; }
+\ No newline at end of file
+diff --git a/package.json b/package.json
+index 8ac5c67..b100c01 100644
+--- a/package.json
++++ b/package.json
+@@ -11,7 +11,7 @@
+     "prod": "cp serve.js dist/serve.js && node serve.js"
+   },
+   "dependencies": {
+-    "@webcomponents/webcomponentsjs": "git://github.com/webcomponents/webcomponentsjs.git#v1.0.0",
++    "@webcomponents/webcomponentsjs": "1.0.0",
+     "markdown": "^0.5.0",
+     "navigo": "^7.1.2",
+     "whatwg-fetch": "^3.0.0"
+diff --git a/webpack.config.prod.js b/webpack.config.prod.js
+index 3bb61f1..6caf59c 100644
+--- a/webpack.config.prod.js
++++ b/webpack.config.prod.js
+@@ -1,6 +1,18 @@
+ const path = require('path');
+ const webpack = require('webpack');
+ const HtmlWebpackPlugin = require('html-webpack-plugin');
++const fs = require('fs');
++
++// Copy the vendored theme stylesheet next to the generated index.html.
++class CopyVendorCss {
++  apply(compiler) {
++    compiler.hooks.afterEmit.tap('CopyVendorCss', () => {
++      const outDir = path.join(__dirname, 'dist', 'vendor');
++      fs.mkdirSync(outDir, { recursive: true });
++      fs.copyFileSync(path.join(__dirname, 'app', 'vendor', 'main.css'), path.join(outDir, 'main.css'));
++    });
++  }
++}
+ 
+ module.exports = {
+   mode: 'production',
+@@ -28,6 +40,7 @@ module.exports = {
+     new HtmlWebpackPlugin({
+       template: './app/index.html'
+     }),
++    new CopyVendorCss(),
+     new webpack.IgnorePlugin(/vertx/)
+   ]
+ };

@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta content="text/html" http-equiv="content-type">
+  <meta charset="utf-8">
+  <title>Mini Padder - Game Controller Input Overlay</title>
+  <link rel="icon" type="image/x-icon" href="./favicon.ico">
+  <meta name="theme-color" content="#65849f">
+  
+  <meta property="og:title" content="Mini Padder - Game Controller Input Overlay">
+  <meta name="author" content="Dinir Nertan">
+  <meta name="description"        content="A simple and clear input overlay for your gamepads and joysticks. Show your moves in your stream and videos.">
+  <meta property="og:description" content="A simple and clear input overlay for your gamepads and joysticks. Show your moves in your stream and videos.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  
+  <meta name="viewport" content="width=1048">
+  
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/canvasContainer.css">
+  <link rel="stylesheet" href="./css/controlPanel.css">
+  <link rel="stylesheet" href="./css/OnBrowserTextEditor.css">
+  
+  <script src="./js/rb-pad-driver.js"></script>
+  <script src="./js/module/MPCommon.js"></script>
+  <script src="./js/module/ErrorLogCollector.js"></script>
+  <script src="./js/module/GamepadWatcher.js"></script>
+  <script src="./js/module/MappingManager.js"></script>
+  <script src="./js/module/GamepadRenderer.js"></script>
+  <script src="./js/module/OnBrowserTextEditor.js"></script>
+  <script src="./js/module/Updater.js"></script>
+  <script src="./js/interface/Mapper.js"></script>
+  <script src="./js/interface/controlPanel.js"></script>
+  <script src="./js/interface/MiniPadderUpdater.js"></script>
+</head>
+
+<body>
+<div id="canvas-container">
+  <div>
+  </div>
+  <div>
+  </div>
+  <div>
+  </div>
+  <div>
+  </div>
+</div>
+
+<div id="control-panel" class="control-panel" data-nosnippet>
+  <div class="option" data-name="layout">
+    <b>Gamepad Skin</b>
+    <label class="full-width inactive">
+      <span>Gamepad Name</span> is
+      <select data-testid="skin-select-0"></select><br>
+    </label>
+    <label class="full-width inactive">
+      <span>Gamepad Name</span> is
+      <select data-testid="skin-select-1"></select><br>
+    </label>
+    <label class="full-width inactive">
+      <span>Gamepad Name</span> is
+      <select data-testid="skin-select-2"></select><br>
+    </label>
+    <label class="full-width inactive">
+      <span>Gamepad Name</span> is
+      <select data-testid="skin-select-3"></select>
+    </label>
+    <span class="description">
+      Change skin for each gamepad kinds. Use Enter and Arrow keys if buggy.
+    </span>
+  </div>
+  <div class="option" data-name="custom-skin">
+    <label id="customSkinLoadArea" class="full-width">
+      <b>Import Custom Skin</b>
+      <span class="after-margin file-input-container inactive" data-testid="custom-skin-box">
+        <input class="visually-hidden"
+               type="file" accept="text/plain,application/json,image/*" multiple>
+        <button data-name="fileSelect">Choose Files</button>
+        <span id="currentlyLoadedCustomSkin">Nothing</span>
+        <button data-name="remove" class="align-right">X</button>
+      </span>
+      <span class="description">
+        Upload a json and up to 4 images for the custom skin.
+        New files replace old ones.<br>
+        Click anywhere in this area to bring the file select screen.
+      </span>
+    </label>
+  </div>
+  <div class="option half-width" data-name="displayWidth">
+    <label for="display-width-input"><b>Display Width</b></label>
+    <div style="width: 10em;">
+      <datalist class="hashmark" id="display-width-options">
+        <option value="1" label="1"></option>
+        <option value="2" label="2"></option>
+        <option value="3" label="4"></option>
+      </datalist>
+      <input class="allGamepad with-hashmark" id="display-width-input" type="range" list="display-width-options" min="1" max="3" step="1">
+    </div>
+    <span class="description">
+      <b>Crop Values</b><br>
+      <span class="monospace">Right 792, Bottom 456</span> (one pad)<br>
+      <span class="monospace" id="displaySizeDescriptor"></span> (all pads)
+    </span>
+  </div>
+  <div class="option half-width" data-name="fade">
+    <b>Fade-out</b>
+    <label>
+      <span>Time: </span>
+      <input type="text" data-testid="fade-input-0" placeholder="e.g. 0,8,12">
+    </label>
+    <span class="description">seconds for each fade-out level</span><br>
+    <label>
+      <span>Opacity: </span>
+      <input type="text" data-testid="fade-input-1" placeholder="e.g. 0.5,0.1,0">
+    </label>
+    <span class="description">transparency values for each level</span><br>
+    <label>
+      <span>Duration: </span>
+      <input type="text" data-testid="fade-input-2" placeholder="e.g. 1">
+    </label>
+    <span class="description">transition time of fade-out effect</span><br>
+    <span class="description">If you want to disable the effect, empty the Opacity input.</span>
+  </div>
+  <div></div>
+  <div class="option half-width" data-name="assignment">
+    <b>Input Assignment</b>
+    <div id="inputAssignment" class="after-margin button-container one-button-each-line">
+      <button class="inactive" data-testid="assign-slot">Gamepad Name</button>
+      <button class="inactive" data-testid="assign-slot">Gamepad Name</button>
+      <button class="inactive" data-testid="assign-slot">Gamepad Name</button>
+      <button class="inactive" data-testid="assign-slot">Gamepad Name</button>
+    </div>
+    <span class="description">
+      Make an input after pressing the button to start assigning.
+      Click the button again anytime to abort assigning.<br>
+      Assignments are saved per gamepad kind
+      and shared with others of the same kind.
+    </span>
+  </div>
+  <div class="option half-width" data-name="deadzone">
+    <b>Update Deadzone</b>
+    <div id="deadzoneUpdate" class="after-margin button-container two-buttons-each-line">
+      <div class="inactive">
+        <button data-position="left">0.000</button>
+        <button data-position="right">0.000</button>
+      </div>
+      <div class="inactive">
+        <button data-position="left">0.000</button>
+        <button data-position="right">0.000</button>
+      </div>
+      <div class="inactive">
+        <button data-position="left">0.000</button>
+        <button data-position="right">0.000</button>
+      </div>
+      <div class="inactive">
+        <button data-position="left">0.000</button>
+        <button data-position="right">0.000</button>
+      </div>
+    </div>
+    <span class="description">
+      New deadzone value will be applied at the moment of click.
+      Click again until the sticks are not anymore appearing by their own.<br>
+      If you don't use the fade-out, you might not need this option.
+    </span>
+  </div>
+  <div class="option top-divider" data-name="management">
+    <b>Export & Import</b>
+    <div class="after-margin button-container">
+      <button data-name="skinList">Skin List</button>
+      <button data-name="customSkin">Custom Skin</button>
+      <button data-name="mappings">Gamepad Mappings</button>
+      <button data-name="controlPanel">Control Panel Settings</button>
+      <button data-name="errorLog">Error Log</button>
+    </div>
+    <span class="description">
+      You can copy JSON of the data to save in a text file,
+      or paste from such text file and
+      store them in the local storage of this web page.
+    </span>
+  </div>
+  <div>
+    <div>
+      <b class="inline">Mini Padder</b><sub> <span class="version" data-testid="app-version"></span></sub>
+      &copy; 2022 Dinir Nertan
+    </div>
+    <address>
+      <span class="link-list">
+        <a class="head"
+           href="https://github.com/Dinir/mini-padder" target="_blank"
+        >Repository</a>
+        <a href="https://github.com/Dinir/mini-padder/wiki/How-to-Use" target="_blank"
+        >How to Use</a>
+        <a href="https://github.com/Dinir/mini-padder/wiki" target="_blank"
+        >Wiki</a>
+        <a href="https://github.com/Dinir/mini-padder/issues" target="_blank"
+        >Support</a>
+      </span>
+      <span class="align-right">
+        <a href="https://ko-fi.com/dinir" target="_blank">Donate</a>
+      </span>
+    </address>
+  </div>
+</div>
+
+<!-- dom references -->
+<script>
+  const canvasContainer = document.getElementById('canvas-container')
+  const canvas = Array.from(canvasContainer.querySelectorAll('div'))
+  const cpDom = document.getElementById('control-panel')
+  const cpDomSizeDescriptor = document.getElementById('displaySizeDescriptor')
+  const cpDomSkinUploader = {
+    dropArea: cpDom.querySelector('#customSkinLoadArea'),
+    input: cpDom.querySelector('#customSkinLoadArea input'),
+    button: cpDom.querySelector('#customSkinLoadArea button[data-name="fileSelect"]'),
+    indicator: document.getElementById('currentlyLoadedCustomSkin'),
+    removeButton: cpDom.querySelector('#customSkinLoadArea button[data-name="remove"]')
+  }
+</script>
+
+<!-- store error logs -->
+<script>
+  const Logger = new ErrorLogCollector()
+  // get gamepad viewer messages on console
+  window.addEventListener('MPMessage', e => {
+    const consoleString = e.detail.from + ': ' + e.detail.message
+    switch (e.detail.type) {
+      case 'error':
+        console.error(consoleString)
+        break
+      case 'warning':
+      case 'warn':
+        console.warn(consoleString)
+        break
+      default:
+        console.log(consoleString)
+        break
+    }
+    if (e.detail.type !== 'log') {
+      window.dispatchEvent(new CustomEvent('customErrorMessage', {
+        detail: e.detail.message instanceof Error ?
+          e.detail.message : consoleString
+      }))
+    }
+  })
+</script>
+
+<!-- default skin list -->
+<script>
+  const defaultSkins = new Map([
+    ['gamepad-xinput', 'XInput'],
+    ['gamepad-xinput_red', 'XInput (Red)'],
+    ['gamepad-xinput_orange', 'XInput (Orange)'],
+    ['gamepad-xinput_yellow', 'XInput (Yellow)'],
+    ['gamepad-xinput_lime', 'XInput (Lime)'],
+    ['gamepad-xinput_green', 'XInput (Green)'],
+    ['gamepad-xinput_mint', 'XInput (Mint)'],
+    ['gamepad-xinput_cyan', 'XInput (Cyan)'],
+    ['gamepad-xinput_azure', 'XInput (Azure)'],
+    ['gamepad-xinput_blue', 'XInput (Blue)'],
+    ['gamepad-xinput_violet', 'XInput (Violet)'],
+    ['gamepad-xinput_magenta', 'XInput (Magenta)'],
+    ['gamepad-xinput_rose', 'XInput (Rose)'],
+    ['gamepad-dinput', 'DInput'],
+    ['gamepad-dinput_red', 'DInput (Red)'],
+    ['gamepad-dinput_orange', 'DInput (Orange)'],
+    ['gamepad-dinput_yellow', 'DInput (Yellow)'],
+    ['gamepad-dinput_lime', 'DInput (Lime)'],
+    ['gamepad-dinput_green', 'DInput (Green)'],
+    ['gamepad-dinput_mint', 'DInput (Mint)'],
+    ['gamepad-dinput_cyan', 'DInput (Cyan)'],
+    ['gamepad-dinput_azure', 'DInput (Azure)'],
+    ['gamepad-dinput_blue', 'DInput (Blue)'],
+    ['gamepad-dinput_violet', 'DInput (Violet)'],
+    ['gamepad-dinput_magenta', 'DInput (Magenta)'],
+    ['gamepad-dinput_rose', 'DInput (Rose)'],
+    ['gamepad-disc', 'Disc D-pad'],
+    ['gamepad-disc_xinput', 'Disc D-pad (X Button)'],
+    ['gamepad-disc_dinput', 'Disc D-pad (D Button)'],
+    ['joystick-v', 'Joystick (V Layout)'],
+    ['joystick-v_x', 'Joystick (V Layout) (X Button)'],
+    ['joystick-v_d', 'Joystick (V Layout) (D Button)'],
+    ['joystick-a', 'Joystick (A Layout)'],
+    ['joystick-a_x', 'Joystick (A Layout) (X Button)'],
+    ['joystick-a_d', 'Joystick (A Layout) (D Button)'],
+    ['joystick-n', 'Joystick (N Layout)'],
+    ['joystick-n_x', 'Joystick (N Layout) (X Button)'],
+    ['joystick-n_d', 'Joystick (N Layout) (D Button)'],
+    ['joystick-m', 'Joystick (M Layout)'],
+    ['joystick-m_coloured', 'Joystick (M Layout) (Coloured)'],
+    ['megapad-rb_m', 'Mega Pad (RB M Layout)'],
+    ['megapad-rb_s', 'Mega Pad (RB S Layout)'],
+    ['megapad-8bd', 'Mega Pad (8BD Layout)'],
+    ['gamepad-super', 'Super Pad'],
+    ['gamepad-super_ls', 'Super Pad (LS)'],
+    ['gamepad-fcommander', 'F Commander'],
+    ['gamepad-fcommander_ls', 'F Commander (LS)'],
+    ['gamepad-fcommander_d', 'F Commander (D Button)'],
+    ['gamepad-fcommander_d_ls', 'F Commander (D Button) (LS)'],
+    ['gamepad-fcommander_d_t', 'F Commander (D Toggled)'],
+    ['gamepad-fcommander_d_t_ls', 'F Commander (D Toggled) (LS)'],
+    ['gamepad-fcommander_s', 'F Commander (S Button)'],
+    ['gamepad-fcommander_s_ls', 'F Commander (S Button) (LS)'],
+    ['gamepad-fcommander_s_t', 'F Commander (S Toggled)'],
+    ['gamepad-fcommander_s_t_ls', 'F Commander (S Toggled) (LS)'],
+    ['gamepad-fcommander_o', 'F Commander Octa'],
+    ['hbox', 'HBox'],
+    ['biker', 'Biker']
+  ])
+</script>
+
+<!-- class instances -->
+<script>
+  const Watcher = new GamepadWatcher()
+  const Mapper = new MappingInterface()
+  const Renderer = new GamepadRenderer(canvas, defaultSkins)
+  const Obte = new OnBrowserTextEditor()
+  Obte.dom.wrapper.classList.add('control-panel', 'inactive')
+  Obte.appendToParent(document.body, cpDom)
+</script>
+
+<!-- control panel -->
+<script>
+  const Cp = new ControlPanel({
+    layout: 'selectFromMap',
+    customSkin: 'uploader',
+    displayWidth: 'slider',
+    fadeout: 'textArray',
+    assignment: 'dynamicButtons',
+    deadzone: 'dynamicButtons',
+    management: 'buttons',
+  }, [
+    'gamepadconnected', 'gamepaddisconnected'
+  ], cpDom)
+  const cpPanel = Cp.panel
+
+  cpPanel.layout.assign(
+    cpDom.querySelector('div[data-name="layout"]'),
+    cpDom.querySelectorAll('div[data-name="layout"] label span'),
+    Renderer.skinList,
+    Renderer.changeSkinOfSlot,
+    Renderer.skinMapping
+  )
+
+  const customSkinLocalStorageKey = 'customskin'
+  cpPanel.customSkin.assign(
+    customSkinLocalStorageKey, {
+      input: cpDomSkinUploader.input,
+      dropArea: cpDomSkinUploader.dropArea,
+      visibleButton: cpDomSkinUploader.button,
+      removeButton: cpDomSkinUploader.removeButton
+    }, {
+      typeCheckFunction: typeString =>
+        typeString === 'text/plain' ? 'text' :
+        typeString === 'application/json' ? 'json' :
+        typeString.startsWith('image/') ? 'image' :
+        null
+      , indicatorUpdateCallback: text => {
+        cpDomSkinUploader.indicator.innerHTML = text
+        if (text && text.length) {
+          cpDomSkinUploader.indicator.parentElement.classList.remove('inactive')
+        } else {
+          cpDomSkinUploader.indicator.parentElement.classList.add('inactive')
+        }
+      }, customCallback: customSkinConfig => {
+        if (!customSkinConfig) {
+          Renderer.unloadSkin(customSkinLocalStorageKey)
+        } else {
+          Renderer.reloadSkin(customSkinLocalStorageKey)
+        
+          // refresh skin slots using the custom skin
+          for (let i = 0; i < Renderer.skinSlot.length; i++) {
+            const skinSlot = Renderer.skinSlot[i]
+            if (
+              !skinSlot ||
+              !skinSlot.hasOwnProperty('internalName') ||
+              skinSlot.internalName !== customSkinLocalStorageKey
+            ) { continue }
+            Renderer.changeSkinOfSlot(i, skinSlot.gamepadId)
+          }
+        }
+      
+        // update the layout select list
+        cpPanel.layout.updateItems(cpPanel.layout.list)
+      }
+    }
+  )
+
+  cpPanel.displayWidth.assign(
+    cpDom.querySelector('div[data-name="displayWidth"] input'), e => {
+      canvasContainer.dataset.width = e.target.value
+      const cropValue = [
+        document.body.offsetWidth - canvasContainer.offsetWidth,
+        document.body.offsetHeight - canvasContainer.offsetHeight
+      ]
+      const cropValueString =
+        cropValue.map(v => String(v).padStart(3, '\xa0'))
+      cpDomSizeDescriptor.innerHTML =
+        `Right ${cropValueString[0]}, Bottom ${cropValueString[1]}`
+    }
+  )
+
+  cpPanel.fadeout.assign(
+    cpDom.querySelector('div[data-name="fade"]'),
+    Renderer.setFadeoutOptionFromTextArray
+  )
+  if (!cpPanel.fadeout.panelValue) {
+    cpPanel.fadeout.receivePanelValue(
+      Renderer.getFadeoutOptionAsTextArray()
+    )
+    cpPanel.fadeout.updatePanelValue(
+      cpPanel.fadeout.panelValue
+    )
+  }
+  
+  cpPanel.assignment.assign(
+    document.getElementById('inputAssignment'),
+    Mapper.startAssignment
+  )
+  
+  cpPanel.deadzone.assign(
+    document.getElementById('deadzoneUpdate'),
+    function (gamepadIndex, name, gamepadId, side) {
+      if (!Watcher.gamepads[gamepadIndex]) { return false }
+  
+      const rawAxesData = Watcher.gamepads[gamepadIndex].axes
+      const mappedGamepadId = Mapper.getMappedGamepadId(gamepadId)
+      const stickMappings = Mapper.mappings[mappedGamepadId].sticks
+      const changeAxes = []
+      if (stickMappings[side]) {
+        changeAxes[stickMappings[side].x] =
+          { value: rawAxesData[stickMappings[side].x] }
+        changeAxes[stickMappings[side].y] =
+          { value: rawAxesData[stickMappings[side].y] }
+      }
+  
+      const updateDone =
+        MappingManager.setDeadzone(stickMappings[side], changeAxes)
+      if (updateDone) { Mapper.store() }
+    }, {
+      customButtons: ControlPanel.getIndexedElements(
+        document.getElementById('deadzoneUpdate'), 'div'
+      ),
+      customEventCallback: function (e) {
+        if (e.target.tagName !== 'BUTTON') return
+        
+        const indexedContainer = e.target.parentElement
+        this.callback(
+          indexedContainer.dataset.index,
+          indexedContainer.dataset.name,
+          indexedContainer.dataset.gamepadId,
+          e.target.dataset.position
+        )
+        
+        if (!this.updateLabel) return
+        this.buttons.forEach(v => {
+          if (v.classList.contains('inactive')) return
+          const id = {
+            name: v.dataset.name,
+            gamepadId: v.dataset.gamepadId
+          }
+          const labelPair = this.makeLabel(id)
+          this.changeLabel(
+            v.dataset.index, id, labelPair
+          )
+        })
+      },
+      makeLabel: function (idObj) {
+        const mappedGamepadId = Mapper.getMappedGamepadId(idObj.gamepadId)
+        const stickMappings = Mapper.mappings[mappedGamepadId].sticks
+        const getDeadzoneValueString = value => {
+          switch (value) {
+            case 0:
+            case 1:
+              return value + '.000'
+            case null:
+              return false
+            default:
+              if (isNaN(value)) {
+                return false
+              }
+              return String(value).padEnd(5, '0')
+          }
+        }
+        const labelPair = Array(2).fill('')
+        
+        if (stickMappings) {
+          const deadzoneStringLeft = getDeadzoneValueString(
+            stickMappings.left && stickMappings.left.deadzone
+          )
+          const deadzoneStringRight = getDeadzoneValueString(
+            stickMappings.right && stickMappings.right.deadzone
+          )
+          labelPair[0] +=
+            typeof deadzoneStringLeft === 'string' ?
+              deadzoneStringLeft : 'N/A'
+          labelPair[1] +=
+            typeof deadzoneStringRight === 'string' ?
+              deadzoneStringRight : 'N/A'
+        } else {
+          labelPair.fill('N/A')
+        }
+        
+        return labelPair
+      },
+      changeLabel: function (index, id, newTextPair) {
+        if (
+          newTextPair.constructor !== Array ||
+          !newTextPair.length
+        ) { return }
+        this.buttons[index].dataset.name = id ? id.name : ''
+        this.buttons[index].dataset.gamepadId = id ? id.gamepadId : ''
+        const buttonPair = Array.from(this.buttons[index].children)
+        buttonPair.forEach((b, i) => {
+          b.innerHTML = newTextPair[i]
+        })
+      },
+      updateLabel: true
+    }
+  )
+
+  cpPanel.management.assign(
+    cpDom.querySelector('div[data-name="management"]'), e => {
+      switch (e.target.dataset.name) {
+        case 'mappings':
+          Obte.changeFocus(
+            'Gamepad Mappings',
+            Mapper.mappings,
+            Mapper.import
+          )
+          break
+        case 'skinList':
+          Obte.changeFocus(
+            'Skin List',
+            Renderer.skinList,
+            Renderer.reloadSkins,
+            { type: 'map' }
+          )
+          break
+        case 'customSkin':
+          Obte.changeFocus(
+            'Custom Skin',
+            cpPanel.customSkin.loadedData,
+            cpPanel.customSkin.loadDataObj,
+            { nospace: true }
+          )
+          break
+        case 'controlPanel':
+          Obte.changeFocus(
+            'Control Panel Configuration',
+            Cp.panelValues,
+            Cp.setPanelValuesInBulk
+          )
+          break
+        case 'errorLog':
+          Obte.changeFocus(
+            'Error Log',
+            Logger.errorLog,
+            null,
+            { raw: true }
+          )
+          break
+      }
+    }
+  )
+</script>
+
+<!-- onload alerts -->
+<script>
+  if (Cp.browser !== 'Chromium') {
+    Cp.insertAlert(
+      'The page is running on a browser that isn\'t Chromium-based. ' +
+      'Even if features work, the overlay may suffer a low framerate.',
+      'caution'
+    )
+  }
+  
+  const inputAwaitAlertDom = Cp.insertAlert(
+    'Make an input from any connected gamepads!'
+  )
+  window.addEventListener('gamepadconnected', () => {
+    Cp.removeAlert(inputAwaitAlertDom)
+  }, {once: true})
+</script>
+
+<!-- updater -->
+<script>
+  const version = '5.4.4'
+  const MPUpdater = new MiniPadderUpdater(version, Cp.insertAlert.bind(Cp))
+  const versionDoms = document.getElementsByClassName('version')
+  const lastFoundVersion = Updater.getVersionString(MPUpdater.lastFoundVersion)
+  Array.from(versionDoms).forEach(v => v.innerHTML = lastFoundVersion)
+</script>
+
+<script src="./js/rb-pad-face.js"></script>
+</body>
+
+</html>

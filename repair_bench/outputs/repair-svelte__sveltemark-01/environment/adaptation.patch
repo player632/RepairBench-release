@@ -1,0 +1,200 @@
+diff --git a/src/lib/appState.svelte.ts b/src/lib/appState.svelte.ts
+index f5ccbb2..7ca15e4 100644
+--- a/src/lib/appState.svelte.ts
++++ b/src/lib/appState.svelte.ts
+@@ -457,9 +457,6 @@ function printCurrentFile(): void {
+         <html>
+         <head>
+             <title>${activeFile.title}</title>
+-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-dark.min.css">
+-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+             <style>
+                 body { 
+                     padding: 40px; 
+@@ -484,7 +481,6 @@ function printCurrentFile(): void {
+         </head>
+         <body class="markdown-body">
+             <div id="content">Loading...</div>
+-            <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+             <script>
+                 // Content will be injected
+             </script>
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index be22dd2..11dddf9 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -59,7 +59,7 @@
+ 	};
+ 
+ 	// Use absolute URL for OG image (social platforms need full URL)
+-	const ogImageUrl = `${siteConfig.url}/logo.webp`;
++	const ogImageUrl = '/logo.webp';
+ </script>
+ 
+ <svelte:head>
+@@ -94,7 +94,6 @@
+ 
+ 	<!-- Open Graph / Facebook -->
+ 	<meta property="og:type" content={siteConfig.type} />
+-	<meta property="og:url" content={siteConfig.url} />
+ 	<meta property="og:title" content={siteConfig.title} />
+ 	<meta property="og:description" content={siteConfig.description} />
+ 	<meta property="og:image" content={ogImageUrl} />
+@@ -110,7 +109,6 @@
+ 
+ 	<!-- Twitter -->
+ 	<meta name="twitter:card" content="summary_large_image" />
+-	<meta name="twitter:url" content={siteConfig.url} />
+ 	<meta name="twitter:title" content={siteConfig.title} />
+ 	<meta name="twitter:description" content={siteConfig.description} />
+ 	<meta name="twitter:image" content={ogImageUrl} />
+@@ -119,7 +117,6 @@
+ 	<meta name="twitter:creator" content={siteConfig.twitterHandle} />
+ 
+ 	<!-- Canonical URL -->
+-	<link rel="canonical" href={siteConfig.url} />
+ 
+ 	<!-- Base Structured Data / JSON-LD (can be overridden by specific pages) -->
+ 	{@html `<script type="application/ld+json">${JSON.stringify({
+@@ -160,20 +157,8 @@
+ 	<meta name="format-detection" content="telephone=no" />
+ 
+ 	<!-- Resource Hints for Performance -->
+-	<link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+-	<link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+-	<link rel="preconnect" href="https://fonts.googleapis.com" />
+-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+ 	<link rel="preload" href="/logo.webp" as="image" type="image/webp" />
+ 
+-	<!-- Google Fonts - Non-render-blocking -->
+-	{@html `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">`}
+-	<noscript>
+-		<link
+-			rel="stylesheet"
+-			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+-		/>
+-	</noscript>
+ </svelte:head>
+ 
+ <main>
+diff --git a/src/routes/+layout.ts b/src/routes/+layout.ts
+index 6c5703e..b447950 100644
+--- a/src/routes/+layout.ts
++++ b/src/routes/+layout.ts
+@@ -1,8 +1,14 @@
++// Static-hosting adaptation: prerender every route at build time so the
++// adapter-static output runs from a plain static server (no server runtime,
++// no /__data.json round-trips for the LayoutServerLoad data).
++export const prerender = true;
++
+ // Enable SSR for SEO (pages are rendered on each request)
+ export const ssr = true;
+ 
+ // Enable client-side rendering for SPA-like navigation after initial load
+ export const csr = true;
+ 
+-// Trailing slash handling for better URL consistency
+-export const trailingSlash = 'ignore';
++// Trailing slash handling: 'always' so prerendered pages land at <route>/index.html,
++// which plain static servers (dir -> dir/index.html) serve without extra mapping.
++export const trailingSlash = 'always';
+diff --git a/src/routes/app/+page.svelte b/src/routes/app/+page.svelte
+index e7c0315..098a589 100644
+--- a/src/routes/app/+page.svelte
++++ b/src/routes/app/+page.svelte
+@@ -539,9 +539,6 @@
+ 			<html>
+ 			<head>
+ 				<title>${appState.activeFile?.title || 'Document'}</title>
+-				<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+-				<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+-				<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+ 				<style>
+ 					body {
+ 						padding: 40px;
+diff --git a/src/routes/app/+page.ts b/src/routes/app/+page.ts
+index 01ae171..616e873 100644
+--- a/src/routes/app/+page.ts
++++ b/src/routes/app/+page.ts
+@@ -1,7 +1,8 @@
+ import type { PageLoad } from './$types';
+ 
+-// Disable prerendering for the app route - this is a dynamic application
+-export const prerender = false;
++// Static-hosting adaptation: app state lives client-side (IndexedDB/localStorage),
++// so the route prerenders like any other page.
++export const prerender = true;
+ 
+ // Enable server-side rendering for initial SEO but rely on CSR for functionality
+ // This ensures search engines can index the page while maintaining full client-side app capabilities
+diff --git a/svelte.config.cloudflare.js.bak b/svelte.config.cloudflare.js.bak
+new file mode 100644
+index 0000000..d4ae8fe
+--- /dev/null
++++ b/svelte.config.cloudflare.js.bak
+@@ -0,0 +1,16 @@
++import adapter from '@sveltejs/adapter-cloudflare';
++import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
++
++/** @type {import('@sveltejs/kit').Config} */
++const config = {
++	preprocess: vitePreprocess(),
++	kit: {
++		adapter: adapter(),
++		// Let SvelteKit bundle the service worker but we register manually
++		serviceWorker: {
++			register: false
++		}
++	}
++};
++
++export default config;
+diff --git a/svelte.config.js b/svelte.config.js
+index d4ae8fe..11d9471 100644
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,16 +1,27 @@
+-import adapter from '@sveltejs/adapter-cloudflare';
+-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+-
+-/** @type {import('@sveltejs/kit').Config} */
+-const config = {
+-	preprocess: vitePreprocess(),
+-	kit: {
+-		adapter: adapter(),
+-		// Let SvelteKit bundle the service worker but we register manually
+-		serviceWorker: {
+-			register: false
+-		}
+-	}
+-};
+-
+-export default config;
++import adapter from '@sveltejs/adapter-static';
++import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
++
++/** @type {import('@sveltejs/kit').Config} */
++const config = {
++	preprocess: vitePreprocess(),
++	kit: {
++		adapter: adapter({
++			pages: 'build',
++			assets: 'build',
++			fallback: 'fallback.html',
++			precompress: false,
++			strict: false
++		}),
++		// Let SvelteKit bundle the service worker but we register manually
++		serviceWorker: {
++			register: false
++		},
++		// Force prerendering for static build
++		prerender: {
++			entries: ['*']
++		}
++	}
++};
++
++export default config;
++

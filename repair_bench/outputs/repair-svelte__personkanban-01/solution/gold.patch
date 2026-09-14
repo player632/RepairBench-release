@@ -1,0 +1,155 @@
+diff --git a/src/SvelteKanban.svelte b/src/SvelteKanban.svelte
+index 44f84c7..2243a9f 100644
+--- a/src/SvelteKanban.svelte
++++ b/src/SvelteKanban.svelte
+@@ -384,6 +384,7 @@
+     $listCursor = $listCursor - 1;
+     if ($listCursor < 0) $listCursor = 0;
+     $itemCursor = -1;
++    $Kanban = $Kanban;
+   }
+ 
+   async function deleteCurrentItem() {
+@@ -549,7 +550,7 @@
+             //
+             // Goto the one state to capture the direction.
+             //
+-            keystate = 0;
++            keystate = 1;
+             break;
+ 
+           case "y":
+@@ -698,7 +699,7 @@
+           case "7":
+           case "8":
+           case "9":
+-            acc = $key;
++            acc = acc + $key;
+             break;
+ 
+           default:
+@@ -888,9 +889,9 @@
+ 
+   async function pasteItem() {
+     if ($copyBuffer.type === "pitem") {
+-      $Kanban.boards[$boardCursor].lists[$listCursor].items = JSON.parse(
+-        $copyBuffer.pref,
+-      );
++      $Kanban.boards[$boardCursor].lists[$listCursor].items = $Kanban.boards[
++        $boardCursor
++      ].lists[$listCursor].items.concat(JSON.parse($copyBuffer.pref));
+       await $Kanban.SaveKanbanBoards();
+     }
+   }
+@@ -919,7 +920,7 @@
+   }
+ 
+   function gotoBoard() {
+-    gotoBoardCommand(getAcc());
++    gotoBoardCommand(getAcc() - 1);
+   }
+ 
+   function moveBoard() {
+@@ -930,11 +931,11 @@
+     let newboardindex = $boardCursor;
+     switch (dir) {
+       case "l":
+-        newboardindex++;
++        newboardindex--;
+         break;
+ 
+       case "r":
+-        newboardindex--;
++        newboardindex++;
+         break;
+     }
+     if (newboardindex < 0) newboardindex = 0;
+diff --git a/src/components/List.svelte b/src/components/List.svelte
+index 156dfd3..b06bf55 100644
+--- a/src/components/List.svelte
++++ b/src/components/List.svelte
+@@ -93,9 +93,9 @@
+   }
+ 
+   async function addItem() {
+-    await $Kanban.addItem();
+     $boardCursor = boardcur;
+     $listCursor = listcur;
++    await $Kanban.addItem();
+   }
+ </script>
+ 
+diff --git a/src/components/VimInput.svelte b/src/components/VimInput.svelte
+index dec0752..1debad5 100644
+--- a/src/components/VimInput.svelte
++++ b/src/components/VimInput.svelte
+@@ -454,7 +454,7 @@
+                 inp.blur();
+                 break;
+               case "Escape":
+-                mode = "insert";
++                mode = "normal";
+                 break;
+               case "h":
+                 if (inp !== null) {
+diff --git a/src/stores/Kanban.js b/src/stores/Kanban.js
+index 6561de3..b3af9c1 100644
+--- a/src/stores/Kanban.js
++++ b/src/stores/Kanban.js
+@@ -73,7 +73,7 @@ const DefaultKanban = {
+     const mtboard = get(metaboard);
+     await App.WriteFile(
+       mtboard.metaboards[mtboard.cursor].loc,
+-      JSON.stringify({}),
++      JSON.stringify(this.boards),
+     );
+   },
+   LoadCurrentKanbanBoards: async function () {
+@@ -177,7 +177,7 @@ const DefaultKanban = {
+   deleteItem: async function () {
+     const bcur = get(boardCursor);
+     const lcur = get(listCursor);
+-    const icur = get(listCursor);
++    const icur = get(itemCursor);
+     this.boards[bcur].lists[lcur].items = this.boards[bcur].lists[
+       lcur
+     ].items.filter((_, index) => index !== icur);
+@@ -197,12 +197,12 @@ const DefaultKanban = {
+ 
+     const notes = this.boards[bcur].lists[lcur].items[icur].notes;
+     this.boards[bcur].lists[lcur].items[icur].notes = [
+-      ...notes,
+       {
+         date: date,
+         type: type,
+         info: msg,
+       },
++      ...notes,
+     ];
+     await this.SaveKanbanBoards();
+   },
+diff --git a/src/stores/preferences.js b/src/stores/preferences.js
+index 74ce45c..5ae8a30 100644
+--- a/src/stores/preferences.js
++++ b/src/stores/preferences.js
+@@ -8,7 +8,7 @@ const Pref = {
+   system: false,
+   preflocation: null,
+   prefs: {
+-    dateformat: "MM-dd-yyyy",
++    dateformat: "MM/dd/yyyy",
+     timeformat: "H:mm:ss",
+   },
+   SetPrefLocation: async function () {
+diff --git a/src/stores/registers.js b/src/stores/registers.js
+index a29cd52..8d360b8 100644
+--- a/src/stores/registers.js
++++ b/src/stores/registers.js
+@@ -7,6 +7,7 @@ export const registers = writable({
+     // 
+     // Save the key value pair in the registers.
+     //
++    this.regs = this.regs.filter((item) => item.key !== key);
+     this.regs.push({
+       key: key,
+       value: val,

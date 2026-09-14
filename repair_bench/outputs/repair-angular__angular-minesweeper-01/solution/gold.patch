@@ -1,0 +1,148 @@
+diff --git a/src/app/app.component.ts b/src/app/app.component.ts
+index 56d2392..b234a14 100644
+--- a/src/app/app.component.ts
++++ b/src/app/app.component.ts
+@@ -21,6 +21,12 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
+     @ViewChild('commandsModalButton') commandsModalButton: ElementRef;
+     @ViewChild('commandsButton') commandsButton: ElementRef;
+ 
++    @HostListener('document:keydown.escape') onKeydown() {
++        if (this._gameCommandsModalIsOpen$.value) {
++            this.toggleGameCommandsModal();
++        }
++    }
++
+     boardParsed: ICellStructure[][] = [];
+     gameLevel: GameLevelEnum;
+     gameStatus: string | undefined;
+@@ -109,12 +115,21 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
+                     }
+ 
+                     if (status == GameStatusEnum.Lost) {
++                        this._minesweeper.setEmojiFace(EmojisEnum.NauseatedFace);
+                     }
+                 }
+ 
+                 this.gameStatus = status;
+             });
+ 
++        this._minesweeper.remainingEmptyCells$
++            .pipe(
++                takeUntil(this._unsubscribeAll),
++                distinctUntilChanged(),
++                filter(length => length === 0)
++            )
++            .subscribe(() => this._minesweeper.setGameStatus(GameStatusEnum.Won));
++        
+         const allWindowSizeEvents$ = merge(
+             fromEvent(window, 'resize'),
+             fromEvent(window, 'orientationchange')
+@@ -179,11 +194,11 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
+ 
+     onOpenCell(clickedCellCoord: number[]): void {
+         if (this._minesweeper.isFirstClickInCell) {
+-            this._minesweeper.isFirstClickInCell = false;
+-            this._minesweeper.populateEmptyBoard(clickedCellCoord);
+             this._minesweeper.firstCellIsReadyToOpen$
+                 .pipe(take(1), delay(50))
+                 .subscribe(() => this._openCell(clickedCellCoord));
++            this._minesweeper.isFirstClickInCell = false;
++            this._minesweeper.populateEmptyBoard(clickedCellCoord);
+         }
+         else if (this._isCellOpened(clickedCellCoord)) {
+             this._manageCellsAround(clickedCellCoord);
+@@ -269,7 +284,9 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
+     }
+ 
+     private _startTimer(): void {
+-        this._timerSub = timer(0, 1000).subscribe((second: number) => this.timer = second);
++        if (!this._timerSub) {
++            this._timerSub = timer(0, 1000).subscribe((second: number) => this.timer = second);
++        }
+     }
+ 
+     private _unsubscribeTimer(): void {
+@@ -357,7 +374,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
+         if (!isNaN(cellType) && cellType != 0) {
+             let flagsAroundLength = this._getFlagsAroundLength(clickedCellCoord);
+ 
+-            if (cellType !== flagsAroundLength) {
++            if (cellType === flagsAroundLength) {
+                 this._openCellsAround(clickedCellCoord);
+             }
+         }
+diff --git a/src/app/cell/cell.component.ts b/src/app/cell/cell.component.ts
+index a0bd933..6ecd457 100644
+--- a/src/app/cell/cell.component.ts
++++ b/src/app/cell/cell.component.ts
+@@ -35,6 +35,7 @@ export class CellComponent implements OnChanges {
+             this._gameStatus$.unsubscribe();
+         }
+         if (changes && changes.cell && !changes.cell.isFirstChange() && this.cell.type === CellCodeEnum.Mine) {
++            this._gameStatusSubscription();
+         }
+     }
+ 
+@@ -76,7 +77,15 @@ export class CellComponent implements OnChanges {
+                 rangeEndIndex = (this.vertical * this.horizontal) - (this.horizontal - this.cell.x);
+             }
+ 
+-            this.focusCell.emit(this.cell.i);
++            if (nextCellIndex < rangeStartIndex) {
++                nextCellIndex = rangeEndIndex;
++            }
++
++            if (nextCellIndex > rangeEndIndex) {
++                nextCellIndex = rangeStartIndex;
++            }
++
++            this.focusCell.emit(nextCellIndex);
+ 
+         } else if (event.shiftKey && event.key === 'Tab') {
+             event.preventDefault();
+@@ -144,7 +153,7 @@ export class CellComponent implements OnChanges {
+             }
+         } else {
+             this.cell.label = CellCodeEnum.Flag;
+-            this.changeFlagsAvailable.emit(this._minesweeper.flagsAvailableValue + 1);
++            this.changeFlagsAvailable.emit(this._minesweeper.flagsAvailableValue - 1);
+             if (this.cell.type !== CellCodeEnum.Mine) {
+                 this._gameStatusSubscription();
+             }
+diff --git a/src/app/core/minesweeper.service.ts b/src/app/core/minesweeper.service.ts
+index e85f629..9c346f2 100644
+--- a/src/app/core/minesweeper.service.ts
++++ b/src/app/core/minesweeper.service.ts
+@@ -143,7 +143,7 @@ export class MinesweeperService {
+             let y = this._getRandomInt(0, this.vertical);
+             let x = this._getRandomInt(0, this.horizontal);
+ 
+-            if (!this._isAlreadyAMine([y, x])) {
++            if (!this._isAlreadyAMine([y, x]) && this._isDifferentFromFirstCellOpened([y, x], firstCellOpened)) {
+                 this._minesPositions.push([y, x]);
+             }
+         }
+diff --git a/src/app/core/score.service.ts b/src/app/core/score.service.ts
+index 615254d..874969e 100644
+--- a/src/app/core/score.service.ts
++++ b/src/app/core/score.service.ts
+@@ -25,6 +25,7 @@ export class ScoreService {
+         if (!bestScorePerGameLevel && bestScorePerGameLevel !== 0 || lastTime < bestScorePerGameLevel) {
+             const bestScores = this._getStoredBestScores();
+             bestScores[gameLevel] = lastTime;
++            this._updateBestScore(bestScores);
+         }
+     }
+ 
+diff --git a/src/app/shared/directives/press-event-indicator.directive.ts b/src/app/shared/directives/press-event-indicator.directive.ts
+index 8dfd1c0..d4e9515 100644
+--- a/src/app/shared/directives/press-event-indicator.directive.ts
++++ b/src/app/shared/directives/press-event-indicator.directive.ts
+@@ -17,6 +17,7 @@ export class PressEventIndicatorDirective {
+         this._renderer2.setAttribute(indicatorEl, 'style', `top: ${targetTop}px; left:${targetLeft}px; width: ${indicatorSize}px; height: ${indicatorSize}px`);
+         this._renderer2.appendChild(this._elementRef.nativeElement, indicatorEl);
+         setTimeout(() => this._renderer2.addClass(indicatorEl, 'active'), 100);
++        setTimeout(() => this._renderer2.removeChild(this._elementRef.nativeElement, indicatorEl), 400);        
+     }
+     
+     constructor(

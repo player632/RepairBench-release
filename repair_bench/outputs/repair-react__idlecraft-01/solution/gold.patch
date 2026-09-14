@@ -1,0 +1,146 @@
+diff --git b/src/App.tsx a/src/App.tsx
+index 58acbd1..a8e1d78 100644
+--- b/src/App.tsx
++++ a/src/App.tsx
+@@ -24,7 +24,7 @@ if ('indexedDB' in window) {
+     const open = window.indexedDB.open('IdleCraft', 1)
+ 
+     const save: (state: GameState) => void = throttle((state: GameState) => {
+-        if (state.gameId !== '') return
++        if (state.gameId === '') return
+         if (state.loading) return
+         const db = open.result
+         const transaction = db.transaction('save', 'readwrite')
+diff --git b/src/activities/activityFunctions.ts a/src/activities/activityFunctions.ts
+index f3175ed..adc0271 100644
+--- b/src/activities/activityFunctions.ts
++++ a/src/activities/activityFunctions.ts
+@@ -12,7 +12,7 @@ export function startNextActivity(state: GameState): void {
+         const currentAct = ActivityAdapter.select(state.activities, state.activityId)
+         if (currentAct === undefined) {
+             state.activityId = null
+-        } else if (currentAct.max >= state.activityDone) {
++        } else if (currentAct.max > state.activityDone) {
+             const actId = state.activityId
+             const start = activityStarters.getEx(currentAct.type)
+             const result = start(state, actId)
+diff --git b/src/activities/functions/endActivity.ts a/src/activities/functions/endActivity.ts
+index 43fd131..f0f4b50 100644
+--- b/src/activities/functions/endActivity.ts
++++ a/src/activities/functions/endActivity.ts
+@@ -7,6 +7,7 @@ import { removeActivityInt } from './removeActivity'
+ export function endActivity(state: GameState, activityId: string, result: ActivityStartResult) {
+     if (result === ActivityStartResult.NotPossible) removeActivityInt(state, activityId)
+     else if (result === ActivityStartResult.Ended) {
++        state.activityDone += 1
+         state.activityId = activityId
+         state.lastActivityDone = state.orderedActivities.indexOf(activityId)
+         const activity = ActivityAdapter.select(state.activities, activityId)
+diff --git b/src/activities/functions/makeAddActivity.ts a/src/activities/functions/makeAddActivity.ts
+index 1e55a0e..9f457af 100644
+--- b/src/activities/functions/makeAddActivity.ts
++++ a/src/activities/functions/makeAddActivity.ts
+@@ -1,4 +1,6 @@
+ import { AddActivityTypes, GameState } from '../../game/GameState'
++import { activityIcons, activityTitles } from '../../game/globals'
++import { addNotification } from '../../notification/addNotification'
+ import { getUniqueId } from '../../utils/getUniqueId'
+ import { ActivityAdapter, ActivityState, ActivityTypes } from '../ActivityState'
+ import { startNextActivity } from '../activityFunctions'
+@@ -48,9 +50,14 @@ export const makeAddActivity =
+ 
+         if (add) add(state, id)
+ 
++        const title = activityTitles.getEx(type)(state, id)
++        const iconId = activityIcons.getEx(type)(state, id)
++
++        addNotification(state.notifications, { title, iconId })
++
+         if (state.startActNow && state.activityId) stopActivity(state, state.activityId)
+ 
+-        if (state.orderedActivities.length === 0 || state.startActNow) {
++        if (state.orderedActivities.length === 1 || state.startActNow) {
+             state.activityId = id
+             startNextActivity(state)
+         }
+diff --git b/src/game/functions/regenerate.ts a/src/game/functions/regenerate.ts
+index d65a626..41b0e8c 100644
+--- b/src/game/functions/regenerate.ts
++++ a/src/game/functions/regenerate.ts
+@@ -8,7 +8,7 @@ export function regenerate(state: GameState, now: number): void {
+     const diff = now - state.lastRegen
+     if (diff < 0) return
+ 
+-    const toRegen = Math.floor((diff + 300) / 60e3)
++    const toRegen = Math.floor((diff + 300) / 1e3)
+     if (toRegen < 1) return
+ 
+     state.lastRegen = state.lastRegen + toRegen * 1e3
+diff --git b/src/msg/eng.tsx a/src/msg/eng.tsx
+index 78de44e..94e6547 100644
+--- b/src/msg/eng.tsx
++++ a/src/msg/eng.tsx
+@@ -49,7 +49,7 @@ export const engMsg: Msg = {
+     Plank: 'Plank',
+     Requirements: 'Requirements',
+     NoItems: "You don't possess anything!",
+-    NoActivities: "There aren't any activty",
++    NoActivities: "There aren't any activity",
+     Craft: 'Craft',
+     Sort: 'Sort',
+     Name: 'Name',
+diff --git b/src/timers/scaleTimers.ts a/src/timers/scaleTimers.ts
+index 130bf70..9e717e2 100644
+--- b/src/timers/scaleTimers.ts
++++ a/src/timers/scaleTimers.ts
+@@ -17,7 +17,7 @@ export const scaleTimerFromNow = (state: GameState, timerId: string, ratio: numb
+     const elapsed = Math.min(Math.max(state.now - timer.from, 0), full)
+     const progress = elapsed / full
+ 
+-    const newFull = Math.max(Math.round(full * ratio), 1)
++    const newFull = Math.max(Math.round(full / ratio), 1)
+     const newElapsed = Math.max(Math.round(newFull * progress), 0)
+ 
+     timer.from = state.now - newElapsed
+diff --git b/src/wood/functions/execWoodcutting.ts a/src/wood/functions/execWoodcutting.ts
+index eed0280..e4889a7 100644
+--- b/src/wood/functions/execWoodcutting.ts
++++ a/src/wood/functions/execWoodcutting.ts
+@@ -30,9 +30,9 @@ export const execWoodcutting = makeExecActivity((state: GameState, timer: Timer)
+     const damage = selectWoodcuttingDamage(state)
+     const res = cutTree(state, data.woodType, damage, state.location)
+ 
+-    addExp(state, ExpEnum.Woodcutting, damage * 1)
++    addExp(state, ExpEnum.Woodcutting, damage * 0.1)
+     if (res.cut) {
+-        addItem(state, `${data.woodType}Plank`, 1)
++        addItem(state, `${data.woodType}Log`, 1)
+     } else {
+         const time = selectWoodcuttingTime(state)
+         startTimer(state, time, ActivityTypes.Woodcutting, id)
+diff --git b/src/wood/functions/startWoodcutting.ts a/src/wood/functions/startWoodcutting.ts
+index 6b8c690..410a8e8 100644
+--- b/src/wood/functions/startWoodcutting.ts
++++ a/src/wood/functions/startWoodcutting.ts
+@@ -12,7 +12,7 @@ export const startWoodcutting = makeStartActivity((state: GameState, id: string)
+     if (!isWoodcutting(data)) throw new Error('Activity data is not for woodcutting')
+ 
+     if (!hasTrees(state, data.woodType)) {
+-        state.waitingTrees = null
++        state.waitingTrees = id
+         return ActivityStartResult.Started
+     }
+ 
+diff --git b/src/wood/ui/Woodcutting.tsx a/src/wood/ui/Woodcutting.tsx
+index 84fc001..5825934 100644
+--- b/src/wood/ui/Woodcutting.tsx
++++ a/src/wood/ui/Woodcutting.tsx
+@@ -104,7 +104,7 @@ const Cutting = memo(function Cutting() {
+     const forest = useGameStore(selectForestMemo)
+     const act = useGameStore(useCallback((s) => selectWoodcuttingId(s, woodType), [woodType]))
+     const defHp = useGameStore(useShallow(useCallback((state) => selectDefaultForest(state, woodType).hp, [woodType])))
+-    const hpPercent = 100 - Math.floor((100 * forest.hp) / defHp)
++    const hpPercent = Math.floor((100 * forest.hp) / defHp)
+     const time = useGameStore(selectWoodcuttingTime)
+     const damage = useGameStore(selectWoodcuttingDamage)
+ 

@@ -1,0 +1,627 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2020-2026 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+<template>
+    <div class="toolbox-wrapper">
+        <div class="component__header">
+            <h2
+                v-if="!collapsed"
+                v-tooltip="'(Tab)'"
+                class="component__title"
+            >{{ t( "tools" ) }}</h2>
+            <button
+                type="button"
+                class="component__header-button"
+                @click="collapsed = !collapsed"
+            >{{ collapsed ? '+' : '-' }}</button>
+        </div>
+        <!-- click.stop.prevent is to prevent document scroll on double tap on iOS -->
+        <div
+            v-if="!collapsed"
+            class="component__content"
+            @click.stop.prevent=""
+        >
+            <!-- background for --docked buttons (see mobile styles) -->
+            <div class="toolbox-wrapper--docked"></div>
+            <!-- history states -->
+            <button
+                type="button"
+                v-tooltip="t('undo')"
+                class="tool-button tool-button--docked"
+                :title="t('undo')"
+                data-testid="history-undo"
+                :disabled="!canUndo"
+                @click="undo()"
+            >
+                <img src="@/assets-inline/images/icon-history.svg" />
+            </button>
+            <button
+                type="button"
+                v-tooltip="t('redo')"
+                class="tool-button tool-button--docked tool-button--docked-second"
+                :title="t('redo')"
+                data-testid="history-redo"
+                :disabled="!canRedo"
+                @click="redo()"
+            >
+                <img src="@/assets-inline/images/icon-history.svg" class="mirrored" />
+            </button>
+            <!-- tools -->
+            <div class="tool-groups">
+                <div
+                    v-for="group in tools"
+                    :key="group.name"
+                    class="tool-group"
+                    :class="{
+                        'tool-group--multiple': group.tools.length > 1,
+                        'tool-group--expanded': mobileFocus === group.name,
+                    }"
+                >
+                    <button
+                        v-for="tool in group.tools"
+                        :key="tool.type"
+                        type="button"
+                        v-tooltip.right="`${t( tool.i18n )} (${tool.key})`"
+                        :title="t( tool.i18n )"
+                        class="tool-button"
+                        :class="{
+                            'active': activeTool === tool.type,
+                        }"
+                        :disabled="tool.disabled"
+                        :data-testid="`tool-${tool.type}`"
+                        @click="handleToolClick( tool )"
+                        @touchstart="handleToolTouchStart( $event, group.name )"
+                        @touchend="handleToolTouchEnd( $event, tool, group.name )"
+                    >
+                        <img
+                            :src="`./assets/icons/tool-${tool.icon}.svg`"
+                            @contextmenu.prevent
+                        />
+                    </button>
+                </div>
+            </div>
+            <div class="wrapper input color-panel">
+                <label class="color-panel__label">{{ t( "color" ) }}</label>
+                <component
+                    :is="colorPicker"
+                    v-model="color"
+                    v-tooltip="`${t('color')} (C)`"
+                    class="color-picker tool-button--docked tool-button--docked-color"
+                />
+            </div>
+        </div>
+    </div>
+</template>
+
+<script lang="ts">
+import { type Component, defineAsyncComponent } from "vue";
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
+import { type Layer } from "@/model/types/layer";
+import { LayerTypes } from "@/definitions/layer-types";
+import { PANEL_TOOL_OPTIONS } from "@/definitions/panel-types";
+import { addTextLayer } from "@/model/actions/layer-add-text-layer";
+import { isMobile } from "@/utils/environment-util";
+import ToolTypes, { canDraw } from "@/definitions/tool-types";
+import messages  from "./messages.json";
+
+type ToolGroups = {
+    name: string;
+    tools: ToolDef[];
+};
+
+type ToolDef = {
+    type: ToolTypes;
+    i18n: string;
+    icon: string;
+    key: string;
+    disabled: boolean;
+    hasOptions: boolean;
+};
+
+type TouchHistory = {
+    dragStartPointerX: number;
+    longPressed: boolean;
+    longPressTimeout?: ReturnType<typeof setTimeout>;
+};
+const LONG_PRESS_THRESHOLD_MS = 500;
+const DRAG_THRESHOLD_PX = 25;
+const touchHistory: TouchHistory = {
+    dragStartPointerX: 0,
+    longPressed: false,
+};
+
+const toolGroupCache = new Map<string, ToolTypes>;
+
+export default {
+    data: () => ({
+        mobileFocus: "", // which tool group is focused
+    }),
+    setup(): { t: ComposerTranslation } {
+        const { t } = useI18n({ messages });
+        return { t };
+    },
+    computed: {
+        ...mapState([
+            "toolboxOpened",
+            "openedPanels",
+        ]),
+        ...mapGetters([
+            "activeTool",
+            "activeDocument",
+            "activeLayer",
+            "activeLayerMask",
+            "activeColor",
+            "activeToolOptions",
+            "canUndo",
+            "canRedo",
+            "hasSelection",
+        ]),
+        colorPicker(): Promise<Component> {
+            // load async as this adds to the bundle size
+            return defineAsyncComponent({
+                loader: () => import( "@/components/ui/color-picker/color-picker.vue" )
+            });
+        },
+        collapsed: {
+            get(): boolean {
+                return !this.toolboxOpened;
+            },
+            set( value: boolean ): void {
+                this.setToolboxOpened( !value );
+            }
+        },
+        tools(): ToolGroups[] {
+            const drawable = !!this.activeLayer && canDraw( this.activeDocument, this.activeLayer, this.activeLayerMask );
+            const groups = [
+                {
+                    name: "pan",
+                    tools: [
+                        {
+                            type: ToolTypes.MOVE,
+                            i18n: "panViewport", icon: "move", key: "P / Space + Drag",
+                            disabled: !this.activeDocument, hasOptions: false
+                        },
+                        {
+                            type: ToolTypes.DRAG,
+                            i18n: "dragLayer", icon: "drag", key: "V",
+                            disabled: !this.activeDocument, hasOptions: false
+                        }
+                    ],
+                }, {
+                    name: "selection",
+                    tools: [
+                        {
+                            type: ToolTypes.SELECTION,
+                            i18n: "rectangularSelection", icon: "selection", key: "M",
+                            disabled: !this.activeDocument, hasOptions: false,
+                        },
+                        {
+                            type: ToolTypes.LASSO,
+                            i18n: "polygonalLasso", icon: "lasso", key: "L",
+                            disabled: !this.activeDocument, hasOptions: false,
+                        },
+                        {
+                            type: ToolTypes.WAND,
+                            i18n: "magicWand", icon: "wand", key: "W",
+                            disabled: !this.activeDocument, hasOptions: false,
+                        }
+                    ],
+                }, {
+                    name: "draw",
+                    tools: [
+                        {
+                            type: ToolTypes.FILL,
+                            i18n: "paintBucket", icon: "fill", key: "G",
+                            disabled: !drawable, hasOptions: false,
+                        },
+                        {
+                            type: ToolTypes.BRUSH,
+                            i18n: "brush", icon: "paintbrush", key: "B",
+                            disabled: !drawable, hasOptions: true,
+                        },
+                        {
+                            type: ToolTypes.ERASER,
+                            i18n: "eraser", icon: "eraser", key: "E",
+                            disabled: !drawable, hasOptions: true,
+                        },
+                        {
+                            type: ToolTypes.CLONE,
+                            i18n: "cloneStamp", icon: "stamp", key: "S",
+                            disabled: !drawable, hasOptions: true,
+                        },
+                    ],
+                }, {
+                    name: "text",
+                    tools: [
+                        {
+                            type: ToolTypes.TEXT,
+                            i18n: "text", icon: "text", key: "T",
+                            disabled: !this.activeDocument, hasOptions: true
+                        },
+                    ],
+                }, {
+                    name: "transform",
+                    tools: [
+                        {
+                            type: ToolTypes.SCALE,
+                            i18n: "scaleLayer", icon: "resize", key: "D",
+                            disabled: !this.activeLayer, hasOptions: true,
+                        },
+                        {
+                            type: ToolTypes.MIRROR,
+                            i18n: "mirrorLayer", icon: "mirror", key: "F",
+                            disabled: !this.activeLayer, hasOptions: true,
+                        },
+                        {
+                            type: ToolTypes.ROTATE,
+                            i18n: "rotateLayer", icon: "rotate", key: "R",
+                            disabled: !this.activeLayer, hasOptions: true,
+                        },
+                    ],
+                }, {
+                    name: "utilities",
+                        tools: [
+                        {
+                            type: ToolTypes.EYEDROPPER,
+                            i18n: "eyedropper", icon: "eyedropper", key: "I",
+                            disabled: !this.activeLayer, hasOptions: false,
+                        },
+                        {
+                            type: ToolTypes.ZOOM,
+                            i18n: "zoom", icon: "zoom", key: "Z",
+                            disabled: !this.activeDocument, hasOptions: true,
+                        },
+                    ],
+                },
+            ]
+
+            // on mobile we sort the groups so the active item appears on top (e.g. is always visible in collapsed menu)
+
+            if ( isMobile() ) {
+                return groups.map( group => {
+                    const lastTool = toolGroupCache.get( group.name );
+                    return {
+                        ...group,
+                        tools: group.tools.sort(( a, b ) => {
+                            if ( lastTool !== undefined ? lastTool=== a.type : a.type === this.activeTool ) {
+                                return -1;
+                            } else if ( lastTool !== undefined ? lastTool === b.type : b.type === this.activeTool ) {
+                                return 1;
+                            }
+                            return 0;
+                        }),
+                    };
+            });
+            }
+            return groups;
+        },
+        color: {
+            get(): string {
+                return this.activeColor;
+            },
+            set( value: string ): void {
+                this.setActiveColor( value );
+            },
+        },
+    },
+    watch: {
+        activeLayer( layer: Layer ): void {
+            if ( !layer ) {
+                return;
+            }
+            switch ( this.activeTool ) {
+                default:
+                    return;
+                case ToolTypes.TEXT:
+                    if ( layer.type !== LayerTypes.LAYER_TEXT ) {
+                        this.setTool( null );
+                    }
+                    break;
+            }
+        },
+    },
+    methods: {
+        ...mapMutations([
+            "addLayer",
+            "setActiveTool",
+            "setToolboxOpened",
+            "setOpenedPanel",
+            "setActiveColor",
+        ]),
+        ...mapActions([
+            "undo",
+            "redo",
+        ]),
+        handleToolClick({ type, hasOptions }: ToolDef ): void {
+            this.setTool( type );
+            // ensure that the tool options panel opens in case it was collapsed
+            if ( isMobile() && hasOptions && !this.openedPanels.includes( PANEL_TOOL_OPTIONS )) {
+                this.setOpenedPanel( PANEL_TOOL_OPTIONS );
+            }
+        },
+        handleToolTouchStart( event: TouchEvent, groupName: string ): void {
+            touchHistory.dragStartPointerX = event.touches[ 0 ].clientX;
+
+            clearTimeout( touchHistory.longPressTimeout );
+            touchHistory.longPressTimeout = setTimeout(() => {
+                touchHistory.longPressed = true;
+                this.mobileFocus = groupName;
+            }, LONG_PRESS_THRESHOLD_MS );
+        },
+        handleToolTouchEnd( event: TouchEvent, tool: ToolDef, groupName: string ): void {
+            clearTimeout( touchHistory.longPressTimeout );
+            
+            const dragEndPointerX = event.changedTouches[ 0 ].clientX;
+            const hasRemainedInPosition = Math.abs( touchHistory.dragStartPointerX - dragEndPointerX ) < DRAG_THRESHOLD_PX;
+            
+            if ( !touchHistory.longPressed && !tool.disabled && hasRemainedInPosition ) {
+                this.handleToolClick( tool );
+                toolGroupCache.set( groupName, tool.type );
+                this.mobileFocus = "";
+    
+                event.preventDefault();
+            }
+            touchHistory.longPressed = false;
+        },
+        setTool( tool: ToolTypes ): void {
+            if ( tool === ToolTypes.TEXT && this.activeLayer?.type !== LayerTypes.LAYER_TEXT ) {
+                addTextLayer( this.$store );
+            }
+            this.setActiveTool({ tool, document: this.activeDocument });
+        },
+    },
+};
+</script>
+
+<style lang="scss" scoped>
+@use "@/styles/_colors";
+@use "@/styles/_mixins";
+@use "@/styles/_variables";
+@use "@/styles/component";
+@use "@/styles/typography";
+@use "@/styles/ui";
+
+$toolButtonWidth: variables.$spacing-large;
+$toolButtonPadding: variables.$spacing-xxsmall;
+$toolGroupHeight: $toolButtonWidth + variables.$spacing-xsmall * 2;
+
+.toolbox-wrapper {
+    @include component.component();
+
+    @include mixins.large() {
+        .component__content {
+            margin-right: -(variables.$spacing-small);
+            padding: variables.$spacing-small variables.$spacing-small;
+        }
+
+        .component__header-button {
+            @include ui.closeButton();
+            top: variables.$spacing-small;
+            right: variables.$spacing-small;
+            width: 24px;
+        }
+
+        &--docked {
+            display: none;
+        }
+    }
+
+    // tall screens
+
+    @media screen and (min-height: variables.$ideal-height) {
+        @include mixins.large() {
+            width: 52px !important;
+        }
+
+        .component__title {
+            display: none;
+        }
+
+        .component__header-button {
+            top: variables.$spacing-small;
+            right: #{variables.$spacing-medium - variables.$spacing-xxsmall} !important;
+        }
+
+        .color-panel {
+            &__label {
+                display: none;
+            }
+            .color-picker {
+                text-indent: variables.$spacing-xsmall;
+            }
+        }
+    }
+}
+
+.tool-group {
+    display: initial;
+}
+
+.tool-button {
+    cursor: pointer;
+    border: none;
+    padding: variables.$spacing-xxsmall variables.$spacing-xsmall;
+    font-weight: bold;
+    background-color: colors.$color-bg;
+    @include typography.customFont();
+
+    img {
+        width: $toolButtonWidth;
+        height: $toolButtonWidth;
+        vertical-align: middle;
+        padding: $toolButtonPadding 0;
+
+        &.mirrored {
+            transform: scale(-1, 1);
+            transform-origin: center;
+        }
+    }
+
+    &:hover,
+    &.active {
+        background-color: colors.$color-1;
+        color: #FFF;
+    }
+
+    &:disabled {
+        background-color: transparent;
+        color: colors.$color-bg;
+        cursor: default;
+    }
+
+    @include mixins.large() {
+        margin: 0 variables.$spacing-xsmall variables.$spacing-xsmall 0;
+        display: inline-block;
+    }
+}
+
+.color-panel {
+    vertical-align: middle;
+    display: inline-flex;
+
+    @include mixins.large() {
+        border-top: 1px solid #444;
+        margin-top: variables.$spacing-small;
+        padding-top: variables.$spacing-medium - variables.$spacing-xsmall;
+    }
+
+    &__label {
+        margin: variables.$spacing-xxsmall variables.$spacing-small 0 variables.$spacing-xxsmall;
+        @include typography.customFont();
+        color: #FFF;
+    }
+}
+
+// mobile overrides
+
+@include mixins.mobile() {
+    .toolbox-wrapper {
+        z-index: 1;
+        // always expanded in mobile view (is small horizontal strip)
+        overflow-y: hidden;
+        overflow-x: auto;
+        // the mobile view supports --docked buttons. these have a fixed position whereas
+        // the remainder of the tools can scroll out of view. most-used buttons can be
+        // docked to remain accessible at all times
+        $dockedOffset: #{((variables.$spacing-medium + $toolButtonWidth) * 3) + variables.$spacing-small};
+        margin-left: $dockedOffset;
+        padding: 0 $dockedOffset 0 0;
+        box-sizing: border-box;
+        width: calc(100% - #{$dockedOffset});
+
+        // faux-background for the --docked buttons (as these are fixed we are adding
+        // a margin to the actual button container, upon scroll these buttons should
+        // disappear below this background so they are occluded by the --docked buttons)
+        &--docked {
+            position: fixed;
+            left: 0;
+            width: $dockedOffset;
+            height: variables.$menu-height - variables.$spacing-xsmall;
+            padding-right: variables.$spacing-xsmall;
+            background-image: colors.$color-window-bg;
+        }
+
+        .component__content {
+            width: max-content;
+            padding: variables.$spacing-xsmall 0 variables.$spacing-xxsmall variables.$spacing-xsmall;
+        }
+
+        .component__header,
+        .component__header-button,
+        .color-panel__label {
+            display: none;
+        }
+    }
+
+    .tool-groups {
+        display: flex;
+        flex-direction: row;
+        position: fixed;
+        overflow-x: auto;
+        overflow-y: hidden;
+        width: stretch; // allows horizontal scroll when items exceed available width
+    }
+
+    .tool-group {
+        display: inline-flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        height: $toolGroupHeight;
+        overflow-y: hidden;
+
+        &--multiple {
+            position: relative;
+            
+            &::after {
+                position: absolute;
+                right: #{variables.$spacing-small + variables.$spacing-xxsmall};
+                bottom: -( variables.$spacing-xxsmall );
+                content: "+";
+                color: colors.$color-lines-dark;
+            }
+        }
+
+        &--expanded {
+            height: auto;
+
+            .tool-button {
+                padding-bottom: variables.$spacing-small;
+
+                &:first-child {
+                    padding-bottom: variables.$spacing-xxsmall;
+                }
+            }
+
+            &.tool-group--multiple::after {
+                display: none;
+            }
+        }
+    }
+
+    .tool-button {
+        margin: 0 variables.$spacing-small 0 0;
+        display: inline;
+
+        &--docked {
+            position: fixed;
+            left: variables.$spacing-small;
+
+            &-second {
+                left: #{(variables.$spacing-small + $toolButtonWidth) + variables.$spacing-medium};
+            }
+
+            &-color {
+                left: #{((variables.$spacing-small + $toolButtonWidth) * 2 ) + variables.$spacing-large};
+
+                :first-child {
+                    margin-top: -#{variables.$spacing-small + variables.$spacing-xxsmall};
+                }
+            }
+        }
+    }
+
+    .color-panel {
+        margin-top: variables.$spacing-medium;
+    }
+}
+</style>

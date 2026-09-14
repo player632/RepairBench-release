@@ -1,0 +1,143 @@
+# @cherry-markdown/client
+
+## 0.5.1
+
+### Patch Changes
+
+- feat: 客户端增加导出长图、pdf、docs等能力 [@sunsonliu](https://github.com/sunsonliu)([#1859](https://github.com/Tencent/cherry-markdown/pull/1859))([`fe5dc16`](https://github.com/Tencent/cherry-markdown/commit/fe5dc168087c2aea8c958719a4f09b69b72865f9))
+- 修复 `brace-expansion` 受影响版本引起的高危拒绝服务漏洞（CVE-2026-13149），并将相关依赖链更新到已修复版本。 [@RSS1102](https://github.com/RSS1102)([#1849](https://github.com/Tencent/cherry-markdown/pull/1849))([`3903da1`](https://github.com/Tencent/cherry-markdown/commit/3903da1e818ba67886cfeddf64506cd123e61b5b))
+- fix: #1853 客户端导出word后出现弹窗无法关闭 [@sunsonliu](https://github.com/sunsonliu)([#1858](https://github.com/Tencent/cherry-markdown/pull/1858))([`4d81982`](https://github.com/Tencent/cherry-markdown/commit/4d819826468f44c918a1dd9879865aaf369a1205))
+- Updated dependencies [[`ba1f07c`](https://github.com/Tencent/cherry-markdown/commit/ba1f07ca2644142d415b16cfe432db335c44ca27), [`327877a`](https://github.com/Tencent/cherry-markdown/commit/327877ab1aab1e612660ca845b02dab0c646834e), [`72c7036`](https://github.com/Tencent/cherry-markdown/commit/72c7036d915ca88bccfb6cd1989ff3a17b1e348c), [`d302daa`](https://github.com/Tencent/cherry-markdown/commit/d302daa70a653a053dda363d7e04b95bdeed11ad)]:
+  - cherry-markdown@0.11.10
+
+## 0.5.0
+
+### Minor Changes
+
+- feat: 客户端增加所见即所得编辑模式 [@sunsonliu](https://github.com/sunsonliu)([#1835](https://github.com/Tencent/cherry-markdown/pull/1835))([`9931722`](https://github.com/Tencent/cherry-markdown/commit/9931722e36d53882c8ecf7e1e8af753105739240))
+
+### Patch Changes
+
+- style: 优化工具栏样式；同步时间线toolbar [@sunsonliu](https://github.com/sunsonliu)([#1834](https://github.com/Tencent/cherry-markdown/pull/1834))([`b773156`](https://github.com/Tencent/cherry-markdown/commit/b77315616c84369024a31b5d06b4786115b93d5e))
+- Updated dependencies [[`3dd4cb7`](https://github.com/Tencent/cherry-markdown/commit/3dd4cb72d26cd16cf324d271fe01e31d64f85ddf), [`03fe16e`](https://github.com/Tencent/cherry-markdown/commit/03fe16e16eacbcf2ba04b3262bc8ab152bf486be), [`d87f2e9`](https://github.com/Tencent/cherry-markdown/commit/d87f2e9bb11309cfd8566d8a9f84520a71ab44aa), [`6c4f049`](https://github.com/Tencent/cherry-markdown/commit/6c4f0490f8f189ddcad216dcb55ffc1d41c04786), [`3e9105c`](https://github.com/Tencent/cherry-markdown/commit/3e9105c47582b0e76045e301f2569b80c8ea163f), [`4100bfd`](https://github.com/Tencent/cherry-markdown/commit/4100bfd07019a48aa06ea982f5abeaccb67ab185)]:
+  - cherry-markdown@0.11.9
+
+## 0.4.1
+
+### Patch Changes
+
+- feat: 增加等宽字体，增加记忆能力 [@sunsonliu](https://github.com/sunsonliu)([#1809](https://github.com/Tencent/cherry-markdown/pull/1809))([`ad3195b`](https://github.com/Tencent/cherry-markdown/commit/ad3195bbd288ee9f7360f38eb8d242b2d2f2e7ef))
+- feat: 客户端增加设置图床功能 [@sunsonliu](https://github.com/sunsonliu)([#1810](https://github.com/Tencent/cherry-markdown/pull/1810))([`faa668e`](https://github.com/Tencent/cherry-markdown/commit/faa668e88c8209535d4f06c2cbe7392c19c2d6f7))
+- style: 优化样式，cherry的主题可以和编辑器主体联动 [@sunsonliu](https://github.com/sunsonliu)([#1805](https://github.com/Tencent/cherry-markdown/pull/1805))([`6d18071`](https://github.com/Tencent/cherry-markdown/commit/6d18071e3b0a1b43d923987f3a201df5f3b6e124))
+- Updated dependencies [[`6c06ae1`](https://github.com/Tencent/cherry-markdown/commit/6c06ae15e2af1d76d733238ff7e9d38750039d42), [`ea5e28e`](https://github.com/Tencent/cherry-markdown/commit/ea5e28eaead001447990a2655cf50f1b5a4dc7a5), [`d26584f`](https://github.com/Tencent/cherry-markdown/commit/d26584f0c534f6af9d408310a3f38e6d3d6458e5), [`1d5addf`](https://github.com/Tencent/cherry-markdown/commit/1d5addf70fa3ef27ec56fdb880876870e12d85c6), [`90f8a1d`](https://github.com/Tencent/cherry-markdown/commit/90f8a1d471d8c078f53e7fc58ece34a23cbe6281), [`8455fd5`](https://github.com/Tencent/cherry-markdown/commit/8455fd5a68b9d0a4ab0a8b50f238febd445c3340), [`b651278`](https://github.com/Tencent/cherry-markdown/commit/b651278206aab6fbf27a95b674b88f66b3735473), [`497170a`](https://github.com/Tencent/cherry-markdown/commit/497170a391e1cb84575182f8d6a8772f6b31b15c)]:
+  - cherry-markdown@0.11.7
+
+## 0.4.0
+
+### Minor Changes
+
+- refactor(client): 重构客户端 UI 并增强桌面端编辑体验。
+
+  - 将客户端 UI 组件从 Vue SFC 迁移为 TSX，保留原有文件、编辑器和状态栏行为。
+  - 优化左侧工作区，支持面板宽度拖拽、图标提示、当前文件定位、右键菜单视口避让和最近文件按日期分组。
+  - 支持在 macOS Finder 中通过文件关联打开 Markdown/Text 文件，并保留 Windows 双击打开文件能力。 [@sunsonliu](https://github.com/sunsonliu)([#1793](https://github.com/Tencent/cherry-markdown/pull/1793))([`a5f6841`](https://github.com/Tencent/cherry-markdown/commit/a5f684139c9d170187ff3c6078ebf1380fcaae31))
+
+### Patch Changes
+
+- feat(client): Windows 安装包新增：安装时注册系统自带的文本预览处理器，使资源管理器预览窗格可直接查看 `.md` / `.markdown` 源码
+  - 安装向导支持选择"为当前用户"或"为所有用户"安装，卸载时会一并清理
+  - 修复编辑区无法滚动的问题 [@sunsonliu](https://github.com/sunsonliu)([#1802](https://github.com/Tencent/cherry-markdown/pull/1802))([`01bfd3c`](https://github.com/Tencent/cherry-markdown/commit/01bfd3c7d8051bccbcd17cc4a26912331b0f0fc1))
+- feat(client): 客户端底部状态栏增加「专注模式」开关
+  - 在预览模式下支持点击图片查看大图
+  - 统一图标风格，优化悬浮目录样式
+  - 纯预览模式时，限制预览区的最大宽度为1024px [@sunsonliu](https://github.com/sunsonliu)([#1800](https://github.com/Tencent/cherry-markdown/pull/1800))([`9450c81`](https://github.com/Tencent/cherry-markdown/commit/9450c813fc289b9480f61bb560f6ede8767f2b83))
+- Updated dependencies [[`fd1e18d`](https://github.com/Tencent/cherry-markdown/commit/fd1e18d18f64e4c4cd7f2a98634ca3af2904fcd9)]:
+  - cherry-markdown@0.11.6
+
+## 0.3.1
+
+### Patch Changes
+
+- fix: 修复Windows下路径报错的问题 [@sunsonliu](https://github.com/sunsonliu)([#1759](https://github.com/Tencent/cherry-markdown/pull/1759))([`d800673`](https://github.com/Tencent/cherry-markdown/commit/d8006734c0cc848647917af33222a4604cfa3489))
+- Updated dependencies [[`1fe23d4`](https://github.com/Tencent/cherry-markdown/commit/1fe23d43a13ded6f0b15fbfbbc67dcd313a05771), [`135d212`](https://github.com/Tencent/cherry-markdown/commit/135d212fb929f532c5e8efbb8f0f9327a347c5a2), [`43495c4`](https://github.com/Tencent/cherry-markdown/commit/43495c4fb8c8b6a46871f5168a51dae366e395df), [`2a3407f`](https://github.com/Tencent/cherry-markdown/commit/2a3407fa5384f774aa5b6c15a9cf46f1e44fb50f), [`d004126`](https://github.com/Tencent/cherry-markdown/commit/d00412618d56f5e858253c2e8c5b9fec295ccdd9), [`572f204`](https://github.com/Tencent/cherry-markdown/commit/572f204571e25b4d80256075f1e3a6e8d12404fc)]:
+  - cherry-markdown@0.11.3
+
+## 0.3.0
+
+### Minor Changes
+
+- feat: 优化客户端功能，增加图表、公式、拼音等功能的支持 [@sunsonliu](https://github.com/sunsonliu)([#1548](https://github.com/Tencent/cherry-markdown/pull/1548))([`bc917e2`](https://github.com/Tencent/cherry-markdown/commit/bc917e25e63954afcff681b45e94f6c910e0dade))
+
+### Patch Changes
+
+- chore:`@types/node` 升级为 `@20.10.6` [@RSS1102](https://github.com/RSS1102)([#1579](https://github.com/Tencent/cherry-markdown/pull/1579))([`68017a4`](https://github.com/Tencent/cherry-markdown/commit/68017a4eec2705c33b4fd28dc7433097f4f06cc7))
+- Updated dependencies [[`03fa646`](https://github.com/Tencent/cherry-markdown/commit/03fa6462f692332521551f2e953ebac2146aec4a), [`253d68f`](https://github.com/Tencent/cherry-markdown/commit/253d68fc92f1de27511c02f955834186b874f119), [`b8e9459`](https://github.com/Tencent/cherry-markdown/commit/b8e9459466fd4e3e5a82bdf08c8b1830d962a576), [`c2b9e9e`](https://github.com/Tencent/cherry-markdown/commit/c2b9e9ea874c319015fae1829ec3896de772464e), [`c658115`](https://github.com/Tencent/cherry-markdown/commit/c6581157cb58db484d261368db70ea542d489b80), [`98d0f88`](https://github.com/Tencent/cherry-markdown/commit/98d0f888ed2c19486d0556a7ba94567e04412f0d), [`3d4e6bc`](https://github.com/Tencent/cherry-markdown/commit/3d4e6bca940da60c013e4a6d615a3ba908b89005), [`9965e48`](https://github.com/Tencent/cherry-markdown/commit/9965e487adf726a3abeae3be4f7a7b2964e54acb), [`b5dbc94`](https://github.com/Tencent/cherry-markdown/commit/b5dbc9418f5937ade270f061a9b2a975c71b7ecb), [`8ca33f1`](https://github.com/Tencent/cherry-markdown/commit/8ca33f18680d70867e1678e3beca6b1d57880111), [`77815d1`](https://github.com/Tencent/cherry-markdown/commit/77815d1327ec38e8a9517b6db841e6470053dd1e), [`b6d6460`](https://github.com/Tencent/cherry-markdown/commit/b6d64603f165c71f035b48791e02879125e0598f), [`1bbdab7`](https://github.com/Tencent/cherry-markdown/commit/1bbdab73fa775fadb62a27123a4613a0a67fb0e6), [`e51ae4b`](https://github.com/Tencent/cherry-markdown/commit/e51ae4b3c741d46f051bcd2db9017832b51b3499), [`1648dc0`](https://github.com/Tencent/cherry-markdown/commit/1648dc0359452383f34d10d21318411c28b91cc2), [`0a3a631`](https://github.com/Tencent/cherry-markdown/commit/0a3a631256f5f2c5ac91ac685f0c2ac8c693ab03), [`8f776a7`](https://github.com/Tencent/cherry-markdown/commit/8f776a716d644f225467eed16674d9cc1de2238d), [`76f156f`](https://github.com/Tencent/cherry-markdown/commit/76f156f7f58a9a34d5a80fd7af193d88e826a1fb), [`c1957e3`](https://github.com/Tencent/cherry-markdown/commit/c1957e3a269801c9f023a424c2ab153123c877a4), [`1e8308b`](https://github.com/Tencent/cherry-markdown/commit/1e8308b222631d6fd93d9c4d5d3e2442e4311107), [`f5e01e9`](https://github.com/Tencent/cherry-markdown/commit/f5e01e98be5bb73928c3377f3344b1b437b90128), [`e24d7cd`](https://github.com/Tencent/cherry-markdown/commit/e24d7cd40d97b75b23bea5b866695cf53117590c), [`68017a4`](https://github.com/Tencent/cherry-markdown/commit/68017a4eec2705c33b4fd28dc7433097f4f06cc7), [`1c2b4ea`](https://github.com/Tencent/cherry-markdown/commit/1c2b4eaf993f0f9db8e863b22211df5dec0153b5), [`827ccf9`](https://github.com/Tencent/cherry-markdown/commit/827ccf96f524d3a3e4668a50371be371f0a8feac), [`c0fbc35`](https://github.com/Tencent/cherry-markdown/commit/c0fbc35419a6027a282accac60e1ce023ad7860f), [`8b190e9`](https://github.com/Tencent/cherry-markdown/commit/8b190e9dcb622946085cb483dc7423fbec092ce5), [`3110c04`](https://github.com/Tencent/cherry-markdown/commit/3110c04de16182062fffb253b0b2060a82d633a8), [`d624871`](https://github.com/Tencent/cherry-markdown/commit/d624871c48aecc46abd4cd05100d0a50f0e2ff61), [`233834d`](https://github.com/Tencent/cherry-markdown/commit/233834d382b6bef9d6d2ecbb81e3b0137a4509e0), [`b559a2a`](https://github.com/Tencent/cherry-markdown/commit/b559a2aea06dd470e0fd5bacf24e40a25ecbcbb4), [`033ca64`](https://github.com/Tencent/cherry-markdown/commit/033ca6424f32b8e43a2817fb7adfae2809ff3c52), [`52c42da`](https://github.com/Tencent/cherry-markdown/commit/52c42da70c220c4e69f75c46403954d168b45633), [`755dd8c`](https://github.com/Tencent/cherry-markdown/commit/755dd8cd8cca0cc748384f51c64f9ce6ebcc9cb4), [`c15f54f`](https://github.com/Tencent/cherry-markdown/commit/c15f54f5c514c541f98e7f3fcd12d64b18c02788), [`5d2d0be`](https://github.com/Tencent/cherry-markdown/commit/5d2d0be8fe879775bb35359d660a69e205ea3467), [`2478d68`](https://github.com/Tencent/cherry-markdown/commit/2478d680595156078f555043fd3d9cb9d7ba7daf), [`e069033`](https://github.com/Tencent/cherry-markdown/commit/e069033baa5ed51ecbd0fa6bfe54b3f37f1f74e4), [`a275692`](https://github.com/Tencent/cherry-markdown/commit/a275692e01fb3f02055d1ec63fb363a3c8855222), [`54d8692`](https://github.com/Tencent/cherry-markdown/commit/54d8692bc09ee990e49fb76466065a8fc71c7201), [`ba77f20`](https://github.com/Tencent/cherry-markdown/commit/ba77f20660523832317a36efd2aa666b3688eaf2), [`6cf9b7d`](https://github.com/Tencent/cherry-markdown/commit/6cf9b7d359f2a460c19e024ec24048882f06ad0f), [`d098abd`](https://github.com/Tencent/cherry-markdown/commit/d098abd1b71c827a37a1d4e3fb2d18c7b3d66c9b), [`dbddcc0`](https://github.com/Tencent/cherry-markdown/commit/dbddcc08c096caf4c51b1dcb5f939551a0a7a6ce), [`8216cfb`](https://github.com/Tencent/cherry-markdown/commit/8216cfbe28e3501a6d55d2dd8a8ff1e34aee58ee)]:
+  - cherry-markdown@0.11.0
+
+## 0.2.1
+
+### Patch Changes
+
+- style: 优化代码块工具栏的定位逻辑，从px改成em [@sunsonliu](https://github.com/sunsonliu)([#1459](https://github.com/Tencent/cherry-markdown/pull/1459))([`3bf6f5d`](https://github.com/Tencent/cherry-markdown/commit/3bf6f5da80336a023b470817e17559d609353e0f))
+- feat: #1443 在目录里特殊标记被引用的标题 [@sunsonliu](https://github.com/sunsonliu)([#1472](https://github.com/Tencent/cherry-markdown/pull/1472))([`b32783e`](https://github.com/Tencent/cherry-markdown/commit/b32783e6e142168ee776d760629096368b2ce192))
+- feat: #1202 增加代码块外层容器自定义能力 [@sunsonliu](https://github.com/sunsonliu)([#1473](https://github.com/Tencent/cherry-markdown/pull/1473))([`92d029d`](https://github.com/Tencent/cherry-markdown/commit/92d029d33ba3e7039c0c3b0a8b074343946c7f52))
+- fix: #1461 #1453 精简流式渲染场景的dom结构，并优化流式渲染场景mermaid的渲染失败时的处理逻辑
+
+#### 在流式输出模式下(`global.flowSessionContext=true`)
+
+1. 当只有一个 mermaid 渲染的时候，如果在编辑过程中出现 mermaid 渲染错误，他会保持渲染上次渲染成功 mermaid svg。
+2. 当有多个 mermaid 渲染的时候，当在第一次渲染的时候，如果后面的 mermaid 渲染错误，他会往上寻找直到寻找渲染成功的 mermaid svg 进行替换当前渲染错误的 mermaid。
+
+#### 在流式输出模式下(`global.flowSessionContext=true`) && 没有开启预览区编辑(`enablePreviewerBubble=false`)
+
+1. 并且没有开启预览区编辑，则需要移除不再需要的dom ,这里针对流式输出的场景简单移除dom，是符合预期的，但这种精简 dom 的方案在需要 switchModel 时会有问题。 [@sunsonliu](https://github.com/sunsonliu)([#1463](https://github.com/Tencent/cherry-markdown/pull/1463))([`c1c306b`](https://github.com/Tencent/cherry-markdown/commit/c1c306b4eed2b5dce14ffc10eee2ae8e3c001bf8))
+
+- Updated dependencies [[`513eeb0`](https://github.com/Tencent/cherry-markdown/commit/513eeb04ec4d8da39148dbed15a3b1421891b6c0), [`6c4bb89`](https://github.com/Tencent/cherry-markdown/commit/6c4bb89a71b1386c3b165def51782cc85b383507), [`5909dcd`](https://github.com/Tencent/cherry-markdown/commit/5909dcd7084857f8c3105651fafc65438f26b5d9), [`630adc7`](https://github.com/Tencent/cherry-markdown/commit/630adc70b6a49a00c43697f4364a975a78604671), [`69e9a9b`](https://github.com/Tencent/cherry-markdown/commit/69e9a9b144b0def931448aabd0f2a39485e30cb8), [`3bf6f5d`](https://github.com/Tencent/cherry-markdown/commit/3bf6f5da80336a023b470817e17559d609353e0f), [`057fd27`](https://github.com/Tencent/cherry-markdown/commit/057fd27b0e495a85a57ccbc367b8c2b1364e96b1), [`c86824f`](https://github.com/Tencent/cherry-markdown/commit/c86824f5332be49c0d5b1d285ef82c21c65154fe), [`64a3278`](https://github.com/Tencent/cherry-markdown/commit/64a3278ee324bb30576bfaab53832640a4d5694b), [`c1c290f`](https://github.com/Tencent/cherry-markdown/commit/c1c290fbe159e4b2d2c0cd703b4f13e67ab6bb6c), [`d4dc15b`](https://github.com/Tencent/cherry-markdown/commit/d4dc15b627d84cadf5394dc7c797b1812d3e8e2d), [`04f5e62`](https://github.com/Tencent/cherry-markdown/commit/04f5e62958f35d5c3a1787e804a8598d6742aece), [`ba30ff5`](https://github.com/Tencent/cherry-markdown/commit/ba30ff5bb6bd44d22f0cbcc0a7db63dee9c4d385), [`9bee29a`](https://github.com/Tencent/cherry-markdown/commit/9bee29a1b9b3c2b4d34e7e08ccacfe63be4e4bfa), [`24971b5`](https://github.com/Tencent/cherry-markdown/commit/24971b5e7ca07d17138b8496fda90cf816426395), [`4c32ac7`](https://github.com/Tencent/cherry-markdown/commit/4c32ac74e6e6de754f849f2e256be8354e56da33), [`172c702`](https://github.com/Tencent/cherry-markdown/commit/172c7020ce69a6e2a3da02b26f72ae8515a68e9e), [`a067f37`](https://github.com/Tencent/cherry-markdown/commit/a067f3792a08c4cfd871a8733f592f4b66d23640), [`ffe38b8`](https://github.com/Tencent/cherry-markdown/commit/ffe38b8f1fc5f73f424b850c189f1fbc35c9abee), [`af30d00`](https://github.com/Tencent/cherry-markdown/commit/af30d00776a75b59ffac62881a68fe63ff8c43b0), [`92ebbc6`](https://github.com/Tencent/cherry-markdown/commit/92ebbc6f1ad42d8a5c86dc7d5796f27b9d160710), [`136f455`](https://github.com/Tencent/cherry-markdown/commit/136f455da75df1b79c7ff44fa71a21fbcf6da19a), [`d3140e2`](https://github.com/Tencent/cherry-markdown/commit/d3140e2fa4837f7100d93e4d0e81fd860c5a0882), [`b32783e`](https://github.com/Tencent/cherry-markdown/commit/b32783e6e142168ee776d760629096368b2ce192), [`8d340ab`](https://github.com/Tencent/cherry-markdown/commit/8d340ab34802e8988dbccb46796ce2645e5e9a30), [`5d0c02a`](https://github.com/Tencent/cherry-markdown/commit/5d0c02a8ddb5d7d944dc24edce2b2b00ccd648ed), [`a93564b`](https://github.com/Tencent/cherry-markdown/commit/a93564b44de8466777bc759c300d60dabc464a91), [`a142b3b`](https://github.com/Tencent/cherry-markdown/commit/a142b3be2ff71e51da78fb9c1c806ca11873e37e), [`594577f`](https://github.com/Tencent/cherry-markdown/commit/594577f5d2a02486f18c39d87e06036cd247254a), [`f9ed1ae`](https://github.com/Tencent/cherry-markdown/commit/f9ed1ae601bf69564c1d0b87e5cbd93ed28bed68), [`0b9b429`](https://github.com/Tencent/cherry-markdown/commit/0b9b4298ee74bdbf6f21756b079d804f6e701712), [`92d029d`](https://github.com/Tencent/cherry-markdown/commit/92d029d33ba3e7039c0c3b0a8b074343946c7f52), [`19534f4`](https://github.com/Tencent/cherry-markdown/commit/19534f4624980ffcc5a9e5c70c48ca3081077b1f), [`3434053`](https://github.com/Tencent/cherry-markdown/commit/34340531bc643dd1affc7e602a4b80f5ee55d2bc), [`c1c306b`](https://github.com/Tencent/cherry-markdown/commit/c1c306b4eed2b5dce14ffc10eee2ae8e3c001bf8), [`dd3d953`](https://github.com/Tencent/cherry-markdown/commit/dd3d953140511db2fe0e7eae1d8fcd069497cd54)]:
+  - cherry-markdown@0.10.1
+
+## 0.2.0
+
+### Minor Changes
+
+- feat(theme): set light theme as new default [#1314](https://github.com/Tencent/cherry-markdown/issues/1314)
+
+### 破坏性更改 BREAKING CHANGES
+
+- **移除 `light` 主题**：原有的 `light` 主题已被移除
+- **默认主题变更**： `light` 作为新的默认主题
+- **主题列表更新**：可用主题列表中不再包含 `light` 选项
+
+### 影响范围 IMPACTS
+
+- 对于原本在配置项 `themeSettings.mainTheme` 中使用 `light` 主题的用户，由于该主题不存在，将会导致主题切换为 `default` 主题，也即是原先的 `light` 主题
+
+### 迁移指南 MIGRATION GUIDE
+
+- 如果您之前使用了 `light` 主题：
+  1. 由于 `light` 以不存在，主题会自动切换为 `default` 主题
+  2. （可选）你可以选择将配置中的 `mainTheme: 'light'` 更改为 `mainTheme: 'default'`
+- 如果您之前自定义配置了 `light` 主题：
+  1. 您可以直接把原先 `light.scss` 文件底部的配置项迁移到 `default.scss` 文件中
+  2. （可选）你可以选择将配置中的 `mainTheme: 'light'` 更改为 `mainTheme: 'default'`
+- 如果您之前自定义配置了 `default` 主题：
+  1. 您可以将原先 `default.scss` 文件底部的配置项迁移到新的 `default.scss` 文件中 [@Seeridia](https://github.com/Seeridia)([#1322](https://github.com/Tencent/cherry-markdown/pull/1322))([`8444130`](https://github.com/Tencent/cherry-markdown/commit/84441304159cdb3458c7a89cf872297e316c7cb0))
+
+### Patch Changes
+
+- fix: #1299 增加自定义代码块语言配置 `all` [@sunsonliu](https://github.com/sunsonliu)([#1301](https://github.com/Tencent/cherry-markdown/pull/1301))([`4848b82`](https://github.com/Tencent/cherry-markdown/commit/4848b82f0af5da07ff58fab7b4eb80fa82d2a9d0))
+- chore: upgrade `eslint@8.x` and `prettier@3.x` [@RSS1102](https://github.com/RSS1102)([#1274](https://github.com/Tencent/cherry-markdown/pull/1274))([`489180c`](https://github.com/Tencent/cherry-markdown/commit/489180cbafa15cca368efc0a60450fd33b352bdd))
+- fix: #1281 表格添加列时，列的对齐方式取左边列（如有）的对齐方式，否则取右侧列的对齐方式 [@sunsonliu](https://github.com/sunsonliu)([#1294](https://github.com/Tencent/cherry-markdown/pull/1294))([`2584eda`](https://github.com/Tencent/cherry-markdown/commit/2584eda7e4749654815774d7da113a594c7495e0))
+- fix: #1280 修复选中标题选区被扩大的问题 [@sunsonliu](https://github.com/sunsonliu)([#1296](https://github.com/Tencent/cherry-markdown/pull/1296))([`f4cb828`](https://github.com/Tencent/cherry-markdown/commit/f4cb828dbf60506c36877e40bd9306b107aed7b3))
+- Updated dependencies [[`4848b82`](https://github.com/Tencent/cherry-markdown/commit/4848b82f0af5da07ff58fab7b4eb80fa82d2a9d0), [`489180c`](https://github.com/Tencent/cherry-markdown/commit/489180cbafa15cca368efc0a60450fd33b352bdd), [`1fc0b64`](https://github.com/Tencent/cherry-markdown/commit/1fc0b649339795323a72617dc72c198a4d90f92d), [`f928c5e`](https://github.com/Tencent/cherry-markdown/commit/f928c5e2d848d4690f3e6f2912e74a4da35e89cf), [`2584eda`](https://github.com/Tencent/cherry-markdown/commit/2584eda7e4749654815774d7da113a594c7495e0), [`50924e5`](https://github.com/Tencent/cherry-markdown/commit/50924e5c2705608565ad3f2b974a6a51ea855b97), [`9e9dfb5`](https://github.com/Tencent/cherry-markdown/commit/9e9dfb53df4040124f5814c6913af329a9830d69), [`0416a3a`](https://github.com/Tencent/cherry-markdown/commit/0416a3a87798c83cb612c768148f0b6f46668a27), [`3fb95d4`](https://github.com/Tencent/cherry-markdown/commit/3fb95d49790a3adb4eea35f1f9c9d14afd45ee8f), [`240c2a8`](https://github.com/Tencent/cherry-markdown/commit/240c2a83815165be37ddba509199a7af9c5276b1), [`27eb2f7`](https://github.com/Tencent/cherry-markdown/commit/27eb2f7db18e51c5545c08cc4364fe2ad61bea14), [`f418126`](https://github.com/Tencent/cherry-markdown/commit/f4181265e2596cf253d5fb8268f962f350080d01), [`fcd17a5`](https://github.com/Tencent/cherry-markdown/commit/fcd17a58286e1f9da21da4b252c4764856015615), [`556da12`](https://github.com/Tencent/cherry-markdown/commit/556da127e91492ca077b1169da7f5261fe50d36e), [`4df364a`](https://github.com/Tencent/cherry-markdown/commit/4df364a5ad0cff30841f8a52b25d7c886de80e43), [`030960d`](https://github.com/Tencent/cherry-markdown/commit/030960dca8b07658f5bef01b217e8b20195f5c3a), [`50fd3be`](https://github.com/Tencent/cherry-markdown/commit/50fd3be213405414308f87fdd76821d36db59e0a), [`2f8dada`](https://github.com/Tencent/cherry-markdown/commit/2f8dada195789110f7560af0a70c0a1dcd27d64c), [`0474c1a`](https://github.com/Tencent/cherry-markdown/commit/0474c1a8d2d170fd6c69bd55119ade907a73392a), [`c22731c`](https://github.com/Tencent/cherry-markdown/commit/c22731cf21a4805e356bbccd217f4b5ff5b28409), [`ba2c6df`](https://github.com/Tencent/cherry-markdown/commit/ba2c6df0715498b9e2a60a5ea067e0b988f77080), [`f4cb828`](https://github.com/Tencent/cherry-markdown/commit/f4cb828dbf60506c36877e40bd9306b107aed7b3), [`ccd7524`](https://github.com/Tencent/cherry-markdown/commit/ccd7524f1f549c62de86fc54a4d3142dd6e20ccb), [`8444130`](https://github.com/Tencent/cherry-markdown/commit/84441304159cdb3458c7a89cf872297e316c7cb0), [`19fc19b`](https://github.com/Tencent/cherry-markdown/commit/19fc19b9c8cf7095bb6542b901c2465a8ef6405e), [`1273e5e`](https://github.com/Tencent/cherry-markdown/commit/1273e5ea8e8c3d819950f4e84c6929acb0e4b764), [`5039a3e`](https://github.com/Tencent/cherry-markdown/commit/5039a3edc16d143d8dbb53fd63ae88d7b2bacec2), [`015295c`](https://github.com/Tencent/cherry-markdown/commit/015295cfa53ab81f40f0665a6fc65b42fdc5fc4b), [`bc7a046`](https://github.com/Tencent/cherry-markdown/commit/bc7a0469e1cd38257084f356d2434ac3e3b394fb), [`bcb596b`](https://github.com/Tencent/cherry-markdown/commit/bcb596b056cfb8dddb9d5e826d2cd6a1b181973b), [`85c9789`](https://github.com/Tencent/cherry-markdown/commit/85c9789b0ad4af0d0748c5e91199fc00384f7f36), [`3cec9c5`](https://github.com/Tencent/cherry-markdown/commit/3cec9c51cd8ddc09a88b476687866bbed2138be0), [`e688271`](https://github.com/Tencent/cherry-markdown/commit/e688271ddcd9678dcf561407579ed3e1b4629421), [`7f629e8`](https://github.com/Tencent/cherry-markdown/commit/7f629e816d1086ef2be47b1f5aa4734e02a60897), [`dc095ba`](https://github.com/Tencent/cherry-markdown/commit/dc095ba8930cffaf5993794fea61fcf43ad6d956), [`348c4f4`](https://github.com/Tencent/cherry-markdown/commit/348c4f4138ff3d9fe784be693534f38ea99f3ea3), [`0f8fa2e`](https://github.com/Tencent/cherry-markdown/commit/0f8fa2e590b1f4f5a5a6402e2dfd398a0384d379), [`df6b5f0`](https://github.com/Tencent/cherry-markdown/commit/df6b5f097817bff4a0526e32e76a4c368b4899cd), [`7439d42`](https://github.com/Tencent/cherry-markdown/commit/7439d42827c324a51c03ff84f15c4b13e30436f8)]:
+  - cherry-markdown@0.10.0
+
+## 0.1.1
+
+### Patch Changes
+
+- chore: add `export` function,export `pdf`、`html`、`md`、`png` [@RSS1102](https://github.com/RSS1102)([#1042](https://github.com/Tencent/cherry-markdown/pull/1042))([`c9b5a1b`](https://github.com/Tencent/cherry-markdown/commit/c9b5a1bea99dfe02a801259db4ec07cfdf07e1f1))
+- feat: add changesets [@RSS1102](https://github.com/RSS1102)([#1036](https://github.com/Tencent/cherry-markdown/pull/1036))([`640a177`](https://github.com/Tencent/cherry-markdown/commit/640a17716fa69fa2ffdb8fe5f684c2db831072b0))
+- ci: beautify release message [@RSS1102](https://github.com/RSS1102)([#1057](https://github.com/Tencent/cherry-markdown/pull/1057))([`f6bbd88`](https://github.com/Tencent/cherry-markdown/commit/f6bbd88a630be70f1a22a3d2e909ad591df290fc))
+- ci: 使用 `changeset` 进行发布流程自动化 [@RSS1102](https://github.com/RSS1102)([#1040](https://github.com/Tencent/cherry-markdown/pull/1040))([`a61dde9`](https://github.com/Tencent/cherry-markdown/commit/a61dde968649ea42622f9016e59a75fbccb5d816))
+- Updated dependencies [[`63dfbd3`](https://github.com/Tencent/cherry-markdown/commit/63dfbd3c48d9f86b34a7fa52d934433df137dfe2), [`67eb094`](https://github.com/Tencent/cherry-markdown/commit/67eb094a389d8620246db5c116bafc90299d4c9f), [`321c388`](https://github.com/Tencent/cherry-markdown/commit/321c388f0f52f096a2eb8b19238a214925744176), [`eb3e4b4`](https://github.com/Tencent/cherry-markdown/commit/eb3e4b47811cc342d310bd62ee7f9089709b9b61), [`b72fb02`](https://github.com/Tencent/cherry-markdown/commit/b72fb02a4c8fca988d142eedc11798353ce93e46), [`b0fba64`](https://github.com/Tencent/cherry-markdown/commit/b0fba640a1453b7543149ea83bb7adeea6648e5a), [`640a177`](https://github.com/Tencent/cherry-markdown/commit/640a17716fa69fa2ffdb8fe5f684c2db831072b0), [`67778d1`](https://github.com/Tencent/cherry-markdown/commit/67778d1e8b9f5f65c0d99b46fe4f90208204a2ab), [`4c460f1`](https://github.com/Tencent/cherry-markdown/commit/4c460f1e12e410ae322ee0f5cedbbee30f0660a6), [`b2b2f55`](https://github.com/Tencent/cherry-markdown/commit/b2b2f555831328b368af37d9358ca0a7e0d37dd1), [`839da2d`](https://github.com/Tencent/cherry-markdown/commit/839da2dd32deb8b77e32bc69eb9bca1ba8620a9d), [`f6bbd88`](https://github.com/Tencent/cherry-markdown/commit/f6bbd88a630be70f1a22a3d2e909ad591df290fc), [`2a73e28`](https://github.com/Tencent/cherry-markdown/commit/2a73e281f2a76feac999a01411852ee97ca5934a), [`d26c814`](https://github.com/Tencent/cherry-markdown/commit/d26c814cfe9c4644140c5934f8f17eb79250cb81), [`f069564`](https://github.com/Tencent/cherry-markdown/commit/f0695648508352226f4e7a40d39e0766989dfc10), [`e0f7ffe`](https://github.com/Tencent/cherry-markdown/commit/e0f7ffe4a720af580d9808280d27e533cf864a57), [`a61dde9`](https://github.com/Tencent/cherry-markdown/commit/a61dde968649ea42622f9016e59a75fbccb5d816)]:
+  - cherry-markdown@0.9.0

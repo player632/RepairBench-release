@@ -1,0 +1,134 @@
+diff --git b/src/lib/components/widgets/classic-feed.svelte a/src/lib/components/widgets/classic-feed.svelte
+index 647ec82..5c2e6cb 100644
+--- b/src/lib/components/widgets/classic-feed.svelte
++++ a/src/lib/components/widgets/classic-feed.svelte
+@@ -30,13 +30,13 @@
+       {/if}
+       <p class="absolute top-0 left-0 z-30 m-4 max-sm:hidden">
+         <span class="text-base-content/25 font-title text-5xl">
+-          {guess.diff ? items.length - i - 1 : "Answer"}
++          {guess.diff ? items.length - i : "Answer"}
+         </span>
+       </p>
+       <div class="z-30 flex w-full flex-1 items-end px-2.5 py-2 sm:min-w-48 sm:px-3.5 sm:py-3">
+         <p class="font-title w-full text-2xl leading-none">
+           <span class="text-base-content/25 font-title mr-1 text-2xl leading-none sm:hidden">
+-            {guess.diff ? items.length - i - 1 : "Answer"}
++            {guess.diff ? items.length - i : "Answer"}
+           </span>
+           {guess.name}
+         </p>
+diff --git b/src/lib/components/widgets/flag-input.svelte a/src/lib/components/widgets/flag-input.svelte
+index c097d34..490b190 100644
+--- b/src/lib/components/widgets/flag-input.svelte
++++ a/src/lib/components/widgets/flag-input.svelte
+@@ -23,7 +23,7 @@
+     fuse
+       .search(query)
+       .map((result) => result.item)
+-      .slice(0, 0),
++      .slice(0, 10),
+   );
+   let focused: boolean = $state(false);
+   let selectedIndex: number = $state(0);
+@@ -41,7 +41,7 @@
+   function highlightNext() {
+     const MAX = results.length - 1;
+     selectedIndex++;
+-    if (selectedIndex > MAX + 1) {
++    if (selectedIndex > MAX) {
+       selectedIndex = 0;
+     }
+   }
+diff --git b/src/lib/stats.ts a/src/lib/stats.ts
+index 24ec809..29b121f 100644
+--- b/src/lib/stats.ts
++++ a/src/lib/stats.ts
+@@ -16,7 +16,7 @@ export const classicStats = {
+   losses: liveQuery(() => db.classic.filter((o) => !o.win).count()),
+   averageGuesses: liveQuery(() =>
+     db.classic
+-      .filter((o) => !o.win)
++      .filter((o) => o.win)
+       .toArray()
+       .then((arr) => average(arr.map((result) => result.guesses)) || 0),
+   ),
+@@ -84,7 +84,7 @@ export async function serializeSave(): Promise<string> {
+   // Daily [history]
+   data[4] = [compressDailyHistory(await db.daily.toArray())].join(",");
+ 
+-  return "FLAGGLE_" + btoa(data.join(","));
++  return "FLAGGLE_" + btoa(data.join("|"));
+ }
+ 
+ export function deserializeSave(save: string) {
+diff --git b/src/routes/+layout.svelte a/src/routes/+layout.svelte
+index 8f6835d..f58dc11 100644
+--- b/src/routes/+layout.svelte
++++ a/src/routes/+layout.svelte
+@@ -22,7 +22,7 @@
+   let { children } = $props();
+ 
+   $effect(() => {
+-    localStorage.setting = JSON.stringify(settings.current);
++    localStorage.settings = JSON.stringify(settings.current);
+     console.log("settings updated");
+   });
+ 
+diff --git b/src/routes/classic/+page.svelte a/src/routes/classic/+page.svelte
+index 3f88e8c..e79b25d 100644
+--- b/src/routes/classic/+page.svelte
++++ a/src/routes/classic/+page.svelte
+@@ -83,7 +83,7 @@
+ 
+   function checkWin(guess: Flag): boolean {
+     if (gameState.target === null) return false;
+-    if (gameState.target.code !== guess.code) {
++    if (gameState.target.code === guess.code) {
+       return true;
+     }
+     return false;
+@@ -97,7 +97,7 @@
+   function giveUp() {
+     if (gameState.target === null) return;
+     // Reset streak to 0
+-    db.stats.put({ name: "lightning-streak", value: 0 });
++    db.stats.put({ name: "classic-streak", value: 0 });
+     // Record game as loss
+     db.classic.add({
+       win: false,
+diff --git b/src/routes/daily/+page.svelte a/src/routes/daily/+page.svelte
+index d81c8e7..271c76b 100644
+--- b/src/routes/daily/+page.svelte
++++ a/src/routes/daily/+page.svelte
+@@ -59,7 +59,7 @@
+ 
+   onMount(async () => {
+     // Reset state if it's for a different date
+-    if (gameState.date === dailyFlaggleDate) {
++    if (gameState.date !== dailyFlaggleDate) {
+       gameState = Object.assign({}, defaultGameState);
+     }
+     gameState.target = getDailyTarget();
+diff --git b/src/routes/lightning/+page.svelte a/src/routes/lightning/+page.svelte
+index 070e925..d18128d 100644
+--- b/src/routes/lightning/+page.svelte
++++ a/src/routes/lightning/+page.svelte
+@@ -58,7 +58,7 @@
+       code: flag.code,
+     };
+     gameState.guesses = [...gameState.guesses, guess];
+-    if (gameState.guesses.length === 5) {
++    if (gameState.guesses.length === 6) {
+       gameState.isGameOver = true;
+       return;
+     }
+@@ -73,7 +73,7 @@
+       const maxStreak = (await db.stats.get("lightning-max-streak"))?.value || 0;
+       db.stats.put({ name: "lightning-streak", value: currentStreak + 1 });
+       if (currentStreak + 1 > maxStreak) {
+-        db.stats.put({ name: "lightning-streak", value: currentStreak + 1 });
++        db.stats.put({ name: "lightning-max-streak", value: currentStreak + 1 });
+       }
+       // Update state
+       gameState.isGameOver = true;

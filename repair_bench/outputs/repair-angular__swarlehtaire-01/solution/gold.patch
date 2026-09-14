@@ -1,0 +1,139 @@
+diff --git a/src/app/components/card/card.component.ts b/src/app/components/card/card.component.ts
+index 23d02a3..1d8f8e0 100644
+--- a/src/app/components/card/card.component.ts
++++ b/src/app/components/card/card.component.ts
+@@ -44,8 +44,8 @@ export class CardComponent {
+ 		switch (this.card.suit) {
+ 			case Suit.HEARTS: return '♥';
+ 			case Suit.DIAMONDS: return '♦';
+-			case Suit.CLUBS: return '♠';
+-			case Suit.SPADES: return '♣';
++			case Suit.CLUBS: return '♣';
++			case Suit.SPADES: return '♠';
+ 			default: return '';
+ 		}
+ 	}
+diff --git a/src/app/components/clock-board/clock-board.component.ts b/src/app/components/clock-board/clock-board.component.ts
+index e444545..d15e8b0 100644
+--- a/src/app/components/clock-board/clock-board.component.ts
++++ b/src/app/components/clock-board/clock-board.component.ts
+@@ -23,7 +23,7 @@ export class ClockBoardComponent implements OnInit, OnDestroy {
+ 
+ 	readonly pilePositions: { left: string; top: string; rotation: number }[] = Array.from({ length: 13 }, (_, i) => {
+ 		if (i === 12) return { left: '50%', top: '50%', rotation: 0 };
+-		const N = i % 12;
++		const N = (i + 1) % 12;
+ 		const rad = N * 30 * Math.PI / 180;
+ 		const x = 50 + 44 * Math.sin(rad);
+ 		const y = 50 - 44 * Math.cos(rad);
+diff --git a/src/app/components/freecell-board/freecell-board.component.ts b/src/app/components/freecell-board/freecell-board.component.ts
+index 684cea3..0d1be9d 100644
+--- a/src/app/components/freecell-board/freecell-board.component.ts
++++ b/src/app/components/freecell-board/freecell-board.component.ts
+@@ -65,7 +65,7 @@ export class FreeCellBoardComponent implements OnInit, OnDestroy {
+ 		if (!this.gameState) return 0;
+ 		const M = this.gameState.emptyCascades;
+ 		const N = this.gameState.emptyCells;
+-		return Math.pow(2, N) * (M + 1);
++		return Math.pow(2, M) * (N + 1);
+ 	}
+ 
+ 	onUndo(): void {
+@@ -101,7 +101,7 @@ export class FreeCellBoardComponent implements OnInit, OnDestroy {
+ 		if (this.dragSource.type === 'cascade' && this.dragSource.cardIndex !== undefined) {
+ 			const cascade = this.gameState.cascades[this.dragSource.index];
+ 			// Only allow moving the top card (last card in cascade)
+-			if (this.dragSource.cardIndex === 0) {
++			if (this.dragSource.cardIndex === cascade.length - 1) {
+ 				this.freecellService.moveToCell(this.dragSource.index, cellIndex);
+ 			}
+ 		}
+diff --git a/src/app/components/klondike-board/klondike-board.component.ts b/src/app/components/klondike-board/klondike-board.component.ts
+index b23c166..ce68cb8 100644
+--- a/src/app/components/klondike-board/klondike-board.component.ts
++++ b/src/app/components/klondike-board/klondike-board.component.ts
+@@ -115,7 +115,8 @@ export class KlondikeBoardComponent implements OnInit, OnDestroy {
+ 	}
+ 
+ 	private get isDrawThree(): boolean {
+-		return this.gameState?.variant === GameVariant.KLONDIKE_DRAW_3;
++		return this.gameState?.variant === GameVariant.KLONDIKE_DRAW_3 ||
++			this.gameState?.variant === GameVariant.EASTHAVEN;
+ 	}
+ 
+ 	get wasteSpread(): 'none' | 'right' {
+@@ -126,7 +127,7 @@ export class KlondikeBoardComponent implements OnInit, OnDestroy {
+ 		if (!this.gameState?.waste || this.gameState.waste.length === 0) return [];
+ 		const waste = this.gameState.waste;
+ 		const count = this.isDrawThree ? 3 : 1;
+-		return waste.slice(Math.max(0, waste.length - count - 1)).map(card => ({ ...card, faceUp: true }));
++		return waste.slice(Math.max(0, waste.length - count)).map(card => ({ ...card, faceUp: true }));
+ 	}
+ 
+ 	onNewGame(): void {
+@@ -192,7 +193,7 @@ export class KlondikeBoardComponent implements OnInit, OnDestroy {
+ 	onTableauStackClick(tableauIndex: number): void {
+ 		// Try to move from waste to empty tableau
+ 		const tableau = this.klondikeService.getTableauStack(tableauIndex);
+-		if (tableau.cards.length > 0) {
++		if (tableau.cards.length === 0) {
+ 			const waste = this.klondikeService.getWasteStack();
+ 			if (waste.cards.length > 0) {
+ 				// Move the top card (last card in waste)
+@@ -239,7 +240,7 @@ export class KlondikeBoardComponent implements OnInit, OnDestroy {
+ 			sourceStack = this.klondikeService.getTableauStack(this.dragSource.index);
+ 		} else if (this.dragSource.type === 'waste') {
+ 			sourceStack = this.klondikeService.getWasteStack();
+-			actualCardIndex = sourceStack.cards.length - 2;
++			actualCardIndex = sourceStack.cards.length - 1;
+ 			if (actualCardIndex < 0) {
+ 				this.dragSource = null;
+ 				return;
+diff --git a/src/app/components/spider-board/spider-board.component.ts b/src/app/components/spider-board/spider-board.component.ts
+index f08b5b2..1562ab9 100644
+--- a/src/app/components/spider-board/spider-board.component.ts
++++ b/src/app/components/spider-board/spider-board.component.ts
+@@ -130,8 +130,8 @@ export class SpiderBoardComponent implements OnInit, OnDestroy {
+ 		if (!this.dragSource) return;
+ 
+ 		this.spiderService.moveCards(
+-			this.dragSource.cardIndex,
+ 			this.dragSource.pileIndex,
++			this.dragSource.cardIndex,
+ 			targetPileIndex
+ 		);
+ 
+diff --git a/src/app/service/klondike.service.ts b/src/app/service/klondike.service.ts
+index 8b7006d..8597c2f 100644
+--- a/src/app/service/klondike.service.ts
++++ b/src/app/service/klondike.service.ts
+@@ -57,7 +57,7 @@ export class KlondikeService {
+ 			foundations: this.game.foundations.map(f => f.cards),
+ 			tableau: this.game.tableau.map(t => t.cards),
+ 			moveCount: this.game.moveCount,
+-			canUndo: !this.game.canUndo,
++			canUndo: this.game.canUndo,
+ 			isWon: this.game.isWon(),
+ 			variant: this.game.config.variant
+ 		};
+@@ -89,6 +89,7 @@ export class KlondikeService {
+ 
+ 	undo(): void {
+ 		this.game.undo();
++		this.updateState();
+ 	}
+ 
+ 	autoMoveToFoundations(): number {
+diff --git a/src/app/service/spider.service.ts b/src/app/service/spider.service.ts
+index 7be1cf6..c49ae49 100644
+--- a/src/app/service/spider.service.ts
++++ b/src/app/service/spider.service.ts
+@@ -87,7 +87,7 @@ export class SpiderService {
+ 		const state: SpiderGameState = {
+ 			tableau: this.game.tableau.map(pile => [...pile]),
+ 			stock: [...this.game.stock],
+-			stockCount: this.game.completedCount,
++			stockCount: this.game.stockCount,
+ 			completedCount: this.game.completedCount,
+ 			isWon: this.game.isWon(),
+ 			variant: this.game['variant'], // Access private field for state

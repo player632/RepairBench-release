@@ -1,0 +1,157 @@
+<div class="lane-wrapper p-x-05 p-y-025" [class.archive-lane]="isArchive(lane)" [class.static-view]="isStatic() && (tasks | async)?.length === 0" [droppable]="6" [container]="lane" [executeOnDropReceived]="receiveDrop.bind(this)">
+  <!-- <div *ngIf="this.active" [@fadeInOut] class="lane-graphs-label flex column">
+    <chart [chartType]="'tasksByStatus'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" class="flex-child"></chart>
+    <chart [chartType]="'tasksByPriority'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" class="flex-child"></chart>
+    <chart [chartType]="'tasksByTag'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" class="flex-child"></chart>
+    <tags-viewer [board]="board" [lane]="lane"></tags-viewer>
+  </div> -->
+  <div class="lane-toolbar flex align-items-center g-05">
+    <div class="grow no-wrap flex align-items-center g-05">
+      @if (lane.searchTextContent) {
+        <div class="colored-title no-wrap" innerHTML="{{ lane.searchTextContent }}" data-testid="lane-title"></div>
+      } @else {
+        <div class="colored-title no-wrap" contenteditable="true" [(ngModel)]="this.lane.textContent" [board]="board" (ngModelChange)="publishChange()" (onTagsChange)="updateLaneTags($event)" data-testid="lane-title"></div>
+      }
+
+      <prioritizer [container]="lane" [allowEmpty]="true" [multipleSelectable]="true" (onPrioritySelected)="togglePriority($event)" [tooltip]="'Set priority filter'"> </prioritizer>
+      <status (onStatusSelected)="updateStatus($event)" [allowEmpty]="true" [multipleSelectable]="true" [container]="lane" [board]="board" [staticLane]="isStatic()" [tooltip]="'Set status filter'"> </status>
+      <span [class.translucent]="!lane.endTimeframe && !lane.startTimeframe" class="select-dates pointer" (click)="openDatePicker()">
+        <span [tooltip]="'Set timeframe filter'" [position]="'top'">📅 </span>
+        <date-picker *ngIf="showDatePicker" [dateDisplayConfig]="board.datesConfig" [showTimeframes]="true" [hideCalendar]="true" [selectedTimeframe]="[lane.startTimeframe, lane.endTimeframe]" (onSetClicked)="setTimeframe($event)" (onCancel)="setTimeframe(undefined)"></date-picker>
+      </span>
+      <div class="task-count translucent" data-testid="lane-count">
+        @if (!isStatic()) {
+          {{ tasksCount | async }} tasks
+        }
+      </div>
+    </div>
+
+    <div class="grow"></div>
+    <div class="task-count translucent m-r-05">
+      @if (isStatic()) {
+        <span [tooltip]="'This lane is a view'" class="pill pointer" data-testid="static-pill">static</span>
+      }
+    </div>
+
+    <span *ngIf="lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Expand tasks'" class="pointer expand" data-testid="lane-collapse">▼</span>
+    <span *ngIf="!lane.collapsed" (click)="toggleCollapse()" [tooltip]="'Collapse tasks'" class="pointer expand" data-testid="lane-collapse">▲</span>
+
+    <span [position]="'top'" [tooltip]="'Show child tasks'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" class="small no-grow" *ngIf="isStatic()" (click)="toggleShowChildren()">
+      <span *ngIf="lane.showChildren" class="completed">☑</span>
+      <span *ngIf="!lane.showChildren">☐</span>
+    </span>
+
+    <div class="no-grow relative flex align-items-center">
+      <div [position]="'top'" [tooltip]="'Open lane menu'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" class="small no-grow" (click)="toggleLaneMenu(); $event.stopPropagation()" data-testid="lane-menu-toggle">☰</div>
+      <lane-menu *ngIf="menuOpen" [lane]="lane" (onClose)="menuOpen = false">
+        <button class="small no-grow" *ngIf="!isStatic() && !isArchive(lane)" (click)="autoSort()" data-testid="lane-menu-autosort">✨ Auto-sort tasks</button>
+
+        <button class="small no-grow" *ngIf="getGanttTasks$() | async" (click)="openGantt()" data-testid="lane-menu-gantt">📊 Show lane Gantt..</button>
+
+        <button class="small no-grow" *ngIf="!isStatic() && !isArchive(lane)" (click)="archiveDones()">📁 Archive dones</button>
+        <button class="small no-grow" *ngIf="!isStatic()" (click)="showMoveToBoards = !showMoveToBoards">🚛 Move to board..</button>
+        <div *ngIf="showMoveToBoards" class="p-x-05 flex column g-025">
+          <ng-container *ngFor="let otherBoard of this.boardService.boards$ | async">
+            <button class="small w-100 flex-child" *ngIf="otherBoard.id !== board.id" (click)="showMoveToBoards = false; boardService.moveToBoard(board, lane, otherBoard)">{{ otherBoard.textContent }}</button>
+          </ng-container>
+        </div>
+        <button class="small danger no-grow" *ngIf="( tasks | async ) != null" (click)="deleteLane()" data-testid="lane-menu-delete">🗑️ Delete lane</button>
+
+        <button class="small no-grow" *ngIf="isStatic() || isArchive(lane)" (click)="toggleShowChildren()">
+          <span *ngIf="lane.showChildren" class="completed">☑</span>
+          <span *ngIf="!lane.showChildren">☐</span>
+          &nbsp;Show Children
+        </button>
+
+        <button class="small no-grow" (click)="toggleCollapse()">
+          <span *ngIf="lane.collapsed">▼ Expand tasks</span>
+          <span *ngIf="!lane.collapsed">▲ Collapse tasks</span>
+        </button>
+
+        <button *ngIf="!isStatic() && !isArchive(lane)" class="small no-grow new-task" (click)="createNewTask()" data-testid="lane-menu-new-task">➕ New task</button>
+
+        <div [@fadeInOut] class="charts flex">
+          <chart [chartType]="'tasksByStatus'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" [showLegend]="true" class="flex-child"></chart>
+          <chart [chartType]="'tasksByPriority'" [board]="board" [tasks]="isStatic() ? staticTasks : tasks" [showLegend]="true" class="flex-child"></chart>
+        </div>
+      </lane-menu>
+    </div>
+
+    <span [position]="'top'" [tooltip]="'Drag'" (mouseenter)="hoveringTooltip = true" (mouseleave)="hoveringTooltip = false" drag-on-this="true" draggable="true" class="lane drag-handle translucent no-grow">⋯</span>
+  </div>
+
+  <div *ngIf="isStatic()" class="lane-text m-b-05 half-translucent small">
+    Showing
+    <span *ngIf="lane.status" [innerHTML]="beautifyOrList(lane.status)"></span>
+    tasks
+    <span *ngIf="lane.priority"
+      >with
+      @if (lane.priority.length === 1) {
+        <span class="priority-{{ lane.priority[0] }}">priority </span>
+      } @else {
+        priority
+      }
+    </span>
+    <span *ngIf="lane.priority" [innerHTML]="beautifyOrList(lane.priority)"></span>
+    <span *ngIf="lane.tags && lane.tags.length > 0" class="tag"> tagged with </span>
+    <span *ngIf="lane.tags && lane.tags.length > 0" [innerHTML]="beautifyOrList(lane.tags)" class="tag"></span>
+
+    @if ((lane.priority || lane.tags.length !== 0) && (lane.startTimeframe || lane.endTimeframe)) {
+      ,
+    }
+    <span class="timeframes">
+      @if (lane.startTimeframe) {
+        starting
+        @if (lane.startTimeframe.indexOf('hours') >= 0) {
+          in the
+        }
+        next {{ lane.startTimeframe }}
+      }
+      @if (lane.startTimeframe && lane.endTimeframe) {
+        and
+      }
+      @if (lane.endTimeframe) {
+        ending
+        @if (lane.endTimeframe.indexOf('hours') >= 0) {
+          in the
+        }
+        next {{ lane.endTimeframe }}
+      }
+      ({{ staticTasksCount | async }} {{ (staticTasksCount | async) === 1 ? 'task' : 'tasks' }})
+    </span>
+  </div>
+
+  @if (!lane.collapsed) {
+    <div [class.non-static-island]="isStatic()" class="lane-task-container flex column">
+      <div [droppable]="5" [container]="lane" [executeOnDropReceived]="receiveDropToDumb.bind(this, undefined)" *ngIf="((tasks | async) ?? []).length > 0" class="dumb-dropzone"></div>
+
+      <ng-container *ngFor="let task of tasks | async; trackBy: trackBy; let i = index">
+        <task [attr.data-testid]="'lane-task-' + i" [task]="task" [parent]="lane" [board]="board" [lane]="lane" [draggableDir]="task" [containerEl]="el.nativeElement" [layout]="board.layout" (onDragStart)="interactingWithChildTasks = true" (onDragEnd)="interactingWithChildTasks = false" (onToggleShowNotes)="interactingWithChildTasks = $event" (createNewTask)="createNewTask()" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''"></task>
+
+        <div *ngIf="!isPlaceholder(task)" [droppable]="5" [container]="lane" [executeOnDropReceived]="receiveDropToDumb.bind(this, task)" class="dumb-dropzone"></div>
+      </ng-container>
+    </div>
+
+    <div *ngIf="isStatic()">
+      <div class="static-view flex column">
+        <task *ngFor="let task of staticTasks | async; trackBy: trackBy; let i = index" [attr.data-testid]="'lane-task-' + i" [staticView]="true" [showChildren]="lane.showChildren" [task]="task" (onToggleShowNotes)="interactingWithChildTasks = $event" [parent]="lane" [board]="board" [lane]="lane" [class]="isRecurringTask(task) ? 'recurrent-task-container p-x-05 m-x--1' : ''" [@fadeInOut]></task>
+      </div>
+    </div>
+
+    <!-- <p class="floating-label">Lane: {{lane.id}}</p> -->
+
+    <div *ngIf="!isStatic()" class="lane-toolbar flex g-05">
+      <div class="grow"></div>
+      <button class="small no-grow new-task" (click)="createNewTask()" data-testid="new-task-bottom">
+        <span *ngIf="lane.priority" class="warning">⚠</span>
+        ➕ New task
+      </button>
+    </div>
+  } @else {
+    <span (click)="toggleCollapse()" class="inline-block pointer" [tooltip]="'Expand'" data-testid="lane-collapse">...</span>
+  }
+</div>
+
+<ng-template #gantt>
+  <gantt [tasks]="getGanttTasks$() | async" [lane]="lane" [board]="board"></gantt>
+</ng-template>

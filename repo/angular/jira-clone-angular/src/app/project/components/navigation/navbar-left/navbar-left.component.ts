@@ -1,0 +1,52 @@
+import { Component, OnInit } from '@angular/core';
+import { AuthQuery } from '@trungk18/project/auth/auth.query';
+import { NzDrawerService } from 'ng-zorro-antd/drawer';
+import { SearchDrawerComponent } from '../../search/search-drawer/search-drawer.component';
+import { NzModalService } from 'ng-zorro-antd/modal';
+import { AddIssueModalComponent } from '../../add-issue-modal/add-issue-modal.component';
+import { ButtonComponent } from '../../../../jira-control/button/button.component';
+import { NzPopoverDirective } from 'ng-zorro-antd/popover';
+import { AvatarComponent } from '../../../../jira-control/avatar/avatar.component';
+import { NzIconDirective } from 'ng-zorro-antd/icon';
+import { NzTooltipDirective } from 'ng-zorro-antd/tooltip';
+import { AsyncPipe } from '@angular/common';
+
+@Component({
+    selector: 'app-navbar-left',
+    templateUrl: './navbar-left.component.html',
+    styleUrls: ['./navbar-left.component.scss'],
+    imports: [NzTooltipDirective, NzIconDirective, AvatarComponent, NzPopoverDirective, ButtonComponent, AsyncPipe]
+})
+export class NavbarLeftComponent implements OnInit {
+  items: NavItem[];
+  constructor(
+    public authQuery: AuthQuery,
+    private _drawerService: NzDrawerService,
+    private _modalService: NzModalService
+  ) {}
+
+  ngOnInit(): void {
+    this.items = [
+      new NavItem('search', 'Search issues', this.openSearchDrawler.bind(this)),
+      new NavItem('plus', 'Create issue', this.openCreateIssueModal.bind(this))
+    ];
+  }
+
+  openCreateIssueModal() {
+    this._modalService.create({
+      nzContent: AddIssueModalComponent,
+      nzClosable: false,
+      nzFooter: null,
+      nzWidth: 700
+    });
+  }
+
+  openSearchDrawler() {
+  }
+}
+
+class NavItem {
+  constructor(public icon: string, public tooltip: string, public handler: Handler) {}
+}
+
+type Handler = () => void;

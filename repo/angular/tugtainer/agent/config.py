@@ -1,0 +1,36 @@
+import os
+from typing import ClassVar
+
+from dotenv import load_dotenv
+
+from shared.util.file_env import apply_file_env
+
+
+class Config:
+    _loaded: ClassVar[bool] = False
+
+    HOSTNAME: ClassVar[str]
+    LOG_LEVEL: ClassVar[str]
+    AGENT_SECRET: ClassVar[str | None]
+    ALLOW_UNAUTHENTICATED_AGENT: ClassVar[bool]
+    ALLOW_EXEC: ClassVar[bool]
+    AGENT_SIGNATURE_TTL: ClassVar[int]
+    DOCKER_TIMEOUT: ClassVar[int]
+
+    @classmethod
+    def load(cls):
+        if not cls._loaded:
+            load_dotenv()
+            apply_file_env()
+            cls.HOSTNAME = os.getenv("HOSTNAME", "")
+            cls.LOG_LEVEL = (os.getenv("LOG_LEVEL") or "info").upper()
+            cls.AGENT_SECRET = os.getenv("AGENT_SECRET") or None
+            cls.ALLOW_UNAUTHENTICATED_AGENT = (
+                os.getenv("ALLOW_UNAUTHENTICATED_AGENT", "false").lower() == "true"
+            )
+            cls.ALLOW_EXEC = os.getenv("ALLOW_EXEC", "false").lower() == "true"
+            cls.AGENT_SIGNATURE_TTL = int(os.getenv("AGENT_SIGNATURE_TTL") or 5)
+            cls.DOCKER_TIMEOUT = int(os.getenv("DOCKER_TIMEOUT") or 15)
+
+
+Config.load()

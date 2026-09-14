@@ -1,0 +1,170 @@
+diff --git a/app/auth/authentication.js b/app/auth/authentication.js
+index 6e41ee4..f7f6baa 100644
+--- a/app/auth/authentication.js
++++ b/app/auth/authentication.js
+@@ -37,11 +37,11 @@ export class Authentication {
+                 'Content-Type': 'application/json'
+             }).then(res=>res.json()).then(res => {
+                 if (res.user) {
+-                    this.auth = res.user;
+                     resolve(res.user);
+                     setTimeout(() => {
++                        this.auth = res.user;
+                         this._callbacks.forEach(callback => callback(res.user));
+-                    });
++                    }, 400);
+                 } else {
+                     reject(res.errors)
+                 }
+diff --git a/app/components/article-preview-banner.js b/app/components/article-preview-banner.js
+index 7b938fa..8013ad0 100644
+--- a/app/components/article-preview-banner.js
++++ b/app/components/article-preview-banner.js
+@@ -20,7 +20,7 @@ export class ArticlePreviewBannerComponent extends HTMLElement {
+     }
+ 
+     static get observedAttributes() {
+-        return ['title', 'username', 'favorites-count', 'date', 'image', 'following', 'favorited'];
++        return ['title', 'username', 'date', 'image', 'following', 'favorited'];
+     }
+ 
+     attributeChangedCallback(name, oldValue, newValue) {
+@@ -67,16 +67,6 @@ export class ArticlePreviewBannerComponent extends HTMLElement {
+                     break;
+                 }
+             }
+-
+-            this.$followButton = this.querySelector('#follow-button');
+-            this.$favoriteButton = this.querySelector('#favorite-button');
+-            if (this.$followButton) {
+-                this.$followButton.addEventListener('click', this.followButtonAction);
+-            }
+-
+-            if (this.$favoriteButton) {
+-                this.$favoriteButton.addEventListener('click', this.favoriteButtonAction);
+-            }
+         }
+     }
+ 
+diff --git a/app/components/comment-create.comp.js b/app/components/comment-create.comp.js
+index bf56161..fafa069 100644
+--- a/app/components/comment-create.comp.js
++++ b/app/components/comment-create.comp.js
+@@ -32,7 +32,7 @@ export class CommentCreateComponent extends HTMLElement {
+ 
+     postComment(e) {
+         e.preventDefault();
+-        var event = new CustomEvent('comment', {'detail': this.$commentValue.value});
++        var event = new CustomEvent('comment');
+         this.dispatchEvent(event);
+     }
+ 
+diff --git a/app/components/user-info.comp.js b/app/components/user-info.comp.js
+index ce74ad5..01cf5e8 100644
+--- a/app/components/user-info.comp.js
++++ b/app/components/user-info.comp.js
+@@ -40,7 +40,6 @@ export class UserInfoComponent extends HTMLElement {
+         } else {
+             Http.instance.doPost('profiles/' + this.model.username + '/follow', JSON.stringify({}), true).then(r => {
+                 this.model = r.profile;
+-                this.$followButton.innerHTML = this.renderFollowButton();
+             });
+         }
+     }
+diff --git a/app/http/http.js b/app/http/http.js
+index b5ea0e7..1647cf3 100644
+--- a/app/http/http.js
++++ b/app/http/http.js
+@@ -27,7 +27,6 @@ export class Http {
+         if (authentication === true) {
+             const auth = Authentication.instance.auth;
+             if(auth) {
+-                headers['Authorization'] = 'Token ' + auth.token;
+             }
+         }
+         return LocalApi.handle('GET', path, null, headers);
+diff --git a/app/pages/article-preview.comp.js b/app/pages/article-preview.comp.js
+index 9dd78cf..8a530bb 100644
+--- a/app/pages/article-preview.comp.js
++++ b/app/pages/article-preview.comp.js
+@@ -51,7 +51,6 @@ class ArticlePreviewComponent extends HTMLElement {
+             };
+             Http.instance.doPost('/articles/' + this.slug + '/comments', JSON.stringify(comment), true).then(response => {
+                 this.$commentsContainer.comments.unshift(response.comment);
+-                this.$commentsContainer.refresh();
+             });
+         }
+     }
+diff --git a/app/pages/home.comp.js b/app/pages/home.comp.js
+index 1a4227c..8b93097 100644
+--- a/app/pages/home.comp.js
++++ b/app/pages/home.comp.js
+@@ -60,7 +60,7 @@ export class HomeComponent extends HTMLElement {
+             ulPagination.firstChild.removeEventListener('click', this.onPagination);
+             ulPagination.removeChild(ulPagination.firstChild);
+         }
+-        for (let i = 1; i <= articleCount / this._limit; i++) {
++        for (let i = 1; i < articleCount / this._limit; i++) {
+             let temp = `<li class="page-item">
+                             <a class="page-link" href="">${i}</a>
+                         </li>`
+diff --git a/app/pages/login.comp.js b/app/pages/login.comp.js
+index ec6b9bf..f11b7f6 100644
+--- a/app/pages/login.comp.js
++++ b/app/pages/login.comp.js
+@@ -47,9 +47,6 @@ export class CLoginComponent extends HTMLElement {
+                 .catch(errors => {
+                     for (var prop in errors) {
+                         if(!errors.hasOwnProperty(prop)) continue;
+-                        while(this.$errorMessages.firstChild) {
+-                            this.$errorMessages.removeChild(this.$errorMessages.firstChild);
+-                        }
+                         errors[prop].forEach(m => {
+                             let text = prop + " " + m;
+                             let errorItem = document.createElement('li');
+diff --git a/app/pages/profile.comp.js b/app/pages/profile.comp.js
+index 2701405..88df975 100644
+--- a/app/pages/profile.comp.js
++++ b/app/pages/profile.comp.js
+@@ -56,7 +56,7 @@ export class ProfileComponent extends HTMLElement {
+         this.$globalFeed.innerHTML = '<div class="article-preview">Loading articles </div>';
+         Http.instance.doGet('articles' + params, true).then(function (response) {
+             return response.json();
+-        }).then(r => {
++        }).then(function (r) {
+             this.$globalFeed.textContent = '';
+             r.articles.forEach(article => {
+                 this.generateArticle(article);
+diff --git a/app/pages/register.comp.js b/app/pages/register.comp.js
+index 41200e7..c648a46 100644
+--- a/app/pages/register.comp.js
++++ b/app/pages/register.comp.js
+@@ -60,7 +60,6 @@ export class CRegisterComponent extends HTMLElement {
+                     }
+                 } else {
+                     Authentication.instance.auth = r.user;
+-                    Authentication.instance._callbacks.forEach(callback => callback(r.user));
+                     RouterHandler.getInstance.router.navigate('/');
+                 }
+             });
+diff --git a/app/pages/settings.comp.js b/app/pages/settings.comp.js
+index bac8fb3..8068a18 100644
+--- a/app/pages/settings.comp.js
++++ b/app/pages/settings.comp.js
+@@ -40,7 +40,7 @@ export class SettingsComponent extends HTMLElement {
+     logoutHandler(e) {
+         e.preventDefault();
+         localStorage.removeItem('auth');
+-        location.href = '/';
++        RouterHandler.getInstance.router.navigate('/');
+     }
+ 
+     updateHandler(e) {
+@@ -77,7 +77,6 @@ export class SettingsComponent extends HTMLElement {
+                         });
+                     }
+                 } else {
+-                    RouterHandler.getInstance.router.navigate('/');
+                 }
+             });
+         }

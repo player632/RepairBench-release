@@ -1,0 +1,165 @@
+diff --git a/lib/Controls.js b/lib/Controls.js
+index 6c35aa8..f96492e 100644
+--- a/lib/Controls.js
++++ b/lib/Controls.js
+@@ -12,7 +12,7 @@ define(['Game', 'MainLoop', 'Keyboard', 'World'], function (Game, MainLoop, Keyb
+ 
+   var mainControlKeys = {
+     esc:    'esc',
+-    p:      'toggle pause',
++    p:      'esc',
+     up:     'up',
+     down:   'down',
+     return: 'select'
+diff --git a/lib/Dude.js b/lib/Dude.js
+index e56292c..a3d5fee 100644
+--- a/lib/Dude.js
++++ b/lib/Dude.js
+@@ -406,10 +406,10 @@ define(["Game",
+ 
+       BloodSplatter.splat(this.pos.clone(), '#900', damage);
+ 
+-      this.fireEvent('health changed', this.health);
+-
+       this.health -= damage;
+ 
++      this.fireEvent('health changed', this.health);
++
+       if (this.health <= 0) {
+         // die
+         this.Collidable = false;
+diff --git a/lib/Introduction.js b/lib/Introduction.js
+index 6f0576d..4d9790f 100644
+--- a/lib/Introduction.js
++++ b/lib/Introduction.js
+@@ -226,7 +226,7 @@ define(['Game', 'GameTime', 'Vector', 'hud/Hud', 'fx/Hint'], function (Game, Gam
+     if (!Game.hasSavedGame()) {
+       $intro.show();
+       if (GameTime.targetTime()) {
+-        $timeTrialText.hide();
++        $timeTrialText.show();
+       } else {
+         $timeTrialText.hide();
+       }
+diff --git a/lib/Save.js b/lib/Save.js
+index 1db98e0..2dc2888 100644
+--- a/lib/Save.js
++++ b/lib/Save.js
+@@ -31,7 +31,7 @@ require(['Game', 'GameTime', 'World', 'Reporter', 'MainLoop', 'Console'],
+   };
+ 
+   // save when paused
+-  Game.events.subscribe('play', saveState);
++  Game.events.subscribe('pause', saveState);
+ 
+   // save state every minute if we're not paused
+   window.setInterval(function () {
+diff --git a/lib/fx/Audio.js b/lib/fx/Audio.js
+index 3c74799..9d2c811 100644
+--- a/lib/fx/Audio.js
++++ b/lib/fx/Audio.js
+@@ -136,7 +136,7 @@ define(['Game', 'Console', 'fx/audio-list', 'Progress'], function (Game, Console
+   }).subscribe('toggle sound', function () {
+     enabled = !enabled;
+     SoundJS.setMute(!enabled || paused);
+-    Game.events.fireEvent('audio state changed', !enabled);
++    Game.events.fireEvent('audio state changed', enabled);
+   });
+ 
+   Progress.audioLoaded();
+diff --git a/lib/fx/Hint.js b/lib/fx/Hint.js
+index e466851..2471e21 100644
+--- a/lib/fx/Hint.js
++++ b/lib/fx/Hint.js
+@@ -138,7 +138,7 @@ define(['Game', 'Sprite', 'Vector'], function (Game, Sprite, Vector) {
+   Hint.prototype.postMove = function (delta) {
+     if (this.life !== null) {
+       this.life -= delta;
+-      if (this.life < -10) {
++      if (this.life < -this.config.fadeDuration) {
+         this.die();
+         if (this.config.callback) {
+           this.config.callback();
+diff --git a/lib/hud/Distance.js b/lib/hud/Distance.js
+index c8e932f..a74a5c9 100644
+--- a/lib/hud/Distance.js
++++ b/lib/hud/Distance.js
+@@ -14,7 +14,7 @@ define(['Game'], function (Game) {
+ 	var distance = Game.dude.distanceFromOrigin();
+         if (distance !== currentDistance) {
+           currentDistance = distance;
+-          distance = Math.round(distance - target);
++          distance = Math.round(target - distance);
+           if (distance >= 0) {
+             var miles = (distance === 1) ? " Mile" : " Miles";
+             node.text(distance + miles + " to go");
+diff --git a/lib/hud/FuelGauge.js b/lib/hud/FuelGauge.js
+index 9cbe667..c39be81 100644
+--- a/lib/hud/FuelGauge.js
++++ b/lib/hud/FuelGauge.js
+@@ -40,7 +40,7 @@ define(['Game'], function (Game) {
+         currentCar.unsubscribe('fuel level updated', updateAngle);
+       }
+       currentCar = car;
+-      car.subscribe('fuel updated', updateAngle);
++      car.subscribe('fuel level updated', updateAngle);
+       updateAngle();
+     }
+   };
+diff --git a/lib/hud/Hud.js b/lib/hud/Hud.js
+index 13964c8..4ff10e3 100644
+--- a/lib/hud/Hud.js
++++ b/lib/hud/Hud.js
+@@ -77,7 +77,7 @@ define(['Game',
+           // if element has an active method use that
+           // otherwise, inventory must be toggled on and the hud must have
+           // its status set to true.
+-          status = (element.active && element.active(inventoryShown)) && inventoryShown && status;
++          status = (element.active && element.active(inventoryShown)) || inventoryShown && status;
+ 
+           if (element.css) {
+             if (status) {
+diff --git a/lib/hud/MainScreen.js b/lib/hud/MainScreen.js
+index eb7317f..cc31f17 100644
+--- a/lib/hud/MainScreen.js
++++ b/lib/hud/MainScreen.js
+@@ -91,6 +91,7 @@ define(['Game', 'Reporter', 'hud/Overlay'], function (Game, Reporter) {
+       if ($screen.is(':visible')) {
+         $screen.animate({opacity:0}, slideTime, function () {
+           $screen.hide();
++          sliding = false;
+           Game.events.fireEvent('toggle pause');
+         });
+         $content.animate({left:-Game.GameWidth, opacity:0}, slideTime);
+diff --git a/lib/hud/StatsDisplay.js b/lib/hud/StatsDisplay.js
+index 89ef44b..2630938 100644
+--- a/lib/hud/StatsDisplay.js
++++ b/lib/hud/StatsDisplay.js
+@@ -20,6 +20,7 @@ require(['Game', 'Reporter'], function (Game, Reporter) {
+ 
+     var pairs = _.map(report, function (v, k) { return [k,v]; });
+     pairs = _.sortBy(pairs, function (p) { return p[1]; });
++    pairs.reverse();
+ 
+     _.each(pairs, function (pair) {
+       var string;
+diff --git a/lib/hud/TimeRemaining.js b/lib/hud/TimeRemaining.js
+index 15bceb4..b50348b 100644
+--- a/lib/hud/TimeRemaining.js
++++ b/lib/hud/TimeRemaining.js
+@@ -35,8 +35,13 @@ define(['Game', 'GameTime'], function (Game, GameTime) {
+   };
+ 
+   Game.events.subscribe('game start', function () {
+-    node.show();
+-    TimeRemaining.visible = true;
++    if (GameTime.targetTime()) {
++      node.show();
++      TimeRemaining.visible = true;
++    } else {
++      node.hide();
++      TimeRemaining.visible = false;
++    }
+   });
+ 
+   return TimeRemaining;

@@ -1,0 +1,506 @@
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 05e724ccbf641d2b4bae9059399a7267183ff096..ea9ea3d09e591258d785858efc1fed586612c9d5 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -1,6 +1,6 @@
+ <div class="app-container">
+-  <div class="chat-container">
+-    <div class="message-container" *ngIf="contents.length === 0">
++  <div class="chat-container" data-rb-transcript>
++    <div class="message-container" *ngIf="contents.length === 0" data-rb-welcome>
+       <p class="message">
+         Welcome to PaLM ChatBot <br />
+         Write a text to start.
+@@ -10,13 +10,15 @@
+       *ngFor="let content of contents"
+       class="chat-message"
+       [ngClass]="content.agent"
++      data-rb-message
+     >
+-      <img [src]="'assets/avatar-' + content.agent + '.png'" class="avatar" />
++      <img [src]="'assets/avatar-' + content.agent + '.png'" class="avatar" data-rb-avatar />
+       <div class="message-details">
+         <p
+           class="message-content"
+           [ngClass]="{ loading: content.loading }"
+           [innerHTML]="content.message | lineBreak"
++          data-rb-content
+         ></p>
+       </div>
+     </div>
+@@ -30,10 +32,11 @@
+         #inputMessage
+         [(ngModel)]="message"
+         (keyup.enter)="sendMessage(message)"
++        data-rb-input
+       />
+     </mat-form-field>
+-    <button mat-icon-button color="primary" (click)="sendMessage(message)">
+-      <mat-icon>send</mat-icon>
++    <button mat-icon-button color="primary" (click)="sendMessage(message)" data-rb-send>
++      <mat-icon data-rb-send-icon>send</mat-icon>
+     </button>
+   </div>
+ </div>
+diff --git a/src/app/rb-probe.ts b/src/app/rb-probe.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..868901b0517aba48340d4a743d8c9e73d522aa41
+--- /dev/null
++++ b/src/app/rb-probe.ts
+@@ -0,0 +1,437 @@
++/**
++ * INSTRUMENTATION (repair-bench, environment/instrumentation.patch) - read-only observation
++ * bridge for repair-angular__chatbot-angular-palm-01, published on `window.__CAP__`.
++ *
++ * WHY: the seed ships no test facility at all (angular.json sets skipTests for every
++ * schematic and the tree contains zero *.spec.ts), and the whole observable surface of this
++ * app is a transcript array rendered by one component. tests/dsl.json therefore has to read
++ * that transcript through a bridge, and it has to read it WITHOUT touching the code paths
++ * under repair: every getter below only queries the DOM / computed style / performance
++ * timeline, and every driver only dispatches the same DOM events a user would (an `input`
++ * event for ngModel, a `keyup` KeyboardEvent for the (keyup[.enter]) binding, `.click()` for
++ * the send button). Nothing here reads or writes `AppComponent.contents`.
++ *
++ * TWO CHANNELS, DELIBERATELY SEPARATED. A checkpoint must be able to LOCATE a transcript row
++ * while a defect is breaking the row's own asserted property, otherwise one defect would turn
++ * several checkpoints red and the F2P partition would stop being exclusive (methodology §1.4
++ * 掩盖审计 / design_lint C20). So:
++ *   - the LOCATING channel is prefix-based on the row's class tokens (`agentOf`) and on the
++ *     row's text. It survives D07, which rebinds [ngClass] from `content.agent` to
++ *     `content.agent + '-message'`: the token 'user-message' still starts with 'user', and the
++ *     static `class="chat-message"` starts with neither, so rows stay identifiable.
++ *   - the ASSERTED channel is exact (`rowHasClassToken(t,'user')` compares whole tokens, so
++ *     'user-message' does NOT satisfy it), which is what makes D07 red on exactly one
++ *     checkpoint.
++ *
++ * TRANSIENT STATES ARE LATCHED, NOT SAMPLED. The "..." loading row exists only between a send
++ * and the mocked reply (250 ms), so a checkpoint that read it at assert time would be a
++ *瞬时读数 - the failure mode 4号's r22 MED P0 judgment is about. A MutationObserver therefore
++ * samples on every DOM change and freezes the first in-flight reading (row counts, the leading
++ * row's agent, and the loading element's computed animation-*) into `latch`, which the getters
++ * expose. Each dsl_runner checkpoint starts a fresh browser context, so the latch always
++ * starts empty and can only be filled by that checkpoint's own scenario.
++ */
++import type { ApplicationRef } from '@angular/core';
++
++const SEL_TRANSCRIPT = '[data-rb-transcript]';
++const SEL_ROW = '[data-rb-message]';
++const SEL_CONTENT = '[data-rb-content]';
++const SEL_AVATAR = '[data-rb-avatar]';
++const SEL_WELCOME = '[data-rb-welcome]';
++const SEL_INPUT = '[data-rb-input]';
++const SEL_SEND = '[data-rb-send]';
++const SEL_SEND_ICON = '[data-rb-send-icon]';
++const LOADING_SELECTOR = '.loading';
++
++/** Globals this package itself installs. Anything else starting with `__` is residue. */
++const OWN_GLOBALS = ['__CAP__', '__CAP_API__'];
++/** zone.js decorates window with `__zone_symbol__*` keys; those are the framework, not residue. */
++const OWN_GLOBAL_PREFIXES = ['__zone_symbol__'];
++
++interface CapApiRequest {
++  method: string;
++  url: string;
++  path: string;
++  bodyMessage: string;
++  bodyAgent: string;
++}
++
++interface CapApiState {
++  log: CapApiRequest[];
++  transcript: string[];
++}
++
++const EMPTY_API: CapApiState = { log: [], transcript: [] };
++
++const q = (sel: string): HTMLElement | null => document.querySelector(sel) as HTMLElement | null;
++const qa = (sel: string): HTMLElement[] => Array.from(document.querySelectorAll(sel)) as HTMLElement[];
++
++const transcriptEl = (): HTMLElement | null => q(SEL_TRANSCRIPT);
++const rows = (): HTMLElement[] => qa(SEL_ROW);
++const contentEl = (row: HTMLElement): HTMLElement | null => row.querySelector(SEL_CONTENT) as HTMLElement | null;
++const textOf = (row: HTMLElement): string => contentEl(row)?.textContent ?? '';
++
++const agentOf = (row: HTMLElement): string => {
++  for (const token of Array.from(row.classList)) {
++    if (token.startsWith('user')) return 'user';
++    if (token.startsWith('chatbot')) return 'chatbot';
++  }
++  return '';
++};
++
++const isLoadingRow = (row: HTMLElement): boolean => row.querySelector(LOADING_SELECTOR) !== null;
++const userRows = (): HTMLElement[] => rows().filter((r) => agentOf(r) === 'user');
++const replyRows = (): HTMLElement[] => rows().filter((r) => agentOf(r) === 'chatbot' && !isLoadingRow(r));
++const loadingRows = (): HTMLElement[] => rows().filter(isLoadingRow);
++
++const rowByText = (text: string): HTMLElement | null => rows().find((r) => textOf(r) === text) ?? null;
++const rowByPrefix = (prefix: string): HTMLElement | null => rows().find((r) => textOf(r).startsWith(prefix)) ?? null;
++const avatarOf = (row: HTMLElement | null): HTMLImageElement | null =>
++  row === null ? null : (row.querySelector(SEL_AVATAR) as HTMLImageElement | null);
++
++const leafOf = (img: HTMLImageElement | null): string => {
++  if (img === null) return '';
++  const src = img.getAttribute('src') ?? '';
++  const at = src.lastIndexOf('/');
++  return at < 0 ? src : src.slice(at + 1);
++};
++
++const computed = (el: Element | null, prop: string): string =>
++  el === null ? '' : window.getComputedStyle(el).getPropertyValue(prop);
++
++const apiState = (): CapApiState =>
++  (globalThis as unknown as { __CAP_API__?: CapApiState }).__CAP_API__ ?? EMPTY_API;
++
++interface Latches {
++  samples: number;
++  loadingSeen: boolean;
++  inflightRowCount: number;
++  inflightUserRowCount: number;
++  inflightReplyRowCount: number;
++  inflightFirstRowAgent: string;
++  loadingAnimationName: string;
++  loadingAnimationDuration: string;
++  loadingAnimationIterationCount: string;
++}
++
++const emptyLatch = (): Latches => ({
++  samples: 0,
++  loadingSeen: false,
++  inflightRowCount: -1,
++  inflightUserRowCount: -1,
++  inflightReplyRowCount: -1,
++  inflightFirstRowAgent: '',
++  loadingAnimationName: '',
++  loadingAnimationDuration: '',
++  loadingAnimationIterationCount: '',
++});
++
++const latch: Latches = emptyLatch();
++
++const sample = (): void => {
++  latch.samples += 1;
++  if (latch.loadingSeen) return;
++  const loading = loadingRows();
++  if (loading.length === 0) return;
++  const all = rows();
++  latch.loadingSeen = true;
++  latch.inflightRowCount = all.length;
++  latch.inflightUserRowCount = all.filter((r) => agentOf(r) === 'user').length;
++  latch.inflightReplyRowCount = all.filter((r) => agentOf(r) === 'chatbot' && !isLoadingRow(r)).length;
++  latch.inflightFirstRowAgent = all.length === 0 ? '' : agentOf(all[0] as HTMLElement);
++  const marker = (loading[0] as HTMLElement).querySelector(LOADING_SELECTOR);
++  latch.loadingAnimationName = computed(marker, 'animation-name');
++  latch.loadingAnimationDuration = computed(marker, 'animation-duration');
++  latch.loadingAnimationIterationCount = computed(marker, 'animation-iteration-count');
++};
++
++const errors: string[] = [];
++
++let observer: MutationObserver | null = null;
++let appRef: ApplicationRef | null = null;
++
++const startObserver = (): void => {
++  if (observer !== null) return;
++  observer = new MutationObserver(() => {
++    sample();
++  });
++  observer.observe(document.documentElement, {
++    childList: true,
++    subtree: true,
++    attributes: true,
++    characterData: true,
++  });
++  sample();
++};
++
++const inputEl = (): HTMLInputElement | null => q(SEL_INPUT) as HTMLInputElement | null;
++
++/** ngModel's DefaultValueAccessor listens for `input`; dispatching it is what a keystroke does. */
++const typeInto = (text: string): boolean => {
++  const el = inputEl();
++  if (el === null) return false;
++  el.value = text;
++  el.dispatchEvent(new Event('input', { bubbles: true }));
++  return true;
++};
++
++/** (keyup[.enter]) is a real `keyup` listener filtered on event.key, so a synthetic one works. */
++const pressKeyUp = (key: string): boolean => {
++  const el = inputEl();
++  if (el === null) return false;
++  el.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
++  return true;
++};
++
++const clickSend = (): boolean => {
++  const el = q(SEL_SEND);
++  if (el === null) return false;
++  el.click();
++  return true;
++};
++
++const foreignResourceEntries = (): string[] => {
++  const here = window.location.origin;
++  return performance
++    .getEntriesByType('resource')
++    .map((e) => e.name)
++    .filter((name) => {
++      try {
++        return new URL(name, window.location.href).origin !== here;
++      } catch {
++        return true;
++      }
++    });
++};
++
++const extraGlobals = (): string[] =>
++  Object.getOwnPropertyNames(window).filter((k) => {
++    if (!k.startsWith('__')) return false;
++    if (OWN_GLOBALS.includes(k)) return false;
++    return !OWN_GLOBAL_PREFIXES.some((p) => k.startsWith(p));
++  });
++
++export interface CapApi {
++  readonly version: string;
++  attachApp(ref: ApplicationRef): void;
++  tick(): boolean;
++  // ---- transcript shape ----
++  rowCount(): number;
++  userRowCount(): number;
++  replyRowCount(): number;
++  loadingRowCount(): number;
++  transcriptSignature(): string;
++  rowText(index: number): string;
++  rowAgent(index: number): string;
++  rowHasText(text: string): boolean;
++  rowIndexOfText(text: string): number;
++  rowIndexOfPrefix(prefix: string): number;
++  rowBrCount(prefix: string): number;
++  rowHasClassToken(text: string, token: string): boolean;
++  rowDisplay(text: string): string;
++  rowHasContentChild(text: string): boolean;
++  // ---- avatars ----
++  avatarCount(): number;
++  avatarLoadedCount(): number;
++  avatarLeafOfRow(text: string): string;
++  avatarWidthOfRow(text: string): number;
++  avatarLeavesSorted(): string;
++  // ---- welcome / footer / chrome ----
++  welcomeVisible(): boolean;
++  welcomeText(): string;
++  inputValue(): string;
++  inputPlaceholder(): string;
++  sendButtonTag(): string;
++  sendButtonDisabled(): boolean;
++  sendButtonHasClass(token: string): boolean;
++  sendIconText(): string;
++  docTitle(): string;
++  htmlLang(): string;
++  baseHref(): string;
++  hasTranscript(): boolean;
++  chatContainerPosition(): string;
++  bodyMarginTop(): string;
++  // ---- latched transient readings ----
++  latchSamples(): number;
++  loadingSeen(): boolean;
++  inflightRowCount(): number;
++  inflightUserRowCount(): number;
++  inflightReplyRowCount(): number;
++  inflightFirstRowAgent(): string;
++  loadingAnimationName(): string;
++  loadingAnimationBaseName(): string;
++  loadingAnimationDuration(): string;
++  loadingAnimationIterationCount(): string;
++  // ---- mocked transport record ----
++  apiRequestCount(): number;
++  apiLastMethod(): string;
++  apiLastUrl(): string;
++  apiLastPath(): string;
++  apiLastBodyMessage(): string;
++  apiLastBodyAgent(): string;
++  apiTranscriptLength(): number;
++  // ---- determinism / isolation ----
++  foreignResourceEntryCount(): number;
++  foreignResourceEntryNames(): string;
++  localStorageKeyCount(): number;
++  sessionStorageKeyCount(): number;
++  cookieString(): string;
++  locationSearch(): string;
++  locationHash(): string;
++  extraGlobalCount(): number;
++  extraGlobalNames(): string;
++  errorCount(): number;
++  errorDetail(): string;
++  // ---- drivers ----
++  typeInto(text: string): boolean;
++  pressEnter(): boolean;
++  pressKeyUp(key: string): boolean;
++  clickSend(): boolean;
++  sendByClick(text: string): boolean;
++  sendByEnter(text: string): boolean;
++}
++
++const cap: CapApi = {
++  version: 'cap-probe/1',
++  attachApp(ref: ApplicationRef): void {
++    appRef = ref;
++  },
++  tick(): boolean {
++    if (appRef === null) return false;
++    appRef.tick();
++    return true;
++  },
++  rowCount: () => rows().length,
++  userRowCount: () => userRows().length,
++  replyRowCount: () => replyRows().length,
++  loadingRowCount: () => loadingRows().length,
++  // TWO components (userRows:replyRows), deliberately NOT three. A third `loadingRows`
++  // component was measured on the recon leg and then removed: the loading census is D05's
++  // exclusive observable (F05 asserts loadingRowCount), and folding it into the signature
++  // would make F08 - the masker's exclusive sentinel - go red on the arm where only D08 is
++  // reverted, because D05 is still mutated on that arm and leaves the placeholder row
++  //
++  // the three-component form reads '1:1:0' clean and '2:2:2' mutated, i.e. it carries D05's
++  // residue; the two-component form reads '1:1' clean, '2:2' mutated, '1:1' on the
++  // D08-reverted arm and '2:1' on the D04-reverted arm - three mutually distinct values at
++  // the same assert index across clean / mutated / other-arm, which is what FR-4 requires of
++  // a masker's exclusive sentinel, while keeping F08 GREEN on its own revert arm.
++  transcriptSignature: () => `${userRows().length}:${replyRows().length}`,
++  rowText: (index) => {
++    const all = rows();
++    return index >= 0 && index < all.length ? textOf(all[index] as HTMLElement) : '';
++  },
++  rowAgent: (index) => {
++    const all = rows();
++    return index >= 0 && index < all.length ? agentOf(all[index] as HTMLElement) : '';
++  },
++  rowHasText: (text) => rowByText(text) !== null,
++  rowIndexOfText: (text) => rows().findIndex((r) => textOf(r) === text),
++  rowIndexOfPrefix: (prefix) => rows().findIndex((r) => textOf(r).startsWith(prefix)),
++  rowBrCount: (prefix) => {
++    const row = rowByPrefix(prefix);
++    return row === null ? -1 : row.querySelectorAll('br').length;
++  },
++  rowHasClassToken: (text, token) => {
++    const row = rowByText(text);
++    return row !== null && row.classList.contains(token);
++  },
++  rowDisplay: (text) => computed(rowByText(text), 'display'),
++  rowHasContentChild: (text) => {
++    const row = rowByText(text);
++    return row !== null && contentEl(row) !== null;
++  },
++  avatarCount: () => qa(SEL_AVATAR).length,
++  avatarLoadedCount: () =>
++    qa(SEL_AVATAR).filter((el) => {
++      const img = el as HTMLImageElement;
++      return img.complete && img.naturalWidth > 0;
++    }).length,
++  avatarLeafOfRow: (text) => leafOf(avatarOf(rowByText(text))),
++  avatarWidthOfRow: (text) => {
++    const img = avatarOf(rowByText(text));
++    return img === null ? -1 : img.getBoundingClientRect().width;
++  },
++  avatarLeavesSorted: () =>
++    [...new Set(qa(SEL_AVATAR).map((el) => leafOf(el as HTMLImageElement)))].sort().join(','),
++  welcomeVisible: () => q(SEL_WELCOME) !== null,
++  welcomeText: () => q(SEL_WELCOME)?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
++  inputValue: () => inputEl()?.value ?? '',
++  inputPlaceholder: () => inputEl()?.getAttribute('placeholder') ?? '',
++  sendButtonTag: () => q(SEL_SEND)?.tagName ?? '',
++  sendButtonDisabled: () => {
++    const el = q(SEL_SEND);
++    return el !== null && (el as HTMLButtonElement).disabled === true;
++  },
++  sendButtonHasClass: (token) => q(SEL_SEND)?.classList.contains(token) ?? false,
++  sendIconText: () => q(SEL_SEND_ICON)?.textContent?.trim() ?? '',
++  docTitle: () => document.title,
++  htmlLang: () => document.documentElement.getAttribute('lang') ?? '',
++  baseHref: () => document.querySelector('base')?.getAttribute('href') ?? '',
++  hasTranscript: () => transcriptEl() !== null,
++  chatContainerPosition: () => computed(transcriptEl(), 'position'),
++  bodyMarginTop: () => computed(document.body, 'margin-top'),
++  latchSamples: () => latch.samples,
++  loadingSeen: () => latch.loadingSeen,
++  inflightRowCount: () => latch.inflightRowCount,
++  inflightUserRowCount: () => latch.inflightUserRowCount,
++  inflightReplyRowCount: () => latch.inflightReplyRowCount,
++  inflightFirstRowAgent: () => latch.inflightFirstRowAgent,
++  loadingAnimationName: () => latch.loadingAnimationName,
++  // Angular's emulated view encapsulation REWRITES an @keyframes name declared inside a
++  // component stylesheet to `_ngcontent-ng-c<hash>_<name>`, and <hash> is derived from that
++  // component's own template + style text - so it differs between the clean face and the
++  // mutated face (whose app.component.css carries D09/D10/D11) and would differ again for
++  // any candidate repair. Measured on the recon leg
++  //
++  //   clean '_ngcontent-ng-c3688612244_fadeIn'  vs  mut '_ngcontent-ng-c1268979626_fadeIn'.
++  // Asserting the raw value would put F10 red on the CLEAN face, which no honest package can
++  // ship, so the bridge also exposes the encapsulation-stripped base name. That is 'fadeIn'
++  // for every build of this component, and it still guards the animation's identity: a
++  // "repair" that deleted the @keyframes or swapped it for another answers 'none' or the
++  // other name and turns F10 red. The raw getter is kept, unreferenced by any assert, as
++  // evidence of the encapsulation behaviour.
++  loadingAnimationBaseName: () => latch.loadingAnimationName.replace(/^_ngcontent-[A-Za-z0-9-]+_/, ''),
++  loadingAnimationDuration: () => latch.loadingAnimationDuration,
++  loadingAnimationIterationCount: () => latch.loadingAnimationIterationCount,
++  apiRequestCount: () => apiState().log.length,
++  apiLastMethod: () => apiState().log.at(-1)?.method ?? '',
++  apiLastUrl: () => apiState().log.at(-1)?.url ?? '',
++  apiLastPath: () => apiState().log.at(-1)?.path ?? '',
++  apiLastBodyMessage: () => apiState().log.at(-1)?.bodyMessage ?? '',
++  apiLastBodyAgent: () => apiState().log.at(-1)?.bodyAgent ?? '',
++  apiTranscriptLength: () => apiState().transcript.length,
++  foreignResourceEntryCount: () => foreignResourceEntries().length,
++  foreignResourceEntryNames: () => foreignResourceEntries().join('|'),
++  localStorageKeyCount: () => window.localStorage.length,
++  sessionStorageKeyCount: () => window.sessionStorage.length,
++  cookieString: () => document.cookie,
++  locationSearch: () => window.location.search,
++  locationHash: () => window.location.hash,
++  extraGlobalCount: () => extraGlobals().length,
++  extraGlobalNames: () => extraGlobals().join(','),
++  errorCount: () => errors.length,
++  errorDetail: () => errors.join(' | ').slice(0, 400),
++  typeInto,
++  pressEnter: () => pressKeyUp('Enter'),
++  pressKeyUp,
++  clickSend,
++  sendByClick: (text) => typeInto(text) && clickSend(),
++  sendByEnter: (text) => typeInto(text) && pressKeyUp('Enter'),
++};
++
++window.addEventListener('error', (e) => {
++  errors.push('error: ' + String(e.message ?? '').slice(0, 160));
++});
++window.addEventListener('unhandledrejection', (e) => {
++  errors.push('unhandledrejection: ' + String(e.reason ?? '').slice(0, 160));
++});
++
++declare global {
++  interface Window {
++    __CAP__: CapApi;
++  }
++}
++
++window.__CAP__ = cap;
++startObserver();
+diff --git a/src/main.ts b/src/main.ts
+index 35b00f3463311f2afe0fd0d9d5f696dbb992dff5..637a771bac9be0153f795ea6f94ff4fe18afec26 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,6 +1,14 @@
+ import { bootstrapApplication } from '@angular/platform-browser';
+ import { appConfig } from './app/app.config';
+ import { AppComponent } from './app/app.component';
++// repair-bench INSTRUMENTATION: the observation bridge is imported for its side effect (it
++// publishes window.__CAP__ and starts its MutationObserver before the first change detection).
++import './app/rb-probe';
+ 
+ bootstrapApplication(AppComponent, appConfig)
++  .then((ref) => {
++    // repair-bench INSTRUMENTATION: hand the live ApplicationRef to the bridge so a checkpoint can
++    // ask for a change-detection tick explicitly instead of racing one. Read-only.
++    window.__CAP__.attachApp(ref);
++  })
+   .catch((err) => console.error(err));

@@ -1,0 +1,184 @@
+name: Rebuild on Base Image Update
+
+on:
+  schedule:
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force rebuild even if base image unchanged'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  check-and-rebuild:
+    runs-on: ubuntu-latest
+    # Hard cap: defends against the docker/build-push-action step-11 hang
+    # observed 2026-05-10 (6h05m before user cancel) and 2026-05-17 (~40m
+    # before user cancel). Healthy runs finish in 5-6 min; 25 min gives
+    # generous headroom for legitimate slow builds while bounding a hang
+    # to a single billable instance. See issue #40.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get current base image digest
+        id: current
+        run: |
+          docker buildx create --use --name inspect-builder
+          DIGEST=$(docker buildx imagetools inspect ghcr.io/hotio/base:alpinevpn --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Current base digest: $DIGEST"
+          docker buildx rm inspect-builder
+
+      # Track the last-seen base digest in an Actions cache instead of a
+      # committed file. A unique save key per run plus a shared restore-keys
+      # prefix forms a rolling cache: the exact key never pre-exists, so
+      # restore falls through to the most recent base-image-digest-* entry.
+      # This removes the bot commit that previously updated the digest file
+      # on the default branch on every base-image change.
+      - name: Restore last-seen base digest
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/base-image-digest
+          key: base-image-digest-${{ github.run_id }}
+          restore-keys: |
+            base-image-digest-
+
+      - name: Load last-seen digest
+        id: stored
+        run: |
+          if [ -f "${{ runner.temp }}/base-image-digest" ]; then
+            STORED=$(cat "${{ runner.temp }}/base-image-digest")
+          else
+            STORED="none"
+          fi
+          echo "digest=$STORED" >> "$GITHUB_OUTPUT"
+          echo "Stored base digest: $STORED"
+
+      - name: Check if rebuild needed
+        id: check
+        run: |
+          FORCE="${{ inputs.force }}"
+          if [ "$FORCE" = "true" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Forced rebuild requested"
+          elif [ "${{ steps.current.outputs.digest }}" != "${{ steps.stored.outputs.digest }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Base image changed -- rebuilding"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Base image unchanged -- skipping"
+          fi
+
+      - name: Generate version and build date
+        if: steps.check.outputs.changed == 'true'
+        id: version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+          DATE=$(date -u +%Y%m%d)
+          VERSION="${TAG}+rebuild.${DATE}"
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION, Build date: $BUILD_DATE"
+
+      - uses: docker/setup-qemu-action@v3
+        if: steps.check.outputs.changed == 'true'
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.changed == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.check.outputs.changed == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@v3
+        if: steps.check.outputs.changed == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build an amd64 candidate locally first so the VPN-tooling gate
+      # below inspects the image BEFORE anything is published. The original
+      # design pushed :latest and then verified, so a failing gate still
+      # left a suspect image live on both registries. The push step's amd64
+      # half replays from this builder's local BuildKit state, so the
+      # second build adds little time. No cache-to here: exporting an
+      # amd64-only index would clobber the multi-platform cache the push
+      # step writes, evicting arm64 layers from week-to-week reuse.
+      - name: Build amd64 candidate for verification
+        uses: docker/build-push-action@v6
+        if: steps.check.outputs.changed == 'true'
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: iplayer-arr:rebuild-candidate
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
+          cache-from: type=gha,scope=rebuild
+
+      # Smoke the candidate: hotio's alpinevpn base is WireGuard-only (its
+      # apk install line ships wireguard-tools; OpenVPN has never been part
+      # of it -- verified against every iplayer-arr image back to v1.0.2),
+      # and the entrypoint's kill-switch scaffold expects wg/wg-quick to
+      # exist. If upstream ever swaps the alpinevpn tag to an image without
+      # that scaffold, fail loud here, before publishing. Audit item 38.
+      - name: Verify VPN tooling present in candidate image
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          missing=""
+          for bin in wg wg-quick; do
+            if ! docker run --rm --entrypoint sh iplayer-arr:rebuild-candidate -c "command -v $bin >/dev/null 2>&1"; then
+              missing="$missing $bin"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::VPN tooling missing from candidate image:$missing"
+            echo "::error::Base image ghcr.io/hotio/base:alpinevpn may have dropped its WireGuard scaffold; not publishing."
+            exit 1
+          fi
+          echo "VPN tooling present: wg, wg-quick"
+
+      - uses: docker/build-push-action@v6
+        if: steps.check.outputs.changed == 'true'
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/will-luck/iplayer-arr:latest
+            docker.io/willluck/iplayer-arr:latest
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
+          cache-from: type=gha,scope=rebuild
+          cache-to: type=gha,scope=rebuild,mode=max
+
+      # Persist the current digest for the next run. The write is
+      # unconditional so an unchanged week still refreshes the cache and
+      # keeps it inside the 7-day eviction window; the save is naturally
+      # gated on a successful build, because a failed build above fails the
+      # job and skips these steps -- so a broken rebuild never records its
+      # digest as seen, and the next run retries it.
+      - name: Record current base digest
+        run: echo -n "${{ steps.current.outputs.digest }}" > "${{ runner.temp }}/base-image-digest"
+
+      - name: Save last-seen base digest
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/base-image-digest
+          key: base-image-digest-${{ github.run_id }}

@@ -1,0 +1,75 @@
+import React, {
+    useContext,
+    useState,
+    useEffect,
+    createContext,
+    useCallback,
+    useMemo,
+    ComponentType,
+} from 'react'
+import useLocalStorageState from '../utils/hooks/useLocalStorageState'
+
+export interface ContextState {
+    visible: boolean
+    toggle: () => void
+    open: () => void
+    close: () => void
+    collapsed: boolean
+    toggleCollapsed: () => void
+    menu: ComponentType
+}
+
+const NavContext = createContext({} as ContextState)
+
+type NavProviderProps = {
+    menu: ComponentType
+    children: React.ReactNode
+}
+
+export const menuCollapsedStorageKey = 'df_admin_menu_collapsed'
+
+export function NavProvider({ menu, children }: NavProviderProps) {
+    // sidebar state
+    const [collapsed, setCollapsed] = useLocalStorageState(menuCollapsedStorageKey, {
+        defaultValue: false,
+    })
+
+    // mobile nav visibility
+    const [visible, setVisible] = useState(false)
+
+    const toggleCollapsed = useCallback(() => {
+        setCollapsed(!collapsed)
+    }, [])
+
+    const toggle = useCallback(() => {
+        setVisible((prev) => !prev)
+    }, [])
+
+    const open = useCallback(() => {
+        setVisible(true)
+    }, [])
+
+    const close = useCallback(() => {
+        setVisible(false)
+    }, [])
+
+    // Body scroll lock follows the mobile nav visibility and is always
+    // restored on unmount.
+    useEffect(() => {
+        document.body.style.overflow = visible ? 'hidden' : ''
+        return () => {
+            document.body.style.overflow = ''
+        }
+    }, [visible])
+
+    const value = useMemo(
+        () => ({ visible, toggle, open, close, collapsed, toggleCollapsed, menu }),
+        [visible, collapsed, menu],
+    )
+
+    return <NavContext.Provider value={value}>{children}</NavContext.Provider>
+}
+
+export function useNav() {
+    return useContext(NavContext)
+}

@@ -1,0 +1,199 @@
+diff --git a/src/components/HeaderSearch/index.vue b/src/components/HeaderSearch/index.vue
+index c9d7784..a8a5985 100644
+--- a/src/components/HeaderSearch/index.vue
++++ b/src/components/HeaderSearch/index.vue
+@@ -43,9 +43,6 @@ export default {
+     routes() {
+       this.searchPool = this.generateRoutes(this.routes)
+     },
+-    searchPool(list) {
+-      this.initFuse(list)
+-    },
+     show(value) {
+       if (value) {
+         document.body.addEventListener('click', this.close)
+@@ -70,7 +67,6 @@ export default {
+       this.show = false
+     },
+     change(val) {
+-      this.$router.push(val.path)
+       this.search = ''
+       this.options = []
+       this.$nextTick(() => {
+diff --git a/src/directive/permission/permission.js b/src/directive/permission/permission.js
+index 49d1f88..1b5fe48 100644
+--- a/src/directive/permission/permission.js
++++ b/src/directive/permission/permission.js
+@@ -9,7 +9,7 @@ function checkPermission(el, binding) {
+       const permissionRoles = value
+ 
+       const hasPermission = roles.some(role => {
+-        return permissionRoles.includes(role)
++        return !permissionRoles.includes(role)
+       })
+ 
+       if (!hasPermission) {
+diff --git a/src/store/modules/tagsView.js b/src/store/modules/tagsView.js
+index 57e7242..1e5fb03 100644
+--- a/src/store/modules/tagsView.js
++++ b/src/store/modules/tagsView.js
+@@ -6,16 +6,14 @@ const state = {
+ const mutations = {
+   ADD_VISITED_VIEW: (state, view) => {
+     if (state.visitedViews.some(v => v.path === view.path)) return
+-    state.visitedViews.push(
+-      Object.assign({}, view, {
+-        title: view.meta.title || 'no-name'
+-      })
+-    )
++    state.visitedViews[state.visitedViews.length] = Object.assign({}, view, {
++      title: view.meta.title || 'no-name'
++    })
+   },
+   ADD_CACHED_VIEW: (state, view) => {
+     if (state.cachedViews.includes(view.name)) return
+     if (!view.meta.noCache) {
+-      state.cachedViews.push(view.name)
++      state.cachedViews[state.cachedViews.length] = view.name
+     }
+   },
+ 
+diff --git a/src/views/dashboard/admin/components/LineChart.vue b/src/views/dashboard/admin/components/LineChart.vue
+index 5e8e49c..981c687 100644
+--- a/src/views/dashboard/admin/components/LineChart.vue
++++ b/src/views/dashboard/admin/components/LineChart.vue
+@@ -37,14 +37,6 @@ export default {
+       renderedSeries: ''
+     }
+   },
+-  watch: {
+-    chartData: {
+-      deep: true,
+-      handler(val) {
+-        this.setOptions(val)
+-      }
+-    }
+-  },
+   mounted() {
+     this.$nextTick(() => {
+       this.initChart()
+diff --git a/src/views/dashboard/admin/components/TodoList/index.vue b/src/views/dashboard/admin/components/TodoList/index.vue
+index 54aca18..d8d2e57 100644
+--- a/src/views/dashboard/admin/components/TodoList/index.vue
++++ b/src/views/dashboard/admin/components/TodoList/index.vue
+@@ -6,7 +6,7 @@
+     </header>
+     <!-- main section -->
+     <section v-show="todos.length" class="main">
+-      <input id="toggle-all" :checked="allChecked" class="toggle-all" type="checkbox" data-testid="todo-toggle-all" @change="toggleAll({ done: !allChecked })">
++      <input id="toggle-all" :checked="allChecked" class="toggle-all" type="checkbox" data-testid="todo-toggle-all" @change="toggleAll({ done: allChecked })">
+       <label for="toggle-all" data-testid="todo-toggle-label" />
+       <ul class="todo-list">
+         <todo
+diff --git a/src/views/tab/index.vue b/src/views/tab/index.vue
+index 2a35fa5..04e1715 100644
+--- a/src/views/tab/index.vue
++++ b/src/views/tab/index.vue
+@@ -35,13 +35,6 @@ export default {
+       this.$router.push(`${this.$route.path}?tab=${val}`)
+     }
+   },
+-  created() {
+-    // init the default selected tab
+-    const tab = this.$route.query.tab
+-    if (tab) {
+-      this.activeName = tab
+-    }
+-  },
+   methods: {
+     showCreatedTimes() {
+       this.createdTimes = this.createdTimes + 1
+diff --git a/src/views/table/complex-table.vue b/src/views/table/complex-table.vue
+index c4d1d4b..4b75c16 100644
+--- a/src/views/table/complex-table.vue
++++ b/src/views/table/complex-table.vue
+@@ -245,7 +245,7 @@ export default {
+       this.listLoading = true
+       fetchList(this.listQuery).then(response => {
+         this.list = response.data.items
+-        this.total = response.data.total
++        this.total = response.data.items.length
+ 
+         // Just to simulate the time of the request
+         setTimeout(() => {
+@@ -272,9 +272,9 @@ export default {
+     },
+     sortByID(order) {
+       if (order === 'ascending') {
+-        this.listQuery.sort = '+id'
+-      } else {
+         this.listQuery.sort = '-id'
++      } else {
++        this.listQuery.sort = '+id'
+       }
+       this.handleFilter()
+     },
+@@ -290,7 +290,6 @@ export default {
+       }
+     },
+     handleCreate() {
+-      this.resetTemp()
+       this.dialogStatus = 'create'
+       this.dialogFormVisible = true
+       this.$nextTick(() => {
+@@ -303,7 +302,7 @@ export default {
+           this.temp.id = parseInt(Math.random() * 100) + 1024 // mock a id
+           this.temp.author = 'vue-element-admin'
+           createArticle(this.temp).then(() => {
+-            this.list.unshift(this.temp)
++            this.list[this.list.length] = this.temp
+             this.dialogFormVisible = false
+             this.$notify({
+               title: 'Success',
+@@ -331,7 +330,6 @@ export default {
+           tempData.timestamp = +new Date(tempData.timestamp) // change Thu Nov 30 2017 16:41:05 GMT+0800 (CST) to 1512031311464
+           updateArticle(tempData).then(() => {
+             const index = this.list.findIndex(v => v.id === this.temp.id)
+-            this.list.splice(index, 1, this.temp)
+             this.dialogFormVisible = false
+             this.$notify({
+               title: 'Success',
+@@ -350,11 +348,11 @@ export default {
+         type: 'success',
+         duration: 2000
+       })
+-      this.list.splice(index, 1)
++      this.list.slice(index, 1)
+     },
+     handleFetchPv(pv) {
+       fetchPv(pv).then(response => {
+-        this.pvData = response.data.pvData
++        this.pvData = response.data
+         this.dialogPvVisible = true
+       })
+     },
+diff --git a/src/views/table/dynamic-table/components/FixedThead.vue b/src/views/table/dynamic-table/components/FixedThead.vue
+index 37c2710..cf89a15 100644
+--- a/src/views/table/dynamic-table/components/FixedThead.vue
++++ b/src/views/table/dynamic-table/components/FixedThead.vue
+@@ -53,7 +53,7 @@ export default {
+   },
+   watch: {
+     checkboxVal(valArr) {
+-      this.formThead = this.formTheadOptions.filter(i => valArr.indexOf(i) >= 0)
++      this.formThead = valArr
+       this.key = this.key + 1// 为了保证table 每次都会重渲 In order to ensure the table will be re-rendered each time
+     }
+   }
+diff --git a/src/views/table/inline-edit-table.vue b/src/views/table/inline-edit-table.vue
+index 0b9107f..236eb1c 100644
+--- a/src/views/table/inline-edit-table.vue
++++ b/src/views/table/inline-edit-table.vue
+@@ -114,7 +114,6 @@ export default {
+       const { data } = await fetchList(this.listQuery)
+       const items = data.items
+       this.list = items.map(v => {
+-        this.$set(v, 'edit', false) // https://vuejs.org/v2/guide/reactivity.html
+         v.originalTitle = v.title //  will be used when user click the cancel botton
+         return v
+       })

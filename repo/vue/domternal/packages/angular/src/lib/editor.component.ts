@@ -1,0 +1,275 @@
+import type { ElementRef, OnDestroy } from '@angular/core';
+import {
+  Component,
+  ViewEncapsulation,
+  afterNextRender,
+  forwardRef,
+  signal,
+  ChangeDetectionStrategy,
+  inject,
+  NgZone,
+  effect,
+  input,
+  output,
+  viewChild,
+  untracked,
+} from '@angular/core';
+import type { ControlValueAccessor } from '@angular/forms';
+import { NG_VALUE_ACCESSOR } from '@angular/forms';
+
+import {
+  Editor,
+  Document,
+  Paragraph,
+  Text,
+  BaseKeymap,
+  History,
+} from '@domternal/core';
+import type { Content, AnyExtension, FocusPosition, EditorPreset, JSONContent, TransactionEventProps, FocusEventProps } from '@domternal/core';
+
+export const DEFAULT_EXTENSIONS: AnyExtension[] = [Document, Paragraph, Text, BaseKeymap, History];
+
+@Component({
+  selector: 'domternal-editor',
+  template: '<div #editorRef></div>',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
+  host: { class: 'dm-editor', 'data-dm-editor-ui': '' },
+  styles: [`:host { display: block; }`],
+  providers: [
+    {
+      provide: NG_VALUE_ACCESSOR,
+      useExisting: forwardRef(() => DomternalEditorComponent),
+      multi: true,
+    },
+  ],
+})
+export class DomternalEditorComponent implements ControlValueAccessor, OnDestroy {
+  // === Template ref ===
+  readonly editorRef = viewChild.required<ElementRef<HTMLDivElement>>('editorRef');
+
+  // === Inputs ===
+  readonly extensions = input<AnyExtension[]>([]);
+  /**
+   * Whether the built-in History extension is included. Disable it when an
+   * extension brings its own undo/redo, such as collaborative editing.
+   */
+  readonly history = input(true);
+  readonly content = input<Content>('');
+  readonly editable = input(true);
+  /**
+   * Editing experience preset. `'notion'` paints `dm-notion-mode` on this
+   * component's host and switches preset-aware extensions to their Notion
+   * behavior, replacing the hand-written class. Create-time only.
+   */
+  readonly preset = input<EditorPreset | undefined>(undefined);
+  readonly autofocus = input<FocusPosition>(false);
+  readonly outputFormat = input<'html' | 'json'>('html');
+
+  // === Outputs ===
+  readonly editorCreated = output<Editor>();
+  readonly contentUpdated = output<{ editor: Editor }>();
+  readonly selectionChanged = output<{ editor: Editor }>();
+  readonly focusChanged = output<{ editor: Editor; event: FocusEvent }>();
+  readonly blurChanged = output<{ editor: Editor; event: FocusEvent }>();
+  readonly editorDestroyed = output();
+
+  // === Signals (read-only public state) ===
+  private _htmlContent = signal('');
+  private _jsonContent = signal<JSONContent | null>(null);
+  private _isEmpty = signal(true);
+  private _isFocused = signal(false);
+  // Candidate for linkedSignal(editable) once min Angular version is >=20
+  private _isEditable = signal(true);
+
+  readonly htmlContent = this._htmlContent.asReadonly();
+  readonly jsonContent = this._jsonContent.asReadonly();
+  readonly isEmpty = this._isEmpty.asReadonly();
+  readonly isFocused = this._isFocused.asReadonly();
+  readonly isEditable = this._isEditable.asReadonly();
+
+  // === Editor instance ===
+  private _editor: Editor | null = null;
+
+  get editor(): Editor | null {
+    return this._editor;
+  }
+
+  // === ControlValueAccessor ===
+  private onChange: (value: Content) => void = () => { /* noop until registerOnChange */ };
+  private onTouched: () => void = () => { /* noop until registerOnTouched */ };
+  private _pendingContent: Content | null = null;
+
+  private ngZone = inject(NgZone);
+
+  constructor() {
+    afterNextRender(() => {
+      this.createEditor();
+    });
+
+    // React to editable input changes
+    effect(() => {
+      const editable = this.editable();
+      if (!this._editor || this._editor.isDestroyed) return;
+      const ed = this._editor;
+      untracked(() => {
+        ed.setEditable(editable);
+        this._isEditable.set(editable);
+      });
+    });
+
+    // React to content input changes
+    effect(() => {
+      const content = this.content();
+      const format = this.outputFormat();
+      if (!this._editor || this._editor.isDestroyed) return;
+      const ed = this._editor;
+      untracked(() => {
+        const current = format === 'html'
+          ? ed.getHTML()
+          : JSON.stringify(ed.getJSON());
+        const incoming = format === 'html'
+          ? (content as string)
+          : JSON.stringify(content);
+        if (incoming !== current) {
+          ed.setContent(content, false);
+        }
+      });
+    });
+
+    // React to extensions input changes
+    effect(() => {
+      this.extensions(); // track the signal
+      if (!this._editor || this._editor.isDestroyed) return;
+      untracked(() => {
+        this.recreateEditor();
+      });
+    });
+  }
+
+  // === Lifecycle ===
+
+  ngOnDestroy(): void {
+    if (this._editor && !this._editor.isDestroyed) {
+      this._editor.destroy();
+      this.editorDestroyed.emit();
+    }
+    this._editor = null;
+  }
+
+  // === ControlValueAccessor implementation ===
+
+  writeValue(value: Content): void {
+    if (!this._editor || this._editor.isDestroyed) {
+      this._pendingContent = value;
+      return;
+    }
+
+    // Compare current content to avoid unnecessary setContent (which resets cursor)
+    if (this.outputFormat() === 'html') {
+      if (value === this._editor.getHTML()) return;
+    } else {
+      if (JSON.stringify(value) === JSON.stringify(this._editor.getJSON())) return;
+    }
+
+    this._editor.setContent(value, false);
+  }
+
+  registerOnChange(fn: (value: Content) => void): void {
+    this.onChange = fn;
+  }
+
+  registerOnTouched(fn: () => void): void {
+    this.onTouched = fn;
+  }
+
+  setDisabledState(isDisabled: boolean): void {
+    this._isEditable.set(!isDisabled);
+    if (this._editor && !this._editor.isDestroyed) {
+      this._editor.setEditable(!isDisabled);
+    }
+  }
+
+  // === Private ===
+
+  private recreateEditor(): void {
+    if (!this._editor || this._editor.isDestroyed) return;
+    const currentContent = this._editor.getJSON();
+    this._editor.destroy();
+    this.editorDestroyed.emit();
+    this._pendingContent = currentContent;
+    this.createEditor();
+  }
+
+  private createEditor(): void {
+    const initialContent = this._pendingContent ?? this.content();
+    this._pendingContent = null;
+
+    const defaults = this.history()
+      ? DEFAULT_EXTENSIONS
+      : DEFAULT_EXTENSIONS.filter((extension) => extension.name !== 'history');
+    const preset = this.preset();
+    this._editor = new Editor({
+      element: this.editorRef().nativeElement,
+      extensions: [...defaults, ...this.extensions()],
+      content: initialContent,
+      editable: this.editable(),
+      autofocus: this.autofocus(),
+      ...(preset ? { preset } : {}),
+    });
+
+    this._isEditable.set(this.editable());
+
+    // Set initial signal values
+    this._htmlContent.set(this._editor.getHTML());
+    this._jsonContent.set(this._editor.getJSON());
+    this._isEmpty.set(this._editor.isEmpty);
+
+    const editor = this._editor;
+    editor.on('transaction', ({ transaction }: TransactionEventProps) => {
+      this.ngZone.run(() => {
+        const ed = editor;
+
+        if (transaction.docChanged) {
+          const html = ed.getHTML();
+          this._htmlContent.set(html);
+          this._jsonContent.set(ed.getJSON());
+          this._isEmpty.set(ed.isEmpty);
+
+          // Programmatic writes (writeValue, [content]) set skipUpdate: keep local
+          // state in sync but do not emit change or mark the reactive form dirty.
+          if (!transaction.getMeta('skipUpdate')) {
+            this.contentUpdated.emit({ editor: ed });
+
+            const value: Content = this.outputFormat() === 'html' ? html : ed.getJSON();
+            this.onChange(value);
+          }
+        }
+
+        if (!transaction.docChanged && transaction.selectionSet) {
+          this.selectionChanged.emit({ editor: ed });
+        }
+      });
+    });
+
+    editor.on('focus', ({ event }: FocusEventProps) => {
+      this.ngZone.run(() => {
+        this._isFocused.set(true);
+        this.focusChanged.emit({ editor, event });
+      });
+    });
+
+    editor.on('blur', ({ event }: FocusEventProps) => {
+      this.ngZone.run(() => {
+        this._isFocused.set(false);
+        this.blurChanged.emit({ editor, event });
+        this.onTouched();
+      });
+    });
+
+    // Emit editor created
+    this.ngZone.run(() => {
+      this.editorCreated.emit(editor);
+    });
+  }
+}

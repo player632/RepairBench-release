@@ -1,0 +1,355 @@
+<script lang="ts">
+  import type { State } from "../types.js";
+
+  export let fileTree: typeof fileTree = [];
+  import { DirectoryData } from "../DataStore/SvelteStormDataStore";
+  import CreateMenu from "./CreateMenu.svelte";
+  import { showEditorBackground } from '../DataStore/SvelteStormDataStore';
+
+  const fs = require("fs");
+  const fileState = {};
+  let rename: boolean = false;
+  let activeFile: string = "";
+  let newName: string = "";
+  let createFile: boolean = false;
+  let createFolder: boolean = false;
+  let activeDir: string = "";
+  let activeFolder: string = "";
+  let fileName: HTMLInputElement;
+
+  DirectoryData.subscribe((data: State) => {
+    activeFile = data.activeFile;
+    rename = data.rename;
+    createFile = data.createFile;
+    createFolder = data.createFolder;
+    activeDir = data.activeDir;
+    activeFolder = data.activeFolder;
+  });
+
+  const toggleVisibility = (path: string): void => {
+    if (!fileState[path]) fileState[path] = true;
+    else fileState[path] = false;
+  };
+
+  const dblClickHandler = (path: string): void => {
+    const openFilePath = path;
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        openFilePath,
+        fileRead: true,
+      };
+    });
+        
+    /*
+    * ==================================================
+    *   SvelteStorm 4.0 Team
+    * 
+    *   The following is used to tr
+    * ==================================================
+    */
+    $showEditorBackground = false;
+  };
+
+  const rightClickHandler = (path: string): void => {
+    const openFilePath: string = path;
+    const fullPath: string = path.substring(0, path.lastIndexOf("/"));
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        activeFile: openFilePath,
+        rename: false,
+        activeDir: fullPath,
+        activeFolder: path,
+      };
+    });
+  };
+
+  const renameHandler = (e: KeyboardEvent, path: string): void => {
+    if (e.key !== "Enter") return;
+
+    const fullPath: string = path.substring(0, path.lastIndexOf("/"));
+    fs.renameSync(path, fullPath + "/" + newName);
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        rename: false,
+        activeFile: "",
+        activeDir: fullPath,
+      };
+    });
+
+    newName = "";
+  };
+
+  const createFileHandler = (e: KeyboardEvent, path: string): void => {
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        activeDir: path,
+        activeFile: "",
+      };
+    });
+
+    if (e.key !== "Enter") return;
+
+    fs.writeFileSync(path + "/" + newName, "", (err) => {
+      if (err) throw err;
+    });
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        createFile: false,
+        rename: false,
+        activeFile: "",
+      };
+    });
+
+    fileState[path] = true;
+    newName = "";
+  };
+
+  // -------------------------------------
+  const createFileHandlerTEST = (e: KeyboardEvent, path: string): void => {
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        activeDir: path,
+        activeFile: "",
+      };
+    });
+
+    if (e.key !== "Enter") return;
+
+    fs.writeFileSync(path + "/" + newName, "", (err) => {
+      if (err) throw err;
+    });
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        createFile: false,
+        rename: false,
+        activeFile: "",
+      };
+    });
+
+    fileState[path] = true;
+    newName = "";
+  };
+
+  // --------------------------------------------------------------------
+
+  const createFolderHandler = (e: KeyboardEvent, path: string): void => {
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        activeDir: path,
+        activeFile: "",
+      };
+    });
+
+    if (e.key !== "Enter") return;
+
+    try {
+      if (!fs.existsSync(path + "/" + newName)) {
+        fs.mkdirSync(path + "/" + newName);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        createFolder: false,
+        rename: false,
+        activeFile: "",
+      };
+    });
+    fileState[path] = true;
+    newName = "";
+  };
+
+  const resetRename = (): void => {
+    DirectoryData.update((currentData) => {
+      return {
+        ...currentData,
+        rename: false,
+        activeFile: "",
+        createFile: false,
+        createFolder: false,
+      };
+    });
+  };
+</script>
+
+<!-- Components -->
+<div class="directory">
+  {#if fileTree}
+    {#each fileTree as { path, name, items }}
+      <ul>
+        {#if fs.statSync(path).isDirectory()}
+          {#if rename && activeFile === path}
+            <span>
+              <input
+                class="textBox"
+                bind:this={fileName}
+                on:keydown={(e) => renameHandler(e, path)}
+                bind:value={newName}
+                placeholder={name}
+                type="text"
+              />
+            </span>
+          {:else}
+            <li
+              on:click={toggleVisibility(path)}
+              class={!fileState[path] ? "liFolderClosed" : "liFolderOpen"}
+              on:contextmenu|preventDefault={() => rightClickHandler(path)}
+              on:click={activeFile || createFile || createFolder
+                ? resetRename
+                : undefined}
+            >
+              {name}
+            </li>
+            {#if activeFolder === path && createFile}
+              <span>
+                <input
+                  class="textBox"
+                  bind:this={fileName}
+                  on:keydown={(e) => createFileHandler(e, path)}
+                  bind:value={newName}
+                  placeholder="New File Name"
+                  type="text"
+                />
+              </span>
+            {/if}
+            {#if activeFolder === path && createFolder}
+              <span>
+                <input
+                  class="textBox"
+                  bind:this={fileName}
+                  on:keydown={(e) => createFolderHandler(e, path)}
+                  bind:value={newName}
+                  placeholder="New Folder Name"
+                  type="text"
+                />
+              </span>
+            {/if}
+            {#if activeFile === path}
+              <CreateMenu filePath={path} />
+            {/if}
+          {/if}
+        {:else if rename && activeFile === path}
+          <span>
+            <input
+              class="textBox"
+              bind:this={fileName}
+              on:keydown={(e) => renameHandler(e, path)}
+              bind:value={newName}
+              placeholder={name}
+              type="text"
+            />
+          </span>
+        {:else}
+          <li
+            on:contextmenu|preventDefault={() => rightClickHandler(path)}
+            on:click={dblClickHandler(path)}
+            class="liFiles"
+            on:click={activeFile ? resetRename : undefined}
+          >
+            <!-- 2022-ST-AJ added on:click to handle opening a file. The on:click below is left unchanged -->
+
+            <img
+              src={fs.existsSync(
+                `src/icons/file_type_${name.split(".").pop().toLowerCase()}.svg`
+              )
+                ? `../src/icons/file_type_${name.split(".").pop().toLowerCase()}.svg`
+                : "../src/icons/file_type_exclam.png"}
+              alt={""}
+            />
+
+            {name}
+          </li>
+          {#if activeFile === path}
+            <CreateMenu filePath={path} />
+          {/if}
+        {/if}
+
+        {#if fileState[path] && fs.statSync(path).isDirectory()}
+          <svelte:self
+            fileTree={items.sort((a, b) => {
+              return fs.statSync(a.path).isDirectory() ===
+                fs.statSync(b.path).isDirectory()
+                ? 0
+                : fs.statSync(a.path).isDirectory()
+                ? -1
+                : 1;
+            })}
+          />
+        {/if}
+      </ul>
+    {/each}
+  {/if}
+</div>
+
+<!-- CSS Styling -->
+<style>
+  .liFolderClosed {
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0px 0 5px 25px;
+    list-style: none;
+    background-image: url("../src/icons/folder-1484.svg");
+    background-repeat: no-repeat;
+    background-position: left;
+    background-size: 15px;
+  }
+
+  .liFolderOpen {
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: flex-start;
+    padding: 10px 0 5px 25px;
+    list-style: none;
+    background-image: url("../src/icons/folder-1485.svg");
+    background-repeat: no-repeat;
+    background-position: left;
+    background-size: 15px;
+  }
+
+  .liFiles {
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 0.5px;
+    list-style: none;
+    background-repeat: no-repeat;
+    background-position: left;
+  }
+
+  .directory {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  ul {
+    padding-left: 10px;
+    margin: 5px;
+  }
+
+  input {
+    background-color: white;
+  }
+
+  .textBox {
+    margin-left: 10px;
+    padding: 10px 10px 10px 10px;
+    font-size: 14px;
+    width: 150px;
+  }
+
+  img {
+    width: 15px;
+    margin-top: 10px;
+  }
+</style>

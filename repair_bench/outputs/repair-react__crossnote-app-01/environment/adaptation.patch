@@ -1,0 +1,493 @@
+diff --git a/package.json b/package.json
+index 5ca4b4908..ba4ed9c95 100644
+--- a/package.json
++++ b/package.json
+@@ -9,18 +9,14 @@
+   },
+   "packageManager": "pnpm@11.17.0",
+   "scripts": {
+-    "predev": "node scripts/download-emoji-sheet.mjs",
+     "dev": "vite",
+-    "prebuild": "node scripts/download-emoji-sheet.mjs",
+     "build": "tsc --noEmit && vite build",
+     "preview": "vite preview",
+     "typecheck": "tsc --noEmit",
+     "lint": "eslint . --max-warnings 141",
+     "lint:fix": "eslint . --fix",
+     "format": "prettier --write .",
+-    "format:check": "prettier --check .",
+-    "test": "vitest run",
+-    "test:watch": "vitest"
++    "format:check": "prettier --check ."
+   },
+   "dependencies": {
+     "@0xgg/echomd": "^1.0.4",
+diff --git a/src/containers/crossnote.ts b/src/containers/crossnote.ts
+index 221972d4d..6e1481aef 100644
+--- a/src/containers/crossnote.ts
++++ b/src/containers/crossnote.ts
+@@ -16,6 +16,7 @@ import Crossnote, {
+   PullNotebookArgs,
+   PushNotebookArgs,
+ } from "../lib/crossnote";
++import { DRAFTS_FIXTURE_NOTES } from "../fixtures/drafts";
+ import { EventType, globalEmitter } from "../lib/event";
+ import { pfs } from "../lib/fs";
+ import { Note, NoteConfig, getNoteIcon } from "../lib/note";
+@@ -857,6 +858,14 @@ If you want to know more about this project,
+ please download and read the [Welcome notebook](${window.location.origin}/?repo=https%3A%2F%2Fgithub.com%2F0xGG%2Fwelcome-notebook.git&branch=master&filePath=README.md).
+ `,
+         );
++        // Offline first-boot corpus (see src/fixtures/drafts.ts): local writes
++        // into the same lightning-fs volume, no network, no clock dependence.
++        for (const fixtureNote of DRAFTS_FIXTURE_NOTES) {
++          await pfs.writeFile(
++            path.resolve(notebook.dir, fixtureNote.filePath),
++            fixtureNote.markdown,
++          );
++        }
+         setNotebooks([notebook]);
+         setInitialized(true);
+         // TODO: create empty note and add `We suggest you to add [Welcome to crossnote]() notebook ;)`
+diff --git a/src/fixtures/drafts.ts b/src/fixtures/drafts.ts
+new file mode 100644
+index 000000000..79a535477
+--- /dev/null
++++ b/src/fixtures/drafts.ts
+@@ -0,0 +1,119 @@
++// Offline, deterministic first-boot content for the local "Drafts" notebook.
++//
++// The application has no backend: the notebook lives in the browser's own
++// lightning-fs (IndexedDB) volume, and the upstream first-boot branch that
++// cloned a welcome notebook from github.com is commented out in
++// src/containers/crossnote.ts. A fresh browser profile therefore starts with a
++// single README.md, which is not enough surface to exercise ordering,
++// filtering, pinning or quick-access behaviour, and every browser context would
++// otherwise have to type its own corpus in before anything could be observed.
++//
++// These notes are written once, locally, at first boot, from literals in this
++// file. Nothing here is fetched, nothing here depends on the wall clock, and
++// the same file is present in every tree state, so the corpus is identical
++// wherever it is measured.
++//
++// The front matter keys are exactly the ones src/lib/notebook.ts reads back
++// (created / modified / pinned / favorited / icon / aliases); quoted ISO-8601
++// strings are used for the two timestamps so the parsed value cannot depend on
++// how the YAML parser chooses to type an unquoted date.
++export interface FixtureNote {
++  filePath: string;
++  markdown: string;
++}
++
++export const DRAFTS_FIXTURE_NOTES: FixtureNote[] = [
++  {
++    filePath: "Grocery List.md",
++    markdown: `---
++created: "2026-01-05T09:00:00.000Z"
++modified: "2026-01-06T18:30:00.000Z"
++---
++# Grocery List
++
++- sourdough flour
++- sea salt
++- coffee beans
++
++Pick the order up before the weekend. #shopping
++`,
++  },
++  {
++    filePath: "Meeting Notes.md",
++    markdown: `---
++created: "2026-02-11T10:15:00.000Z"
++modified: "2026-03-02T08:45:00.000Z"
++---
++# Meeting Notes
++
++Agenda for the quarterly review with the design team.
++
++## Decisions
++
++- Ship the offline cache first
++- Defer the sync panel
++`,
++  },
++  {
++    filePath: "Quarterly Goals.md",
++    markdown: `---
++created: "2026-03-20T07:05:00.000Z"
++modified: "2026-03-21T22:10:00.000Z"
++pinned: true
++---
++# Quarterly Goals
++
++Three outcomes the team committed to.
++
++1. Cut cold start time in half
++2. Ship the offline cache
++3. Retire the legacy importer
++`,
++  },
++  {
++    filePath: "Trip Planning.md",
++    markdown: `---
++created: "2026-04-02T14:00:00.000Z"
++modified: "2026-04-09T11:20:00.000Z"
++---
++# Trip Planning
++
++Ferries leave the harbour at 07:40 and 16:10.
++
++The return leg depends on the afternoon tide, so the later ferry is the safer
++one to book.
++`,
++  },
++  {
++    filePath: "Sourdough Recipe.md",
++    markdown: `---
++created: "2026-05-15T07:30:00.000Z"
++modified: "2026-05-15T07:30:00.000Z"
++---
++# Sourdough Recipe
++
++Hydration seventy eight percent.
++
++## Steps
++
++- Feed the starter the night before
++- Autolyse for one hour
++- Fold every thirty minutes
++`,
++  },
++  {
++    filePath: "Weekly Review.md",
++    markdown: `---
++created: "2026-06-01T20:00:00.000Z"
++modified: "2026-06-08T06:05:00.000Z"
++aliases: "retro, weekly-log"
++---
++# Weekly Review
++
++What shipped and what slipped this week.
++
++- Shipped the offline cache, see [[Meeting Notes]]
++- Slipped the importer, tracked in [[Quarterly Goals]]
++`,
++  },
++];
+diff --git a/src/lib/notebook.test.ts b/src/lib/notebook.test.ts
+deleted file mode 100644
+index f478a6ef2..000000000
+--- a/src/lib/notebook.test.ts
++++ /dev/null
+@@ -1,85 +0,0 @@
+-import * as git from "isomorphic-git";
+-import { beforeAll, describe, expect, it } from "vitest";
+-import { fs, pfs } from "./fs";
+-import { Notebook } from "./notebook";
+-
+-// Integration test of the data layer: lightning-fs running on
+-// fake-indexeddb, exercising note write/read, directory scanning and the
+-// search index - the same code paths the real app uses.
+-describe("Notebook", () => {
+-  let notebook: Notebook;
+-
+-  beforeAll(async () => {
+-    await pfs.mkdirp("/notebooks/test");
+-    // Local notebooks are git-initialized on creation (see Crossnote.addNotebook)
+-    await git.init({ fs, dir: "/notebooks/test" });
+-    notebook = new Notebook();
+-    notebook._id = "test";
+-    notebook.dir = "/notebooks/test";
+-    notebook.name = "Test Notebook";
+-    notebook.initSearch();
+-    // Seed the notes that the discovery and search tests assert on, and scan
+-    // them in here, so that every test below stands alone - no test depends
+-    // on writes performed by an earlier one.
+-    await notebook.writeNote("hello.md", "# Hello World\n\nBody", {
+-      createdAt: new Date(),
+-      modifiedAt: new Date(),
+-    });
+-    await notebook.writeNote("pinned.md", "# Pinned", {
+-      createdAt: new Date(),
+-      modifiedAt: new Date(),
+-      pinned: true,
+-    });
+-    await notebook.refreshNotes({ dir: "./", includeSubdirectories: true });
+-  });
+-
+-  it("writes a note and reads it back without front matter", async () => {
+-    const note = await notebook.writeNote(
+-      "roundtrip.md",
+-      "# Round Trip\n\nBody",
+-      {
+-        createdAt: new Date(),
+-        modifiedAt: new Date(),
+-      },
+-    );
+-    expect(note.filePath).toBe("roundtrip.md");
+-
+-    const read = await notebook.getNote("roundtrip.md", true);
+-    // Exact match: front matter must be stripped, and the body must come
+-    // back unmangled (getNote prepends a "Please fix front-matter" banner
+-    // on YAML errors, which toContain-style assertions would let through).
+-    expect(read.markdown).toBe("# Round Trip\n\nBody");
+-    expect(read.markdown).not.toContain("created:");
+-  });
+-
+-  it("persists note config as front matter", async () => {
+-    await notebook.writeNote("config.md", "# Config", {
+-      createdAt: new Date(),
+-      modifiedAt: new Date(),
+-      pinned: true,
+-    });
+-    const read = await notebook.getNote("config.md", true);
+-    expect(read.config.pinned).toBe(true);
+-    expect(read.markdown).toBe("# Config");
+-  });
+-
+-  it("discovers notes on disk via refreshNotes", async () => {
+-    const notes = await notebook.refreshNotes({
+-      dir: "./",
+-      includeSubdirectories: true,
+-    });
+-    const filePaths = Object.keys(notes);
+-    expect(filePaths).toContain("hello.md");
+-    expect(filePaths).toContain("pinned.md");
+-  });
+-
+-  it("indexes discovered notes for search", () => {
+-    const results = notebook.search.search("Hello");
+-    expect(results.length).toBeGreaterThan(0);
+-    expect(results[0].filePath).toBe("hello.md");
+-  });
+-
+-  it("returns null for a missing note", async () => {
+-    expect(await notebook.getNote("missing.md")).toBeNull();
+-  });
+-});
+diff --git a/src/lib/search.test.ts b/src/lib/search.test.ts
+deleted file mode 100644
+index 80430dbac..000000000
+--- a/src/lib/search.test.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import Search from "./search";
+-
+-describe("Search", () => {
+-  it("finds a document by title", () => {
+-    const search = new Search();
+-    search.add("notes/hello.md", "Hello World");
+-    const results = search.search("hello");
+-    expect(results.length).toBeGreaterThan(0);
+-    expect(results[0].filePath).toBe("notes/hello.md");
+-  });
+-
+-  it("supports CJK titles", () => {
+-    const search = new Search();
+-    search.add("notes/cn.md", "交叉笔记");
+-    expect(search.search("交叉").length).toBeGreaterThan(0);
+-  });
+-
+-  it("removes documents from the index", () => {
+-    const search = new Search();
+-    search.add("a.md", "Alpha");
+-    search.remove("a.md");
+-    expect(search.search("alpha")).toHaveLength(0);
+-  });
+-
+-  it("makes notes findable by added aliases", () => {
+-    const search = new Search();
+-    search.add("a.md", "Alpha");
+-    search.addAlias("a.md", "Omega");
+-    expect(search.search("omega").length).toBeGreaterThan(0);
+-  });
+-});
+diff --git a/src/test/setup.ts b/src/test/setup.ts
+deleted file mode 100644
+index e05d629ee..000000000
+--- a/src/test/setup.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-import "fake-indexeddb/auto";
+-
+-// jsdom's Blob does not implement stream(), which isomorphic-git's deflate
+-// path needs (it feature-detects CompressionStream, which Node provides).
+-if (typeof Blob !== "undefined" && !Blob.prototype.stream) {
+-  Blob.prototype.stream = function (this: Blob) {
+-    const arrayBufferPromise = this.arrayBuffer();
+-    return new ReadableStream({
+-      async start(controller) {
+-        controller.enqueue(new Uint8Array(await arrayBufferPromise));
+-        controller.close();
+-      },
+-    });
+-  } as typeof Blob.prototype.stream;
+-}
+diff --git a/src/utilities/markdown.test.ts b/src/utilities/markdown.test.ts
+deleted file mode 100644
+index e8c909d85..000000000
+--- a/src/utilities/markdown.test.ts
++++ /dev/null
+@@ -1,45 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { getTags, matter, matterStringify, sanitizeTag } from "./markdown";
+-
+-describe("getTags", () => {
+-  it("extracts hash tags from markdown", () => {
+-    const tags = getTags("Hello #tag1 world and #中文标签 too");
+-    expect(tags).toContain("tag1");
+-    expect(tags).toContain("中文标签");
+-  });
+-
+-  it("returns an empty array when there are no tags", () => {
+-    expect(getTags("plain text without tags")).toEqual([]);
+-  });
+-});
+-
+-describe("sanitizeTag", () => {
+-  it("collapses whitespace and trims path segments", () => {
+-    expect(sanitizeTag("  foo /  bar ")).toBe("foo/bar");
+-  });
+-
+-  it("drops empty path segments", () => {
+-    expect(sanitizeTag("foo//bar")).toBe("foo/bar");
+-  });
+-});
+-
+-describe("matter", () => {
+-  it("parses front matter and strips it from the content", () => {
+-    const output = matter("---\nfavorited: true\n---\n# Hello");
+-    expect(output.data.favorited).toBe(true);
+-    expect(output.content).toBe("# Hello");
+-  });
+-
+-  it("returns the whole document when there is no front matter", () => {
+-    const output = matter("# Just content");
+-    expect(output.data).toEqual({});
+-    expect(output.content).toBe("# Just content");
+-  });
+-
+-  it("round-trips through matterStringify", () => {
+-    const md = matterStringify("# Body", { pinned: true });
+-    const parsed = matter(md);
+-    expect(parsed.data.pinned).toBe(true);
+-    expect(parsed.content.trim()).toBe("# Body");
+-  });
+-});
+diff --git a/src/utilities/utils.test.ts b/src/utilities/utils.test.ts
+deleted file mode 100644
+index a4614fa43..000000000
+--- a/src/utilities/utils.test.ts
++++ /dev/null
+@@ -1,59 +0,0 @@
+-import { describe, expect, it, vi } from "vitest";
+-import { formatDate, RandomColorGenerator, randomID } from "./utils";
+-
+-describe("formatDate", () => {
+-  it("returns an empty string for empty input", () => {
+-    expect(formatDate("")).toBe("");
+-  });
+-
+-  it("formats dates within an hour as ceiled minutes", () => {
+-    // 9.5 minutes ago ceils to exactly 10m; the half-minute slack absorbs
+-    // the wall-clock time that passes between here and the implementation.
+-    const d = new Date(Date.now() - 9.5 * 60 * 1000).toISOString();
+-    expect(formatDate(d)).toBe("10m");
+-  });
+-
+-  it("formats dates within a day as floored hours", () => {
+-    const d = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+-    expect(formatDate(d)).toBe("1h");
+-  });
+-
+-  it("prefixes dates in the future", () => {
+-    const d = new Date(Date.now() + 9.5 * 60 * 1000).toISOString();
+-    expect(formatDate(d)).toBe("future 10m");
+-  });
+-
+-  it("formats older dates as month day year", () => {
+-    const d = new Date("2020-01-15T12:00:00Z").toISOString();
+-    expect(formatDate(d)).toBe("Jan 15 2020");
+-  });
+-});
+-
+-describe("RandomColorGenerator", () => {
+-  it("derives the color from the key, stable across instances", () => {
+-    // Two fresh instances bypass the per-instance memo cache, so this pins
+-    // the hash itself; the literal value guards the color assignment users
+-    // see across sessions.
+-    expect(new RandomColorGenerator().generateColor("abc")).toBe("#f6aa8e");
+-    expect(new RandomColorGenerator().generateColor("abc")).toBe("#f6aa8e");
+-  });
+-
+-  it("hashes a key only once per instance", () => {
+-    // Spy on the derivation itself: comparing two return values cannot tell
+-    // memoization apart from a deterministic recompute.
+-    const generator = new RandomColorGenerator();
+-    const hashCode = vi.spyOn(
+-      generator as unknown as { hashCode: (s: string) => number },
+-      "hashCode",
+-    );
+-    generator.generateColor("abc");
+-    generator.generateColor("abc");
+-    expect(hashCode).toHaveBeenCalledTimes(1);
+-  });
+-});
+-
+-describe("randomID", () => {
+-  it("produces short alphanumeric ids", () => {
+-    expect(randomID()).toMatch(/^[a-z0-9]{1,9}$/);
+-  });
+-});
+diff --git a/vite.config.ts b/vite.config.ts
+index 562c1bea4..657f33046 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -1,7 +1,6 @@
+ import react from "@vitejs/plugin-react";
+-import { execSync } from "node:child_process";
+ import { readFileSync } from "node:fs";
+-import { defineConfig } from "vitest/config";
++import { defineConfig } from "vite";
+ import { viteStaticCopy } from "vite-plugin-static-copy";
+ 
+ const pkg = JSON.parse(
+@@ -14,15 +13,16 @@ const echomdVersion: string = pkg.dependencies["@0xgg/echomd"];
+ 
+ // Build metadata shown in the Settings panel (replaces the legacy
+ // `yarn git-info` script that generated src/_git_commit.js).
++//
++// Frozen to a constant on purpose. The upstream implementation shelled out to
++// `git log -1 --oneline` / `git rev-parse HEAD` at config time, so the string
++// baked into the served bundle depended on whichever repository the build
++// happened to run inside, and the Settings panel then displayed it. Both the
++// value and its provenance are build-host detail: nothing under src/ branches
++// on it, it is only rendered as text, so a fixed value is behaviourally
++// equivalent for every consumer while making the artifact reproducible.
+ function getGitCommit(): { logMessage: string; hash: string } {
+-  try {
+-    return {
+-      logMessage: execSync("git log -1 --oneline").toString().trim(),
+-      hash: execSync("git rev-parse HEAD").toString().trim(),
+-    };
+-  } catch {
+-    return { logMessage: "unknown", hash: "" };
+-  }
++  return { logMessage: "crossnote", hash: "" };
+ }
+ 
+ export default defineConfig({
+@@ -59,12 +59,4 @@ export default defineConfig({
+   server: {
+     port: 3000,
+   },
+-  test: {
+-    environment: "jsdom",
+-    setupFiles: ["src/test/setup.ts"],
+-    // Run in random order every time so order-independence stays an enforced
+-    // invariant rather than a one-off verification; Vitest prints the seed on
+-    // failure for reproduction.
+-    sequence: { shuffle: true },
+-  },
+ });

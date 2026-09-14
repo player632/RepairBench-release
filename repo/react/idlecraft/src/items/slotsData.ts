@@ -1,0 +1,24 @@
+import { EquipSlotsEnum } from '../characters/equipSlotsEnum'
+import { ItemTypes } from './Item'
+
+export interface SlotData {
+    ItemType: ItemTypes
+}
+
+export const SlotsData: Record<EquipSlotsEnum, SlotData> = {
+    [EquipSlotsEnum.WoodAxe]: {
+        ItemType: ItemTypes.WoodAxe,
+    },
+    [EquipSlotsEnum.Pickaxe]: {
+        ItemType: ItemTypes.Pickaxe,
+    },
+    [EquipSlotsEnum.MainHand]: {
+        ItemType: ItemTypes.OneHand,
+    },
+    [EquipSlotsEnum.TwoHand]: {
+        ItemType: ItemTypes.TwoHands,
+    },
+    [EquipSlotsEnum.Body]: {
+        ItemType: ItemTypes.Body,
+    },
+}

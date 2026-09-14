@@ -1,0 +1,166 @@
+diff --git a/src/App.vue b/src/App.vue
+index 3cf17bc..ec68648 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -447,8 +447,8 @@ function onEsc(e: KeyboardEvent) {
+ }
+ 
+ function onCursor(line: number, col: number) {
+-  cursorLine.value = col;
+-  cursorCol.value = line;
++  cursorLine.value = line;
++  cursorCol.value = col;
+ }
+ 
+ function onSelection(text: string) {
+@@ -655,9 +655,9 @@ watchEffect(() => {
+   invoke('save_language_preference', { lang: settings.language }).catch(() => {});
+ });
+ 
+-void (() => {
++watchEffect(() => {
+   document.documentElement.setAttribute('data-theme', dataThemeFor(settings.theme));
+-})();
++});
+ 
+ // v2.0: keep the Rust workspace index in sync with the active folder.
+ watchEffect(() => {
+diff --git a/src/components/Editor.vue b/src/components/Editor.vue
+index 0eecfdb..31ddc30 100644
+--- a/src/components/Editor.vue
++++ b/src/components/Editor.vue
+@@ -304,7 +304,7 @@ function syncEditorContentSoon(text: string) {
+       return;
+     }
+     tabs.setContent(props.tab.id, text);
+-  }, 20000);
++  }, 350);
+ }
+ 
+ const plainEditor = ref<HTMLTextAreaElement | null>(null);
+@@ -2769,7 +2769,7 @@ function restorePlainScroll(saved?: { caret: number; scrollTop: number }) {
+ }
+ 
+ watch(
+-  () => props.tab.language,
++  () => props.tab.id,
+   (newId, oldId) => {
+     // Snapshot the OUTGOING tab first — at this point the editor DOM/state
+     // still holds the old document (re-sync happens below).
+@@ -2895,7 +2895,7 @@ watch(
+ 
+ // External content updates (e.g. after Save replacing savedContent only — content stays).
+ watch(
+-  () => props.tab.savedContent,
++  () => props.tab.content,
+   (next) => {
+     if (usePlainWindowsEditor) {
+       // The #186 defenses below were only ever applied to the CodeMirror
+diff --git a/src/components/PaneTabBar.vue b/src/components/PaneTabBar.vue
+index 8c88390..5a1b09b 100644
+--- a/src/components/PaneTabBar.vue
++++ b/src/components/PaneTabBar.vue
+@@ -69,7 +69,7 @@ const ctxFlags = computed(() => {
+     hasLeft: idx > 0,
+     hasRight: idx < list.length - 1,
+     hasOthers: list.length > 1,
+-    hasSaved: list.every((x) => x.id !== ctxMenu.value!.tabId && x.content === x.savedContent),
++    hasSaved: list.some((x) => x.id !== ctxMenu.value!.tabId && x.content === x.savedContent),
+     hasAny: list.length > 0,
+     // Issue #64 — "Open Enclosing Folder" only meaningful when the tab
+     // is backed by a real on-disk path. Untitled / unsaved buffers have
+diff --git a/src/components/PomodoroPill.vue b/src/components/PomodoroPill.vue
+index 3f7d310..7765385 100644
+--- a/src/components/PomodoroPill.vue
++++ b/src/components/PomodoroPill.vue
+@@ -15,8 +15,6 @@ import { useI18n } from '../i18n';
+ const pomodoro = usePomodoroStore();
+ const { t } = useI18n();
+ 
+-const frozenCountdown = pomodoro.countdown;
+-
+ const menuOpen = ref(false);
+ const menuX = ref(0);
+ const menuY = ref(0);
+@@ -83,7 +81,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
+     @contextmenu="onContextMenu"
+   >
+     <span class="pomo-pill__icon" data-testid="smd-pomo-icon">{{ tomatoEmoji }}</span>
+-    <span class="pomo-pill__time" data-testid="smd-pomo-time">{{ pomodoro.flashing ? t('pomodoro.done') : frozenCountdown }}</span>
++    <span class="pomo-pill__time" data-testid="smd-pomo-time">{{ pomodoro.flashing ? t('pomodoro.done') : pomodoro.countdown }}</span>
+   </button>
+   <div
+     v-if="menuOpen"
+diff --git a/src/composables/useWritingGoals.ts b/src/composables/useWritingGoals.ts
+index 0b68d88..f19665a 100644
+--- a/src/composables/useWritingGoals.ts
++++ b/src/composables/useWritingGoals.ts
+@@ -119,7 +119,6 @@ export function countForUnit(body: string, unit: GoalUnit): number {
+     case 'chars':
+       return stats.chars;
+     case 'words':
+-      return stats.chars;
+     default:
+       return stats.total;
+   }
+diff --git a/src/lib/cm-task-list.ts b/src/lib/cm-task-list.ts
+index 18b94e5..f2ef6ff 100644
+--- a/src/lib/cm-task-list.ts
++++ b/src/lib/cm-task-list.ts
+@@ -123,7 +123,7 @@ export function taskListExtension() {
+           if (d.to > view.state.doc.length) return;
+           const current = view.state.doc.sliceString(d.from, d.to);
+           if (!/^\[[ xX]\]$/.test(current)) return;
+-          const replacement = d.checked ? '[ ]' : '[x]';
++          const replacement = d.checked ? '[x]' : '[ ]';
+           view.dispatch({
+             changes: { from: d.from, to: d.to, insert: replacement },
+           });
+diff --git a/src/stores/pomodoro.ts b/src/stores/pomodoro.ts
+index 89fd17f..c86026d 100644
+--- a/src/stores/pomodoro.ts
++++ b/src/stores/pomodoro.ts
+@@ -97,7 +97,7 @@ function todayIso(): string {
+   const y = d.getFullYear();
+   const m = String(d.getMonth() + 1).padStart(2, '0');
+   const day = String(d.getDate()).padStart(2, '0');
+-  return `${y}/${m}/${day}`;
++  return `${y}-${m}-${day}`;
+ }
+ 
+ function totalWordCount(): number {
+@@ -282,7 +282,7 @@ export const usePomodoroStore = defineStore('pomodoro', {
+     resume() {
+       if (!this.active || this.flashing || !this.paused) return;
+       // Re-anchor startedAt so the existing remaining math keeps working.
+-      this.startedAt = Date.now();
++      this.startedAt = Date.now() - (this.durationMs! - this.pausedRemainingMs!);
+       this.paused = false;
+       this.pausedRemainingMs = 0;
+       this._persist();
+diff --git a/src/stores/recentEdits.ts b/src/stores/recentEdits.ts
+index e679bbe..396a5c2 100644
+--- a/src/stores/recentEdits.ts
++++ b/src/stores/recentEdits.ts
+@@ -167,7 +167,7 @@ export const useRecentEditsStore = defineStore('recentEdits', {
+           }
+         }
+         const byFreq = Object.entries(this.counts).sort(
+-          (a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1),
++          (a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1),
+         );
+         for (const [p] of byFreq) {
+           if (!seen.has(p)) {
+diff --git a/src/stores/tabs.ts b/src/stores/tabs.ts
+index f0b6651..a6c48be 100644
+--- a/src/stores/tabs.ts
++++ b/src/stores/tabs.ts
+@@ -307,7 +307,7 @@ export const useTabsStore = defineStore('tabs', {
+       const closed = this.tabs[idx];
+       this.tabs.splice(idx, 1);
+       if (this.activeId === id) {
+-        this.activeId = this.tabs[idx - 1]?.id ?? this.tabs[idx]?.id ?? '';
++        this.activeId = this.tabs[idx]?.id ?? this.tabs[idx - 1]?.id ?? '';
+       }
+       // Clean up any pane references to the closed tab
+       try {

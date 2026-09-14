@@ -1,0 +1,682 @@
+diff --git a/assets/js/main.js b/assets/js/main.js
+index 5269447cbcf70dba77ec0aac06b0a3dcff8596e8..84201e4af8a3d6d83cb69dfe3fc766f69acdd49c 100644
+--- a/assets/js/main.js
++++ b/assets/js/main.js
+@@ -171,4 +171,171 @@ themeButton.addEventListener('click', () => {
+     // We save the theme and the current icon that the user chose
+     localStorage.setItem('selected-theme', getCurrentTheme())
+     localStorage.setItem('selected-icon', getCurrentIcon())
+-})
+\ No newline at end of file
++})
++
++/*==================== READ-ONLY VERIFICATION HANDLES ====================*/
++/* Added by the harness, not by the author. Everything below is a pure read of the page as it
++   already is - the document, the computed style, the two storage objects and the page's own
++   library instances. There is no setter, nothing is cached and nothing is written anywhere, so
++   these handles can describe the shipped behaviour but cannot change it. */
++;(function () {
++    var d = document, w = window;
++    var q = function (s) { return d.querySelector(s) };
++    var qa = function (s) { return Array.prototype.slice.call(d.querySelectorAll(s)) };
++    var tid = function (t) { return d.querySelector('[data-testid="' + t + '"]') };
++    var cs = function (el, p) { return el ? w.getComputedStyle(el)[p] : null };
++    var cls = function (el) { return el ? String(el.getAttribute('class') || '') : null };
++    var norm = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim() };
++    /* innerText is render-aware: an element inside a visibility:hidden subtree reports "" even though
++       its markup text is right there. A read-only WITNESS must not go blind when the page hides something,
++       or every handle over a closed panel would read as empty and could not tell "panel intact but closed"
++       from "panel torn down" - which is exactly the distinction the territory guards need. So fall back to
++       textContent when innerText renders to nothing. For a rendered element the two agree after norm(). */
++    var txt = function (el) { if (!el) { return null } var s = norm(el.innerText); if (s === "") { s = norm(el.textContent) } return s };
++    var join = function (a) { return a.join('|') };
++    var navLinks = function () { return qa('.nav__menu .nav__link') };
++    var panels = function () { return qa('.skills__content') };
++    var modals = function () { return qa('.services__modal') };
++    /* Both horizontal strips that carry the shared .portfolio__container class are started in loop mode,
++       and loop mode clones the last slide in front of the first and the first slide behind the last. The
++       clones carry the same probe identity and the same text as the slides they were copied from, so a
++       census that counts every match in the document counts a cloned item twice (measured on the pristine
++       face: 91 elements carry a data-testid where the instrumentation added 83, and portfolioTitles()
++       reads 5 strings where the strip ships 3 titles). A census handle states a fact about the SHIPPED
++       items, not about the carousel library's own loop scaffolding, so every census reader below skips an
++       element that lives inside a .swiper-slide-duplicate. This is a reader-side filter only: the clones
++       stay in the document, stripSlideCount() still counts them, and the native count asserts in P11 still
++       see them - that element count is pinned on purpose, because de-duplicating the strip itself would be
++       a regression and not a repair (QUIRK Q04). */
++    var inDup = function (el) { return !!(el && el.closest && el.closest('.swiper-slide-duplicate')) };
++    var qReal = function (s) { return qa(s).filter(function (el) { return !inDup(el) }) };
++    var api = {};
++    var def = function (name, fn) { Object.defineProperty(api, name, { value: fn, writable: false, enumerable: true, configurable: false }) };
++
++    /* --- off-canvas navigation menu --- */
++    def('menuOpen', function () { var m = tid('rb-nav-menu'); return m ? m.classList.contains('show-menu') : null });
++    def('menuBottom', function () { return cs(tid('rb-nav-menu'), 'bottom') });
++    def('menuOpacity', function () { return cs(tid('rb-nav-menu'), 'opacity') });
++    def('menuPosition', function () { return cs(tid('rb-nav-menu'), 'position') });
++    def('navCount', function () { return navLinks().length });
++    def('navHrefOrder', function () { return join(navLinks().map(function (a) { return String(a.getAttribute('href') || '') })) });
++    def('navTextOrder', function () { return join(navLinks().map(txt)) });
++    def('navIconCount', function () { return qa('.nav__menu .nav__icon').length });
++    def('activeLinkHrefs', function () { return join(navLinks().filter(function (a) { return a.classList.contains('active-link') }).map(function (a) { return String(a.getAttribute('href') || '') })) });
++    def('linkColor', function (frag) { var a = q('.nav__menu a[href*="' + frag + '"]'); return cs(a, 'color') });
++    def('accentReferenceColor', function () { return cs(q('.nav__close'), 'color') });
++    def('plainLinkColor', function () { return cs(q('.nav__menu a[href*="skills"]'), 'color') });
++
++    /* --- skills accordion --- */
++    def('panelCount', function () { return panels().length });
++    def('panelsOpen', function () { var o = []; panels().forEach(function (p, i) { if (p.classList.contains('skills__open')) o.push(String(i)) }); return join(o) });
++    def('panelClass', function (i) { return cls(panels()[Number(i)]) });
++    def('panelListHeight', function (i) { var l = panels()[Number(i)] ? panels()[Number(i)].querySelector('.skills__list') : null; return l ? l.offsetHeight : null });
++    def('panelListOverflow', function (i) { var l = panels()[Number(i)] ? panels()[Number(i)].querySelector('.skills__list') : null; return cs(l, 'overflow') });
++    def('panelArrowTransform', function (i) { var a = panels()[Number(i)] ? panels()[Number(i)].querySelector('.skills__arrow') : null; return cs(a, 'transform') });
++    def('panelHeaderCount', function () { return qa('.skills__header').length });
++    def('panelTitles', function () { return join(qa('.skills__content .skills__header h1').map(txt)) });
++    def('skillRowCount', function () { return qa('.skills__data').length });
++    def('skillNumbers', function () { return join(qa('.skills__number').map(txt)) });
++    def('skillBarWidths', function () { return join(qa('.skills__percentage').map(function (b) { return cs(b, 'width') })) });
++
++    /* --- services detail panels --- */
++    def('modalCount', function () { return modals().length });
++    def('activeModal', function () { var a = -1; modals().forEach(function (m, i) { if (m.classList.contains('active-modal')) a = i }); return a });
++    def('activeModalCount', function () { return modals().filter(function (m) { return m.classList.contains('active-modal') }).length });
++    def('modalClass', function (i) { return cls(modals()[Number(i)]) });
++    def('modalVisibility', function (i) { return cs(modals()[Number(i)], 'visibility') });
++    def('modalOpacity', function (i) { return cs(modals()[Number(i)], 'opacity') });
++    def('modalTitle', function (i) { var m = modals()[Number(i)]; return m ? txt(m.querySelector('.services__modal-title')) : null });
++    def('modalBulletCount', function (i) { var m = modals()[Number(i)]; return m ? m.querySelectorAll('.services__modal-service').length : null });
++    def('modalCloseCount', function () { return qa('.services__modal-close').length });
++    def('serviceCardTitles', function () { return join(qa('.services__content .services__title').map(txt)) });
++    def('serviceButtonCount', function () { return qa('.services__button').length });
++
++    /* --- header / scroll-driven flags --- */
++    def('headerClasses', function () { return cls(tid('rb-header')) });
++    def('headerShadow', function () { return cs(tid('rb-header'), 'boxShadow') });
++    def('scrollUpClasses', function () { return cls(tid('rb-scroll-up')) });
++    def('scrollUpBottom', function () { return cs(tid('rb-scroll-up'), 'bottom') });
++    def('scrollUpInView', function () { var el = tid('rb-scroll-up'); if (!el) return null; var r = el.getBoundingClientRect(); return r.height > 0 && r.top < w.innerHeight && r.bottom > 0 });
++    def('scrollY', function () { return Math.round(w.pageYOffset) });
++    def('sectionTop', function (id) { var el = d.getElementById(String(id)); return el ? Math.round(el.offsetTop) : null });
++    def('documentHeight', function () { return Math.round(d.documentElement.scrollHeight) });
++
++    /* --- theme --- */
++    def('themeOnBody', function () { return d.body.classList.contains('dark-theme') });
++    def('themeButtonClasses', function () { return cls(tid('rb-theme-button')) });
++    def('bodyBackground', function () { return cs(d.body, 'backgroundColor') });
++    def('bodyTextColor', function () { return cs(d.body, 'color') });
++    def('headingColor', function () { return cs(q('h2.section__title'), 'color') });
++    def('containerBackground', function () { return cs(q('.services__modal-content'), 'backgroundColor') });
++    def('storedTheme', function () { try { return w.localStorage.getItem('selected-theme') } catch (e) { return 'ERR:' + e.name } });
++    def('storedIcon', function () { try { return w.localStorage.getItem('selected-icon') } catch (e) { return 'ERR:' + e.name } });
++    def('storageKeys', function () { try { return join(Object.keys(w.localStorage).sort()) } catch (e) { return 'ERR:' + e.name } });
++    def('sessionKeys', function () { try { return join(Object.keys(w.sessionStorage).sort()) } catch (e) { return 'ERR:' + e.name } });
++
++    /* --- headline typing + scroll reveals (both are the page's own configured libraries) --- */
++    def('typedStrings', function () { return w.typed && w.typed.strings ? join(w.typed.strings) : 'none' });
++    def('typedStringCount', function () { return w.typed && w.typed.strings ? w.typed.strings.length : -1 });
++    def('typedLoop', function () { return w.typed ? String(w.typed.loop) : 'none' });
++    def('typedTargetText', function () { return txt(q('.auto-input')) });
++    def('aosRevealCount', function () { return qa('[data-aos]').length });
++    def('aosAnimatedCount', function () { return qa('[data-aos].aos-animate').length });
++    def('aosInitialised', function () { return typeof w.AOS !== 'undefined' && typeof w.AOS.init === 'function' });
++
++    /* --- the two carousel strips + the client quotes --- */
++    def('carouselStripCount', function () { return qa('.portfolio__container').length });
++    /* The two strips that share one container class are still addressed BY PROBE and never by that class,
++       but not for the reason an earlier draft of this design claimed. Measured on the pristine face, the
++       library instance is present on BOTH of them: main.js hands the constructor a class selector that
++       matches two elements and the shipped Swiper build initialises every match, so the certificate strip
++       and the portfolio strip each get an instance and each loop. Addressing by probe is what lets P10 say
++       something about each strip separately at all (QUIRK Q01). */
++    def('stripInitialised', function (t) { var el = tid(String(t)); return !!(el && el.swiper) });
++    def('stripSlideCount', function (t) { var el = tid(String(t)); return el ? el.querySelectorAll('.swiper-slide').length : -1 });
++    def('stripBulletCount', function (t) { var el = tid(String(t)); return el ? el.querySelectorAll('.swiper-pagination-bullet').length : -1 });
++    def('stripRealIndex', function (t) { var el = tid(String(t)); return el && el.swiper && typeof el.swiper.realIndex === 'number' ? el.swiper.realIndex : -1 });
++    def('portfolioTitles', function () { return join(qReal('.portfolio__title').map(txt)) });
++    def('certLinkHrefs', function () { return join(qReal('.certificate .portfolio__data a').map(function (a) { return String(a.getAttribute('href') || '') })) });
++    def('testimonialNames', function () { return join(qReal('.testimonial__name').map(txt)) });
++    def('testimonialImgSrcs', function () { return join(qReal('.testimonial__img').map(function (i) { return String(i.getAttribute('src') || '') })) });
++    def('testimonialHint', function () { return txt(tid('rb-testimonial-hint')) });
++
++    /* --- content census (territory guards) --- */
++    def('docTitle', function () { return d.title });
++    def('homeTitleText', function () { return txt(tid('rb-home-title')) });
++    def('homeDescriptionText', function () { return txt(tid('rb-home-description')) });
++    def('aboutDescriptionText', function () { return txt(tid('rb-about-description')) });
++    def('aboutStats', function () { return join(qa('.about__info-title').map(txt)) });
++    def('aboutStatNames', function () { return join(qa('.about__info-name').map(txt)) });
++    def('downloadCvHref', function () { var a = tid('rb-download-cv'); return a ? String(a.getAttribute('href') || '') : null });
++    def('projectTitleText', function () { return txt(tid('rb-project-title')) });
++    def('sectionTitles', function () { return join(qa('h2.section__title').map(txt)) });
++    def('contactFieldTypes', function () { return join(qa('.contact__form .contact__input').map(function (el) { return el.tagName.toLowerCase() + ':' + String(el.getAttribute('type') || '') })) });
++    def('contactLabels', function () { return join(qa('.contact__label').map(txt)) });
++    def('contactInfoTitles', function () { return join(qa('.contact__title').map(txt)) });
++    def('contactInfoValues', function () { return join(qa('.contact__subtitle').map(txt)) });
++    def('contactFormAction', function () { var f = tid('rb-contact-form'); return f ? String(f.getAttribute('action') || '') : null });
++    def('footerLinkHrefs', function () { return join(qa('.footer__link').map(function (a) { return String(a.getAttribute('href') || '') })) });
++    def('footerCopy', function () { return txt(tid('rb-footer-copy')) });
++    def('emailFieldType', function () { var el = tid('rb-contact-email'); return el ? String(el.getAttribute('type') || '') : null });
++    def('emailFieldValidity', function () { var el = tid('rb-contact-email'); return el ? String(el.checkValidity()) : null });
++
++    /* --- offline / probe integrity census --- */
++    def('remoteAssetRefs', function () { return qa('script[src], link[href]').filter(function (el) { return /^https?:/i.test(String(el.getAttribute('src') || el.getAttribute('href') || '')) }).length });
++    def('libsPresent', function () { return 'AOS:' + (typeof w.AOS !== 'undefined' ? 1 : 0) + ',Swiper:' + (typeof w.Swiper !== 'undefined' ? 1 : 0) + ',Typed:' + (typeof w.Typed !== 'undefined' ? 1 : 0) });
++    def('probeCount', function () { return qReal('[data-testid]').length });
++    def('probeIds', function () { return join(qReal('[data-testid]').map(function (el) { return String(el.getAttribute('data-testid')) }).sort()) });
++    def('facadeWritableMembers', function () { return Object.keys(api).filter(function (k) { return Object.getOwnPropertyDescriptor(api, k).writable }).length });
++    def('facadeHandles', function () { return qa('script').length >= 0 ? Object.keys(api).length : -1 });
++    def('rbGlobals', function () { return join(Object.keys(w).filter(function (k) { return /^__rb/.test(k) }).sort()) });
++    def('locationParts', function () { return w.location.pathname + '|' + w.location.search + '|' + w.location.hash });
++
++    /* enumerable ON PURPOSE. rbGlobals() is the residue sentinel that answers "how many globals did the
++       harness add", and it answers by enumerating the window; a facade declared non-enumerable is invisible
++       to its own sentinel, so the sentinel measured 0 harness globals on the pristine face while the facade
++       was in fact installed and working. Enumerable makes the sentinel able to see the one global there is.
++       It stays non-writable and non-configurable, and every member of it stays non-writable, so P17 own
++       "none of its members is writable" read is unaffected. */
++    Object.defineProperty(w, '__rb_mpw', { value: api, writable: false, enumerable: true, configurable: false });
++})();
+diff --git a/index.html b/index.html
+index f4d53b41bba7768e097b4b5b2447a6860d845f81..eb8d16c36ab6d2ea597eebc05a8bdc33d9dfb307 100644
+--- a/index.html
++++ b/index.html
+@@ -29,56 +29,56 @@
+ <body>
+     
+     <!--==================== HEADER ====================-->
+-    <header class="header" id="header">
++    <header class="header" id="header" data-testid="rb-header">
+         <nav class="nav container">
+-            <a href="#" class="nav__logo">Mrinmoy</a>
++            <a href="#" class="nav__logo" data-testid="rb-nav-logo">Mrinmoy</a>
+ 
+-            <div data-aos="fade-in" class="nav__menu" id="nav-menu">
+-                <ul class="nav__list grid">
++            <div data-aos="fade-in" class="nav__menu" id="nav-menu" data-testid="rb-nav-menu">
++                <ul class="nav__list grid" data-testid="rb-nav-list">
+                     <li class="nav__items">
+-                        <a href="#home" class="nav__link active-link">
++                        <a href="#home" class="nav__link active-link" data-testid="rb-nav-link-home">
+                             <i class="uil uil-estate nav__icon"></i> Home
+                         </a>
+                     </li>
+ 
+                     <li class="nav__items">
+-                        <a href="#about" class="nav__link ">
++                        <a href="#about" class="nav__link " data-testid="rb-nav-link-about">
+                             <i class="uil uil-user nav__icon"></i> About
+                         </a>
+                     </li>
+ 
+                     <li class="nav_items">
+-                        <a href="#skills" class="nav__link ">
++                        <a href="#skills" class="nav__link " data-testid="rb-nav-link-skills">
+                             <i class="uil uil-file nav__icon"></i> Skills
+                         </a>
+                     </li>
+ 
+                     <li class="nav__items">
+-                        <a href="#services" class="nav__link ">
++                        <a href="#services" class="nav__link " data-testid="rb-nav-link-services">
+                             <i class="uil uil-briefcase-alt nav__icon"></i> Services
+                         </a>
+                     </li>
+ 
+                     <li class="nav__items">
+-                        <a href="#portfolio" class="nav__link ">
++                        <a href="#portfolio" class="nav__link " data-testid="rb-nav-link-portfolio">
+                             <i class="uil uil-scenery nav__icon"></i> Portfolio
+                         </a>
+                     </li>
+ 
+                     <li class="nav__items">
+-                        <a href="#contact" class="nav__link ">
++                        <a href="#contact" class="nav__link " data-testid="rb-nav-link-contact">
+                             <i class="uil uil-message nav__icon"></i> Contact me
+                         </a>
+                     </li>
+                 </ul>
+-                <i class="uil uil-times nav__close" id="nav-close"></i>
++                <i class="uil uil-times nav__close" id="nav-close" data-testid="rb-nav-close"></i>
+             </div>
+ 
+             <div class="nav__btns">
+                 <!--Theme Change button-->
+-                <i class="uil uil-moon change-theme" id="theme-button"></i>
++                <i class="uil uil-moon change-theme" id="theme-button" data-testid="rb-theme-button"></i>
+ 
+-                <div class="nav__toggle" id="nav-toggle">
++                <div class="nav__toggle" id="nav-toggle" data-testid="rb-nav-toggle">
+                     <i class="uil uil-apps"></i>
+                 </div>
+             </div>
+@@ -125,21 +125,21 @@
+                     </div>
+ 
+                     <div class="home__data">
+-                        <h1 class="home_title">Hi!<span class="wave">👋</span>, I'm Mrinmoy</h1>
++                        <h1 class="home_title" data-testid="rb-home-title">Hi!<span class="wave">👋</span>, I'm Mrinmoy</h1>
+                         <h3 class="home__subtitle">
+-                            and I'm <span class="auto-input"></span>
++                            and I'm <span class="auto-input" data-testid="rb-typed-target"></span>
+                         </h3>
+-                        <p class="home__description">
++                        <p class="home__description" data-testid="rb-home-description">
+                             High level experience in web design and development knowledge, producing quality work.
+                         </p>
+-                        <a href="#contact" class="button button--flex">
++                        <a href="#contact" class="button button--flex" data-testid="rb-home-contact-button">
+                             Contact Me <i class="uil uil-message button__icon"></i>
+                         </a>
+                     </div>
+                 </div>
+ 
+                 <div class="home__scroll">
+-                    <a href="#about" class="home__scroll-button button--flex">
++                    <a href="#about" class="home__scroll-button button--flex" data-testid="rb-home-scroll-down">
+                         <i class="uil uil-mouse-alt home__scroll-mouse"></i>
+                         <span class="home__scroll-name"> Scroll down</span>
+                         <i class="uil uil-arrow-down home__scroll-arrow"></i>
+@@ -157,7 +157,7 @@
+                 <img src="assets/img/about.jpg" alt="" class="about__img" />
+ 
+                 <div class="about__data">
+-                    <p class="about__description">
++                    <p class="about__description" data-testid="rb-about-description">
+                         Hi I'm Mrinmoy Deka. I'm 15 years old. When I have free time, it's
+                         great to indulge in some of my favorite hobbies like study Maths & Science and exploring
+                         different kinds of new technology. <br>
+@@ -168,24 +168,24 @@
+ 
+                     <div class="about_info">
+                         <div>
+-                            <span class="about__info-title">02+</span>
++                            <span class="about__info-title" data-testid="rb-about-stat-1">02+</span>
+                             <span class="about__info-name">Years <br />
+                                 experience</span>
+                         </div>
+                         <div>
+-                            <span class="about__info-title">20+</span>
++                            <span class="about__info-title" data-testid="rb-about-stat-2">20+</span>
+                             <span class="about__info-name">Completed <br />
+                                 project</span>
+                         </div>
+                         <div>
+-                            <span class="about__info-title">24/7</span>
++                            <span class="about__info-title" data-testid="rb-about-stat-3">24/7</span>
+                             <span class="about__info-name">Online<br />
+                                 support</span>
+                         </div>
+                     </div>
+ 
+                     <div class="about__buttons">
+-                        <a download="" href="assets/pdf/mrinmoy-cv.pdf" class="button button--flex">
++                        <a download="" href="assets/pdf/mrinmoy-cv.pdf" class="button button--flex" data-testid="rb-download-cv">
+                             Download CV <i class="uil uil-download-alt button__icon"></i>
+                         </a>
+                     </div>
+@@ -201,19 +201,19 @@
+             <div data-aos="fade-up" class="skills__container container grid">
+                 <div>
+                     <!--==================== SKILL 1 ====================-->
+-                    <div class="skills__content skills__open">
+-                        <div class="skills__header">
++                    <div class="skills__content skills__open" data-testid="rb-skills-panel-1">
++                        <div class="skills__header" data-testid="rb-skills-header-1b">
+                             <i class="uil uil-brackets-curly skills__icon"></i>
+ 
+                             <div>
+-                                <h1 class="skills__title">Frontend developer</h1>
++                                <h1 class="skills__title" data-testid="rb-skills-header-1">Frontend developer</h1>
+                                 <span class="skills__subtitle">More then 2 years</span>
+                             </div>
+ 
+                             <i class="uil uil-angle-down skills__arrow"></i>
+                         </div>
+ 
+-                        <div class="skills__list grid">
++                        <div class="skills__list grid" data-testid="rb-skills-list-1">
+                             <div class="skills__data">
+                                 <div class="skills__titles">
+                                     <h3 class="skills__name"><img src="/assets/img/html.png" class="skills__logo"
+@@ -259,19 +259,19 @@
+                     </div>
+ 
+                     <!--==================== SKILL 2 ====================-->
+-                    <div class="skills__content skills__close">
+-                        <div class="skills__header">
++                    <div class="skills__content skills__close" data-testid="rb-skills-panel-2">
++                        <div class="skills__header" data-testid="rb-skills-header-2b">
+                             <i class="uil uil-server-network skills__icon"></i>
+ 
+                             <div>
+-                                <h1 class="skills__title">Backend developer</h1>
++                                <h1 class="skills__title" data-testid="rb-skills-header-2">Backend developer</h1>
+                                 <span class="skills__subtitle">More then 1 years</span>
+                             </div>
+ 
+                             <i class="uil uil-angle-down skills__arrow"></i>
+                         </div>
+ 
+-                        <div class="skills__list grid">
++                        <div class="skills__list grid" data-testid="rb-skills-list-2">
+                             <div class="skills__data">
+                                 <div class="skills__titles">
+                                     <h3 class="skills__name"><img src="/assets/img/php.png" class="skills__logo"
+@@ -319,19 +319,19 @@
+ 
+                 <div>
+                     <!--==================== SKILL 3 ====================-->
+-                    <div class="skills__content skills__close">
+-                        <div class="skills__header">
++                    <div class="skills__content skills__close" data-testid="rb-skills-panel-3">
++                        <div class="skills__header" data-testid="rb-skills-header-3b">
+                             <i class="uil uil-swatchbook skills__icon"></i>
+ 
+                             <div>
+-                                <h1 class="skills__titles">Designer</h1>
++                                <h1 class="skills__titles" data-testid="rb-skills-header-3">Designer</h1>
+                                 <span class="skills__subtitle">More then 1/2 years</span>
+                             </div>
+ 
+                             <i class="uil uil-angle-down skills__arrow"></i>
+                         </div>
+ 
+-                        <div class="skills__list grid">
++                        <div class="skills__list grid" data-testid="rb-skills-list-3">
+                             <div class="skills__data">
+                                 <div class="skills__titles">
+                                     <h3 class="skills__name"><img src="/assets/img/blender.png" class="skills__logo"
+@@ -379,7 +379,7 @@
+             <span class="section__subtitle">By Programming Hub</span>
+             <span class="section__subtitle">Scroll or slide here to see next>>></span>
+ 
+-            <div data-aos="fade-up" class="portfolio__container container swiper-container">
++            <div data-aos="fade-up" class="portfolio__container container swiper-container" data-testid="rb-cert-strip">
+                 <div class="swiper-wrapper">
+                     <!--==================== Certificate 1 ====================-->
+                     <div class="portfolio__content grid swiper-slide">
+@@ -388,7 +388,7 @@
+                         <div class="portfolio__data">
+                             <p>HTML Certificate</p>
+                             <a href="/assets/pdf/Mrinmoy_abstract_HTML.pdf"
+-                                class="button button--flex button--small portfolio_-button">
++                                class="button button--flex button--small portfolio_-button" data-testid="rb-cert-link-1">
+                                 Preview
+                                 <i class="uil uil-arrow-right button__icon"></i>
+                             </a>
+@@ -401,7 +401,7 @@
+                         <div class="portfolio__data">
+                             <p>CSS Certificate</p>
+                             <a href="/assets/pdf/Mrinmoy_abstract_CSS.pdf"
+-                                class="button button--flex button--small portfolio_-button">
++                                class="button button--flex button--small portfolio_-button" data-testid="rb-cert-link-2">
+                                 Preview
+                                 <i class="uil uil-arrow-right button__icon"></i>
+                             </a>
+@@ -417,21 +417,21 @@
+ 
+             <div data-aos="fade-right" class="services__container container grid">
+                 <!--==================== SERVICES 1 ====================-->
+-                <div class="services__content">
++                <div class="services__content" data-testid="rb-service-1">
+                     <div>
+                         <i class="uil uil-web-grid services__icon"></i>
+-                        <h3 class="services__title">Ui/Ux <br> Designer</h3>
++                        <h3 class="services__title" data-testid="rb-service-title-1">Ui/Ux <br> Designer</h3>
+                     </div>
+ 
+-                    <span class="button button--flex button--small button--link services__button">
++                    <span class="button button--flex button--small button--link services__button" data-testid="rb-service-button-1">
+                         View More
+                         <i class="uil uil-arrow-right button__icon"></i>
+                     </span>
+ 
+-                    <div class="services__modal">
++                    <div class="services__modal" data-testid="rb-service-modal-1">
+                         <div class="services__modal-content">
+-                            <h4 class="services__modal-title">Ui/Ux <br> Designer</h4>
+-                            <i class="uil uil-times services__modal-close"></i>
++                            <h4 class="services__modal-title" data-testid="rb-service-modal-title-1">Ui/Ux <br> Designer</h4>
++                            <i class="uil uil-times services__modal-close" data-testid="rb-service-modal-close-1"></i>
+ 
+                             <ul class="services__modal-services grid">
+                                 <li class="services__modal-service">
+@@ -456,21 +456,21 @@
+                 </div>
+ 
+                 <!--==================== SERVICES 2 ====================-->
+-                <div class="services__content">
++                <div class="services__content" data-testid="rb-service-2">
+                     <div>
+                         <i class="uil uil-arrow services__icon"></i>
+-                        <h3 class="services__title">Frontend <br> Developer</h3>
++                        <h3 class="services__title" data-testid="rb-service-title-2">Frontend <br> Developer</h3>
+                     </div>
+ 
+-                    <span class="button button--flex button--small button--link services__button">
++                    <span class="button button--flex button--small button--link services__button" data-testid="rb-service-button-2">
+                         View More
+                         <i class="uil uil-arrow-right button__icon"></i>
+                     </span>
+ 
+-                    <div class="services__modal">
++                    <div class="services__modal" data-testid="rb-service-modal-2">
+                         <div class="services__modal-content">
+-                            <h4 class="services__modal-title">Frontend <br> Developer</h4>
+-                            <i class="uil uil-times services__modal-close"></i>
++                            <h4 class="services__modal-title" data-testid="rb-service-modal-title-2">Frontend <br> Developer</h4>
++                            <i class="uil uil-times services__modal-close" data-testid="rb-service-modal-close-2"></i>
+ 
+                             <ul class="services__modal-services grid">
+                                 <li class="services__modal-service">
+@@ -495,21 +495,21 @@
+                 </div>
+ 
+                 <!--==================== SERVICES 3 ====================-->
+-                <div class="services__content">
++                <div class="services__content" data-testid="rb-service-3">
+                     <div>
+                         <i class="uil uil-pen services__icon"></i>
+-                        <h3 class="services__title">Branding <br> Designer</h3>
++                        <h3 class="services__title" data-testid="rb-service-title-3">Branding <br> Designer</h3>
+                     </div>
+ 
+-                    <span class="button button--flex button--small button--link services__button">
++                    <span class="button button--flex button--small button--link services__button" data-testid="rb-service-button-3">
+                         View More
+                         <i class="uil uil-arrow-right button__icon"></i>
+                     </span>
+ 
+-                    <div class="services__modal">
++                    <div class="services__modal" data-testid="rb-service-modal-3">
+                         <div class="services__modal-content">
+-                            <h4 class="services__modal-title">Branding <br> Designer</h4>
+-                            <i class="uil uil-times services__modal-close"></i>
++                            <h4 class="services__modal-title" data-testid="rb-service-modal-title-3">Branding <br> Designer</h4>
++                            <i class="uil uil-times services__modal-close" data-testid="rb-service-modal-close-3"></i>
+ 
+                             <ul class="services__modal-services grid">
+                                 <li class="services__modal-service">
+@@ -540,14 +540,14 @@
+             <h2 class="section__title">Portfolio</h2>
+             <span class="section__subtitle">Most recent work</span>
+ 
+-            <div data-aos="fade-right" class="portfolio__container container swiper-container">
++            <div data-aos="fade-right" class="portfolio__container container swiper-container" data-testid="rb-portfolio-strip">
+                 <div class="swiper-wrapper">
+                     <!--==================== PORTFOLIO 1 ====================-->
+                     <div class="portfolio__content grid swiper-slide">
+                         <img src="/assets/img/portfolio1.jpg" alt="" class="portfolio__img">
+ 
+                         <div class="portfolio__data">
+-                            <h3 class="portfolio__title">Modern Website</h3>
++                            <h3 class="portfolio__title" data-testid="rb-portfolio-title-1">Modern Website</h3>
+                             <p class="portfolio__description">Website adaptable to all devices, with ui components and
+                                 animated interactions.</p>
+                             <a href="#" class="button button--flex button--small portfolio_-button">
+@@ -561,7 +561,7 @@
+                         <img src="/assets/img/portfolio2.jpg" alt="" class="portfolio__img">
+ 
+                         <div class="portfolio__data">
+-                            <h3 class="portfolio__title">Brand Design</h3>
++                            <h3 class="portfolio__title" data-testid="rb-portfolio-title-2">Brand Design</h3>
+                             <p class="portfolio__description">Website adaptable to all devices, with ui components and
+                                 animated interactions.</p>
+                             <a href="#" class="button button--flex button--small portfolio_-button">
+@@ -575,7 +575,7 @@
+                         <img src="/assets/img/portfolio3.jpg" alt="" class="portfolio__img">
+ 
+                         <div class="portfolio__data">
+-                            <h3 class="portfolio__title">Online Store</h3>
++                            <h3 class="portfolio__title" data-testid="rb-portfolio-title-3">Online Store</h3>
+                             <p class="portfolio__description">Website adaptable to all devices, with ui components and
+                                 animated interactions.</p>
+                             <a href="#" class="button button--flex button--small portfolio_-button">
+@@ -605,7 +605,7 @@
+             <div data-aos="fade-in" class="project__bg">
+                 <div class="project__container container grid">
+                     <div class="project__data">
+-                        <h2 class="project__title">You have a new project</h2>
++                        <h2 class="project__title" data-testid="rb-project-title">You have a new project</h2>
+                         <p class="project__description">Contact me now on your new project.</p>
+                         <a href="#contact" class="button button--flex button--white">
+                             Contact Me
+@@ -622,19 +622,19 @@
+         <section class="testimonial section">
+             <h2 class="section__title">Testimonial</h2>
+             <span class="section__subtitle">My client saying</span>
+-            <span class="section__subtitle swiper-error">Slide here to see next>>></span>
++            <span class="section__subtitle swiper-error" data-testid="rb-testimonial-hint">Slide here to see next>>></span>
+ 
+-            <div data-aos="fade-in" class="testimonial__container container swiper-container">
++            <div data-aos="fade-in" class="testimonial__container container swiper-container" data-testid="rb-testimonial-strip">
+                 <div class="swiper-wrapper">
+ 
+                     <!--==================== TESTIMONIAL 1 ====================-->
+                     <div class="testimonial__content swiper-slide">
+                         <div class="testimonial__data">
+                             <div class="testimonial__header">
+-                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img">
++                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img" data-testid="rb-testimonial-img-1">
+ 
+                                 <div>
+-                                    <h3 class="testimonial__name">Name1</h3>
++                                    <h3 class="testimonial__name" data-testid="rb-testimonial-name-1">Name1</h3>
+                                     <span class="testimonial__client">Client</span>
+                                 </div>
+                             </div>
+@@ -647,10 +647,10 @@
+                     <div class="testimonial__content swiper-slide">
+                         <div class="testimonial__data">
+                             <div class="testimonial__header">
+-                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img">
++                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img" data-testid="rb-testimonial-img-2">
+ 
+                                 <div>
+-                                    <h3 class="testimonial__name">Name2</h3>
++                                    <h3 class="testimonial__name" data-testid="rb-testimonial-name-2">Name2</h3>
+                                     <span class="testimonial__client">Client</span>
+                                 </div>
+                             </div>
+@@ -664,10 +664,10 @@
+                     <div class="testimonial__content swiper-slide">
+                         <div class="testimonial__data">
+                             <div class="testimonial__header">
+-                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img">
++                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img" data-testid="rb-testimonial-img-3">
+ 
+                                 <div>
+-                                    <h3 class="testimonial__name">Brian Cox</h3>
++                                    <h3 class="testimonial__name" data-testid="rb-testimonial-name-3">Brian Cox</h3>
+                                     <span class="testimonial__client">Client</span>
+                                 </div>
+                             </div>
+@@ -679,10 +679,10 @@
+                     <div class="testimonial__content swiper-slide">
+                         <div class="testimonial__data">
+                             <div class="testimonial__header">
+-                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img">
++                                <img src="/assets/img/testimonial-placeholder.svg" alt="" class="testimonial__img" data-testid="rb-testimonial-img-4">
+ 
+                                 <div>
+-                                    <h3 class="testimonial__name">Name3</h3>
++                                    <h3 class="testimonial__name" data-testid="rb-testimonial-name-4">Name3</h3>
+                                     <span class="testimonial__client">Client</span>
+                                 </div>
+                             </div>
+@@ -723,28 +723,28 @@
+                 </div>
+ 
+                 <form action="https://formsubmit.co/3291f4338dc27f344cdc564a1df42f85" method="POST"
+-                    class="contact__form grid">
++                    class="contact__form grid" data-testid="rb-contact-form">
+                     <div class="contact__inputs grid">
+                         <div class="contact__content">
+                             <label for="" class="contact__label">Name</label>
+-                            <input name="name" type="text" class="contact__input">
++                            <input name="name" type="text" class="contact__input" data-testid="rb-contact-name">
+                         </div>
+                         <div class="contact__content">
+                             <label for="" class="contact__label">Email</label>
+-                            <input name="email" type="email" class="contact__input">
++                            <input name="email" type="email" class="contact__input" data-testid="rb-contact-email">
+                         </div>
+                     </div>
+                     <div class="contact__content">
+                         <label for="" class="contact__label">Project</label>
+-                        <input name="message" type="text" class="contact__input">
++                        <input name="message" type="text" class="contact__input" data-testid="rb-contact-project">
+                     </div>
+                     <div class="contact__content">
+                         <label for="" class="contact__label">Message</label>
+-                        <textarea name="" id="" cols="0" rows="7" class="contact__input" name="message"></textarea>
++                        <textarea name="" id="" cols="0" rows="7" class="contact__input" name="message" data-testid="rb-contact-textarea"></textarea>
+                     </div>
+ 
+                     <div>
+-                        <button type="submit" class="button button--flex">
++                        <button type="submit" class="button button--flex" data-testid="rb-contact-submit">
+                             Send Message
+                             <i class="uil uil-message button__icon"></i>
+                         </button>
+@@ -760,19 +760,19 @@
+         <div class="footer__bg">
+             <div class="footer__container container grid">
+                 <div>
+-                    <h1 class="footer__title">Mrinmoy</h1>
++                    <h1 class="footer__title" data-testid="rb-footer-title">Mrinmoy</h1>
+                     <span class="footer__subtitle">Frontend Developer</span>
+                 </div>
+ 
+                 <ul class="footer__links">
+                     <li>
+-                        <a href="#services" class="footer__link">Services</a>
++                        <a href="#services" class="footer__link" data-testid="rb-footer-link-1">Services</a>
+                     </li>
+                     <li>
+-                        <a href="#portfolio" class="footer__link">Portfolio</a>
++                        <a href="#portfolio" class="footer__link" data-testid="rb-footer-link-2">Portfolio</a>
+                     </li>
+                     <li>
+-                        <a href="#contact" class="footer__link">Contactme</a>
++                        <a href="#contact" class="footer__link" data-testid="rb-footer-link-3">Contactme</a>
+                     </li>
+                 </ul>
+ 
+@@ -791,13 +791,13 @@
+                     </a>
+                 </div>
+             </div>
+-            <p class="footer__copy">&copy; 2022 Mrinmoy Deka | All Rights Reserved</p>
++            <p class="footer__copy" data-testid="rb-footer-copy">&copy; 2022 Mrinmoy Deka | All Rights Reserved</p>
+         </div>
+     </footer>
+ 
+ 
+     <!--==================== SCROLL TOP ====================-->
+-    <div><a href="#" class="scrollup" id="scroll-up">
++    <div><a href="#" class="scrollup" id="scroll-up" data-testid="rb-scroll-up">
+             <i class="uil uil-arrow-up scrollup__icon"></i>
+         </a></div>
+ 

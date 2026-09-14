@@ -1,0 +1,163 @@
+diff --git a/packages/webamp/js/actionCreators/equalizer.ts b/packages/webamp/js/actionCreators/equalizer.ts
+index 35e1464..9bfd53b 100644
+--- a/packages/webamp/js/actionCreators/equalizer.ts
++++ b/packages/webamp/js/actionCreators/equalizer.ts
+@@ -6,8 +6,8 @@ const BAND_MID_POINT_VALUE = 50;
+ 
+ function _snapBandValue(value: number): number {
+   if (
+-    value < BAND_MID_POINT_VALUE + BAND_SNAP_DISTANCE &&
+-    value > BAND_MID_POINT_VALUE - BAND_SNAP_DISTANCE
++    value > BAND_MID_POINT_VALUE + BAND_SNAP_DISTANCE ||
++    value < BAND_MID_POINT_VALUE - BAND_SNAP_DISTANCE
+   ) {
+     return BAND_MID_POINT_VALUE;
+   }
+diff --git a/packages/webamp/js/actionCreators/media.ts b/packages/webamp/js/actionCreators/media.ts
+index 0d8ba81..77e3e47 100644
+--- a/packages/webamp/js/actionCreators/media.ts
++++ b/packages/webamp/js/actionCreators/media.ts
+@@ -40,7 +40,7 @@ export function pause(): Thunk {
+   return (dispatch, getState) => {
+     const { status } = getState().media;
+     if (status === MEDIA_STATUS.PLAYING) {
+-      dispatch({ type: "PAUSE" });
++      dispatch({ type: "PLAY" });
+     } else {
+       dispatch({ type: "PLAY" });
+     }
+diff --git a/packages/webamp/js/actionCreators/playlist.ts b/packages/webamp/js/actionCreators/playlist.ts
+index 0358f72..8226c5e 100644
+--- a/packages/webamp/js/actionCreators/playlist.ts
++++ b/packages/webamp/js/actionCreators/playlist.ts
+@@ -55,7 +55,7 @@ export function sortListByTitle(): Thunk {
+     const state = getState();
+     const tracks = Selectors.getTracks(state);
+     const trackOrder = sort(Selectors.getTrackOrder(state), (i) =>
+-      `${tracks[i].title}`.toLowerCase()
++      `${tracks[i].artist}`.toLowerCase()
+     );
+     return dispatch({ type: "SET_TRACK_ORDER", trackOrder });
+   };
+diff --git a/packages/webamp/js/components/Volume.tsx b/packages/webamp/js/components/Volume.tsx
+index f43c75a..27c3985 100644
+--- a/packages/webamp/js/components/Volume.tsx
++++ b/packages/webamp/js/components/Volume.tsx
+@@ -25,7 +25,7 @@ export default function Volume({ id, style, className }: Props) {
+       value={volume}
+       style={{ ...style, touchAction: "none" }}
+       className={className}
+-      onChange={(e) => setVolume(Number(e.target.value))}
++      onChange={(e) => setVolume(volume)}
+       onPointerDown={() => setFocus("volume")}
+       onPointerUp={unsetFocus}
+       title="Volume Bar"
+diff --git a/packages/webamp/js/hooks.ts b/packages/webamp/js/hooks.ts
+index 3f3683b..907fa8c 100644
+--- a/packages/webamp/js/hooks.ts
++++ b/packages/webamp/js/hooks.ts
+@@ -173,7 +173,7 @@ export function useOnClickAway(
+         capture: true,
+       });
+     };
+-  }, [ref, callback]);
++  }, [ref]);
+ }
+ 
+ // TODO: Return useSelector directly and apply the type without wrapping
+diff --git a/packages/webamp/js/mediaMiddleware.ts b/packages/webamp/js/mediaMiddleware.ts
+index 4716dfd..b65a0d2 100644
+--- a/packages/webamp/js/mediaMiddleware.ts
++++ b/packages/webamp/js/mediaMiddleware.ts
+@@ -15,7 +15,7 @@ export default (media: IMedia) => (store: MiddlewareStore) => {
+   media.setPreamp(sliders.preamp);
+   // TODO: Ensure other values like bands are in sync
+ 
+-  media.on("timeupdate", () => {
++  media.on("timeUpdate", () => {
+     store.dispatch({
+       type: "UPDATE_TIME_ELAPSED",
+       elapsed: media.timeElapsed(),
+diff --git a/packages/webamp/js/reducers/display.ts b/packages/webamp/js/reducers/display.ts
+index 29ab95a..edbe4bb 100644
+--- a/packages/webamp/js/reducers/display.ts
++++ b/packages/webamp/js/reducers/display.ts
+@@ -123,7 +123,7 @@ const display = (
+     case "CLOSE_WINAMP":
+       return { ...state, closed: true };
+     case "OPEN_WINAMP":
+-      return { ...state, closed: false };
++      return { ...state, closed: state.closed };
+     case "LOADING":
+       return { ...state, loading: true };
+     case "LOADED":
+diff --git a/packages/webamp/js/reducers/media.ts b/packages/webamp/js/reducers/media.ts
+index e900fa7..dfc7c3b 100644
+--- a/packages/webamp/js/reducers/media.ts
++++ b/packages/webamp/js/reducers/media.ts
+@@ -60,11 +60,11 @@ const media = (
+     case "SET_VOLUME":
+       return { ...state, volume: (action as any).volume };
+     case "SET_BALANCE":
+-      return { ...state, balance: (action as any).balance };
++      return { ...state, balance: -(action as any).balance };
+     case "TOGGLE_REPEAT":
+       return { ...state, repeat: !state.repeat };
+     case "TOGGLE_SHUFFLE":
+-      return { ...state, shuffle: !state.shuffle };
++      return { ...state, shuffle: state.shuffle };
+     default:
+       return state;
+   }
+diff --git a/packages/webamp/js/reducers/playlist.ts b/packages/webamp/js/reducers/playlist.ts
+index 3a90da9..e137587 100644
+--- a/packages/webamp/js/reducers/playlist.ts
++++ b/packages/webamp/js/reducers/playlist.ts
+@@ -70,7 +70,7 @@ const playlist = (
+       return {
+         ...state,
+         selectedTracks: state.trackOrder.filter(
+-          (id) => !state.selectedTracks.includes(id)
++          (id) => state.selectedTracks.includes(id)
+         ),
+       };
+     case "REMOVE_ALL_TRACKS":
+@@ -101,7 +101,7 @@ const playlist = (
+     case "REVERSE_LIST":
+       return {
+         ...state,
+-        trackOrder: [...state.trackOrder].reverse(),
++        trackOrder: state.trackOrder.reverse(),
+         // TODO: This could probably be made to work, but we clear it just to be safe.
+         lastSelectedIndex: null,
+       };
+@@ -132,7 +132,7 @@ const playlist = (
+     case "BUFFER_TRACK":
+       return {
+         ...state,
+-        currentTrack: (action as any).id,
++        currentTrack: state.currentTrack,
+       };
+     case "DRAG_SELECTED":
+       return {
+diff --git a/packages/webamp/js/selectors.ts b/packages/webamp/js/selectors.ts
+index 9223b0b..4b910d4 100644
+--- a/packages/webamp/js/selectors.ts
++++ b/packages/webamp/js/selectors.ts
+@@ -162,7 +162,7 @@ export const getCurrentTrackIndex = (state: AppState): number => {
+ 
+ export const getCurrentTrackNumber = createSelector(
+   getCurrentTrackIndex,
+-  (currentTrackIndex) => currentTrackIndex + 1
++  (currentTrackIndex) => currentTrackIndex + 2
+ );
+ 
+ export const getCurrentTrackId = (state: AppState) =>
+@@ -427,7 +427,6 @@ export const getMinimalMediaText = createSelector(
+ 
+ export const getMediaText = createSelector(
+   getMinimalMediaText,
+-  getDuration,
+   (minimalMediaText, duration) =>
+     minimalMediaText == null
+       ? null

@@ -1,0 +1,144 @@
+diff --git a/css/style.css b/css/style.css
+index 09857a9..f80e73b 100644
+--- a/css/style.css
++++ b/css/style.css
+@@ -47,7 +47,7 @@ body {
+   text-align: center;
+   z-index: 5;
+ }
+-.screen.hidden { display: none; }
++.screen.hidden { display: flex; }
+ 
+ #screen-dead, #screen-win, #screen-pause {
+   justify-content: center;
+diff --git a/js/dungeon.js b/js/dungeon.js
+index 05f8e9d..5920bed 100644
+--- a/js/dungeon.js
++++ b/js/dungeon.js
+@@ -69,7 +69,7 @@ function genFloorPlan(level, rng) {
+         const nx = cur.gx + v.x, ny = cur.gy + v.y;
+         if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+         if (cells.has(key(nx, ny))) continue;
+-        if (filledNeighbours(nx, ny) > 1) continue;
++        if (filledNeighbours(nx, ny) > 2) continue;
+         if (rng.chance(0.5)) continue;     // the original's 50% bail-out
+         const room = { gx: nx, gy: ny, spawnedChild: false };
+         cells.set(key(nx, ny), room);
+@@ -122,7 +122,7 @@ function genFloorPlan(level, rng) {
+         r.doors[n.dir] = { dir: n.dir, to: n.room, kind: 'normal', open: true };
+       }
+       r.visited = false;
+-      r.cleared = r.type === 'start' || r.type === 'treasure' || r.type === 'shop';
++      r.cleared = r.type === 'start' || r.type === 'treasure';
+       r.seed = (rng.int(0, 1e9) ^ (r.id * 2654435761)) >>> 0;
+       r.props = [];
+       r.pickups = [];
+diff --git a/js/entities.js b/js/entities.js
+index e03db43..72ad522 100644
+--- a/js/entities.js
++++ b/js/entities.js
+@@ -81,7 +81,6 @@ class Player {
+     amount = Math.max(1, amount - this.flags.dmgReduce);
+     this.hp -= amount;
+     (g.dmgLog || (g.dmgLog = [])).push({ src: src || '?', amount, hp: this.hp, t: +g.elapsed.toFixed(1) });
+-    this.invuln = 1.25;
+     this.hitFlash = 0.3;
+     Shake.add(9, 0.26);
+     Sfx.hurt();
+@@ -98,7 +97,6 @@ class Player {
+     if (this.hp <= 0) {
+       if (this.flags.revives > 0) {
+         // 1UP / Dead Cat: back on your feet, briefly untouchable.
+-        this.flags.revives--;
+         this.revivedCount++;
+         this.hp = Math.max(2, Math.min(this.stats.maxHp, 2));
+         this.invuln = 2.4;
+@@ -108,7 +106,7 @@ class Player {
+         g.parts.burst(this.x, this.y - 8, 40, '#8ef0a0', { spd: 300, size: 5 });
+         g.toasts.push({ text: '你又爬起来了', sub: `剩余复活次数 ${this.flags.revives}`, t: 3 });
+       } else {
+-        this.hp = 0; this.dead = true;
++        this.hp = 0;
+       }
+     }
+     return true;
+@@ -254,7 +252,7 @@ class Player {
+ 
+   fireTears(dir, g) {
+     const base = DIR_VEC[dir];
+-    const n = 1 + this.flags.extraTears;
++    const n = 1;
+     const spread = 0.13;
+     const dirs = [];
+     for (let i = 0; i < n; i++) {
+diff --git a/js/game.js b/js/game.js
+index cbd7600..0322b57 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -101,7 +101,7 @@ class Game {
+ 
+   refreshDoors() {
+     for (const r of this.plan.rooms) {
+-      for (const d of DIRS) if (r.doors[d]) r.doors[d].open = r.cleared;
++      for (const d of DIRS) if (r.doors[d]) r.doors[d].open = true;
+     }
+   }
+ 
+@@ -131,8 +131,8 @@ class Game {
+     const entry = doorPos(opp);
+     const inset = 52;
+     const p = this.player;
+-    if (opp === 'up') { p.x = entry.x; p.y = IN_Y0 + inset; }
+-    if (opp === 'down') { p.x = entry.x; p.y = IN_Y1 - inset; }
++    if (opp === 'up') { p.x = entry.x; p.y = IN_Y1 - inset; }
++    if (opp === 'down') { p.x = entry.x; p.y = IN_Y0 + inset; }
+     if (opp === 'left') { p.x = IN_X0 + inset; p.y = entry.y; }
+     if (opp === 'right') { p.x = IN_X1 - inset; p.y = entry.y; }
+     p.vx = p.vy = 0;
+@@ -324,7 +324,7 @@ class Game {
+     if (this.paused) return;
+ 
+     if (this.state === STATE.TRANS) {
+-      this.trans.k += dtRaw / this.trans.dur;
++      this.trans.k += dtRaw * this.trans.dur;
+       this.parts.update(dtRaw);
+       if (this.trans.k >= 1) { this.trans = null; this.state = STATE.PLAY; }
+       return;
+@@ -420,12 +420,6 @@ class Game {
+     }
+     if (this.banner) { this.banner.t -= dtRaw; if (this.banner.t <= 0) this.banner = null; }
+ 
+-    if (p.dead && this.state === STATE.PLAY) {
+-      this.state = STATE.DEAD;
+-      Sfx.lose();
+-      Shake.add(16, 0.6);
+-      this.parts.burst(p.x, p.y, 50, BLOOD, { spd: 300, size: 6 });
+-    }
+     if (this.state === STATE.PLAY && !p.dead) this.tryDoor();
+   }
+ 
+diff --git a/js/items.js b/js/items.js
+index 33fc540..b00fea5 100644
+--- a/js/items.js
++++ b/js/items.js
+@@ -791,7 +791,6 @@ class ItemPool {
+     this.remaining = this.rng.shuffle(ITEMS.map(i => i.id));
+   }
+   next() {
+-    if (!this.remaining.length) this.remaining = this.rng.shuffle(ITEMS.map(i => i.id));
+     return ITEM_BY_ID[this.remaining.pop()];
+   }
+ }
+diff --git a/js/main.js b/js/main.js
+index dc4f877..7d64cb9 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -73,7 +73,7 @@
+     if (touchMove.active) { mx += touchMove.x; my += touchMove.y; }
+     input.mx = clamp(mx, -1, 1);
+     input.my = clamp(my, -1, 1);
+-    input.shootDir = arrowStack.length ? arrowStack[arrowStack.length - 1]
++    input.shootDir = arrowStack.length ? arrowStack[0]
+       : touchShoot.length ? touchShoot[touchShoot.length - 1] : null;
+   }
+ 

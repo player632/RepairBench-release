@@ -1,0 +1,79 @@
+import { EquipSlotsEnum } from '../../characters/equipSlotsEnum'
+import { getCraftingTime, getItemValue } from '../../crafting/CraftingFunctions'
+import { makeMemoizedRecipe } from '../../crafting/makeMemoizedRecipe'
+import {
+    RecipeParameterItemFilter,
+    RecipeParameterValue,
+    RecipeParamType,
+    RecipeResult,
+    RecipeTypes,
+} from '../../crafting/RecipeInterfaces'
+import { GameState } from '../../game/GameState'
+import { Icons } from '../../icons/Icons'
+import { DamageData, DamageTypes, Item, ItemSubType, ItemTypes } from '../../items/Item'
+import { ItemsMaterials } from '../../items/materials/ItemsMaterials'
+import { Msg } from '../../msg/Msg'
+import { selectGameItem } from '../../storage/StorageSelectors'
+
+const armourParams: RecipeParameterItemFilter[] = [
+    {
+        id: 'bar',
+        nameId: 'Bar',
+        type: RecipeParamType.ItemType,
+        itemFilter: { itemType: ItemTypes.Bar },
+    },
+]
+
+export const armourRecipe = makeMemoizedRecipe({
+    id: 'ArmourRecipe',
+    nameId: 'Armour' as keyof Msg,
+    iconId: Icons.Breastplate,
+    type: RecipeTypes.Smithing,
+    itemSubType: ItemSubType.Armour,
+    getParameters: () => armourParams,
+    getResult(state: GameState, params: RecipeParameterValue[]): RecipeResult | undefined {
+        const bar = params.find((i) => i.id === 'bar')
+        if (bar === undefined) return
+        const barItem = selectGameItem(bar.itemId)(state)
+        if (!barItem) return
+        if (!barItem.craftingData) return
+
+        const components = [barItem, barItem, barItem, barItem]
+
+        const barArmourData = barItem.craftingData.armour
+        if (!barArmourData) return
+
+        const armourData: DamageData = {}
+        Object.entries(barArmourData).forEach((kv) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            armourData[kv[0] as DamageTypes] = 10 * kv[1]
+        })
+
+        const primaryMat = barItem.materials?.primary
+        const materials: ItemsMaterials = {}
+        if (primaryMat) materials.primary = primaryMat
+
+        const craftedItem: Item = {
+            id: '',
+            nameId: 'Armour',
+            materials,
+            icon: Icons.Breastplate,
+            type: ItemTypes.Body,
+            subType: ItemSubType.Armour,
+            equipSlot: EquipSlotsEnum.Body,
+            value: getItemValue(components, true),
+            armourData,
+        }
+
+        return {
+            time: getCraftingTime(components),
+            requirements: [
+                {
+                    qta: 4,
+                    itemId: bar.itemId,
+                },
+            ],
+            results: [{ id: 'craftedItem', qta: 1, craftedItem }],
+        }
+    },
+})

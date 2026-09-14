@@ -1,0 +1,167 @@
+diff --git a/src/app/project/components/board/board-dnd-list/board-dnd-list.component.ts b/src/app/project/components/board/board-dnd-list/board-dnd-list.component.ts
+index 26cd13c..e317675 100644
+--- a/src/app/project/components/board/board-dnd-list/board-dnd-list.component.ts
++++ b/src/app/project/components/board/board-dnd-list/board-dnd-list.component.ts
+@@ -75,7 +75,7 @@ export class BoardDndListComponent implements OnInit {
+         ? this.currentUserId && issue.userIds.includes(this.currentUserId)
+         : true;
+ 
+-      const isIgnoreResolved = ignoreResolved ? issue.status !== IssueStatus.DONE : true;
++      const isIgnoreResolved = ignoreResolved ? issue.status === IssueStatus.DONE : true;
+ 
+       return isMatchTerm && isIncludeUsers && isMyIssue && isIgnoreResolved;
+     });
+diff --git a/src/app/project/components/board/board-filter/board-filter.component.ts b/src/app/project/components/board/board-filter/board-filter.component.ts
+index 660bfdb..d911ed2 100644
+--- a/src/app/project/components/board/board-filter/board-filter.component.ts
++++ b/src/app/project/components/board/board-filter/board-filter.component.ts
+@@ -33,7 +33,7 @@ export class BoardFilterComponent implements OnInit {
+ 
+   ngOnInit(): void {
+     this.searchControl.valueChanges
+-      .pipe(debounceTime(100), distinctUntilChanged(), untilDestroyed(this))
++      .pipe(debounceTime(20000), distinctUntilChanged(), untilDestroyed(this))
+       .subscribe((term) => {
+         this.filterService.updateSearchTerm(term);
+       });
+@@ -61,6 +61,5 @@ export class BoardFilterComponent implements OnInit {
+ 
+   resetAll() {
+     this.searchControl.setValue('');
+-    this.filterService.resetAll();
+   }
+ }
+diff --git a/src/app/project/components/issues/issue-assignees/issue-assignees.component.ts b/src/app/project/components/issues/issue-assignees/issue-assignees.component.ts
+index ccb8640..4812de4 100644
+--- a/src/app/project/components/issues/issue-assignees/issue-assignees.component.ts
++++ b/src/app/project/components/issues/issue-assignees/issue-assignees.component.ts
+@@ -47,7 +47,7 @@ export class IssueAssigneesComponent implements OnInit, OnChanges {
+   addUserToIssue(user: JUser) {
+     this._projectService.updateIssue({
+       ...this.issue,
+-      userIds: [...this.issue.userIds, user.id]
++      userIds: [user.id]
+     });
+   }
+ 
+diff --git a/src/app/project/components/issues/issue-card/issue-card.component.ts b/src/app/project/components/issues/issue-card/issue-card.component.ts
+index 4fa8306..29d7a1a 100644
+--- a/src/app/project/components/issues/issue-card/issue-card.component.ts
++++ b/src/app/project/components/issues/issue-card/issue-card.component.ts
+@@ -28,9 +28,6 @@ export class IssueCardComponent implements OnChanges, OnInit {
+   constructor(private _projectQuery: ProjectQuery, private _modalService: NzModalService) {}
+ 
+   ngOnInit(): void {
+-    this._projectQuery.users$.pipe(untilDestroyed(this)).subscribe((users) => {
+-      this.assignees = this.issue.userIds.map((userId) => users.find((x) => x.id === userId));
+-    });
+   }
+ 
+   ngOnChanges(changes: SimpleChanges): void {
+diff --git a/src/app/project/components/issues/issue-comment/issue-comment.component.ts b/src/app/project/components/issues/issue-comment/issue-comment.component.ts
+index 8466b45..15523ac 100644
+--- a/src/app/project/components/issues/issue-comment/issue-comment.component.ts
++++ b/src/app/project/components/issues/issue-comment/issue-comment.component.ts
+@@ -36,7 +36,7 @@ export class IssueCommentComponent implements OnInit {
+     if (!this.createMode || this.isEditing) {
+       return;
+     }
+-    if (event.key === 'M') {
++    if (event.key === 'Enter') {
+       this.commentBoxRef.nativeElement.focus();
+       this.isEditing = true;
+     }
+diff --git a/src/app/project/components/issues/issue-modal/issue-modal.component.ts b/src/app/project/components/issues/issue-modal/issue-modal.component.ts
+index 9f10769..56f7797 100644
+--- a/src/app/project/components/issues/issue-modal/issue-modal.component.ts
++++ b/src/app/project/components/issues/issue-modal/issue-modal.component.ts
+@@ -38,6 +38,5 @@ export class IssueModalComponent {
+   deleteIssue({ issueId, deleteModalRef }: DeleteIssueModel) {
+     this._projectService.deleteIssue(issueId);
+     deleteModalRef.close();
+-    this.closeModal();
+   }
+ }
+diff --git a/src/app/project/components/issues/issue-reporter/issue-reporter.component.ts b/src/app/project/components/issues/issue-reporter/issue-reporter.component.ts
+index 98e18c7..d440dfc 100644
+--- a/src/app/project/components/issues/issue-reporter/issue-reporter.component.ts
++++ b/src/app/project/components/issues/issue-reporter/issue-reporter.component.ts
+@@ -25,7 +25,7 @@ export class IssueReporterComponent implements OnChanges {
+ 
+   ngOnChanges(changes: SimpleChanges) {
+     const issueChange = changes.issue;
+-    if (this.users && issueChange.currentValue !== issueChange.previousValue) {
++    if (this.users && issueChange.currentValue === issueChange.previousValue) {
+       this.reporter = this.users.find((x) => x.id === this.issue.reporterId);
+     }
+   }
+diff --git a/src/app/project/components/navigation/navbar-left/navbar-left.component.ts b/src/app/project/components/navigation/navbar-left/navbar-left.component.ts
+index ad29263..d3c4855 100644
+--- a/src/app/project/components/navigation/navbar-left/navbar-left.component.ts
++++ b/src/app/project/components/navigation/navbar-left/navbar-left.component.ts
+@@ -42,13 +42,6 @@ export class NavbarLeftComponent implements OnInit {
+   }
+ 
+   openSearchDrawler() {
+-    this._drawerService.create({
+-      nzContent: SearchDrawerComponent,
+-      nzTitle: null,
+-      nzPlacement: 'left',
+-      nzClosable: false,
+-      nzWidth: 500
+-    });
+   }
+ }
+ 
+diff --git a/src/app/project/components/navigation/sidebar/sidebar.component.ts b/src/app/project/components/navigation/sidebar/sidebar.component.ts
+index 8adbfaf..9dbdbf1 100644
+--- a/src/app/project/components/navigation/sidebar/sidebar.component.ts
++++ b/src/app/project/components/navigation/sidebar/sidebar.component.ts
+@@ -20,7 +20,7 @@ export class SidebarComponent implements OnInit {
+   @Input() expanded: boolean;
+ 
+   get sidebarWidth(): number {
+-    return this.expanded ? 240 : 15;
++    return this.expanded ? 15 : 240;
+   }
+ 
+   project: JProject;
+diff --git a/src/app/project/components/search/search-drawer/search-drawer.component.ts b/src/app/project/components/search/search-drawer/search-drawer.component.ts
+index 88254b1..dfa1d6e 100644
+--- a/src/app/project/components/search/search-drawer/search-drawer.component.ts
++++ b/src/app/project/components/search/search-drawer/search-drawer.component.ts
+@@ -45,7 +45,7 @@ export class SearchDrawerComponent implements OnInit {
+         const matchIssues = issues.filter((issue) => {
+           const foundInTitle = IssueUtil.searchString(issue.title, term);
+           const foundInDescription = IssueUtil.searchString(issue.description, term);
+-          return foundInTitle || foundInDescription;
++          return foundInTitle && foundInDescription;
+         });
+         return of(matchIssues);
+       })
+diff --git a/src/app/project/config/sidebar.ts b/src/app/project/config/sidebar.ts
+index ba5054b..c52c863 100644
+--- a/src/app/project/config/sidebar.ts
++++ b/src/app/project/config/sidebar.ts
+@@ -2,7 +2,7 @@ import { SideBarLink } from '@trungk18/interface/ui-model/nav-link';
+ 
+ export const SideBarLinks = [
+   new SideBarLink('Kanban Board', 'board', 'board'),
+-  new SideBarLink('Project Settings', 'cog', 'settings'),
++  new SideBarLink('Project Setting', 'cog', 'settings'),
+   new SideBarLink('Releases', 'ship'),
+   new SideBarLink('Issues and filters', 'filters'),
+   new SideBarLink('Pages', 'page'),
+diff --git a/src/app/project/state/project/project.query.ts b/src/app/project/state/project/project.query.ts
+index 1dbe1d1..0d8fbdd 100644
+--- a/src/app/project/state/project/project.query.ts
++++ b/src/app/project/state/project/project.query.ts
+@@ -26,7 +26,7 @@ export class ProjectQuery extends Query<ProjectState> {
+   issueByStatusSorted$ = (status: IssueStatus): Observable<JIssue[]> => this.issues$.pipe(
+       map((issues) => issues
+           .filter((x) => x.status === status)
+-          .sort((a, b) => a.listPosition - b.listPosition))
++          .sort((a, b) => b.listPosition - a.listPosition))
+     );
+ 
+   issueById$(issueId: string){

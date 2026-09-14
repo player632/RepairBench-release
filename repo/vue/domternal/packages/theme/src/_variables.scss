@@ -1,0 +1,344 @@
+// =============================================================================
+// CSS Custom Properties (Design Tokens)
+// =============================================================================
+// All visual properties are CSS custom properties on .dm-editor.
+// Override any variable on a parent or the component itself to customize.
+//
+// Example:
+//   .my-editor {
+//     --dm-editor-bg: #fafafa;
+//     --dm-accent: hotpink;
+//   }
+// =============================================================================
+
+.dm-editor {
+  // ---------------------------------------------------------------------------
+  // Semantic base tokens (used by component tokens below)
+  // ---------------------------------------------------------------------------
+  --dm-bg: #ffffff;
+  --dm-text: #1a1a1a;
+  --dm-muted: #6b7280;
+  --dm-surface: #f8f9fa;
+  --dm-border-color: #e5e7eb;
+  --dm-hover: rgba(0, 0, 0, 0.04);
+  --dm-active: rgba(0, 0, 0, 0.1);
+  --dm-accent: #2563eb;
+  --dm-accent-hover: #1d4ed8;
+  --dm-accent-surface: rgba(37, 99, 235, 0.1);
+  --dm-focus-color: rgba(66, 133, 244, 0.3);
+  --dm-selection: rgba(66, 133, 244, 0.2);
+
+  // Shared scrollbar thumb colors used by slash / context / floating menu
+  // and any other thin-scrollbar popup. Override in dark theme for contrast.
+  --dm-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --dm-scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+
+  // Centralised z-index ladder for overlays. Handle sits below floating
+  // menus so opening a menu overlays the handle naturally.
+  --dm-z-handle: 25;
+  --dm-z-popover: 50;
+
+  // Gutter width reserved on `.ProseMirror` when BlockHandle is active.
+  // Override per-editor if you need wider/narrower whitespace left of content.
+  --dm-block-handle-gutter: 3rem;
+
+  // Horizontal offset of the BlockHandle from the editor's left edge.
+  // The default keeps the 40px two-button cluster inside the reserved
+  // gutter, ending 4px before the text (48 - 4 - 40 = 4px). Negative
+  // values place the handle in the surrounding whitespace instead
+  // (requires `.dm-editor--has-block-handle { overflow: visible }`)
+  // - see the Notion mode override for an example.
+  --dm-block-handle-left: 0.25rem;
+
+  // Inline padding pre-applied to every colorable block (paragraph, heading,
+  // blockquote, list item, task item). Pre-applying it here means that the
+  // `[data-bg-color]` rule in `_block-colors.scss` only paints a background
+  // - it does NOT add padding - so toggling a color does NOT shift text.
+  // Mirrors Notion's layout convention.
+  --dm-block-inline-padding: 0.375rem;
+
+  // Horizontal indent applied to non-first-paragraph children of list/task
+  // items - the "children zone" below the bullet/checkbox label paragraph.
+  // Notion semantics: label aligns with the marker, additional blocks
+  // (heading, codeBlock, blockquote, etc.) render indented one level
+  // below it.
+  //
+  // `calc(1.5 * --dm-editor-font-size)` rather than a bare `1.5rem` or `1.5em`,
+  // to satisfy two competing constraints at once:
+  //  - it must match the marker gutter (`padding-inline-start: 1.5em` on the
+  //    list, whose `em` resolves against the editor font), so the indent
+  //    tracks `--dm-editor-font-size` instead of drifting from a fixed `rem`
+  //    when a consumer scales the editor font;
+  //  - it must stay decoupled from the CHILD block's own typography (a bare
+  //    `1.5em` on a heading note resolves against the heading's larger font
+  //    and over-indents it past a sibling paragraph note).
+  // Multiplying the editor-font token gives both. At the 1rem default this is
+  // 1.5rem (unchanged). Override per-editor for tighter/looser hierarchy.
+  --dm-block-children-indent: calc(1.5 * var(--dm-editor-font-size, 1rem));
+
+  // Shared drop shadow for popover surfaces (floating menu, slash command,
+  // context menu). Override in dark theme for visibility on dark bg.
+  --dm-popover-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.22), 0 4px 10px -2px rgba(0, 0, 0, 0.12);
+  --dm-code-surface: #f0f0f0;
+  --dm-code-color: inherit;
+
+  // ---------------------------------------------------------------------------
+  // Block colors (BlockColor extension)
+  // ---------------------------------------------------------------------------
+  // Notion-style block-level palette (9 named colors). Dark-mode overrides
+  // live in `themes/_dark.scss`. Source (light): https://matthiasfrank.de/en/notion-colors/
+  --dm-block-bg-gray: #f1f1ef;
+  --dm-block-bg-brown: #f3eeee;
+  --dm-block-bg-orange: #f8ecdf;
+  --dm-block-bg-yellow: #faf3dd;
+  --dm-block-bg-green: #eef3ed;
+  --dm-block-bg-blue: #e9f3f7;
+  --dm-block-bg-purple: #f6f3f8;
+  --dm-block-bg-pink: #f9f2f5;
+  --dm-block-bg-red: #faecec;
+
+  --dm-block-text-gray: #787774;
+  --dm-block-text-brown: #976d57;
+  --dm-block-text-orange: #cc782f;
+  --dm-block-text-yellow: #c29343;
+  --dm-block-text-green: #548164;
+  --dm-block-text-blue: #487ca5;
+  --dm-block-text-purple: #8a67ab;
+  --dm-block-text-pink: #b35488;
+  --dm-block-text-red: #c4554d;
+
+  // Halo around the currently-selected block while a drag handle is active.
+  // Used by `_block-handle.scss` as the `::before` background-color (the
+  // pseudo-element sits behind the block at `z-index: -1` so the halo
+  // never overlaps surrounding chrome the way a real outline would).
+  --dm-block-selected-halo: rgba(112, 207, 248, 0.25);
+
+  // Background tint applied to a block while its context menu is open.
+  // Used by `_context-menu.scss` via a Decoration class. Dark theme
+  // override lives in `themes/_dark.scss`.
+  --dm-block-context-active-bg: rgba(55, 53, 47, 0.06);
+
+  // ---------------------------------------------------------------------------
+  // Editor
+  // ---------------------------------------------------------------------------
+  --dm-editor-bg: var(--dm-bg);
+  --dm-editor-text: var(--dm-text);
+  --dm-editor-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --dm-editor-font-size: 1rem;
+  --dm-editor-line-height: 1.6;
+  --dm-editor-padding: 1rem;
+  // When `--dm-editor-padding` is a multi-value shorthand (e.g. 4rem 4.8rem),
+  // also set `--dm-editor-padding-top` to a single length: the top padding is
+  // computed as calc(top + extra) and a shorthand cannot participate in calc().
+  --dm-editor-padding-top-extra: 0.5rem;
+  --dm-editor-border: 1px solid var(--dm-border-color);
+  --dm-editor-border-radius: 0.75rem;
+  // Override to add a focus ring, e.g. 0 0 0 1px var(--dm-focus-color)
+  --dm-editor-focus-ring: none;
+  --dm-editor-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+
+  // ---------------------------------------------------------------------------
+  // Placeholder
+  // ---------------------------------------------------------------------------
+  --dm-placeholder-color: var(--dm-muted);
+
+  // ---------------------------------------------------------------------------
+  // Links
+  // ---------------------------------------------------------------------------
+  --dm-link-color: var(--dm-accent);
+  --dm-link-hover-color: var(--dm-accent-hover);
+
+  // ---------------------------------------------------------------------------
+  // Inline code
+  // ---------------------------------------------------------------------------
+  --dm-code-bg: var(--dm-code-surface);
+  --dm-code-text: var(--dm-code-color);
+  --dm-code-font: "SF Mono", "Fira Code", Consolas, "Liberation Mono", Menlo, monospace;
+  --dm-code-border-radius: 0.25rem;
+
+  // ---------------------------------------------------------------------------
+  // Code blocks
+  // ---------------------------------------------------------------------------
+  --dm-code-block-bg: var(--dm-code-surface);
+  --dm-code-block-text: var(--dm-text);
+
+  // ---------------------------------------------------------------------------
+  // Syntax highlighting (CodeBlockLowlight)
+  // ---------------------------------------------------------------------------
+  --dm-syntax-keyword: #c72031;
+  --dm-syntax-entity: #6f42c1;
+  --dm-syntax-constant: #005cc5;
+  --dm-syntax-string: #032f62;
+  --dm-syntax-variable: #d35400;
+  --dm-syntax-comment: #57606a;
+  --dm-syntax-tag: #22863a;
+  --dm-syntax-addition: #22863a;
+  --dm-syntax-addition-bg: #f0fff4;
+  --dm-syntax-deletion: #b31d28;
+  --dm-syntax-deletion-bg: #ffeef0;
+
+  // ---------------------------------------------------------------------------
+  // Blockquote
+  // ---------------------------------------------------------------------------
+  --dm-blockquote-border: 3px solid #6a6a6a;
+  --dm-blockquote-color: #6a6a6a;
+
+  // ---------------------------------------------------------------------------
+  // Horizontal rule
+  // ---------------------------------------------------------------------------
+  --dm-hr-color: var(--dm-border-color);
+
+  // ---------------------------------------------------------------------------
+  // Table
+  // ---------------------------------------------------------------------------
+  --dm-table-border: 1px solid var(--dm-border-color);
+  --dm-table-header-bg: var(--dm-surface);
+  --dm-table-selected-bg: rgba(66, 133, 244, 0.15);
+
+  // ---------------------------------------------------------------------------
+  // Mention
+  // ---------------------------------------------------------------------------
+  --dm-mention-bg: var(--dm-accent-surface);
+  --dm-mention-color: var(--dm-accent);
+  --dm-mention-border-radius: 0.25rem;
+
+  // ---------------------------------------------------------------------------
+  // Highlight / mark
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Details / accordion
+  // ---------------------------------------------------------------------------
+  --dm-details-border: 1px solid var(--dm-border-color);
+  --dm-details-bg: var(--dm-surface);
+  --dm-details-summary-font-weight: 600;
+
+  // ---------------------------------------------------------------------------
+  // Task list
+  // ---------------------------------------------------------------------------
+  // Position of the absolutely-positioned checkbox label inside a taskItem.
+  // `left` hangs the checkbox in the bullet column (paired with the
+  // wrapper's `padding-left: 1.5em` and the checkbox's own 1em width).
+  // `top` is tuned to the first text line's x-height. Override these when
+  // overriding `--dm-editor-line-height` so the checkbox stays aligned
+  // with the first label glyph.
+  --dm-task-checkbox-left: -1.15em;
+  --dm-task-checkbox-top: 0.45em;
+}
+
+// =============================================================================
+// Toolbar variables (on .dm-toolbar)
+// =============================================================================
+
+.dm-toolbar {
+  --dm-toolbar-bg: var(--dm-bg, #ffffff);
+  --dm-toolbar-border: none;
+  --dm-toolbar-padding: 0.375rem 0.5rem;
+  --dm-toolbar-gap: 0.125rem;
+  --dm-toolbar-border-radius: 0.75rem 0.75rem 0 0;
+
+  // Buttons
+  --dm-button-size: 2rem;
+  --dm-button-border-radius: 0.375rem;
+  --dm-button-color: var(--dm-text, #374151);
+  --dm-button-hover-bg: var(--dm-hover, rgba(0, 0, 0, 0.04));
+  --dm-button-active-bg: var(--dm-accent-surface, rgba(37, 99, 235, 0.1));
+  --dm-button-active-color: var(--dm-accent, #2563eb);
+  --dm-button-disabled-opacity: 0.35;
+
+  // Separator
+  --dm-separator-color: var(--dm-border-color, #e5e7eb);
+  --dm-separator-margin: 0.375rem;
+}
+
+// =============================================================================
+// Table-of-contents variables (on :root)
+// =============================================================================
+// The floating ToC outline mounts OUTSIDE `.dm-editor` (so it can sit in
+// the page's right gutter instead of being clipped by the editor's
+// `overflow: hidden`). Tokens therefore live on `:root` to be visible
+// regardless of cascade. Dark theme overrides land in `_dark.scss`.
+
+:root {
+  // Tick widths per heading level. H1 widest, H3 narrowest - the
+  // length encodes hierarchy in the collapsed (default) state.
+  --dm-toc-tick-h1-width: 18px;
+  --dm-toc-tick-h2-width: 12px;
+  --dm-toc-tick-h3-width: 8px;
+  --dm-toc-tick-h4-width: 6px;
+  --dm-toc-tick-h5-width: 5px;
+  --dm-toc-tick-h6-width: 4px;
+  --dm-toc-tick-height: 2px;
+  --dm-toc-tick-radius: 1px;
+  --dm-toc-tick-gap: 10px;
+
+  // Tick color: low-contrast neutral; active variant is full text color.
+  --dm-toc-tick-color: rgba(55, 53, 47, 0.4);
+  --dm-toc-tick-hover-color: rgba(55, 53, 47, 0.7);
+  --dm-toc-tick-active-color: rgba(55, 53, 47, 0.95);
+
+  // Panel chrome - mostly transparent in collapsed state, just enough
+  // padding to separate ticks visually from the page edge.
+  --dm-toc-padding-block: 12px;
+  --dm-toc-padding-inline: 8px;
+  --dm-toc-right-offset: 24px;
+  --dm-toc-z-index: 10;
+
+  // Editor-anchored outline (anchor: 'editor'): top offset from the
+  // editor's top edge. Used by `_toc.scss` sticky shell.
+  --dm-toc-editor-top: 1rem;
+
+  // Page-anchored outline (anchor: 'page'): right offset from the
+  // viewport (smaller than `--dm-toc-right-offset` when nav is mid-page).
+  --dm-toc-page-offset: 8px;
+
+  // Expanded card: replaces the tick column on hover/focus, showing the
+  // full heading text with per-level indent.
+  --dm-toc-card-bg: rgba(255, 255, 255, 0.98);
+  --dm-toc-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --dm-toc-card-radius: 6px;
+  --dm-toc-card-border: 1px solid rgba(0, 0, 0, 0.06);
+  --dm-toc-card-min-width: 180px;
+  --dm-toc-card-max-width: 260px;
+  --dm-toc-card-padding-block: 6px;
+  // Card slides in from the right edge by this offset on hover/focus.
+  // 8px reads as a clearly intentional motion at 60fps without being
+  // showy; smaller values (4px) feel like a glitch on retina displays.
+  --dm-toc-card-offset: 8px;
+  --dm-toc-card-transition: 180ms;
+
+  --dm-toc-row-padding-block: 4px;
+  --dm-toc-row-padding-inline-start: 12px;
+  --dm-toc-row-padding-inline-end: 16px;
+  --dm-toc-row-indent: 14px;
+  --dm-toc-row-color: rgba(55, 53, 47, 0.7);
+  --dm-toc-row-hover-bg: rgba(0, 0, 0, 0.04);
+  --dm-toc-row-active-color: rgba(55, 53, 47, 0.95);
+  --dm-toc-row-active-weight: 600;
+  --dm-toc-row-font-size: 13px;
+  --dm-toc-row-line-height: 1.4;
+
+  // Inline /toc block: lives INSIDE the editor as a first-class document
+  // block. Notion-style callout (subtle surface tint, soft border).
+  --dm-toc-block-bg: rgba(0, 0, 0, 0.02);
+  --dm-toc-block-border: 1px solid rgba(0, 0, 0, 0.08);
+  --dm-toc-block-radius: 6px;
+  --dm-toc-block-padding-block: 12px;
+  --dm-toc-block-padding-inline: 16px;
+  --dm-toc-block-margin-block: 1rem;
+  --dm-toc-block-empty-color: rgba(55, 53, 47, 0.5);
+  --dm-toc-block-empty-font-style: italic;
+
+  --dm-toc-block-link-color: rgba(55, 53, 47, 0.8);
+  --dm-toc-block-link-hover-color: rgba(55, 53, 47, 1);
+  --dm-toc-block-link-hover-bg: rgba(0, 0, 0, 0.04);
+  --dm-toc-block-link-active-color: rgba(55, 53, 47, 0.95);
+  --dm-toc-block-link-active-weight: 600;
+  --dm-toc-block-link-padding-block: 4px;
+  --dm-toc-block-link-padding-inline: 8px;
+  --dm-toc-block-link-indent: 16px;
+  --dm-toc-block-link-radius: 3px;
+  --dm-toc-block-link-font-size: 0.9375rem;
+  --dm-toc-block-link-line-height: 1.5;
+}

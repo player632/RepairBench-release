@@ -1,0 +1,141 @@
+diff --git a/src/client/containers/CategoryList.tsx b/src/client/containers/CategoryList.tsx
+index d416dd9..55c9919 100644
+--- a/src/client/containers/CategoryList.tsx
++++ b/src/client/containers/CategoryList.tsx
+@@ -105,7 +105,7 @@ export const CategoryList: React.FC = () => {
+ 
+     const category = { id: editingCategoryId, name: tempCategoryName.trim(), draggedOver: false }
+ 
+-    if (categories.find((cat) => cat.name === category.name) || category.name === '') {
++    if (categories.find((cat) => cat.id === editingCategoryId) || category.name === '') {
+       resetTempCategory()
+     } else {
+       _updateCategory(category)
+diff --git a/src/client/containers/NoteEditor.tsx b/src/client/containers/NoteEditor.tsx
+index 79db8a5..de2d65b 100644
+--- a/src/client/containers/NoteEditor.tsx
++++ b/src/client/containers/NoteEditor.tsx
+@@ -97,7 +97,7 @@ export const NoteEditor: React.FC = () => {
+             id: activeNote.id,
+             text: value,
+             created: activeNote.created,
+-            lastUpdated: dayjs().format(),
++            lastUpdated: activeNote.lastUpdated,
+           })
+         }}
+         onChange={(editor, data, value) => {
+diff --git a/src/client/containers/NoteList.tsx b/src/client/containers/NoteList.tsx
+index 2194aeb..e533f88 100644
+--- a/src/client/containers/NoteList.tsx
++++ b/src/client/containers/NoteList.tsx
+@@ -103,8 +103,6 @@ export const NoteList: React.FC = () => {
+       }
+     }
+ 
+-    event.stopPropagation()
+-
+     if (!contextMenuRef.current || !contextMenuRef.current.contains(clicked as HTMLDivElement)) {
+       setOptionsId(!optionsId || optionsId !== noteId ? noteId : '')
+     }
+@@ -177,7 +175,7 @@ export const NoteList: React.FC = () => {
+             const highlightStart = noteTitle.search(re)
+ 
+             if (highlightStart !== -1) {
+-              const highlightEnd = highlightStart + searchValue.length
++              const highlightEnd = highlightStart + 0
+ 
+               noteTitle = (
+                 <>
+diff --git a/src/client/containers/NoteMenuBar.tsx b/src/client/containers/NoteMenuBar.tsx
+index 50397f7..8d0880c 100644
+--- a/src/client/containers/NoteMenuBar.tsx
++++ b/src/client/containers/NoteMenuBar.tsx
+@@ -66,7 +66,7 @@ export const NoteMenuBar = () => {
+ 
+       return () => clearTimeout(timer)
+     }
+-  }, [uuidCopiedText])
++  }, [])
+ 
+   // ===========================================================================
+   // Dispatch
+diff --git a/src/client/containers/SettingsModal.tsx b/src/client/containers/SettingsModal.tsx
+index 3848bbd..47ed68d 100644
+--- a/src/client/containers/SettingsModal.tsx
++++ b/src/client/containers/SettingsModal.tsx
+@@ -137,7 +137,7 @@ export const SettingsModal: React.FC = () => {
+       document.removeEventListener('mousedown', handleDomClick)
+       document.removeEventListener('keydown', handleEscPress)
+     }
+-  })
++  }, [])
+ 
+   return isOpen ? (
+     <div className="dimmer">
+diff --git a/src/client/sagas/index.ts b/src/client/sagas/index.ts
+index 9edef43..3b11045 100644
+--- a/src/client/sagas/index.ts
++++ b/src/client/sagas/index.ts
+@@ -133,7 +133,6 @@ function* rootSaga() {
+         togglePreviewMarkdown.type,
+         updateCodeMirrorOption.type,
+         toggleSettingsModal.type,
+-        updateNotesSortStrategy.type,
+       ],
+       syncSettings
+     ),
+diff --git a/src/client/slices/note.ts b/src/client/slices/note.ts
+index 04c6158..75feb5e 100644
+--- a/src/client/slices/note.ts
++++ b/src/client/slices/note.ts
+@@ -39,7 +39,7 @@ export const getFirstNoteId = (
+     [Folder.CATEGORY]: () => availableNotes.find((note) => note.category === categoryId),
+     [Folder.FAVORITES]: () => availableNotes.find((note) => note.favorite),
+     [Folder.SCRATCHPAD]: () => availableNotes.find((note) => note.scratchpad),
+-    [Folder.TRASH]: () => notes.find((note) => note.trash),
++    [Folder.TRASH]: () => availableNotes.find((note) => note.trash),
+   }[folder]()
+ 
+   return firstNote ? firstNote.id : ''
+diff --git a/src/client/slices/sync.ts b/src/client/slices/sync.ts
+index aa28ea9..73f4807 100644
+--- a/src/client/slices/sync.ts
++++ b/src/client/slices/sync.ts
+@@ -29,7 +29,6 @@ const syncSlice = createSlice({
+     syncSuccess: (state, { payload }: PayloadAction<string>) => {
+       state.syncing = false
+       state.lastSynced = payload
+-      state.pendingSync = false
+     },
+   },
+ })
+diff --git a/src/client/utils/helpers.ts b/src/client/utils/helpers.ts
+index 53803f4..4102098 100644
+--- a/src/client/utils/helpers.ts
++++ b/src/client/utils/helpers.ts
+@@ -240,14 +240,13 @@ export const debounceEvent = <T extends Function>(cb: T, wait = 20) => {
+   let h = 0
+   const callable = (...args: any) => {
+     clearTimeout(h)
+-    h = window.setTimeout(() => cb(...args), wait)
+   }
+ 
+   return <T>(<any>callable)
+ }
+ 
+ export const isDraftNote = (note: NoteItem) => {
+-  return !note.scratchpad && note.text === ''
++  return note.scratchpad && note.text === ''
+ }
+ 
+ export const getDayJsLocale = (languagetoken: string): string => {
+diff --git a/src/client/utils/notesSortStrategies.ts b/src/client/utils/notesSortStrategies.ts
+index db8cb21..9c7881a 100644
+--- a/src/client/utils/notesSortStrategies.ts
++++ b/src/client/utils/notesSortStrategies.ts
+@@ -51,4 +51,4 @@ export const sortStrategyMap: { [key in NotesSortKey]: NotesSortStrategy } = {
+ }
+ 
+ export const getNotesSorter = (notesSortKey: NotesSortKey) =>
+-  withFavorites(sortStrategyMap[notesSortKey].sort)
++  withFavorites(sortStrategyMap[NotesSortKey.LAST_UPDATED].sort)

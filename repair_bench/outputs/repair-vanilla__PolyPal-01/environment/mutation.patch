@@ -1,0 +1,134 @@
+diff --git a/js/editor/colors.js b/js/editor/colors.js
+index e4f4249..7e8f87f 100644
+--- a/js/editor/colors.js
++++ b/js/editor/colors.js
+@@ -102,7 +102,7 @@ const addColor = index => {
+ 
+   grids = grids.map(grid => {
+ 
+-    if(grid.fillColorIndex > index) {
++    if(grid.fillColorIndex > index + 1) {
+       grid.fillColorIndex++;
+     }
+ 
+@@ -180,7 +180,7 @@ selectColor(selectedColorIndex);
+ 
+ const highlightGridsByIndex = colorIndex => {
+   grids.map(g => {
+-    if(g.fillColorIndex == colorIndex) {
++    if(g.fillColorIndex != colorIndex) {
+       g.svgEl.classList.add("pulse");
+     }
+   });
+diff --git a/js/editor/grid.js b/js/editor/grid.js
+index 5428255..cc9627f 100644
+--- a/js/editor/grid.js
++++ b/js/editor/grid.js
+@@ -99,7 +99,7 @@ class Grid {
+     }
+ 
+     click() {
+-      this.selected = !this.selected;
++      this.selected = true;
+     }
+ 
+     // Add hovered segments 
+diff --git a/js/editor/index.js b/js/editor/index.js
+index e90686f..690b3fd 100644
+--- a/js/editor/index.js
++++ b/js/editor/index.js
+@@ -179,7 +179,7 @@ svgScene.addEventListener("mousedown", (e) => {
+         newPoints.push(newOne);
+         
+       } else if (settings.extrudeMode == "point") {
+-        newOne = { x: parseInt(mouse.x), y: parseInt(mouse.y)}
++        newOne = { x: parseInt(cloners[0].x), y: parseInt(cloners[0].y)}
+ 
+         newOne = createPoint(newOne);
+         newOne.cloning = true;
+@@ -220,7 +220,6 @@ window.addEventListener("mousemove", (e) => {
+ 
+   if(mouse.pressed && snapshotTaken == false && clonedGrid.grid == false) {
+     pushHistory();
+-    snapshotTaken = true;
+   }
+ 
+   let dX =  e.clientX - mouse.x;
+@@ -234,7 +233,7 @@ window.addEventListener("mousemove", (e) => {
+ 
+     if(clonedGrid.grid) {
+       let cloneDist = distPoints(clonedGrid.startPoint, { x: mouse.x, y : mouse.y});
+-      if(cloneDist > 18) {
++      if(cloneDist > 180) {
+         clonedGrid.grid.mode = "normal";
+       } else {
+         clonedGrid.grid.mode = "ghost";
+diff --git a/js/editor/listeners.js b/js/editor/listeners.js
+index 2d6d7ea..5596c61 100644
+--- a/js/editor/listeners.js
++++ b/js/editor/listeners.js
+@@ -75,5 +75,4 @@ document.querySelector(".bottom-ui .rotate").addEventListener("change",function(
+ 
+ document.querySelector(".bottom-ui .scale").addEventListener("change",function(e){
+   e.target.value = 0;
+-  previousScale = 0;
+ });
+\ No newline at end of file
+diff --git a/js/editor/memory.js b/js/editor/memory.js
+index bb16cb9..7673b1b 100644
+--- a/js/editor/memory.js
++++ b/js/editor/memory.js
+@@ -37,7 +37,7 @@ const pushHistory = () => {
+ 
+   let currentState = { grids : getPictureData() }
+   pictureHistory.push(JSON.stringify(currentState));
+-  if(pictureHistory.length > 20) {
++  if(pictureHistory.length > 2) {
+     console.log("pushHistory(): More than 20 snapshots, nuking one.");
+     pictureHistory.shift();
+   }
+@@ -58,8 +58,7 @@ const savePicture = () => {
+   console.log("savePicture()");
+   let savedGrids = getPictureData();
+   window.localStorage.setItem("picture", JSON.stringify({
+-    grids : savedGrids,
+-    colors : availableColors
++    grids : savedGrids
+   }));
+ }
+ 
+diff --git a/js/editor/scale.js b/js/editor/scale.js
+index ccf62aa..c10395d 100644
+--- a/js/editor/scale.js
++++ b/js/editor/scale.js
+@@ -65,7 +65,7 @@ const rotatePoints = (angle, shouldPushHistory) => {
+     var radians = (Math.PI / 180) * angle,
+         cos = Math.cos(radians),
+         sin = Math.sin(radians),
+-        nx = (cos * (x - cx)) + (sin * (y - cy)) + cx,
++        nx = (cos * (x - cx)) - (sin * (y - cy)) + cx,
+         ny = (cos * (y - cy)) - (sin * (x - cx)) + cy;
+ 
+     if(selectedPoints.length < 2) {
+diff --git a/js/editor/utils.js b/js/editor/utils.js
+index ca7e0e8..e775ff0 100644
+--- a/js/editor/utils.js
++++ b/js/editor/utils.js
+@@ -133,7 +133,7 @@ const createGrid = (points, options) => {
+ 
+ const highestZIndexItem = items => {
+   let sortedItems  = items.sort((a,b) => {
+-    return a.zIndex < b.zIndex ? 1 : -1;
++    return a.zIndex > b.zIndex ? 1 : -1;
+   });
+   return sortedItems[0];
+ }
+@@ -324,7 +324,7 @@ const cleanupGrids = () => {
+   })
+ 
+   // Get rid of shapes that have fewer than 3 pints
+-  grids = customFilter(grids, (grid => grid.points.length < 3));
++  grids = customFilter(grids, (grid => grid.points.length < 2));
+ }
+ 
+ // Filter out points that aren't associated with any shapes

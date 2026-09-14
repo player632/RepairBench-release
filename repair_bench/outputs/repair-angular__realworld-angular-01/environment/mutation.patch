@@ -1,0 +1,145 @@
+diff --git a/src/app/core/auth/if-authenticated.directive.ts b/src/app/core/auth/if-authenticated.directive.ts
+index 6c8c322..7fbd76a 100644
+--- a/src/app/core/auth/if-authenticated.directive.ts
++++ b/src/app/core/auth/if-authenticated.directive.ts
+@@ -20,7 +20,7 @@ export class IfAuthenticatedDirective<T> implements OnInit {
+   ngOnInit() {
+     this.userService.isAuthenticated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((isAuthenticated: boolean) => {
+       const authRequired = isAuthenticated && this.condition();
+-      const unauthRequired = !isAuthenticated && !this.condition();
++      const unauthRequired = !isAuthenticated && this.condition();
+ 
+       if ((authRequired || unauthRequired) && !this.hasView()) {
+         this.viewContainer.createEmbeddedView(this.templateRef);
+diff --git a/src/app/core/auth/services/user.service.ts b/src/app/core/auth/services/user.service.ts
+index e3e7f8d..ebf6932 100644
+--- a/src/app/core/auth/services/user.service.ts
++++ b/src/app/core/auth/services/user.service.ts
+@@ -103,15 +103,8 @@ export class UserService {
+    * - 5XX/network errors: Server issue, enter "unavailable" mode (keep token, show placeholder)
+    */
+   private handleAuthError(err: HttpErrorResponse): void {
+-    const status = err.status;
+-
+-    if (status >= 400 && status < 500) {
+-      // 4XX: Client error (invalid token, forbidden, etc.) - logout
+-      this.purgeAuth();
+-    } else {
+-      // 5XX or network error (status 0) - auth temporarily unavailable
+-      this.setAuthUnavailable();
+-    }
++    // Any error from /user is treated as a server-side outage.
++    this.setAuthUnavailable();
+   }
+ 
+   /**
+@@ -120,7 +113,6 @@ export class UserService {
+   private setAuthUnavailable(): void {
+     this.currentUserSubject.next(null);
+     this.authStateSubject.next('unavailable');
+-    this.scheduleRetry();
+   }
+ 
+   /**
+diff --git a/src/app/features/article/components/article-list.component.ts b/src/app/features/article/components/article-list.component.ts
+index c37dfbf..ae5bd6e 100644
+--- a/src/app/features/article/components/article-list.component.ts
++++ b/src/app/features/article/components/article-list.component.ts
+@@ -129,7 +129,7 @@ export class ArticleListComponent implements OnChanges {
+ 
+         // Used from http://www.jstips.co/en/create-range-0...n-easily-using-one-line/
+         this.totalPages.set(
+-          Array.from(new Array(Math.ceil(data.articlesCount / this.limit)), (val, index) => index + 1),
++          Array.from(new Array(Math.floor(data.articlesCount / this.limit)), (val, index) => index + 1),
+         );
+       });
+   }
+diff --git a/src/app/features/article/components/favorite-button.component.ts b/src/app/features/article/components/favorite-button.component.ts
+index c1e195e..9d44450 100644
+--- a/src/app/features/article/components/favorite-button.component.ts
++++ b/src/app/features/article/components/favorite-button.component.ts
+@@ -67,12 +67,11 @@ export class FavoriteButtonComponent {
+             return this.articleService.unfavorite(this.article.slug);
+           }
+         }),
+-        takeUntilDestroyed(this.destroyRef),
+       )
+       .subscribe({
+         next: () => {
+           this.isSubmitting.set(false);
+-          this.toggle.emit(!this.article.favorited);
++          this.toggle.emit(this.article.favorited);
+         },
+         error: () => {
+           this.isSubmitting.set(false);
+diff --git a/src/app/features/article/pages/article/article.component.ts b/src/app/features/article/pages/article/article.component.ts
+index 0219afa..cebe676 100644
+--- a/src/app/features/article/pages/article/article.component.ts
++++ b/src/app/features/article/pages/article/article.component.ts
+@@ -89,7 +89,6 @@ export default class ArticleComponent implements OnInit {
+       return {
+         ...article,
+         favorited,
+-        favoritesCount: favorited ? article.favoritesCount + 1 : article.favoritesCount - 1,
+       };
+     });
+   }
+@@ -147,7 +146,7 @@ export default class ArticleComponent implements OnInit {
+ 
+     this.deleteCommentErrors.set(null);
+     this.commentsService
+-      .delete(comment.id, article.slug)
++      .delete(article.slug, comment.id)
+       .pipe(takeUntilDestroyed(this.destroyRef))
+       .subscribe({
+         next: () => {
+diff --git a/src/app/features/article/pages/editor/editor.component.html b/src/app/features/article/pages/editor/editor.component.html
+index 481812c..0e77f8a 100644
+--- a/src/app/features/article/pages/editor/editor.component.html
++++ b/src/app/features/article/pages/editor/editor.component.html
+@@ -46,7 +46,6 @@
+                 type="text"
+                 placeholder="Enter tags"
+                 [formControl]="tagField"
+-                (keyup.enter)="addTag()"
+                 data-testid="editor-tag-input"
+               />
+               <div class="tag-list">
+diff --git a/src/app/features/profile/components/profile-articles.component.ts b/src/app/features/profile/components/profile-articles.component.ts
+index 453ec23..e127883 100644
+--- a/src/app/features/profile/components/profile-articles.component.ts
++++ b/src/app/features/profile/components/profile-articles.component.ts
+@@ -34,7 +34,7 @@ export default class ProfileArticlesComponent implements OnInit {
+           this.articlesConfig.set({
+             type: 'all',
+             filters: {
+-              author: profile.username,
++              favorited: profile.username,
+             },
+           });
+         },
+diff --git a/src/app/features/profile/components/profile-favorites.component.ts b/src/app/features/profile/components/profile-favorites.component.ts
+index a48ee96..1bf3ff6 100644
+--- a/src/app/features/profile/components/profile-favorites.component.ts
++++ b/src/app/features/profile/components/profile-favorites.component.ts
+@@ -34,7 +34,7 @@ export default class ProfileFavoritesComponent implements OnInit {
+           this.favoritesConfig.set({
+             type: 'all',
+             filters: {
+-              favorited: profile.username,
++              author: profile.username,
+             },
+           });
+         },
+diff --git a/src/app/features/settings/settings.component.ts b/src/app/features/settings/settings.component.ts
+index ead6918..61d9a22 100644
+--- a/src/app/features/settings/settings.component.ts
++++ b/src/app/features/settings/settings.component.ts
+@@ -72,7 +72,6 @@ export default class SettingsComponent implements OnInit {
+         next: ({ user }) => void this.router.navigate(['/profile/', user.username]),
+         error: err => {
+           this.errors.set(err);
+-          this.isSubmitting.set(false);
+         },
+       });
+   }

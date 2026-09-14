@@ -1,0 +1,445 @@
+/**
+ * rb-probe.ts - read-only observation bridge for the RepairBench design face of this
+ * SvelteKit (Svelte 5 runes) front end. Published on window.__mf by src/routes/+layout.ts
+ * through ONE added import line; no markup, no template and no binding is touched anywhere.
+ *
+ * Discipline:
+ *  - READ ONLY. It calls the application's own exported pure functions with literal
+ *    arguments held in this file, and reads the DOM / computed style / location / web
+ *    storage. The only write it performs is a click on an element the user can click
+ *    (the sponsor menu button and its menu items), which is what a user does. It never
+ *    writes application state, never dispatches synthetic events, never navigates, never
+ *    touches the network, and adds 0 data-testid attributes.
+ *  - EVERY getter degrades to a sentinel instead of throwing: '-' for strings, -1 for
+ *    numbers, 'none' for null/undefined/''. A checkpoint can therefore only fail on a
+ *    measured value, never on a broken bridge.
+ *  - The fixtures below are literal constants of the measurement apparatus. They are not
+ *    read from disk, not fetched, and none of them is a date or a clock value, so every
+ *    reading is reproducible face to face.
+ *  - This is a plain .ts module: no component is defined and no runes syntax is used, so
+ *    it compiles under the project's own Svelte 5 configuration without touching a single
+ *    .svelte file.
+ */
+import {
+  CORE_EXTS,
+  IMAGE_EXTS,
+  AUDIO_EXTS,
+  SUPPORTED_EXTS,
+  isImageExt,
+  isAudioExt,
+  isHeavyExt,
+  extFromPath,
+  formatLabel
+} from '$lib/formats';
+import { fileStem, fileExt, buildOutputName, buildOutputFilename, ruleLabel } from '$lib/naming';
+import { CLEANUP_RULES, defaultRules, totalChanges, freshCleanup } from '$lib/cleanup';
+import type { CleanupSummary } from '$lib/cleanup';
+import { lineDiff, githubBlocks } from '$lib/diff';
+import type { DiffRow } from '$lib/diff';
+import {
+  API_PROVIDERS,
+  providerById,
+  providerLabel,
+  inferProviderId,
+  detectProviderFromKey
+} from '$lib/providers';
+import {
+  RUNTIME_COMPONENTS,
+  MOCK_RUNTIME_STATUSES,
+  MOCK_COMPONENT_MATRIX,
+  PROVIDER_INACTIVITY_FRAGMENT,
+  editionLabel,
+  platformLabel,
+  lifecycleLabel,
+  componentLabel,
+  componentStateLabel,
+  componentDotClass,
+  lifecycleDotClass,
+  allowsComponentInstall,
+  showsRepairAction,
+  isImmutableFull,
+  legacyRuntimeStatusFromProvision,
+  mockLiteRepairableAfterFailedStaging,
+  classifyAiNotice,
+  aiNoticePresentation
+} from '$lib/runtime-status';
+import { renderMarkdown } from '$lib/mdpreview';
+
+const PROBE_VERSION = 'rb-probe/mdflux/1';
+const STR_SENTINEL = '-';
+const NUM_SENTINEL = -1;
+const NULL_SENTINEL = 'none';
+
+function str(fn: () => unknown): string {
+  try {
+    const v = fn();
+    return typeof v === 'string' && v.length > 0 ? v : (v === '' ? NULL_SENTINEL : STR_SENTINEL);
+  } catch {
+    return STR_SENTINEL;
+  }
+}
+
+function strOrNull(fn: () => unknown): string {
+  try {
+    const v = fn();
+    if (v === null || v === undefined || v === '') return NULL_SENTINEL;
+    return typeof v === 'string' ? v : STR_SENTINEL;
+  } catch {
+    return STR_SENTINEL;
+  }
+}
+
+function num(fn: () => unknown): number {
+  try {
+    const v = fn();
+    return typeof v === 'number' && Number.isFinite(v) ? v : NUM_SENTINEL;
+  } catch {
+    return NUM_SENTINEL;
+  }
+}
+
+function bool(fn: () => unknown): boolean | string {
+  try {
+    const v = fn();
+    return v === true || v === false ? v : STR_SENTINEL;
+  } catch {
+    return STR_SENTINEL;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Literal diff fixtures. `seq(prefix, n)` builds n deterministic lines; the two
+// asymmetric/symmetric pairs below are the smallest inputs that separate a hunk
+// header's old-side length from its new-side length, and that put two change
+// runs exactly CONTEXT*2+1 apart so the block merger's boundary predicate is
+// the only thing that decides between one hunk and two.
+// ---------------------------------------------------------------------------
+function seq(prefix: string, n: number, from = 0): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) out.push(prefix + (from + i));
+  return out;
+}
+
+const FIX_IDENT = ['a', 'b', 'c'];
+const FIX_SYM_A = seq('L', 10, 1);
+const FIX_SYM_B = seq('L', 10, 1).map((l, i) => (i === 4 ? 'L5x' : l));
+const FIX_ASYM_A = seq('L', 10, 1);
+const FIX_ASYM_B = ['L1', 'L2', 'L3', 'L4', 'L5a', 'L5b', 'L6', 'L7', 'L8', 'L9', 'L10'];
+const FIX_NEAR_A = seq('A', 12, 0);
+const FIX_NEAR_B = seq('A', 12, 0).map((l, i) => (i === 0 ? 'B0' : i === 7 ? 'B7' : l));
+const FIX_BIG_A = seq('S', 2500, 0).map((l) => l.padStart(6, '0'));
+const FIX_BIG_B = ['Z0', 'Z1', 'Z2', 'Z3', 'Z4'];
+
+type Fixture = [string, string];
+const FIXTURES: Record<string, Fixture> = {
+  ident: [FIX_IDENT.join('\n'), FIX_IDENT.join('\n')],
+  hunkSym: [FIX_SYM_A.join('\n'), FIX_SYM_B.join('\n')],
+  hunkAsym: [FIX_ASYM_A.join('\n'), FIX_ASYM_B.join('\n')],
+  twoNear: [FIX_NEAR_A.join('\n'), FIX_NEAR_B.join('\n')],
+  bigSmall: [FIX_BIG_A.join('\n'), FIX_BIG_B.join('\n')]
+};
+
+function pairOf(name: string): Fixture {
+  return FIXTURES[String(name)] || FIXTURES.ident;
+}
+
+function diffOf(name: string) {
+  const p = pairOf(name);
+  return lineDiff(p[0], p[1]);
+}
+
+function rowsOf(name: string): DiffRow[] | null {
+  const d = diffOf(name);
+  return d.kind === 'full' ? d.rows : null;
+}
+
+function blocksOfKind(name: string, kind: string) {
+  const rows = rowsOf(name);
+  if (!rows) return [];
+  return githubBlocks(rows).filter((b) => b.kind === kind);
+}
+
+// ---------------------------------------------------------------------------
+// Literal cleanup fixtures. The `changes` table is a constant of the apparatus;
+// the `applied` flags are read out of the application's own defaultRules(), so
+// a defect in that context-aware default propagates into the summary the way it
+// propagates into the real UI.
+// ---------------------------------------------------------------------------
+const CLEAN_CHANGES: Record<string, number> = {
+  strip_cid: 9,
+  dedup_lines: 0,
+  repair_lines: 0,
+  collapse_blanks: 3,
+  detect_headings: 2
+};
+
+function summaryFor(sourceFormat: string): CleanupSummary {
+  const defaults = defaultRules(String(sourceFormat));
+  return {
+    rules: CLEANUP_RULES.map((r) => ({
+      key: r.key,
+      label: r.label,
+      applied: defaults[r.key] === true,
+      changes: typeof CLEAN_CHANGES[r.key] === 'number' ? CLEAN_CHANGES[r.key] : 0
+    })),
+    char_delta: 0,
+    line_delta: 0
+  };
+}
+
+function ruleDef(key: string) {
+  return CLEANUP_RULES.filter((r) => r.key === String(key))[0] || null;
+}
+
+const SUSPICIOUS_GLOBALS = [
+  '__rb_fix',
+  '__rb_hook',
+  '__rbGreen',
+  'rbFix',
+  '__MDFLUX_HOOK',
+  '__MDFLUX_FIX',
+  '__repairbench',
+  '__bench'
+];
+
+const bridge = {
+  probeVersion: (): string => str(() => PROBE_VERSION),
+
+  // --- formats.ts: extension tables + predicates + labels ---
+  coreCount: (): number => num(() => CORE_EXTS.length),
+  imgCount: (): number => num(() => IMAGE_EXTS.length),
+  audCount: (): number => num(() => AUDIO_EXTS.length),
+  supportedCount: (): number => num(() => SUPPORTED_EXTS.length),
+  isImg: (e: string): boolean | string => bool(() => isImageExt(String(e))),
+  isAud: (e: string): boolean | string => bool(() => isAudioExt(String(e))),
+  isHeavy: (e: string): boolean | string => bool(() => isHeavyExt(String(e))),
+  ext: (p: string): string => strOrNull(() => extFromPath(String(p))),
+  label: (e: string): string => str(() => formatLabel(String(e))),
+
+  // --- naming.ts: stems, extensions, output-name builder ---
+  stem: (p: string): string => strOrNull(() => fileStem(String(p))),
+  fext: (p: string): string => strOrNull(() => fileExt(String(p))),
+  outName: (p: string, tpl: string, cs: string): string =>
+    strOrNull(() => buildOutputName(String(p), String(tpl), cs as 'keep' | 'lower' | 'slug')),
+  outFile: (p: string, tpl: string, cs: string): string =>
+    strOrNull(() => buildOutputFilename(String(p), String(tpl), cs as 'keep' | 'lower' | 'slug')),
+  outNameStarts: (p: string, tpl: string, cs: string, pre: string): boolean | string =>
+    bool(() =>
+      buildOutputName(String(p), String(tpl), cs as 'keep' | 'lower' | 'slug')
+        .slice(0, String(pre).length) === String(pre)),
+  rule: (r: string): string => str(() => ruleLabel(r as 'next_to_source' | 'fixed_folder' | 'mirror_tree')),
+
+  // --- cleanup.ts: rule table, context-aware defaults, change totals, lifted UI state ---
+  ruleCount: (): number => num(() => CLEANUP_RULES.length),
+  ruleKeyAt: (i: number): string => strOrNull(() => (CLEANUP_RULES[Number(i)] || { key: null }).key),
+  ruleLabelOf: (k: string): string => strOrNull(() => (ruleDef(k) || { label: null }).label),
+  rulePdfOnly: (k: string): boolean | string => bool(() => {
+    const r = ruleDef(k);
+    return r ? r.pdfOnly : null;
+  }),
+  ruleHintHas: (k: string, frag: string): boolean | string => bool(() => {
+    const r = ruleDef(k);
+    return r ? String(r.hint).indexOf(String(frag)) >= 0 : null;
+  }),
+  defaults: (fmt: string, key: string): boolean | string =>
+    bool(() => defaultRules(String(fmt))[String(key)] === true),
+  appliedCount: (fmt: string): number =>
+    num(() => summaryFor(fmt).rules.filter((r) => r.applied).length),
+  summaryLen: (fmt: string): number => num(() => summaryFor(fmt).rules.length),
+  changesOf: (fmt: string, key: string): number => num(() => {
+    const hit = summaryFor(fmt).rules.filter((r) => r.key === String(key))[0];
+    return hit ? hit.changes : null;
+  }),
+  total: (fmt: string): number => num(() => totalChanges(summaryFor(fmt))),
+  totalNull: (): number => num(() => totalChanges(null)),
+  totalEmpty: (): number => num(() => totalChanges({ rules: [], char_delta: 0, line_delta: 0 })),
+  freshMethod: (): string => strOrNull(() => freshCleanup('pdf').method),
+  freshView: (): string => strOrNull(() => freshCleanup('pdf').viewMode),
+  freshAdvanced: (): boolean | string => bool(() => freshCleanup('pdf').showAdvanced),
+  freshRunning: (): boolean | string => bool(() => freshCleanup('pdf').running),
+  freshAiApplied: (): boolean | string => bool(() => freshCleanup('pdf').aiApplied),
+  freshAiCleaned: (): string => strOrNull(() => freshCleanup('pdf').aiCleaned),
+  freshRule: (fmt: string, key: string): boolean | string =>
+    bool(() => freshCleanup(String(fmt)).rules[String(key)] === true),
+
+  // --- diff.ts: LCS line diff, GitHub-style block collapsing, hunk headers ---
+  diffKind: (fx: string): string => str(() => diffOf(fx).kind),
+  diffRows: (fx: string): number => num(() => {
+    const r = rowsOf(fx);
+    return r ? r.length : null;
+  }),
+  diffAdded: (fx: string): number => num(() => diffOf(fx).added),
+  diffRemoved: (fx: string): number => num(() => diffOf(fx).removed),
+  hasSummaryNote: (fx: string): boolean | string => bool(() => {
+    const d = diffOf(fx);
+    return d.kind === 'summary' ? String(d.note).length > 0 : false;
+  }),
+  blockCount: (fx: string): number => num(() => {
+    const r = rowsOf(fx);
+    return r ? githubBlocks(r).length : null;
+  }),
+  hunkCount: (fx: string): number => num(() => blocksOfKind(fx, 'hunk').length),
+  expandCount: (fx: string): number => num(() => blocksOfKind(fx, 'expand').length),
+  linesBlockCount: (fx: string): number => num(() => blocksOfKind(fx, 'lines').length),
+  hunkHeaderAt: (fx: string, i: number): string => strOrNull(() => {
+    const b = blocksOfKind(fx, 'hunk')[Number(i)] as { header?: string } | undefined;
+    return b && typeof b.header === 'string' ? b.header : null;
+  }),
+  expandHeaderAt: (fx: string, i: number): string => strOrNull(() => {
+    const b = blocksOfKind(fx, 'expand')[Number(i)] as { header?: string } | undefined;
+    return b && typeof b.header === 'string' ? b.header : null;
+  }),
+  firstHunkRowCount: (fx: string): number => num(() => {
+    const b = blocksOfKind(fx, 'lines')[0] as { rows?: DiffRow[] } | undefined;
+    return b && Array.isArray(b.rows) ? b.rows.length : null;
+  }),
+
+  // --- providers.ts: preset table, id resolution, url inference, key detection ---
+  providerCount: (): number => num(() => API_PROVIDERS.length),
+  providerIdAt: (i: number): string => strOrNull(() => (API_PROVIDERS[Number(i)] || { id: null }).id),
+  firstProviderId: (): string => strOrNull(() => API_PROVIDERS[0].id),
+  lastProviderId: (): string => strOrNull(() => API_PROVIDERS[API_PROVIDERS.length - 1].id),
+  providerIdOf: (id: string): string => strOrNull(() => providerById(id).id),
+  providerLabelOf: (id: string): string => strOrNull(() => providerLabel(id)),
+  providerApiTypeOf: (id: string): string => strOrNull(() => providerById(id).apiType),
+  providerBaseUrlOf: (id: string): string => strOrNull(() => providerById(id).baseUrl),
+  providerHintHas: (id: string, frag: string): boolean | string =>
+    bool(() => String(providerById(id).hint).indexOf(String(frag)) >= 0),
+  infer: (apiType: string, url: string): string =>
+    strOrNull(() => inferProviderId(String(apiType), String(url))),
+  detectKey: (k: string): string => strOrNull(() => detectProviderFromKey(String(k))),
+
+  // --- runtime-status.ts: contract labels, dot colours, gating predicates, mocks ---
+  editionLabelOf: (e: string): string => strOrNull(() => editionLabel(e as 'lite' | 'full')),
+  platformLabelOf: (p: string): string =>
+    strOrNull(() => platformLabel(p as 'windows-x64' | 'linux-x64-glibc')),
+  lifecycleLabelOf: (s: string): string => strOrNull(() => lifecycleLabel(s as never)),
+  componentLabelOf: (c: string): string => strOrNull(() => componentLabel(c as never)),
+  componentStateLabelOf: (s: string): string => strOrNull(() => componentStateLabel(s as never)),
+  componentDotOf: (s: string): string => strOrNull(() => componentDotClass(s as never)),
+  lifecycleDotOf: (s: string): string => strOrNull(() => lifecycleDotClass(s as never)),
+  componentsCsv: (): string => str(() => RUNTIME_COMPONENTS.join(',')),
+  mockCount: (): number => num(() => MOCK_RUNTIME_STATUSES.length),
+  matrixCount: (): number => num(() => MOCK_COMPONENT_MATRIX.length),
+  mockEditionOf: (i: number): string =>
+    strOrNull(() => (MOCK_RUNTIME_STATUSES[Number(i)] || { edition: null }).edition),
+  mockPlatformOf: (i: number): string =>
+    strOrNull(() => (MOCK_RUNTIME_STATUSES[Number(i)] || { platform: null }).platform),
+  mockStatusOf: (i: number): string =>
+    strOrNull(() => (MOCK_RUNTIME_STATUSES[Number(i)] || { status: null }).status),
+  mockMutableOf: (i: number): boolean | string =>
+    bool(() => (MOCK_RUNTIME_STATUSES[Number(i)] || { mutable: null }).mutable),
+  mockRepairOf: (i: number): string =>
+    strOrNull(() => (MOCK_RUNTIME_STATUSES[Number(i)] || { repair_action: null }).repair_action),
+  mockCoreOf: (i: number): string => strOrNull(() => {
+    const m = MOCK_RUNTIME_STATUSES[Number(i)];
+    return m ? m.components.core : null;
+  }),
+  allowsInstall: (i: number): boolean | string =>
+    bool(() => allowsComponentInstall(MOCK_RUNTIME_STATUSES[Number(i)])),
+  showsRepair: (i: number): boolean | string =>
+    bool(() => showsRepairAction(MOCK_RUNTIME_STATUSES[Number(i)])),
+  immutableFull: (i: number): boolean | string =>
+    bool(() => isImmutableFull(MOCK_RUNTIME_STATUSES[Number(i)])),
+  legacyStatus: (state: string): string =>
+    strOrNull(() => legacyRuntimeStatusFromProvision({ state: String(state) }).status),
+  legacyRepair: (state: string): string =>
+    strOrNull(() => legacyRuntimeStatusFromProvision({ state: String(state) }).repair_action),
+  legacyEdition: (state: string): string =>
+    strOrNull(() => legacyRuntimeStatusFromProvision({ state: String(state) }).edition),
+  legacyCoreOf: (state: string): string =>
+    strOrNull(() => legacyRuntimeStatusFromProvision({ state: String(state) }).components.core),
+  mockRepairOcr: (): string =>
+    strOrNull(() => mockLiteRepairableAfterFailedStaging().components.ocr),
+  aiNotice: (t: string): string => strOrNull(() => classifyAiNotice(t === NULL_SENTINEL ? null : String(t))),
+  aiPrefix: (kind: string): string =>
+    strOrNull(() => aiNoticePresentation(kind as never).prefix),
+  aiClass: (kind: string): string =>
+    strOrNull(() => aiNoticePresentation(kind as never).className),
+  inactivityFragment: (): string => str(() => PROVIDER_INACTIVITY_FRAGMENT),
+
+  // --- mdpreview.ts: markdown -> sanitised html ---
+  mdHasTable: (md: string): boolean | string => bool(() => String(renderMarkdown(md)).indexOf('<table') >= 0),
+  mdHasBreak: (md: string): boolean | string => bool(() => String(renderMarkdown(md)).indexOf('<br') >= 0),
+  mdHasH1: (md: string): boolean | string => bool(() => String(renderMarkdown(md)).indexOf('<h1') >= 0),
+  mdHasOnerror: (md: string): boolean | string =>
+    bool(() => String(renderMarkdown(md)).toLowerCase().indexOf('onerror') >= 0),
+  mdHasScript: (md: string): boolean | string =>
+    bool(() => String(renderMarkdown(md)).toLowerCase().indexOf('<script') >= 0),
+
+  // --- read-only CSS custom-property census (tokens.css) ---
+  cssVar: (name: string): string =>
+    str(() => getComputedStyle(document.documentElement).getPropertyValue(String(name)).trim()),
+
+  // --- read-only DOM / location / storage census ---
+  domText: (sel: string): string => str(() => {
+    const el = document.querySelector(String(sel));
+    return el && typeof el.textContent === 'string' ? el.textContent.trim() : null;
+  }),
+  domTextAt: (sel: string, i: number): string => str(() => {
+    const el = document.querySelectorAll(String(sel))[Number(i)];
+    return el && typeof el.textContent === 'string' ? el.textContent.trim() : null;
+  }),
+  domAttr: (sel: string, attr: string): string => strOrNull(() => {
+    const el = document.querySelector(String(sel));
+    return el ? el.getAttribute(String(attr)) : null;
+  }),
+  domCount: (sel: string): number => num(() => document.querySelectorAll(String(sel)).length),
+  domTagOf: (sel: string): string => strOrNull(() => {
+    const el = document.querySelector(String(sel));
+    return el ? el.tagName.toLowerCase() : null;
+  }),
+  errorNonEmpty: (): boolean | string => bool(() => {
+    const el = document.querySelector('.error-msg');
+    return el ? String(el.textContent || '').trim().length > 0 : false;
+  }),
+  pathname: (): string => str(() => location.pathname),
+  search: (): string => str(() => location.search),
+  hash: (): string => str(() => location.hash),
+  localCount: (): number => num(() => localStorage.length),
+  sessionCount: (): number => num(() => sessionStorage.length),
+  localKeys: (): string => strOrNull(() => Object.keys(localStorage).sort().join(',')),
+  sessionKeys: (): string => strOrNull(() => Object.keys(sessionStorage).sort().join(',')),
+  suspiciousGlobals: (): string =>
+    strOrNull(() => {
+      const hit = SUSPICIOUS_GLOBALS.filter((g) => typeof (window as never as Record<string, unknown>)[g] !== 'undefined');
+      return hit.length ? hit.join(',') : null;
+    }),
+
+  // --- driver: only the clicks a user can make ---
+  click: (sel: string): string => str(() => {
+    const el = document.querySelector(String(sel)) as HTMLElement | null;
+    if (!el || typeof el.click !== 'function') return 'absent';
+    el.click();
+    return 'clicked';
+  }),
+  clickAt: (sel: string, i: number): string => str(() => {
+    const el = document.querySelectorAll(String(sel))[Number(i)] as HTMLElement | undefined;
+    if (!el || typeof el.click !== 'function') return 'absent';
+    el.click();
+    return 'clicked';
+  })
+};
+
+export type RbProbe = typeof bridge;
+
+declare global {
+  interface Window {
+    __mf?: RbProbe;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    Object.defineProperty(window, '__mf', {
+      value: Object.freeze(bridge),
+      writable: false,
+      configurable: true
+    });
+  } catch {
+    // A second mount can hit the non-writable descriptor; the first publication
+    // already stands, so there is nothing to repair here.
+  }
+}
+
+export {};

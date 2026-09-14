@@ -1,0 +1,138 @@
+diff --git a/js/animals.js b/js/animals.js
+index 740edb1..b78e950 100644
+--- a/js/animals.js
++++ b/js/animals.js
+@@ -514,7 +514,7 @@ export class AnimalManager {
+   }
+ 
+   _getGroundY(wx, wz) {
+-    for (let wy = 24 - 1; wy >= 0; wy--) {
++    for (let wy = 48 - 1; wy >= 0; wy--) {
+       const block = this.world.getBlock(Math.floor(wx), wy, Math.floor(wz));
+       if (isSolid(block) && block !== BlockType.LEAVES) {
+         return wy + 1;
+diff --git a/js/game.js b/js/game.js
+index 082699a..904a322 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -763,7 +763,7 @@ class Game {
+     // 雾效：距离根据设备动态调整，移动端增加雾距避免近处物体泛蓝
+     const fogFar = this.renderDistance * CHUNK_SIZE + 4;
+     const fogNear = this.isMobile ? Math.max(25, fogFar - 20) : Math.max(15, fogFar - 40);
+-    this.scene.fog = new THREE.Fog(0x87CEEB, fogFar, fogNear);
++    this.scene.fog = new THREE.Fog(0x87CEEB, fogNear, fogFar);
+ 
+     // 环境光
+     const ambientLight = new THREE.AmbientLight(0xcccccc, 0.7);
+@@ -825,7 +825,7 @@ class Game {
+ 
+       const keyLabel = document.createElement('span');
+       keyLabel.className = 'slot-key';
+-      keyLabel.textContent = i;
++      keyLabel.textContent = i + 1;
+       slot.appendChild(keyLabel);
+ 
+       hotbar.appendChild(slot);
+@@ -850,7 +850,7 @@ class Game {
+       nameEl.style.opacity = '1';
+       setTimeout(() => {
+         nameEl.style.transform = 'translateX(-50%) scale(1)';
+-      }, 3000);
++      }, 120);
+     }
+ 
+     // 同步更新移动端物品栏
+@@ -900,7 +900,7 @@ class Game {
+ 
+       // 数字键选择方块
+       if (e.code >= 'Digit1' && e.code <= 'Digit9') {
+-        const idx = parseInt(e.code.charAt(5));
++        const idx = parseInt(e.code.charAt(5)) - 1;
+         if (idx < this.blockTypes.length) {
+           this.selectedSlot = idx;
+           this._updateHotbar();
+@@ -1074,7 +1074,7 @@ class Game {
+ 
+   /** 调整视野角度（FOV） */
+   _adjustFOV(delta) {
+-    this.fov = Math.min(this.fovMin, Math.max(this.fovMax, this.fov + delta));
++    this.fov = Math.max(this.fovMin, Math.min(this.fovMax, this.fov + delta));
+     this.camera.fov = this.fov;
+     this.camera.updateProjectionMatrix();
+     this._showFOVHint();
+diff --git a/js/noise.js b/js/noise.js
+index fac8a25..073b594 100644
+--- a/js/noise.js
++++ b/js/noise.js
+@@ -117,6 +117,6 @@ export class SimplexNoise {
+       frequency *= lacunarity;
+     }
+ 
+-    return value;
++    return value / maxValue;
+   }
+ }
+diff --git a/js/voxel.js b/js/voxel.js
+index bd9ebec..aad82b0 100644
+--- a/js/voxel.js
++++ b/js/voxel.js
+@@ -54,7 +54,7 @@ export const BlockNames = {
+ };
+ 
+ // 非固体方块（可穿过）
+-const NON_SOLID = new Set([BlockType.AIR, BlockType.WATER, BlockType.LEAVES]);
++const NON_SOLID = new Set([BlockType.AIR, BlockType.WATER]);
+ 
+ // 方块是否为固体（用于碰撞检测）
+ export const isSolid = (type) => !NON_SOLID.has(type);
+@@ -251,8 +251,8 @@ export function createBlockTexture() {
+ /** 获取方块预览颜色（用于物品栏显示） */
+ export function getBlockColor(type) {
+   const colors = {
+-    [BlockType.GRASS]:      '#866043',
+-    [BlockType.DIRT]:       '#5a9e32',
++    [BlockType.GRASS]:      '#5a9e32',
++    [BlockType.DIRT]:       '#866043',
+     [BlockType.STONE]:      '#808080',
+     [BlockType.SAND]:       '#dccc82',
+     [BlockType.WOOD]:       '#78503a',
+@@ -494,7 +494,7 @@ export class World {
+     const cz = Math.floor(wz / CHUNK_SIZE);
+     const chunk = this.chunks.get(this.chunkKey(cx, cz));
+     if (!chunk) return BlockType.AIR;
+-    const lx = wx % CHUNK_SIZE;
++    const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+     return chunk.getBlock(lx, wy, lz);
+   }
+@@ -505,7 +505,7 @@ export class World {
+     const cz = Math.floor(wz / CHUNK_SIZE);
+     const chunk = this.chunks.get(this.chunkKey(cx, cz));
+     if (!chunk) return;
+-    const lx = wx % CHUNK_SIZE;
++    const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+     chunk.setBlock(lx, wy, lz, type);
+ 
+@@ -556,7 +556,7 @@ export class World {
+ 
+     const lx = wx - World.TEXT_START_X;
+     // Y轴翻转：bitmap row 0 = 字母顶部 → 对应墙面最高处；row 8 = 底部 → 对应墙面最低处
+-    const ly = wy - World.TEXT_BASE_Y;
++    const ly = (World.TEXT_BASE_Y + World.LETTER_SIZE - 1) - wy;
+     if (lx < 0 || ly < 0 || ly >= World.LETTER_SIZE) return BlockType.AIR;
+ 
+     let off = 0;
+diff --git a/styles/main.css b/styles/main.css
+index e719d2c..2f101ee 100644
+--- a/styles/main.css
++++ b/styles/main.css
+@@ -74,7 +74,7 @@ html, body {
+ }
+ 
+ .hotbar-slot.selected {
+-  border-color: #000;
++  border-color: #fff;
+   background: rgba(255, 255, 255, 0.2);
+   box-shadow: 0 0 14px rgba(255, 255, 255, 0.45), 0 0 3px rgba(255, 255, 255, 0.5);
+   transform: scale(1.08);

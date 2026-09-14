@@ -1,0 +1,3654 @@
+diff --git a/package.json b/package.json
+index c817483..b47edc6 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,6 @@
+     "dev": "vite",
+     "build": "tsc && vite build",
+     "lint": "eslint .",
+-    "test": "vitest run",
+     "preview": "vite preview",
+     "tauri": "tauri"
+   },
+diff --git a/src/components/ErrorBanner.tsx b/src/components/ErrorBanner.tsx
+index 1726268..a9dff42 100644
+--- a/src/components/ErrorBanner.tsx
++++ b/src/components/ErrorBanner.tsx
+@@ -29,7 +29,7 @@ function CloseIcon() {
+ 
+ export default function ErrorBanner({ message, onDismiss }: ErrorBannerProps) {
+   return (
+-    <div className={bannerShell} role="status">
++    <div className={bannerShell} role="status" data-testid="error-banner">
+       <span className="text-sm">{message}</span>
+       <button
+         type="button"
+diff --git a/src/components/RecentsPanel.tsx b/src/components/RecentsPanel.tsx
+index 3e58388..2bd2d30 100644
+--- a/src/components/RecentsPanel.tsx
++++ b/src/components/RecentsPanel.tsx
+@@ -164,7 +164,7 @@ export default function RecentsPanel({
+       <div className={header}>
+         <span>Recent</span>
+         {items.length > 0 && (
+-          <span className="ml-auto font-normal tabular-nums text-[color:var(--muted)]">
++          <span data-testid="recents-badge" className="ml-auto font-normal tabular-nums text-[color:var(--muted)]">
+             {items.length}
+           </span>
+         )}
+@@ -232,7 +232,7 @@ export default function RecentsPanel({
+                         {item.externallyChanged && (
+                           <span className="sr-only">Changed on disk. </span>
+                         )}
+-                        {item.name}
++                        <span data-testid="recents-name">{item.name}</span>
+                       </span>
+                       {item.path && (
+                         // Absolute path, clamped to two lines with a trailing
+@@ -322,7 +322,7 @@ export default function RecentsPanel({
+             <button
+               type="button"
+               role="menuitem"
+-              autoFocus={!targetPath}
++              autoFocus={!targetPath} data-testid="menu-copy-name"
+               className={menuItem}
+               onClick={() => {
+                 const name = target?.name ?? "";
+@@ -354,7 +354,7 @@ export default function RecentsPanel({
+             <button
+               type="button"
+               role="menuitem"
+-              className={menuItem}
++              className={menuItem} data-testid="menu-close"
+               onClick={() => {
+                 const id = menu.id;
+                 setMenu(null);
+@@ -374,7 +374,7 @@ export default function RecentsPanel({
+                   <button
+                     type="button"
+                     role="menuitem"
+-                    disabled={ids.length === 0}
++                    disabled={ids.length === 0} data-testid={scope === "all" ? "menu-close-all" : undefined}
+                     className={menuItem}
+                     onClick={() => {
+                       setMenu(null);
+diff --git a/src/components/SearchBar.tsx b/src/components/SearchBar.tsx
+index d78c1d0..100ea68 100644
+--- a/src/components/SearchBar.tsx
++++ b/src/components/SearchBar.tsx
+@@ -79,7 +79,7 @@ export default function SearchBar({
+         </span>
+         <input
+           ref={inputRef}
+-          type="search"
++          type="search" data-testid="find-input"
+           value={query}
+           onChange={(event) => onQueryChange(event.target.value)}
+           onKeyDown={handleKeyDown}
+diff --git a/src/components/Toolbar.tsx b/src/components/Toolbar.tsx
+index 82bf6f5..35c5823 100644
+--- a/src/components/Toolbar.tsx
++++ b/src/components/Toolbar.tsx
+@@ -273,7 +273,7 @@ export default function Toolbar({
+       >
+         <SearchIcon />
+       </button>
+-      <button type="button" className={buttonBase} onClick={onNewFile}>
++      <button type="button" data-testid="tb-new" className={buttonBase} onClick={onNewFile}>
+         <NewFileIcon />
+         <span>New</span>
+       </button>
+@@ -297,13 +297,13 @@ export default function Toolbar({
+         />
+         <span>Auto-save</span>
+       </label>
+-      <button type="button" className={buttonBase} onClick={onOpenFile}>
++      <button type="button" data-testid="tb-open" className={buttonBase} onClick={onOpenFile}>
+         <FolderOpenIcon />
+         <span>Open</span>
+       </button>
+       <div
+         className={`${segmentGroup} ml-auto`}
+-        role="group"
++        role="group" data-testid="view-mode-group"
+         aria-label="View mode"
+       >
+         {segments.map(({ mode, label }) => {
+diff --git a/src/components/WorkspaceSearchPanel.tsx b/src/components/WorkspaceSearchPanel.tsx
+index e872350..8647f36 100644
+--- a/src/components/WorkspaceSearchPanel.tsx
++++ b/src/components/WorkspaceSearchPanel.tsx
+@@ -203,7 +203,7 @@ export default function WorkspaceSearchPanel({
+               <button
+                 key={value}
+                 type="button"
+-                aria-pressed={selected}
++                aria-pressed={selected} data-testid={value === "folder" ? "ws-scope-folder" : undefined}
+                 onClick={() => onScopeChange(value)}
+                 className={`rounded px-2 py-1.5 text-[11px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] ${
+                   selected
+@@ -395,11 +395,11 @@ export default function WorkspaceSearchPanel({
+                     <button
+                       key={`${match.lineNumber}:${match.preview}`}
+                       type="button"
+-                      onClick={() => onSelectResult(file, match.lineNumber)}
++                      onClick={() => onSelectResult(file, match.lineNumber)} data-testid="ws-result"
+                       className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)] gap-2 border-l-2 border-transparent px-3 py-1.5 text-left transition-colors hover:border-[color:var(--accent)] hover:bg-[color:var(--hover)] focus:outline-none focus-visible:border-[color:var(--accent)] focus-visible:bg-[color:var(--accent-soft)]"
+                       title={`${file.relativePath}, line ${match.lineNumber}`}
+                     >
+-                      <span className="pt-px text-right font-mono text-[10px] tabular-nums text-[color:var(--muted)]">
++                      <span data-testid="ws-line" className="pt-px text-right font-mono text-[10px] tabular-nums text-[color:var(--muted)]">
+                         L{match.lineNumber}
+                       </span>
+                       <span className="truncate font-mono text-[11px] leading-4 text-[color:var(--text)]">
+diff --git a/src/lib/diagramMount.test.ts b/src/lib/diagramMount.test.ts
+deleted file mode 100644
+index 487e220..0000000
+--- a/src/lib/diagramMount.test.ts
++++ /dev/null
+@@ -1,121 +0,0 @@
+-import { describe, it, expect } from "vitest";
+-import { renderMarkdown } from "./markdown";
+-import {
+-  DIAGRAM_SOURCE_CLASS,
+-  DIAGRAM_VIEW_CLASS,
+-  findDiagramSlots,
+-  paintDiagram,
+-} from "./diagramMount";
+-
+-// The placeholders under test are the real output of renderMarkdown, so these
+-// tests cover the seam between the two modules: whatever markdown.ts emits has
+-// to be what findDiagramSlots can read back after DOMPurify has seen it.
+-function preview(markdown: string): HTMLElement {
+-  const container = document.createElement("div");
+-  container.innerHTML = renderMarkdown(markdown);
+-  return container;
+-}
+-
+-const FLOWCHART = "```mermaid\nflowchart TB\n    A --> B\n```\n";
+-
+-describe("findDiagramSlots", () => {
+-  it("finds a diagram fence with its engine and verbatim source", () => {
+-    const slots = findDiagramSlots(preview(FLOWCHART), "light");
+-    expect(slots).toHaveLength(1);
+-    expect(slots[0].format).toBe("mermaid");
+-    expect(slots[0].source.trim()).toBe("flowchart TB\n    A --> B");
+-  });
+-
+-  it("survives the arrows DOMPurify strips from attribute values", () => {
+-    // Regression: the source cannot live in a data attribute, because DOMPurify
+-    // drops any attribute whose value contains "-->" — which is the most common
+-    // token in a mermaid diagram. It rides in a text node for that reason.
+-    const source = findDiagramSlots(
+-      preview("```mermaid\nflowchart LR\n  A -->|no| B\n  B --> C\n```\n"),
+-      "light",
+-    )[0].source;
+-    expect(source).toContain("A -->|no| B");
+-    expect(source).toContain("B --> C");
+-  });
+-
+-  it("finds a Graphviz fence under any of its aliases", () => {
+-    for (const tag of ["dot", "graphviz", "gv"]) {
+-      const slots = findDiagramSlots(
+-        preview("```" + tag + "\ndigraph { a -> b }\n```\n"),
+-        "light",
+-      );
+-      expect(slots).toHaveLength(1);
+-      expect(slots[0].format).toBe("graphviz");
+-    }
+-  });
+-
+-  it("ignores ordinary code blocks", () => {
+-    expect(findDiagramSlots(preview("```ts\nconst a = 1;\n```\n"), "light"))
+-      .toHaveLength(0);
+-    expect(findDiagramSlots(preview("```\nplain\n```\n"), "light")).toHaveLength(
+-      0,
+-    );
+-  });
+-
+-  it("skips a diagram already drawn for this theme, but not for the other one", () => {
+-    const container = preview(FLOWCHART);
+-    const slot = findDiagramSlots(container, "light")[0];
+-    paintDiagram(slot, "light", { ok: true, svg: "<svg></svg>" });
+-
+-    expect(findDiagramSlots(container, "light")).toHaveLength(0);
+-    // A theme switch has to redraw: the SVG carries the old theme's colours.
+-    expect(findDiagramSlots(container, "dark")).toHaveLength(1);
+-  });
+-});
+-
+-describe("paintDiagram", () => {
+-  it("draws the SVG into the view and leaves the source in the DOM", () => {
+-    const container = preview(FLOWCHART);
+-    const slot = findDiagramSlots(container, "dark")[0];
+-    paintDiagram(slot, "dark", { ok: true, svg: '<svg id="s"><g/></svg>' });
+-
+-    const view = container.querySelector(`.${DIAGRAM_VIEW_CLASS}`);
+-    expect(view?.querySelector("svg")).not.toBeNull();
+-    expect(slot.element.dataset.diagramState).toBe("ready");
+-    expect(slot.element.dataset.diagramTheme).toBe("dark");
+-    // Kept for the next redraw (a theme switch does not re-parse the markdown).
+-    expect(
+-      container.querySelector(`.${DIAGRAM_SOURCE_CLASS}`)?.textContent,
+-    ).toContain("flowchart TB");
+-  });
+-
+-  it("replaces the drawing when the same slot is painted again", () => {
+-    const container = preview(FLOWCHART);
+-    const slot = findDiagramSlots(container, "light")[0];
+-    paintDiagram(slot, "light", { ok: true, svg: '<svg id="first"></svg>' });
+-    paintDiagram(slot, "dark", { ok: true, svg: '<svg id="second"></svg>' });
+-
+-    const svgs = container.querySelectorAll("svg");
+-    expect(svgs).toHaveLength(1);
+-    expect(svgs[0].id).toBe("second");
+-    expect(slot.element.dataset.diagramTheme).toBe("dark");
+-  });
+-
+-  it("shows the engine's message on an error, and reveals the source", () => {
+-    const container = preview(FLOWCHART);
+-    const slot = findDiagramSlots(container, "light")[0];
+-    paintDiagram(slot, "light", { ok: false, message: "Parse error on line 2" });
+-
+-    expect(slot.element.dataset.diagramState).toBe("error");
+-    const view = container.querySelector(`.${DIAGRAM_VIEW_CLASS}`);
+-    expect(view?.textContent).toContain("Mermaid");
+-    expect(view?.textContent).toContain("Parse error on line 2");
+-    // The stylesheet keys off the error state to show the source block.
+-    expect(container.querySelector(`.${DIAGRAM_SOURCE_CLASS}`)).not.toBeNull();
+-  });
+-
+-  it("recovers when a failed diagram is fixed", () => {
+-    const container = preview(FLOWCHART);
+-    const slot = findDiagramSlots(container, "light")[0];
+-    paintDiagram(slot, "light", { ok: false, message: "boom" });
+-    paintDiagram(slot, "light", { ok: true, svg: "<svg></svg>" });
+-
+-    expect(slot.element.dataset.diagramState).toBe("ready");
+-    expect(container.querySelector(".markpad-diagram-message")).toBeNull();
+-  });
+-});
+diff --git a/src/lib/diagramRenderer.test.ts b/src/lib/diagramRenderer.test.ts
+deleted file mode 100644
+index e4b7eea..0000000
+--- a/src/lib/diagramRenderer.test.ts
++++ /dev/null
+@@ -1,99 +0,0 @@
+-import { describe, it, expect, beforeEach } from "vitest";
+-import {
+-  peekDiagram,
+-  renderDiagram,
+-  resetDiagramCache,
+-} from "./diagramRenderer";
+-
+-// These run the real Graphviz engine: @viz-js/viz is a JavaScript build of
+-// graphviz that lays out its own text, so it works headlessly under jsdom.
+-//
+-// Mermaid deliberately has no unit tests here — it measures every label with
+-// getBBox() against real layout, which jsdom does not implement, so it can only
+-// be exercised in the app itself. Everything around it (fence detection,
+-// placeholder mounting, caching, sanitization) is covered by these tests and
+-// diagramMount.test.ts.
+-describe("renderDiagram — Graphviz", () => {
+-  beforeEach(() => {
+-    resetDiagramCache();
+-  });
+-
+-  it("renders DOT source to an SVG element", async () => {
+-    const result = await renderDiagram("graphviz", "light", "digraph { a -> b }");
+-    expect(result.ok).toBe(true);
+-    if (!result.ok) return;
+-    expect(result.svg.startsWith("<svg")).toBe(true);
+-    expect(result.svg).toContain("viewBox");
+-  });
+-
+-  it("drops the standalone document's XML prolog and doctype", async () => {
+-    // Graphviz emits a full SVG document; this one is inlined into the
+-    // preview's HTML, where a prolog and a doctype have no meaning.
+-    const result = await renderDiagram("graphviz", "light", "graph { a -- b }");
+-    expect(result.ok).toBe(true);
+-    if (!result.ok) return;
+-    expect(result.svg).not.toContain("<?xml");
+-    expect(result.svg.toLowerCase()).not.toContain("<!doctype");
+-  });
+-
+-  it("sanitizes the engine's output", async () => {
+-    // A DOT node URL becomes an <a xlink:href> in the SVG, so a javascript:
+-    // URL in an opened document is a real injection route into the preview.
+-    const result = await renderDiagram(
+-      "graphviz",
+-      "light",
+-      'digraph { a [URL="javascript:alert(1)"]; b [URL="https://example.com"]; a -> b }',
+-    );
+-    expect(result.ok).toBe(true);
+-    if (!result.ok) return;
+-    expect(result.svg).not.toMatch(/javascript:/i);
+-    expect(result.svg).toContain("https://example.com"); // real links survive
+-  });
+-
+-  it("draws the two themes differently", async () => {
+-    const source = "digraph { a -> b }";
+-    const light = await renderDiagram("graphviz", "light", source);
+-    const dark = await renderDiagram("graphviz", "dark", source);
+-    expect(light.ok && dark.ok).toBe(true);
+-    if (!light.ok || !dark.ok) return;
+-    expect(dark.svg).not.toBe(light.svg);
+-    // Graphviz would otherwise paint an opaque white page behind the graph.
+-    expect(dark.svg).not.toContain('fill="white"');
+-  });
+-
+-  it("reports a syntax error instead of rejecting", async () => {
+-    const result = await renderDiagram("graphviz", "light", "digraph { a -> ");
+-    expect(result.ok).toBe(false);
+-    if (result.ok) return;
+-    expect(result.message).toMatch(/syntax error/i);
+-  });
+-
+-  it("caches by source, theme and engine", async () => {
+-    const source = "digraph { cached -> once }";
+-    expect(peekDiagram("graphviz", "light", source)).toBeUndefined();
+-
+-    const first = await renderDiagram("graphviz", "light", source);
+-    expect(peekDiagram("graphviz", "light", source)).toBe(first);
+-    // A repeat render must be the very same result, not a second layout pass.
+-    expect(await renderDiagram("graphviz", "light", source)).toBe(first);
+-
+-    // The other theme and a changed source are different diagrams.
+-    expect(peekDiagram("graphviz", "dark", source)).toBeUndefined();
+-    expect(peekDiagram("graphviz", "light", source + " ")).toBeUndefined();
+-  });
+-
+-  it("caches a failure too, so a broken diagram is not retried per keystroke", async () => {
+-    const broken = "digraph { oops -> ";
+-    const first = await renderDiagram("graphviz", "light", broken);
+-    expect(peekDiagram("graphviz", "light", broken)).toBe(first);
+-  });
+-
+-  it("shares one render between concurrent requests for the same diagram", async () => {
+-    const source = "digraph { shared -> work }";
+-    const [a, b] = await Promise.all([
+-      renderDiagram("graphviz", "light", source),
+-      renderDiagram("graphviz", "light", source),
+-    ]);
+-    expect(a).toBe(b);
+-  });
+-});
+diff --git a/src/lib/diagrams.test.ts b/src/lib/diagrams.test.ts
+deleted file mode 100644
+index 5505bcb..0000000
+--- a/src/lib/diagrams.test.ts
++++ /dev/null
+@@ -1,49 +0,0 @@
+-import { describe, it, expect } from "vitest";
+-import { isDiagramFormat, resolveDiagramFormat } from "./diagrams";
+-
+-describe("resolveDiagramFormat", () => {
+-  it("recognizes the mermaid fence tag", () => {
+-    expect(resolveDiagramFormat("mermaid")).toBe("mermaid");
+-  });
+-
+-  it("recognizes all three tags in use for DOT source", () => {
+-    expect(resolveDiagramFormat("dot")).toBe("graphviz");
+-    expect(resolveDiagramFormat("graphviz")).toBe("graphviz");
+-    expect(resolveDiagramFormat("gv")).toBe("graphviz");
+-  });
+-
+-  it("ignores case and surrounding whitespace", () => {
+-    expect(resolveDiagramFormat("  Mermaid  ")).toBe("mermaid");
+-    expect(resolveDiagramFormat("DOT")).toBe("graphviz");
+-  });
+-
+-  it("reads only the first word, so trailing fence metadata is harmless", () => {
+-    // Other tools attach attributes after the language; that must not make the
+-    // language unrecognizable.
+-    expect(resolveDiagramFormat('mermaid title="Architecture"')).toBe("mermaid");
+-  });
+-
+-  it("returns null for ordinary code languages and for a bare fence", () => {
+-    expect(resolveDiagramFormat("ts")).toBeNull();
+-    expect(resolveDiagramFormat("json")).toBeNull();
+-    expect(resolveDiagramFormat("")).toBeNull();
+-    expect(resolveDiagramFormat("   ")).toBeNull();
+-    // Not a prefix match: a language that merely starts with a diagram tag is
+-    // still ordinary code.
+-    expect(resolveDiagramFormat("dotenv")).toBeNull();
+-  });
+-});
+-
+-describe("isDiagramFormat", () => {
+-  it("accepts exactly the engine names", () => {
+-    expect(isDiagramFormat("mermaid")).toBe(true);
+-    expect(isDiagramFormat("graphviz")).toBe(true);
+-  });
+-
+-  it("rejects a fence alias or anything else read off the DOM", () => {
+-    // The data attribute holds the resolved engine, never the fence tag.
+-    expect(isDiagramFormat("dot")).toBe(false);
+-    expect(isDiagramFormat("")).toBe(false);
+-    expect(isDiagramFormat("Mermaid")).toBe(false);
+-  });
+-});
+diff --git a/src/lib/documentLanguage.test.ts b/src/lib/documentLanguage.test.ts
+deleted file mode 100644
+index 3d5554a..0000000
+--- a/src/lib/documentLanguage.test.ts
++++ /dev/null
+@@ -1,95 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  asDocumentLanguage,
+-  defaultExtension,
+-  hasLanguageExtension,
+-  isDataLanguage,
+-  languageFromPath,
+-  resolveLanguage,
+-} from "./documentLanguage";
+-
+-describe("languageFromPath", () => {
+-  it("detects .json case-insensitively", () => {
+-    expect(languageFromPath("C:\\data\\config.json")).toBe("json");
+-    expect(languageFromPath("/home/user/Data.JSON")).toBe("json");
+-  });
+-
+-  it("detects both YAML spellings, case-insensitively", () => {
+-    expect(languageFromPath("C:\\repo\\docker-compose.yml")).toBe("yaml");
+-    expect(languageFromPath("/home/user/deploy.yaml")).toBe("yaml");
+-    expect(languageFromPath("/home/user/CI.YML")).toBe("yaml");
+-  });
+-
+-  it("defaults everything else to markdown", () => {
+-    expect(languageFromPath("notes.md")).toBe("markdown");
+-    expect(languageFromPath("notes.markdown")).toBe("markdown");
+-    expect(languageFromPath("archive.json.bak")).toBe("markdown");
+-    expect(languageFromPath("archive.yaml.bak")).toBe("markdown");
+-    expect(languageFromPath(null)).toBe("markdown");
+-  });
+-
+-  it("requires the extension to be one, not a name fragment", () => {
+-    expect(languageFromPath("json")).toBe("markdown");
+-    expect(languageFromPath("not-json.txt")).toBe("markdown");
+-    expect(languageFromPath("yaml")).toBe("markdown");
+-    expect(languageFromPath("myml.txt")).toBe("markdown");
+-  });
+-});
+-
+-describe("resolveLanguage", () => {
+-  it("prefers the override when set", () => {
+-    expect(resolveLanguage("readme.md", "json")).toBe("json");
+-    expect(resolveLanguage("readme.md", "yaml")).toBe("yaml");
+-    expect(resolveLanguage("data.json", "markdown")).toBe("markdown");
+-  });
+-
+-  it("falls back to the path without an override", () => {
+-    expect(resolveLanguage("data.json", null)).toBe("json");
+-    expect(resolveLanguage("data.yml", null)).toBe("yaml");
+-    expect(resolveLanguage(null, null)).toBe("markdown");
+-  });
+-});
+-
+-describe("hasLanguageExtension", () => {
+-  it("recognizes the language-bearing extensions", () => {
+-    expect(hasLanguageExtension("a.json")).toBe(true);
+-    expect(hasLanguageExtension("a.yaml")).toBe(true);
+-    expect(hasLanguageExtension("a.yml")).toBe(true);
+-    expect(hasLanguageExtension("a.md")).toBe(true);
+-    expect(hasLanguageExtension("a.MARKDOWN")).toBe(true);
+-  });
+-
+-  it("rejects extensionless and unknown extensions", () => {
+-    expect(hasLanguageExtension("notes")).toBe(false);
+-    expect(hasLanguageExtension("notes.txt")).toBe(false);
+-    expect(hasLanguageExtension("archive.json.bak")).toBe(false);
+-  });
+-});
+-
+-describe("asDocumentLanguage", () => {
+-  it("accepts only the three known languages", () => {
+-    expect(asDocumentLanguage("json")).toBe("json");
+-    expect(asDocumentLanguage("yaml")).toBe("yaml");
+-    expect(asDocumentLanguage("markdown")).toBe("markdown");
+-    expect(asDocumentLanguage("yml")).toBeNull();
+-    expect(asDocumentLanguage("toml")).toBeNull();
+-    expect(asDocumentLanguage(null)).toBeNull();
+-    expect(asDocumentLanguage(undefined)).toBeNull();
+-  });
+-});
+-
+-describe("isDataLanguage", () => {
+-  it("separates the data languages from prose", () => {
+-    expect(isDataLanguage("json")).toBe(true);
+-    expect(isDataLanguage("yaml")).toBe(true);
+-    expect(isDataLanguage("markdown")).toBe(false);
+-  });
+-});
+-
+-describe("defaultExtension", () => {
+-  it("names the extension a first Save suggests", () => {
+-    expect(defaultExtension("markdown")).toBe("md");
+-    expect(defaultExtension("json")).toBe("json");
+-    expect(defaultExtension("yaml")).toBe("yaml");
+-  });
+-});
+diff --git a/src/lib/documentSearch.test.ts b/src/lib/documentSearch.test.ts
+deleted file mode 100644
+index ef75824..0000000
+--- a/src/lib/documentSearch.test.ts
++++ /dev/null
+@@ -1,107 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { EditorState } from "@codemirror/state";
+-import { EditorView } from "@codemirror/view";
+-import {
+-  clearDocumentSearch,
+-  documentSearchExtension,
+-  getDocumentSearchStatus,
+-  isDocumentSearchShortcut,
+-  moveDocumentSearch,
+-  setDocumentSearch,
+-} from "./documentSearch";
+-
+-function viewFrom(doc: string, anchor = 0): EditorView {
+-  const parent = document.createElement("div");
+-  document.body.appendChild(parent);
+-  return new EditorView({
+-    state: EditorState.create({
+-      doc,
+-      selection: { anchor },
+-      extensions: [documentSearchExtension],
+-    }),
+-    parent,
+-  });
+-}
+-
+-function selectedText(view: EditorView): string {
+-  const { from, to } = view.state.selection.main;
+-  return view.state.sliceDoc(from, to);
+-}
+-
+-describe("document search", () => {
+-  it("finds literal matches case-insensitively and selects the nearest one", () => {
+-    const view = viewFrom("Alpha alpha ALPHA", 7);
+-
+-    expect(setDocumentSearch(view, "alpha")).toEqual({ current: 2, total: 3 });
+-    expect(selectedText(view)).toBe("alpha");
+-    expect(view.dom.querySelectorAll(".cm-searchMatch")).toHaveLength(3);
+-
+-    view.destroy();
+-  });
+-
+-  it("moves in both directions and wraps at the ends", () => {
+-    const view = viewFrom("one two one");
+-
+-    expect(setDocumentSearch(view, "one")).toEqual({ current: 1, total: 2 });
+-    expect(moveDocumentSearch(view, "next")).toEqual({ current: 2, total: 2 });
+-    expect(moveDocumentSearch(view, "next")).toEqual({ current: 1, total: 2 });
+-    expect(moveDocumentSearch(view, "previous")).toEqual({
+-      current: 2,
+-      total: 2,
+-    });
+-
+-    view.destroy();
+-  });
+-
+-  it("keeps the match count current as the document changes", () => {
+-    const view = viewFrom("mark mark mark");
+-    setDocumentSearch(view, "mark");
+-
+-    view.dispatch({ changes: { from: 0, to: 5 } });
+-
+-    expect(getDocumentSearchStatus(view.state).total).toBe(2);
+-    view.destroy();
+-  });
+-
+-  it("reports no results for an empty or missing query and clears highlights", () => {
+-    const view = viewFrom("plain text");
+-
+-    expect(setDocumentSearch(view, "missing")).toEqual({ current: 0, total: 0 });
+-    clearDocumentSearch(view);
+-    expect(getDocumentSearchStatus(view.state)).toEqual({ current: 0, total: 0 });
+-    expect(view.dom.querySelector(".cm-panels")).toBeNull();
+-
+-    view.destroy();
+-  });
+-});
+-
+-describe("document search shortcut", () => {
+-  const event = (overrides: Partial<KeyboardEvent> = {}) =>
+-    ({
+-      key: "f",
+-      ctrlKey: false,
+-      metaKey: false,
+-      shiftKey: false,
+-      altKey: false,
+-      ...overrides,
+-    }) as KeyboardEvent;
+-
+-  it("accepts Ctrl+F and Command+F", () => {
+-    expect(isDocumentSearchShortcut(event({ ctrlKey: true }))).toBe(true);
+-    expect(isDocumentSearchShortcut(event({ key: "F", metaKey: true }))).toBe(
+-      true,
+-    );
+-  });
+-
+-  it("leaves modified and unrelated shortcuts alone", () => {
+-    expect(
+-      isDocumentSearchShortcut(event({ ctrlKey: true, shiftKey: true })),
+-    ).toBe(false);
+-    expect(isDocumentSearchShortcut(event({ ctrlKey: true, altKey: true }))).toBe(
+-      false,
+-    );
+-    expect(isDocumentSearchShortcut(event({ ctrlKey: true, key: "s" }))).toBe(
+-      false,
+-    );
+-  });
+-});
+diff --git a/src/lib/externalChange.test.ts b/src/lib/externalChange.test.ts
+deleted file mode 100644
+index 460a8b2..0000000
+--- a/src/lib/externalChange.test.ts
++++ /dev/null
+@@ -1,220 +0,0 @@
+-import { describe, expect, it, vi } from "vitest";
+-
+-import {
+-  acknowledgedBaseline,
+-  checkForExternalChange,
+-  needsDiskCheck,
+-  outcomeStillApplies,
+-  sameStamp,
+-  type CheckDeps,
+-  type DiskBaseline,
+-  type WatchTarget,
+-} from "./externalChange";
+-import type { DiskStamp, OpenResult, StatResult } from "./fileOpen";
+-
+-const PATH = "/tmp/notes.md";
+-const SAVED = "# Notes\n";
+-
+-function stamp(mtimeMs: number | null, size: number): DiskStamp {
+-  return { mtimeMs, size };
+-}
+-
+-// Deps whose two halves are independently scripted, so a test can assert that
+-// the read never happened on the stat-only fast path.
+-function deps(stat: StatResult, read: OpenResult = { kind: "cancelled" }) {
+-  const fns: CheckDeps = {
+-    stat: vi.fn(async () => stat),
+-    read: vi.fn(async () => read),
+-  };
+-  return fns as CheckDeps & {
+-    stat: ReturnType<typeof vi.fn>;
+-    read: ReturnType<typeof vi.fn>;
+-  };
+-}
+-
+-function onDisk(content: string): OpenResult {
+-  return { kind: "ok", name: "notes.md", path: PATH, content };
+-}
+-
+-function target(diskBaseline: DiskBaseline) {
+-  return { path: PATH, savedText: SAVED, diskBaseline };
+-}
+-
+-function watched(over: Partial<WatchTarget> = {}): WatchTarget {
+-  return {
+-    kind: "file",
+-    path: PATH,
+-    loaded: true,
+-    savedText: SAVED,
+-    diskBaseline: null,
+-    external: null,
+-    ...over,
+-  };
+-}
+-
+-describe("sameStamp", () => {
+-  it("compares both mtime and size", () => {
+-    expect(sameStamp(stamp(1000, 8), stamp(1000, 8))).toBe(true);
+-    expect(sameStamp(stamp(1000, 8), stamp(2000, 8))).toBe(false);
+-    expect(sameStamp(stamp(1000, 8), stamp(1000, 9))).toBe(false);
+-  });
+-
+-  it("treats an unavailable mtime as a value, not a wildcard", () => {
+-    expect(sameStamp(stamp(null, 8), stamp(null, 8))).toBe(true);
+-    expect(sameStamp(stamp(null, 8), stamp(1000, 8))).toBe(false);
+-  });
+-});
+-
+-describe("checkForExternalChange", () => {
+-  it("stops at the stat when the stamp still matches", async () => {
+-    const d = deps({ kind: "ok", stamp: stamp(1000, 8) });
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(1000, 8) });
+-    expect(d.read).not.toHaveBeenCalled();
+-  });
+-
+-  it("reports a change when the stamp moved and the bytes differ", async () => {
+-    const d = deps(
+-      { kind: "ok", stamp: stamp(2000, 20) },
+-      onDisk("# Notes\n\nedited elsewhere\n"),
+-    );
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    expect(outcome).toEqual({
+-      kind: "changed",
+-      change: { kind: "changed", stamp: stamp(2000, 20) },
+-    });
+-  });
+-
+-  it("stays quiet when the stamp moved but the bytes did not", async () => {
+-    const d = deps({ kind: "ok", stamp: stamp(2000, 8) }, onDisk(SAVED));
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    // A touch, or markpad's own save. Recording the stamp is what keeps the next
+-    // check on the fast path instead of re-reading forever.
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(2000, 8) });
+-    expect(d.read).toHaveBeenCalledTimes(1);
+-  });
+-
+-  it("reads once to settle an unknown baseline", async () => {
+-    const d = deps({ kind: "ok", stamp: stamp(1000, 8) }, onDisk(SAVED));
+-    const outcome = await checkForExternalChange(d, target(null));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(1000, 8) });
+-    expect(d.read).toHaveBeenCalledTimes(1);
+-  });
+-
+-  it("reports a change an unknown baseline turns out to be hiding", async () => {
+-    // Session restore: the file was edited while markpad was closed, so there is
+-    // no stamp to compare and only the bytes can tell.
+-    const d = deps({ kind: "ok", stamp: stamp(9000, 40) }, onDisk("elsewhere"));
+-    const outcome = await checkForExternalChange(d, target(null));
+-
+-    expect(outcome).toEqual({
+-      kind: "changed",
+-      change: { kind: "changed", stamp: stamp(9000, 40) },
+-    });
+-  });
+-
+-  it("reports a file that is gone", async () => {
+-    const d = deps({ kind: "missing" });
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    expect(outcome).toEqual({
+-      kind: "changed",
+-      change: { kind: "deleted" },
+-    });
+-    expect(d.read).not.toHaveBeenCalled();
+-  });
+-
+-  it("does not re-report a deletion the user already acknowledged", async () => {
+-    const d = deps({ kind: "missing" });
+-    const outcome = await checkForExternalChange(d, target("missing"));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: "missing" });
+-  });
+-
+-  it("compares bytes when an acknowledged-missing file reappears", async () => {
+-    const d = deps({ kind: "ok", stamp: stamp(3000, 8) }, onDisk(SAVED));
+-    const outcome = await checkForExternalChange(d, target("missing"));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(3000, 8) });
+-  });
+-
+-  it("keeps quiet and keeps the baseline when the stat fails", async () => {
+-    const d = deps({ kind: "error", message: "locked" });
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(1000, 8) });
+-    expect(d.read).not.toHaveBeenCalled();
+-  });
+-
+-  it("keeps quiet and keeps the baseline when the read fails", async () => {
+-    // Half-written file mid-save by the other program: retry on the next check
+-    // rather than interrupt with a change we cannot describe.
+-    const d = deps(
+-      { kind: "ok", stamp: stamp(2000, 20) },
+-      { kind: "error", message: "locked" },
+-    );
+-    const outcome = await checkForExternalChange(d, target(stamp(1000, 8)));
+-
+-    expect(outcome).toEqual({ kind: "unchanged", baseline: stamp(1000, 8) });
+-  });
+-});
+-
+-describe("needsDiskCheck", () => {
+-  it("checks a loaded file with nothing pending", () => {
+-    expect(needsDiskCheck(watched())).toBe(true);
+-  });
+-
+-  it("skips untitled drafts, which have no file", () => {
+-    const draft = watched({ kind: "untitled", path: null });
+-    expect(needsDiskCheck(draft)).toBe(false);
+-  });
+-
+-  it("skips a released buffer, which is re-read on activation anyway", () => {
+-    const released = watched({ loaded: false, savedText: "" });
+-    expect(needsDiskCheck(released)).toBe(false);
+-  });
+-
+-  it("skips an item whose change the user has not answered yet", () => {
+-    const flagged = watched({ external: { kind: "deleted" } });
+-    expect(needsDiskCheck(flagged)).toBe(false);
+-  });
+-});
+-
+-describe("outcomeStillApplies", () => {
+-  const checked = watched({ diskBaseline: stamp(1000, 8) });
+-
+-  it("applies when nothing moved underneath the check", () => {
+-    const current = watched({ diskBaseline: stamp(1000, 8) });
+-    expect(outcomeStillApplies(checked, current)).toBe(true);
+-  });
+-
+-  it("drops an answer invalidated by a save landing mid-sweep", () => {
+-    const saved = watched({ savedText: "saved since" });
+-    expect(outcomeStillApplies(checked, saved)).toBe(false);
+-  });
+-
+-  it("drops an answer for a buffer released mid-sweep", () => {
+-    const released = watched({ loaded: false, savedText: "" });
+-    expect(outcomeStillApplies(checked, released)).toBe(false);
+-  });
+-
+-  it("drops an answer for a file saved under a new path", () => {
+-    const moved = watched({ path: "/tmp/other.md" });
+-    expect(outcomeStillApplies(checked, moved)).toBe(false);
+-  });
+-});
+-
+-describe("acknowledgedBaseline", () => {
+-  it("remembers the revision the user was shown", () => {
+-    const change = { kind: "changed", stamp: stamp(2000, 20) } as const;
+-    expect(acknowledgedBaseline(change)).toEqual(stamp(2000, 20));
+-  });
+-
+-  it("remembers that a deletion was reported", () => {
+-    expect(acknowledgedBaseline({ kind: "deleted" })).toBe("missing");
+-  });
+-});
+diff --git a/src/lib/formatActions.commands.test.ts b/src/lib/formatActions.commands.test.ts
+deleted file mode 100644
+index 1d9a63d..0000000
+--- a/src/lib/formatActions.commands.test.ts
++++ /dev/null
+@@ -1,250 +0,0 @@
+-import { describe, it, expect } from "vitest";
+-import { EditorState } from "@codemirror/state";
+-import { EditorView } from "@codemirror/view";
+-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+-import {
+-  FORMAT_ACTIONS,
+-  getActiveFormatActions,
+-  markdownFormattingKeymap,
+-  runFormatAction,
+-  type FormatAction,
+-} from "./formatActions";
+-
+-// The line-prefix (headings/lists/quote) and insert (link/image/…) commands are
+-// wired to an EditorView rather than exported as pure transactions, so exercise
+-// them through a real — but headless — view under jsdom: dispatch through the
+-// registry, then read the resulting document / selection back. The spec string
+-// carries the selection inline, matching make() in formatActions.test.ts: a
+-// single `|` is a collapsed caret, `[` … `]` mark a range.
+-function viewFrom(spec: string): EditorView {
+-  let doc: string;
+-  let anchor: number;
+-  let head: number;
+-  if (spec.includes("|")) {
+-    const pos = spec.indexOf("|");
+-    doc = spec.slice(0, pos) + spec.slice(pos + 1);
+-    anchor = head = pos;
+-  } else {
+-    const open = spec.indexOf("[");
+-    const close = spec.indexOf("]");
+-    if (open < 0 || close < 0) {
+-      throw new Error(`no selection marker in: ${spec}`);
+-    }
+-    doc =
+-      spec.slice(0, open) + spec.slice(open + 1, close) + spec.slice(close + 1);
+-    anchor = open;
+-    head = close - 1;
+-  }
+-  const parent = document.createElement("div");
+-  document.body.appendChild(parent);
+-  return new EditorView({
+-    state: EditorState.create({
+-      doc,
+-      selection: { anchor, head },
+-      extensions: [markdown({ base: markdownLanguage })],
+-    }),
+-    parent,
+-  });
+-}
+-
+-/** Run an action through the registry and return the resulting document. */
+-function runDoc(spec: string, id: FormatAction): string {
+-  const view = viewFrom(spec);
+-  runFormatAction(id, view);
+-  const doc = view.state.doc.toString();
+-  view.destroy();
+-  return doc;
+-}
+-
+-/** Run an action and return the doc plus the text now covered by the selection. */
+-function runSel(spec: string, id: FormatAction): { doc: string; sel: string } {
+-  const view = viewFrom(spec);
+-  runFormatAction(id, view);
+-  const { from, to } = view.state.selection.main;
+-  const out = {
+-    doc: view.state.doc.toString(),
+-    sel: view.state.sliceDoc(from, to),
+-  };
+-  view.destroy();
+-  return out;
+-}
+-
+-describe("line-prefix commands — headings", () => {
+-  it("adds the heading prefix to the caret's line", () => {
+-    expect(runDoc("Title|", "heading1")).toBe("# Title");
+-    expect(runDoc("Title|", "heading2")).toBe("## Title");
+-    expect(runDoc("Title|", "heading3")).toBe("### Title");
+-  });
+-
+-  it("toggles the same heading level off", () => {
+-    expect(runDoc("# Title|", "heading1")).toBe("Title");
+-  });
+-
+-  it("switches level by stripping the conflicting heading prefix", () => {
+-    expect(runDoc("# Title|", "heading2")).toBe("## Title");
+-    expect(runDoc("### Deep|", "heading1")).toBe("# Deep");
+-  });
+-});
+-
+-describe("line-prefix commands — lists & quote", () => {
+-  it("adds and removes a bullet prefix", () => {
+-    expect(runDoc("item|", "bulletList")).toBe("- item");
+-    expect(runDoc("- item|", "bulletList")).toBe("item");
+-  });
+-
+-  it("adds and removes an ordered prefix", () => {
+-    expect(runDoc("item|", "orderedList")).toBe("1. item");
+-    expect(runDoc("1. item|", "orderedList")).toBe("item");
+-  });
+-
+-  it("renumbers an ordered list 1..N across a multi-line selection", () => {
+-    expect(runDoc("[a\nb\nc]", "orderedList")).toBe("1. a\n2. b\n3. c");
+-  });
+-
+-  it("stacks a new list marker in front of a different one (current limitation)", () => {
+-    // Unlike heading levels (which strip each other via ANY_HEADING), the list
+-    // and quote rules only strip their OWN marker — so switching list kind
+-    // prepends rather than replaces. This locks the current behavior; if
+-    // cross-kind stripping is ever added, update these expectations.
+-    expect(runDoc("- a|", "orderedList")).toBe("1. - a");
+-    expect(runDoc("1. a|", "bulletList")).toBe("- 1. a");
+-  });
+-
+-  it("skips blank lines when prefixing a multi-line selection", () => {
+-    expect(runDoc("[a\n\nb]", "bulletList")).toBe("- a\n\n- b");
+-  });
+-
+-  it("adds and removes a blockquote prefix", () => {
+-    expect(runDoc("quote|", "blockquote")).toBe("> quote");
+-    expect(runDoc("> quote|", "blockquote")).toBe("quote");
+-  });
+-
+-  it("removes the prefix from every line only when all lines already have it", () => {
+-    expect(runDoc("[- a\n- b]", "bulletList")).toBe("a\nb");
+-    // Mixed: one line missing the prefix → add it everywhere instead of removing.
+-    expect(runDoc("[- a\nb]", "bulletList")).toBe("- a\n- b");
+-  });
+-});
+-
+-describe("insert commands — link & image", () => {
+-  it("inserts a link placeholder and selects the text when nothing is selected", () => {
+-    const { doc, sel } = runSel("|", "link");
+-    expect(doc).toBe("[text](url)");
+-    expect(sel).toBe("text");
+-  });
+-
+-  it("keeps the selection as the label and selects the url placeholder", () => {
+-    const { doc, sel } = runSel("[label]", "link");
+-    expect(doc).toBe("[label](url)");
+-    expect(sel).toBe("url");
+-  });
+-
+-  it("inserts an image placeholder", () => {
+-    expect(runDoc("|", "image")).toBe("![alt](url)");
+-    expect(runDoc("[logo]", "image")).toBe("![logo](url)");
+-  });
+-});
+-
+-describe("insert commands — code block, table, horizontal rule", () => {
+-  it("wraps a selection in a fenced code block", () => {
+-    expect(runDoc("[foo]", "codeBlock")).toBe("```\nfoo\n```");
+-  });
+-
+-  it("inserts an empty fenced code block at a line start", () => {
+-    expect(runDoc("|", "codeBlock")).toBe("```\n\n```");
+-  });
+-
+-  it("breaks onto a new line when not at the start of a line", () => {
+-    expect(runDoc("ab|c", "codeBlock")).toBe("ab\n```\n\n```\nc");
+-  });
+-
+-  it("inserts a GFM table and selects the first header cell", () => {
+-    const { doc, sel } = runSel("|", "table");
+-    expect(doc).toBe(
+-      "| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n",
+-    );
+-    expect(sel).toBe("Header 1");
+-  });
+-
+-  it("inserts *** for a horizontal rule (never --- which is a setext underline)", () => {
+-    expect(runDoc("|", "horizontalRule")).toBe("***\n");
+-    expect(runDoc("ab|", "horizontalRule")).toBe("ab\n***\n");
+-  });
+-});
+-
+-describe("insert commands — diagram", () => {
+-  it("inserts a mermaid starter and puts the caret on its first line", () => {
+-    const view = viewFrom("|");
+-    runFormatAction("diagram", view);
+-    const doc = view.state.doc.toString();
+-    const caret = view.state.selection.main.head;
+-    expect(doc).toBe(
+-      "```mermaid\nflowchart LR\n    A[Start] --> B{Ready?}\n" +
+-        "    B -->|yes| C[Ship it]\n    B -->|no| A\n```\n",
+-    );
+-    // Directly after the opening fence, on the "flowchart LR" line.
+-    expect(view.state.doc.lineAt(caret).number).toBe(2);
+-    expect(caret).toBe("```mermaid\n".length);
+-    view.destroy();
+-  });
+-
+-  it("wraps a selection as diagram source", () => {
+-    expect(runDoc("[graph TD; a-->b]", "diagram")).toBe(
+-      "```mermaid\ngraph TD; a-->b\n```\n",
+-    );
+-  });
+-
+-  it("breaks onto a new line when not at the start of a line", () => {
+-    expect(runDoc("text|", "diagram").startsWith("text\n```mermaid\n")).toBe(
+-      true,
+-    );
+-  });
+-});
+-
+-describe("format action registry", () => {
+-  it("has unique action ids", () => {
+-    const ids = FORMAT_ACTIONS.map((a) => a.id);
+-    expect(new Set(ids).size).toBe(ids.length);
+-  });
+-
+-  it("gives every toggle an isActive detector and every non-toggle none", () => {
+-    for (const a of FORMAT_ACTIONS) {
+-      if (a.toggle) expect(typeof a.isActive).toBe("function");
+-      else expect(a.isActive).toBeUndefined();
+-    }
+-  });
+-
+-  it("binds the keymap to exactly the actions that declare a shortcut, with unique keys", () => {
+-    const withShortcut = FORMAT_ACTIONS.filter((a) => a.shortcut);
+-    expect(markdownFormattingKeymap.length).toBe(withShortcut.length);
+-    const keys = markdownFormattingKeymap.map((b) => b.key);
+-    expect(new Set(keys).size).toBe(keys.length);
+-    for (const a of withShortcut) {
+-      expect(keys).toContain(a.shortcut);
+-    }
+-  });
+-
+-  it("runFormatAction returns false for an unknown id and leaves the doc untouched", () => {
+-    const view = viewFrom("hello|");
+-    // Cast: deliberately exercising the guard for an id outside the union.
+-    const handled = runFormatAction("nope" as FormatAction, view);
+-    const doc = view.state.doc.toString();
+-    view.destroy();
+-    expect(handled).toBe(false);
+-    expect(doc).toBe("hello");
+-  });
+-
+-  it("run and isActive agree — each block toggle lights its own detector", () => {
+-    for (const id of [
+-      "heading1",
+-      "bulletList",
+-      "orderedList",
+-      "blockquote",
+-    ] as const) {
+-      const view = viewFrom("word|");
+-      runFormatAction(id, view);
+-      expect(getActiveFormatActions(view.state)).toContain(id);
+-      view.destroy();
+-    }
+-  });
+-});
+diff --git a/src/lib/formatActions.test.ts b/src/lib/formatActions.test.ts
+deleted file mode 100644
+index 8180283..0000000
+--- a/src/lib/formatActions.test.ts
++++ /dev/null
+@@ -1,206 +0,0 @@
+-import { describe, it, expect } from "vitest";
+-import { EditorState } from "@codemirror/state";
+-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+-import { ensureSyntaxTree } from "@codemirror/language";
+-import {
+-  getActiveFormatActions,
+-  inlineToggleTransaction,
+-  inlineCodeToggleTransaction,
+-} from "./formatActions";
+-
+-// Build an EditorState with the SAME language config as the real editor
+-// (GFM base, so ~~strike~~ is a Strikethrough node). The spec string carries the
+-// selection inline: a single `|` marks a collapsed caret, or `[` … `]` mark a
+-// range. e.g. make("**hel|lo**") or make("**[hello]**").
+-function make(spec: string): EditorState {
+-  let doc: string;
+-  let anchor: number;
+-  let head: number;
+-  if (spec.includes("|")) {
+-    const pos = spec.indexOf("|");
+-    doc = spec.slice(0, pos) + spec.slice(pos + 1);
+-    anchor = head = pos;
+-  } else {
+-    const open = spec.indexOf("[");
+-    const close = spec.indexOf("]");
+-    if (open < 0 || close < 0) throw new Error(`no selection marker in: ${spec}`);
+-    doc = spec.slice(0, open) + spec.slice(open + 1, close) + spec.slice(close + 1);
+-    anchor = open;
+-    head = close - 1;
+-  }
+-  const state = EditorState.create({
+-    doc,
+-    selection: { anchor, head },
+-    extensions: [markdown({ base: markdownLanguage })],
+-  });
+-  // Force a complete parse so tree detection is deterministic without a view.
+-  ensureSyntaxTree(state, state.doc.length, 5000);
+-  return state;
+-}
+-
+-const active = (spec: string) => getActiveFormatActions(make(spec));
+-
+-describe("getActiveFormatActions — inline emphasis at the caret", () => {
+-  it("lights bold for a caret inside a single-word span", () => {
+-    expect(active("**b|old**")).toContain("bold");
+-  });
+-
+-  it("lights bold for a caret inside a MULTI-WORD span (the core gap)", () => {
+-    expect(active("**hello wo|rld**")).toContain("bold");
+-  });
+-
+-  it("lights bold when a selection sits inside a bold span", () => {
+-    expect(active("**hello [wor]ld**")).toContain("bold");
+-  });
+-
+-  it("does NOT light bold for a caret just outside the markers", () => {
+-    expect(active("|**bold**")).not.toContain("bold");
+-    expect(active("**bold**|")).not.toContain("bold");
+-  });
+-
+-  it("lights italic (single asterisk) without confusing it for bold", () => {
+-    expect(active("*hello wo|rld*")).toContain("italic");
+-    expect(active("*hello wo|rld*")).not.toContain("bold");
+-  });
+-
+-  it("lights BOTH bold and italic for a caret in nested emphasis", () => {
+-    const a = active("**a *b|* c**");
+-    expect(a).toContain("bold");
+-    expect(a).toContain("italic");
+-  });
+-
+-  it("lights strikethrough for a caret inside ~~…~~ (needs GFM base)", () => {
+-    expect(active("~~multi wo|rd~~")).toContain("strikethrough");
+-  });
+-
+-  it("lights inline code for a caret inside a multi-word span", () => {
+-    expect(active("`foo b|ar`")).toContain("inlineCode");
+-  });
+-
+-  it("is empty for plain unformatted text", () => {
+-    expect(active("hel|lo world")).toEqual([]);
+-  });
+-});
+-
+-describe("getActiveFormatActions — block & line toggles at the caret", () => {
+-  it("lights the matching heading level only", () => {
+-    expect(active("## Titl|e")).toContain("heading2");
+-    expect(active("## Titl|e")).not.toContain("heading1");
+-    expect(active("### Deep|er")).toContain("heading3");
+-  });
+-
+-  it("lights bullet vs ordered by list kind", () => {
+-    expect(active("- item o|ne")).toContain("bulletList");
+-    expect(active("- item o|ne")).not.toContain("orderedList");
+-    expect(active("1. item o|ne")).toContain("orderedList");
+-  });
+-
+-  it("lights blockquote for a caret inside a quote", () => {
+-    expect(active("> quo|te")).toContain("blockquote");
+-  });
+-
+-  // Block detection is line-anchored so it lights ONLY where the line-prefix
+-  // toggle command can actually strip the marker — never on a line where a
+-  // click would insert a stray marker and corrupt the document.
+-  it("does NOT light a heading for a setext underline (the run can't strip it)", () => {
+-    expect(active("Titl|e\n=====")).not.toContain("heading1");
+-    expect(active("Titl|e\n=====")).not.toContain("heading2");
+-  });
+-
+-  it("does NOT light the bullet toggle on a soft-wrapped continuation line", () => {
+-    expect(active("- item that\n  wr|aps")).not.toContain("bulletList");
+-  });
+-
+-  it("does NOT light a heading for an ATX heading nested in a blockquote", () => {
+-    expect(active("> # Ti|tle")).not.toContain("heading1");
+-  });
+-});
+-
+-// Apply a toggle transaction headlessly and read back the resulting document.
+-const applyInline = (spec: string, marker: string) => {
+-  const state = make(spec);
+-  return state.update(inlineToggleTransaction(state, marker)).state.doc.toString();
+-};
+-const applyCode = (spec: string) => {
+-  const state = make(spec);
+-  return state.update(inlineCodeToggleTransaction(state)).state.doc.toString();
+-};
+-
+-describe("toggle run — unwraps the detected span (matches what the toggle shows)", () => {
+-  it("unwraps multi-word bold from a collapsed caret", () => {
+-    expect(applyInline("**hello wo|rld**", "**")).toBe("hello world");
+-  });
+-
+-  it("unwraps bold when a selection sits inside the span", () => {
+-    expect(applyInline("**hello [wor]ld**", "**")).toBe("hello world");
+-  });
+-
+-  it("wraps the word under the caret when nothing is formatted yet", () => {
+-    expect(applyInline("hel|lo", "**")).toBe("**hello**");
+-  });
+-
+-  it("unwraps multi-word italic without touching bold markers", () => {
+-    expect(applyInline("*hello wo|rld*", "*")).toBe("hello world");
+-  });
+-
+-  it("unwraps multi-word inline code from a collapsed caret", () => {
+-    expect(applyCode("`hello wo|rld`")).toBe("hello world");
+-  });
+-
+-  it("round-trips: unwrapping bold clears the active toggle", () => {
+-    const state = make("**hello wo|rld**");
+-    const next = state.update(inlineToggleTransaction(state, "**")).state;
+-    ensureSyntaxTree(next, next.doc.length, 5000);
+-    expect(getActiveFormatActions(next)).not.toContain("bold");
+-  });
+-});
+-
+-describe("inlineToggleTransaction — wrapping (bold / italic / strikethrough)", () => {
+-  it("wraps a selection in each emphasis marker", () => {
+-    expect(applyInline("[hello]", "**")).toBe("**hello**");
+-    expect(applyInline("[hello]", "*")).toBe("*hello*");
+-    expect(applyInline("[hello]", "~~")).toBe("~~hello~~");
+-  });
+-
+-  it("wraps the word under a collapsed caret", () => {
+-    expect(applyInline("hel|lo", "**")).toBe("**hello**");
+-    expect(applyInline("hel|lo", "*")).toBe("*hello*");
+-  });
+-
+-  it("adds italic to an already-bold word without eating the bold markers", () => {
+-    // The single-'*' marker must not mistake the inner '*' of '**' for its own.
+-    expect(applyInline("**hel|lo**", "*")).toBe("***hello***");
+-  });
+-
+-  it("toggles off a bare empty marker pair the tree never parses as a span", () => {
+-    expect(applyInline("**|**", "**")).toBe("");
+-    expect(applyInline("~~|~~", "~~")).toBe("");
+-  });
+-
+-  it("drops an empty marker pair when there is no word to wrap", () => {
+-    expect(applyInline(" | ", "**")).toBe(" **** ");
+-  });
+-});
+-
+-describe("inlineCodeToggleTransaction — fence sizing & padding", () => {
+-  it("wraps the word under the caret in single backticks", () => {
+-    expect(applyCode("fo|o")).toBe("`foo`");
+-  });
+-
+-  it("grows the fence to outlast an interior backtick run", () => {
+-    expect(applyCode("[a`b]")).toBe("``a`b``");
+-    expect(applyCode("[a``b]")).toBe("```a``b```");
+-  });
+-
+-  it("pads with a space when the content starts or ends with a backtick", () => {
+-    expect(applyCode("[`x]")).toBe("`` `x ``");
+-  });
+-
+-  it("unwraps a padded span, dropping one padding space per side", () => {
+-    expect(applyCode("`` `|x ``")).toBe("`x");
+-  });
+-
+-  it("drops an empty fence when there is nothing to wrap", () => {
+-    expect(applyCode("|")).toBe("``");
+-  });
+-});
+diff --git a/src/lib/jsonActions.test.ts b/src/lib/jsonActions.test.ts
+deleted file mode 100644
+index 027d304..0000000
+--- a/src/lib/jsonActions.test.ts
++++ /dev/null
+@@ -1,69 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { applyJsonTextAction } from "./jsonActions";
+-
+-const ok = (text: string) => ({ kind: "ok", text });
+-
+-describe("applyJsonTextAction format", () => {
+-  it("pretty-prints with 2-space indent", () => {
+-    expect(applyJsonTextAction('{"a":1,"b":[true,null]}', "format")).toEqual(
+-      ok('{\n  "a": 1,\n  "b": [\n    true,\n    null\n  ]\n}'),
+-    );
+-  });
+-
+-  it("preserves a trailing newline", () => {
+-    expect(applyJsonTextAction('{"a":1}\n', "format")).toEqual(
+-      ok('{\n  "a": 1\n}\n'),
+-    );
+-  });
+-
+-  it("does not invent a trailing newline", () => {
+-    expect(applyJsonTextAction('{"a":1}', "format")).toEqual(
+-      ok('{\n  "a": 1\n}'),
+-    );
+-  });
+-
+-  it("handles scalars and unicode", () => {
+-    expect(applyJsonTextAction('"héllo ☃"', "format")).toEqual(ok('"héllo ☃"'));
+-    expect(applyJsonTextAction("42", "format")).toEqual(ok("42"));
+-  });
+-
+-  it("reports invalid JSON without output", () => {
+-    const result = applyJsonTextAction('{"a": 1,}', "format");
+-    expect(result.kind).toBe("error");
+-    if (result.kind === "error") {
+-      expect(result.message).toMatch(/^Not valid JSON: /);
+-    }
+-  });
+-});
+-
+-describe("applyJsonTextAction minify", () => {
+-  it("collapses to a single line", () => {
+-    expect(
+-      applyJsonTextAction('{\n  "a": 1,\n  "b": [1, 2]\n}\n', "minify"),
+-    ).toEqual(ok('{"a":1,"b":[1,2]}\n'));
+-  });
+-});
+-
+-describe("applyJsonTextAction sortKeys", () => {
+-  it("sorts object keys recursively and pretty-prints", () => {
+-    expect(
+-      applyJsonTextAction('{"b":{"d":1,"c":2},"a":3}', "sortKeys"),
+-    ).toEqual(
+-      ok('{\n  "a": 3,\n  "b": {\n    "c": 2,\n    "d": 1\n  }\n}'),
+-    );
+-  });
+-
+-  it("preserves array order but sorts objects inside arrays", () => {
+-    expect(applyJsonTextAction('[{"z":1,"a":2},3,1]', "sortKeys")).toEqual(
+-      ok('[\n  {\n    "a": 2,\n    "z": 1\n  },\n  3,\n  1\n]'),
+-    );
+-  });
+-
+-  it("keeps a literal __proto__ key as data", () => {
+-    expect(
+-      applyJsonTextAction('{"b":1,"__proto__":{"x":2}}', "sortKeys"),
+-    ).toEqual(
+-      ok('{\n  "__proto__": {\n    "x": 2\n  },\n  "b": 1\n}'),
+-    );
+-  });
+-});
+diff --git a/src/lib/jsonAutoEdit.test.ts b/src/lib/jsonAutoEdit.test.ts
+deleted file mode 100644
+index 9112f49..0000000
+--- a/src/lib/jsonAutoEdit.test.ts
++++ /dev/null
+@@ -1,289 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { EditorState, Text, type Extension } from "@codemirror/state";
+-import { EditorView } from "@codemirror/view";
+-import { history, undo } from "@codemirror/commands";
+-import { json } from "@codemirror/lang-json";
+-import { closeBrackets, insertBracket } from "@codemirror/autocomplete";
+-import {
+-  applyJsonAutoEdit,
+-  jsonTypingExtensions,
+-  pasteJson,
+-  planJsonAutoEdit,
+-} from "./jsonAutoEdit";
+-
+-// The comforts are wired to a view rather than exposed as transactions, so
+-// exercise them through a real — but headless — view under jsdom, with the same
+-// neighbours they have in the editor (json() for the language data closeBrackets
+-// reads, history() for the undo assertions). The spec string carries the caret
+-// inline as `|`, matching the other command tests in this directory.
+-function viewFrom(
+-  spec: string,
+-  extra: Extension = closeBrackets(),
+-): { view: EditorView; caret: number } {
+-  const caret = spec.indexOf("|");
+-  if (caret < 0) throw new Error(`no caret marker in: ${spec}`);
+-  const doc = spec.slice(0, caret) + spec.slice(caret + 1);
+-  const parent = document.createElement("div");
+-  document.body.appendChild(parent);
+-  const view = new EditorView({
+-    state: EditorState.create({
+-      doc,
+-      selection: { anchor: caret },
+-      extensions: [json(), history(), extra],
+-    }),
+-    parent,
+-  });
+-  return { view, caret };
+-}
+-
+-/** The document with `|` marking the caret. */
+-function mark(view: EditorView): string {
+-  const doc = view.state.doc.toString();
+-  const head = view.state.selection.main.head;
+-  return `${doc.slice(0, head)}|${doc.slice(head)}`;
+-}
+-
+-/** Type one character the way the editor does: the auto-edit layer first, then
+-    closeBrackets, then a plain insertion. */
+-function type(spec: string, input: string): string {
+-  const { view, caret } = viewFrom(spec);
+-  if (!applyJsonAutoEdit(view, caret, input)) {
+-    view.dispatch(
+-      insertBracket(view.state, input) ?? view.state.replaceSelection(input),
+-    );
+-  }
+-  const out = mark(view);
+-  view.destroy();
+-  return out;
+-}
+-
+-/** The plan alone — null means the keystroke is left entirely to the editor. */
+-function plan(spec: string, input: string) {
+-  const caret = spec.indexOf("|");
+-  const doc = spec.slice(0, caret) + spec.slice(caret + 1);
+-  return planJsonAutoEdit(Text.of(doc.split("\n")), caret, input);
+-}
+-
+-describe("key quoting", () => {
+-  it("quotes a key as its first letter is typed", () => {
+-    expect(type("{|}", "a")).toBe('{"a|"}');
+-  });
+-
+-  it("quotes a key on its own line", () => {
+-    expect(type("{\n  |\n}", "n")).toBe('{\n  "n|"\n}');
+-  });
+-
+-  it("quotes a key that starts with a digit", () => {
+-    expect(type("{ |}", "1")).toBe('{ "1|"}');
+-  });
+-
+-  it("leaves the top level alone", () => {
+-    expect(plan("|", "a")).toBeNull();
+-    expect(plan("{}\n|", "a")).toBeNull();
+-  });
+-
+-  it("leaves a key that has no colon yet alone", () => {
+-    expect(plan('{ "a" |}', "b")).toBeNull();
+-  });
+-});
+-
+-describe("value quoting", () => {
+-  it("quotes a string value as its first letter is typed", () => {
+-    expect(type('{ "a": |}', "h")).toBe('{ "a": "h|"}');
+-  });
+-
+-  it("leaves digits bare — they are numbers", () => {
+-    expect(type('{ "a": |}', "1")).toBe('{ "a": 1|}');
+-  });
+-
+-  it("leaves t, f and n bare so the literals can be typed", () => {
+-    expect(type('{ "a": |}', "t")).toBe('{ "a": t|}');
+-    expect(type('{ "a": |}', "f")).toBe('{ "a": f|}');
+-    expect(type('{ "a": |}', "n")).toBe('{ "a": n|}');
+-  });
+-
+-  it("lets a literal finish unquoted", () => {
+-    expect(type('{ "a": tru|}', "e")).toBe('{ "a": true|}');
+-    expect(type('{ "a": nul|}', "l")).toBe('{ "a": null|}');
+-  });
+-
+-  it("quotes retroactively once the word cannot be a literal", () => {
+-    expect(type('{ "a": t|}', "e")).toBe('{ "a": "te|"}');
+-    expect(type('{ "a": true|}', "x")).toBe('{ "a": "truex|"}');
+-  });
+-
+-  it("lets a number finish unquoted", () => {
+-    expect(type('{ "a": 12|}', "e")).toBe('{ "a": 12e|}');
+-    expect(type('{ "a": 1e|}', "5")).toBe('{ "a": 1e5|}');
+-    expect(type('{ "a": 1e|}', "+")).toBe('{ "a": 1e+|}');
+-    expect(type('{ "a": 1.|}', "5")).toBe('{ "a": 1.5|}');
+-    expect(type('{ "a": -|}', "3")).toBe('{ "a": -3|}');
+-  });
+-
+-  it("quotes retroactively once the word cannot be a number", () => {
+-    expect(type('{ "a": 12|}', "a")).toBe('{ "a": "12a|"}');
+-    expect(type('{ "a": 1e5|}', "x")).toBe('{ "a": "1e5x|"}');
+-    expect(type('{ "a": 0|}', "x")).toBe('{ "a": "0x|"}');
+-    expect(type('{ "a": 0|}', "1")).toBe('{ "a": "01|"}');
+-    // Dates and version strings: the sign that ends the number starts the word.
+-    expect(type('{ "a": 2026|}', "-")).toBe('{ "a": "2026-|"}');
+-    expect(type('{ "a": 1.2|}', ".")).toBe('{ "a": "1.2.|"}');
+-  });
+-
+-  it("quotes retroactively in an array element", () => {
+-    expect(type("[12|]", "a")).toBe('["12a|"]');
+-  });
+-
+-  it("quotes an array element", () => {
+-    expect(type("[|]", "h")).toBe('["h|"]');
+-  });
+-});
+-
+-describe("separator comma", () => {
+-  it("appears with the first character of the next member", () => {
+-    expect(type('{\n  "a": 1\n  |\n}', "b")).toBe('{\n  "a": 1,\n  "b|"\n}');
+-  });
+-
+-  it("is not repeated when the member already ends with one", () => {
+-    expect(type('{\n  "a": 1,\n  |\n}', "b")).toBe('{\n  "a": 1,\n  "b|"\n}');
+-  });
+-
+-  it("appears before an array element", () => {
+-    expect(type("[\n  1\n  |\n]", '"')).toBe('[\n  1,\n  "|"\n]');
+-  });
+-
+-  it("appears before a bracket that opens the next element", () => {
+-    expect(type("[\n  {}\n  |\n]", "{")).toBe("[\n  {},\n  {|}\n]");
+-  });
+-
+-  it("appears before a key typed with its own quote", () => {
+-    expect(type('{\n  "a": 1\n  |\n}', '"')).toBe('{\n  "a": 1,\n  "|"\n}');
+-  });
+-
+-  it("is never inserted in front of a closing bracket", () => {
+-    expect(plan('{ "a": 1 |}', "}")).toBeNull();
+-    expect(plan("[ 1 |]", "]")).toBeNull();
+-    expect(plan('{ "a": 1 |}', ",")).toBeNull();
+-  });
+-
+-  it("is not inserted where the slot is still empty", () => {
+-    expect(plan("{ |}", '"')).toBeNull();
+-    expect(plan('{ "a": |}', '"')).toBeNull();
+-  });
+-});
+-
+-describe("colon", () => {
+-  it("steps out of a finished key and adds a colon", () => {
+-    expect(type('{ "na|" }', ":")).toBe('{ "na": | }');
+-  });
+-
+-  it("adds a colon after a key that is already closed", () => {
+-    expect(type('{ "na"| }', ":")).toBe('{ "na": | }');
+-  });
+-
+-  it("steps over a colon that is already there", () => {
+-    expect(type('{ "a|": 1 }', ":")).toBe('{ "a": |1 }');
+-  });
+-
+-  it("stays literal inside a value", () => {
+-    expect(type('{ "url": "http|" }', ":")).toBe('{ "url": "http:|" }');
+-  });
+-});
+-
+-describe("closing quote", () => {
+-  it("is typed over rather than duplicated", () => {
+-    expect(type('{ "ab|" }', '"')).toBe('{ "ab"| }');
+-  });
+-
+-  it("is left alone when the caret follows a backslash", () => {
+-    expect(plan('{ "a\\|" }', '"')).toBeNull();
+-  });
+-});
+-
+-describe("undo", () => {
+-  it("removes the quotes on their own, keeping the typed character", () => {
+-    const { view, caret } = viewFrom("{|}");
+-    applyJsonAutoEdit(view, caret, "n");
+-    expect(view.state.doc.toString()).toBe('{"n"}');
+-    undo(view);
+-    expect(view.state.doc.toString()).toBe("{n}");
+-    view.destroy();
+-  });
+-});
+-
+-describe("extension bundle", () => {
+-  // CodeMirror walks the inputHandler facet in order and stops at the first
+-  // handler that returns true — the loop below is that walk. Running the real
+-  // bundle through it covers the ordering the comforts depend on: the comma has
+-  // to be inserted before closeBrackets consumes the keystroke.
+-  function typeThrough(spec: string, input: string): string {
+-    const { view, caret } = viewFrom(spec, jsonTypingExtensions());
+-    const handled = view.state
+-      .facet(EditorView.inputHandler)
+-      .some((handler) =>
+-        handler(view, caret, caret, input, () =>
+-          view.state.update({
+-            changes: { from: caret, insert: input },
+-            selection: { anchor: caret + input.length },
+-          }),
+-        ),
+-      );
+-    if (!handled) view.dispatch(view.state.replaceSelection(input));
+-    const out = mark(view);
+-    view.destroy();
+-    return out;
+-  }
+-
+-  it("inserts the comma and still lets closeBrackets pair the quote", () => {
+-    expect(typeThrough('{\n  "a": 1\n  |\n}', '"')).toBe(
+-      '{\n  "a": 1,\n  "|"\n}',
+-    );
+-  });
+-
+-  it("leaves a keystroke it has nothing to add to fully to closeBrackets", () => {
+-    expect(typeThrough('{ "a": |}', "{")).toBe('{ "a": {|}}');
+-  });
+-});
+-
+-describe("paste", () => {
+-  const minified = '{"a":1,"b":[2,3]}';
+-  const formatted = '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}';
+-
+-  it("formats JSON pasted into an empty buffer", () => {
+-    const { view } = viewFrom("|");
+-    expect(pasteJson(view, 0, 0, minified)).toBe(true);
+-    expect(view.state.doc.toString()).toBe(formatted);
+-    view.destroy();
+-  });
+-
+-  it("formats JSON pasted over a fully selected buffer", () => {
+-    const { view } = viewFrom('{"old":1}|');
+-    expect(pasteJson(view, 0, view.state.doc.length, minified)).toBe(true);
+-    expect(view.state.doc.toString()).toBe(formatted);
+-    view.destroy();
+-  });
+-
+-  it("keeps the raw paste as its own undo step", () => {
+-    const { view } = viewFrom("|");
+-    pasteJson(view, 0, 0, minified);
+-    undo(view);
+-    expect(view.state.doc.toString()).toBe(minified);
+-    undo(view);
+-    expect(view.state.doc.toString()).toBe("");
+-    view.destroy();
+-  });
+-
+-  it("leaves a paste into an existing document verbatim", () => {
+-    const { view, caret } = viewFrom('{ "x": | }');
+-    expect(pasteJson(view, caret, caret, minified)).toBe(false);
+-    expect(view.state.doc.toString()).toBe('{ "x":  }');
+-    view.destroy();
+-  });
+-
+-  it("leaves clipboard text that is not JSON verbatim", () => {
+-    const { view } = viewFrom("|");
+-    expect(pasteJson(view, 0, 0, "not json at all")).toBe(false);
+-    expect(view.state.doc.toString()).toBe("");
+-    view.destroy();
+-  });
+-});
+diff --git a/src/lib/markdown.test.ts b/src/lib/markdown.test.ts
+deleted file mode 100644
+index 36177a5..0000000
+--- a/src/lib/markdown.test.ts
++++ /dev/null
+@@ -1,244 +0,0 @@
+-import { describe, it, expect } from "vitest";
+-import { headingSlug, renderMarkdown } from "./markdown";
+-
+-// Runs under jsdom (see vitest.config.ts) so DOMPurify has a window.
+-describe("renderMarkdown — heading anchors", () => {
+-  it("gives headings a slug id so in-document links have a target", () => {
+-    const html = renderMarkdown("# Hello World");
+-    expect(html).toMatch(/<h1[^>]*>/);
+-    expect(html).toContain('id="hello-world"');
+-  });
+-
+-  it("keeps the id (and link href) after DOMPurify sanitization", () => {
+-    const html = renderMarkdown("[Go to intro](#intro)\n\n## Intro");
+-    expect(html).toContain('href="#intro"');
+-    expect(html).toContain('id="intro"');
+-  });
+-
+-  it("de-duplicates ids for repeated heading text", () => {
+-    const html = renderMarkdown("# Dup\n\n# Dup");
+-    const ids = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+-    expect(ids.length).toBe(2);
+-    expect(ids).toContain("dup");
+-    expect(new Set(ids).size).toBe(ids.length); // every id is unique
+-  });
+-
+-  it("assigns a heading with ASCII punctuation the id the slug resolves to", () => {
+-    // Regression: the id and a clicked fragment must normalize to the same slug.
+-    const html = renderMarkdown("## Q&A");
+-    expect(html).toContain(`id="${headingSlug("Q&A")}"`);
+-  });
+-
+-  it("keeps a dash separator reachable when typographer turns -- into an en-dash", () => {
+-    // "before--after" becomes "before–after" in the rendered text; the slug must
+-    // still treat it as a separator so a "#before-after" link resolves.
+-    const html = renderMarkdown("# before--after");
+-    expect(html).toContain(`id="before-after"`);
+-    expect(headingSlug("before-after")).toBe("before-after");
+-  });
+-});
+-
+-describe("headingSlug — heading id and clicked fragment agree", () => {
+-  it("normalizes ASCII punctuation identically on both sides", () => {
+-    // "Q&A" heading vs a hand-written "#q&a" link → same slug.
+-    expect(headingSlug("Q&A")).toBe("qa");
+-    expect(headingSlug("q&a")).toBe("qa");
+-    expect(headingSlug("A/B test")).toBe(headingSlug("a/b-test"));
+-    expect(headingSlug("FAQ: Setup")).toBe(headingSlug("faq:-setup"));
+-  });
+-
+-  it("normalizes straight and curly/smart punctuation to the same slug", () => {
+-    // typographer curls the heading's apostrophe / dashes; the link fragment
+-    // stays straight — both must reach the same id.
+-    const curlyApostrophe = "Don" + String.fromCharCode(0x2019) + "t Panic";
+-    expect(headingSlug(curlyApostrophe)).toBe(headingSlug("Don't Panic"));
+-    const enDash = "Foo " + String.fromCharCode(0x2013) + " Bar";
+-    expect(headingSlug(enDash)).toBe(headingSlug("Foo -- Bar"));
+-  });
+-
+-  it("treats unicode dashes as separators, not stripped punctuation", () => {
+-    expect(headingSlug("before" + String.fromCharCode(0x2013) + "after")).toBe(
+-      "before-after",
+-    ); // en-dash
+-    expect(headingSlug("in" + String.fromCharCode(0x2014) + "out")).toBe(
+-      "in-out",
+-    ); // em-dash
+-  });
+-
+-  it("preserves unicode letters", () => {
+-    const cafe = "Caf" + String.fromCharCode(0xe9); // é (U+00E9)
+-    expect(headingSlug(cafe)).toBe(cafe.toLowerCase());
+-  });
+-
+-  it("normalizes decomposed (NFD) and precomposed (NFC) accents to one slug", () => {
+-    const precomposed = "Caf" + String.fromCharCode(0xe9); // é as U+00E9
+-    const decomposed = "Cafe" + String.fromCharCode(0x301); // e + U+0301
+-    expect(headingSlug(decomposed)).toBe(headingSlug(precomposed));
+-  });
+-
+-  it("is idempotent for an already-slugged fragment", () => {
+-    expect(headingSlug("hello-world")).toBe("hello-world");
+-  });
+-});
+-
+-describe("renderMarkdown — sanitization & safe rendering", () => {
+-  it("renders basic inline markdown to HTML", () => {
+-    expect(renderMarkdown("*hi*")).toContain("<em>hi</em>");
+-    expect(renderMarkdown("**hi**")).toContain("<strong>hi</strong>");
+-  });
+-
+-  it("renders raw HTML with sanitization (html:true)", () => {
+-    const html = renderMarkdown("<b>x</b> plain");
+-    expect(html).toContain("<b>x</b>");
+-    // Scripts are still stripped
+-    expect(html).not.toContain("<script>");
+-  });
+-
+-  it("drops a <script> tag from the output", () => {
+-    const html = renderMarkdown("hi\n\n<script>alert(1)</script>");
+-    expect(html.toLowerCase()).not.toContain("<script");
+-  });
+-
+-  it("never produces a javascript: link href", () => {
+-    const html = renderMarkdown("[click](javascript:alert(1))");
+-    expect(html).not.toMatch(/href\s*=\s*["']?\s*javascript:/i);
+-  });
+-
+-  it("linkifies a bare URL", () => {
+-    const html = renderMarkdown("see https://example.com now");
+-    expect(html).toContain('href="https://example.com"');
+-  });
+-
+-  it("linkifies a scheme-less host and a bare domain (fuzzy links)", () => {
+-    // Regression: markdown-it 15's linkify-it v6 turned fuzzy links off by
+-    // default, which silently stopped linking these in the preview.
+-    expect(renderMarkdown("visit www.example.com now")).toContain(
+-      'href="http://www.example.com"',
+-    );
+-    expect(renderMarkdown("see example.com/docs now")).toContain(
+-      'href="http://example.com/docs"',
+-    );
+-  });
+-
+-  it("does not linkify a filename or a decimal number", () => {
+-    // Guards the other side of fuzzyLink: it needs a real TLD, so everyday text
+-    // must not turn into links.
+-    expect(renderMarkdown("open file.txt now")).not.toContain("<a ");
+-    expect(renderMarkdown("costs 3.50 today")).not.toContain("<a ");
+-  });
+-});
+-
+-describe("renderMarkdown — diagram fences", () => {
+-  it("turns a diagram fence into a placeholder instead of a code block", () => {
+-    const html = renderMarkdown("```mermaid\nflowchart TB\n  A --> B\n```\n");
+-    expect(html).toContain('class="markpad-diagram"');
+-    expect(html).toContain('data-diagram-format="mermaid"');
+-    expect(html).toContain('data-diagram-state="pending"');
+-  });
+-
+-  it("leaves every other fenced block exactly as it was", () => {
+-    // The whole feature has to be invisible to a document without diagrams.
+-    expect(renderMarkdown("```ts\nconst a = 1;\n```\n")).toContain(
+-      'class="language-ts"',
+-    );
+-    expect(renderMarkdown("```\nplain\n```\n")).toContain("<pre><code");
+-    expect(renderMarkdown("```js\nx\n```\n")).not.toContain("markpad-diagram");
+-  });
+-
+-  it("keeps the diagram source intact through sanitization", () => {
+-    const container = document.createElement("div");
+-    container.innerHTML = renderMarkdown(
+-      "```mermaid\nflowchart LR\n  A -->|maybe| B\n```\n",
+-    );
+-    // Both directions matter: the arrows are the source's most common token and
+-    // the sanitizer is the most likely thing to eat them.
+-    expect(
+-      container.querySelector(".markpad-diagram-source")?.textContent,
+-    ).toBe("flowchart LR\n  A -->|maybe| B\n");
+-  });
+-
+-  it("does not execute markup smuggled through a diagram fence", () => {
+-    const html = renderMarkdown(
+-      "```mermaid\n<script>alert(1)</script>\n```\n",
+-    );
+-    expect(html.toLowerCase()).not.toContain("<script");
+-  });
+-});
+-
+-describe("in-document anchors — a rendered heading is reachable by a fragment slug", () => {
+-  // Mirrors Preview.tsx's click handler: resolve a clicked "#fragment" through
+-  // headingSlug and look for the matching heading id in the rendered HTML. This
+-  // locks the cross-module contract that a table-of-contents link finds its
+-  // heading despite punctuation or percent-encoding differences.
+-  const resolves = (source: string, fragment: string): boolean => {
+-    const container = document.createElement("div");
+-    container.innerHTML = renderMarkdown(source);
+-    let frag = fragment.replace(/^#/, "");
+-    try {
+-      frag = decodeURIComponent(frag);
+-    } catch {
+-      // Malformed %-sequence — fall back to the raw fragment (as Preview does).
+-    }
+-    const id = headingSlug(frag);
+-    // headingSlug only ever emits letters/digits/hyphens, so the id is always a
+-    // safe attribute-selector value (no CSS.escape needed, and jsdom's global
+-    // does not expose it anyway).
+-    return !!id && container.querySelector(`[id="${id}"]`) !== null;
+-  };
+-
+-  it("matches a hand-written fragment despite punctuation and encoding", () => {
+-    const doc = "## Q&A\n\n### Foo Bar";
+-    expect(resolves(doc, "#q&a")).toBe(true); // punctuation differs from the id
+-    expect(resolves(doc, "#Foo%20Bar")).toBe(true); // percent-encoded space
+-    expect(resolves(doc, "#missing")).toBe(false); // no such heading
+-  });
+-});
+-
+-// The anchors the split-view scroll sync interpolates between (scrollSync.ts).
+-describe("renderMarkdown — source line anchors", () => {
+-  const linesOf = (markdown: string): number[] => {
+-    const container = document.createElement("div");
+-    container.innerHTML = renderMarkdown(markdown);
+-    return [...container.querySelectorAll("[data-source-line]")].map((el) =>
+-      Number((el as HTMLElement).dataset.sourceLine),
+-    );
+-  };
+-
+-  it("stamps each top-level block with its 1-based start line", () => {
+-    // heading on line 1, paragraph on line 3, fenced block opening on line 5.
+-    const lines = linesOf("# Title\n\npara\n\n```\ncode\n```\n");
+-    expect(lines).toEqual([1, 3, 5]);
+-  });
+-
+-  it("survives DOMPurify sanitization", () => {
+-    expect(renderMarkdown("hello")).toContain('data-source-line="1"');
+-  });
+-
+-  it("stamps nested blocks too, in document order", () => {
+-    const lines = linesOf("- one\n- two\n\n> quoted\n");
+-    // Anchors must never move backwards: normalizeAnchors relies on the source
+-    // order to sort, and a descending line here would mean the reverse mapping
+-    // is guessing.
+-    expect(lines.length).toBeGreaterThan(2);
+-    expect([...lines].sort((a, b) => a - b)).toEqual(lines);
+-    expect(lines[0]).toBe(1);
+-    expect(lines[lines.length - 1]).toBe(4);
+-  });
+-
+-  it("stamps a diagram placeholder, so a diagram is a sync landmark too", () => {
+-    // The placeholder replaces a <pre>, and scroll sync interpolates between
+-    // these anchors — losing the one on a tall diagram would misalign the panes
+-    // for the whole rest of the document.
+-    const lines = linesOf("# Title\n\n```mermaid\nflowchart TB\n  A --> B\n```\n");
+-    expect(lines).toEqual([1, 3]);
+-  });
+-
+-  it("does not stamp inline content", () => {
+-    const container = document.createElement("div");
+-    container.innerHTML = renderMarkdown("text with **bold** and `code`");
+-    expect(container.querySelectorAll("strong[data-source-line]").length).toBe(
+-      0,
+-    );
+-    expect(container.querySelectorAll("code[data-source-line]").length).toBe(0);
+-  });
+-});
+diff --git a/src/lib/recentsActions.test.ts b/src/lib/recentsActions.test.ts
+deleted file mode 100644
+index 6c7ff24..0000000
+--- a/src/lib/recentsActions.test.ts
++++ /dev/null
+@@ -1,55 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { idsToClose, type ClosableItem } from "./recentsActions";
+-
+-// Displayed order: modified items first, then clean ones (see sortItems in App).
+-const items: ClosableItem[] = [
+-  { id: "a", path: "/tmp/a.md", unsaved: true },
+-  { id: "b", path: null, unsaved: true },
+-  { id: "c", path: "/tmp/c.md", unsaved: false },
+-  { id: "d", path: null, unsaved: false },
+-  { id: "e", path: "/tmp/e.md", unsaved: false },
+-];
+-
+-describe("idsToClose", () => {
+-  it("closes every item without unsaved work", () => {
+-    expect(idsToClose(items, "all", "c")).toEqual(["c", "d", "e"]);
+-  });
+-
+-  it("keeps the target when closing others", () => {
+-    expect(idsToClose(items, "others", "c")).toEqual(["d", "e"]);
+-  });
+-
+-  it("closes only items displayed above the target", () => {
+-    expect(idsToClose(items, "above", "e")).toEqual(["c", "d"]);
+-  });
+-
+-  it("closes only items displayed below the target", () => {
+-    expect(idsToClose(items, "below", "c")).toEqual(["d", "e"]);
+-  });
+-
+-  it("closes saved files but keeps untitled drafts", () => {
+-    expect(idsToClose(items, "saved", "c")).toEqual(["c", "e"]);
+-  });
+-
+-  it("never closes an item with unsaved work", () => {
+-    for (const scope of ["all", "others", "above", "below", "saved"] as const) {
+-      const closed = idsToClose(items, scope, "e");
+-      expect(closed).not.toContain("a");
+-      expect(closed).not.toContain("b");
+-    }
+-  });
+-
+-  it("returns nothing when the target is gone", () => {
+-    expect(idsToClose(items, "all", "missing")).toEqual([]);
+-  });
+-
+-  it("returns nothing for above/below at the edges", () => {
+-    expect(idsToClose(items, "above", "a")).toEqual([]);
+-    expect(idsToClose(items, "below", "e")).toEqual([]);
+-  });
+-
+-  it("handles an empty list", () => {
+-    expect(idsToClose([], "all", "a")).toEqual([]);
+-  });
+-});
+diff --git a/src/lib/scrollSync.test.ts b/src/lib/scrollSync.test.ts
+deleted file mode 100644
+index 037c3a3..0000000
+--- a/src/lib/scrollSync.test.ts
++++ /dev/null
+@@ -1,117 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  lineToOffset,
+-  normalizeAnchors,
+-  offsetToLine,
+-  type SyncAnchor,
+-} from "./scrollSync";
+-
+-// A three-block document: line 1 at the top, line 5 at 100px, line 9 at 300px.
+-// The second block is twice as tall as the first, which is the whole point of
+-// anchoring — a pixel-ratio sync could not represent it.
+-const anchors: SyncAnchor[] = [
+-  { line: 1, offset: 0 },
+-  { line: 5, offset: 100 },
+-  { line: 9, offset: 300 },
+-];
+-
+-describe("normalizeAnchors", () => {
+-  it("sorts by source line", () => {
+-    expect(
+-      normalizeAnchors([
+-        { line: 9, offset: 300 },
+-        { line: 1, offset: 0 },
+-        { line: 5, offset: 100 },
+-      ]),
+-    ).toEqual(anchors);
+-  });
+-
+-  it("keeps the first anchor of a duplicated line", () => {
+-    expect(
+-      normalizeAnchors([
+-        { line: 3, offset: 40 },
+-        { line: 3, offset: 90 },
+-      ]),
+-    ).toEqual([{ line: 3, offset: 40 }]);
+-  });
+-
+-  it("clamps a decreasing offset so the mapping stays invertible", () => {
+-    expect(
+-      normalizeAnchors([
+-        { line: 1, offset: 50 },
+-        { line: 4, offset: 20 },
+-        { line: 7, offset: 80 },
+-      ]),
+-    ).toEqual([
+-      { line: 1, offset: 50 },
+-      { line: 4, offset: 50 },
+-      { line: 7, offset: 80 },
+-    ]);
+-  });
+-
+-  it("drops non-finite entries", () => {
+-    expect(
+-      normalizeAnchors([
+-        { line: Number.NaN, offset: 10 },
+-        { line: 2, offset: Number.POSITIVE_INFINITY },
+-        { line: 3, offset: 30 },
+-      ]),
+-    ).toEqual([{ line: 3, offset: 30 }]);
+-  });
+-});
+-
+-describe("lineToOffset", () => {
+-  it("returns the exact offset at an anchor", () => {
+-    expect(lineToOffset(anchors, 5)).toBe(100);
+-  });
+-
+-  it("interpolates between anchors", () => {
+-    expect(lineToOffset(anchors, 3)).toBe(50);
+-    expect(lineToOffset(anchors, 7)).toBe(200);
+-  });
+-
+-  it("interpolates a fractional line", () => {
+-    expect(lineToOffset(anchors, 5.5)).toBe(125);
+-  });
+-
+-  it("clamps outside the anchor range", () => {
+-    expect(lineToOffset(anchors, -4)).toBe(0);
+-    expect(lineToOffset(anchors, 999)).toBe(300);
+-  });
+-
+-  it("returns 0 with no anchors", () => {
+-    expect(lineToOffset([], 7)).toBe(0);
+-  });
+-});
+-
+-describe("offsetToLine", () => {
+-  it("inverts lineToOffset", () => {
+-    for (const line of [1, 2.5, 5, 6.25, 9]) {
+-      expect(offsetToLine(anchors, lineToOffset(anchors, line))).toBeCloseTo(
+-        line,
+-      );
+-    }
+-  });
+-
+-  it("clamps outside the offset range", () => {
+-    expect(offsetToLine(anchors, -20)).toBe(1);
+-    expect(offsetToLine(anchors, 5000)).toBe(9);
+-  });
+-
+-  it("resolves an offset shared by a zero-height block to the visible line", () => {
+-    // Line 4 renders nothing, so lines 4 and 5 both sit at 60px. The line that
+-    // actually occupies the pixels below 60 is 5, and that is what the other
+-    // pane should scroll to.
+-    const flat: SyncAnchor[] = [
+-      { line: 1, offset: 0 },
+-      { line: 4, offset: 60 },
+-      { line: 5, offset: 60 },
+-      { line: 8, offset: 120 },
+-    ];
+-    expect(offsetToLine(flat, 60)).toBe(5);
+-  });
+-
+-  it("returns line 1 with no anchors", () => {
+-    expect(offsetToLine([], 40)).toBe(1);
+-  });
+-});
+diff --git a/src/lib/workspaceSearch.test.ts b/src/lib/workspaceSearch.test.ts
+deleted file mode 100644
+index 0143578..0000000
+--- a/src/lib/workspaceSearch.test.ts
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  countWorkspaceSearchMatches,
+-  DEFAULT_WORKSPACE_SEARCH_SCOPE,
+-  isWorkspaceSearchShortcut,
+-  searchOpenFiles,
+-  type WorkspaceSearchFile,
+-} from "./workspaceSearch";
+-
+-const event = (overrides: Partial<KeyboardEvent> = {}) =>
+-  ({
+-    key: "f",
+-    ctrlKey: false,
+-    metaKey: false,
+-    shiftKey: false,
+-    altKey: false,
+-    ...overrides,
+-  }) as KeyboardEvent;
+-
+-describe("workspace search shortcut", () => {
+-  it("defaults global search to the open files scope", () => {
+-    expect(DEFAULT_WORKSPACE_SEARCH_SCOPE).toBe("openFiles");
+-  });
+-
+-  it("accepts Ctrl+Shift+F and Command+Shift+F", () => {
+-    expect(
+-      isWorkspaceSearchShortcut(event({ ctrlKey: true, shiftKey: true })),
+-    ).toBe(true);
+-    expect(
+-      isWorkspaceSearchShortcut(event({ metaKey: true, shiftKey: true })),
+-    ).toBe(true);
+-  });
+-
+-  it("leaves document-search and modified chords alone", () => {
+-    expect(isWorkspaceSearchShortcut(event({ ctrlKey: true }))).toBe(false);
+-    expect(
+-      isWorkspaceSearchShortcut(
+-        event({ ctrlKey: true, shiftKey: true, altKey: true }),
+-      ),
+-    ).toBe(false);
+-    expect(
+-      isWorkspaceSearchShortcut(
+-        event({ ctrlKey: true, shiftKey: true, key: "s" }),
+-      ),
+-    ).toBe(false);
+-  });
+-});
+-
+-describe("workspace search result count", () => {
+-  it("counts matching lines across grouped files", () => {
+-    const files: WorkspaceSearchFile[] = [
+-      {
+-        name: "one.md",
+-        path: "/notes/one.md",
+-        relativePath: "one.md",
+-        matches: [
+-          { lineNumber: 1, preview: "first" },
+-          { lineNumber: 8, preview: "second" },
+-        ],
+-      },
+-      {
+-        name: "two.yaml",
+-        path: "/notes/two.yaml",
+-        relativePath: "two.yaml",
+-        matches: [{ lineNumber: 4, preview: "third" }],
+-      },
+-    ];
+-
+-    expect(countWorkspaceSearchMatches(files)).toBe(3);
+-  });
+-});
+-
+-describe("open file search", () => {
+-  it("searches live file contents case-insensitively and groups matching lines", () => {
+-    const files = searchOpenFiles(
+-      [
+-        {
+-          itemId: "item-1",
+-          name: "notes.md",
+-          path: "/notes/notes.md",
+-          content: "First Needle\nno match\nsecond needle",
+-        },
+-        {
+-          itemId: "item-2",
+-          name: "Untitled-1",
+-          path: null,
+-          content: "NEEDLE in an unsaved draft",
+-        },
+-        {
+-          itemId: "item-3",
+-          name: "other.json",
+-          path: "/notes/other.json",
+-          content: '{"key": "different"}',
+-        },
+-      ],
+-      " needle ",
+-    );
+-
+-    expect(files).toHaveLength(2);
+-    expect(files[0]).toMatchObject({
+-      itemId: "item-1",
+-      path: "/notes/notes.md",
+-      relativePath: "/notes/notes.md",
+-    });
+-    expect(files[0].matches.map((match) => match.lineNumber)).toEqual([1, 3]);
+-    expect(files[1]).toMatchObject({
+-      itemId: "item-2",
+-      path: null,
+-      relativePath: "Unsaved draft",
+-    });
+-  });
+-
+-  it("returns no results for a blank query", () => {
+-    expect(
+-      searchOpenFiles(
+-        [
+-          {
+-            itemId: "item-1",
+-            name: "notes.md",
+-            path: "/notes/notes.md",
+-            content: "anything",
+-          },
+-        ],
+-        "   ",
+-      ),
+-    ).toEqual([]);
+-  });
+-});
+diff --git a/src/lib/yamlActions.test.ts b/src/lib/yamlActions.test.ts
+deleted file mode 100644
+index d9b2e5a..0000000
+--- a/src/lib/yamlActions.test.ts
++++ /dev/null
+@@ -1,172 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import {
+-  applyYamlTextAction,
+-  jsonToYaml,
+-  yamlDiagnostics,
+-} from "./yamlActions";
+-
+-const ok = (text: string) => ({ kind: "ok", text });
+-
+-describe("applyYamlTextAction format", () => {
+-  it("re-indents to two spaces", () => {
+-    expect(
+-      applyYamlTextAction("root:\n    nested:\n            key: 1\n", "format"),
+-    ).toEqual(ok("root:\n  nested:\n    key: 1\n"));
+-  });
+-
+-  it("keeps comments where they belong", () => {
+-    expect(
+-      applyYamlTextAction(
+-        "# header\nname:   markpad   # trailing\nlist:\n    - a\n",
+-        "format",
+-      ),
+-    ).toEqual(ok("# header\nname: markpad # trailing\nlist:\n  - a\n"));
+-  });
+-
+-  it("keeps block literals verbatim", () => {
+-    const text = "text: |\n  line one\n  line two\n";
+-    expect(applyYamlTextAction(text, "format")).toEqual(ok(text));
+-  });
+-
+-  it("keeps anchors and aliases", () => {
+-    const text = "base: &b\n  a: 1\nuse: *b\n";
+-    expect(applyYamlTextAction(text, "format")).toEqual(ok(text));
+-  });
+-
+-  it("keeps the document markers of a multi-document file", () => {
+-    expect(
+-      applyYamlTextAction("---\na:   1\n---\nb:    2\n", "format"),
+-    ).toEqual(ok("---\na: 1\n---\nb: 2\n"));
+-  });
+-
+-  it("does not re-wrap a long line", () => {
+-    const text = `key: ${"word ".repeat(30).trim()}\n`;
+-    expect(applyYamlTextAction(text, "format")).toEqual(ok(text));
+-  });
+-
+-  it("preserves a missing trailing newline", () => {
+-    expect(applyYamlTextAction("a:   1", "format")).toEqual(ok("a: 1"));
+-  });
+-
+-  it("leaves a buffer with no content alone", () => {
+-    // Serializing these would materialize an explicit `null`.
+-    expect(applyYamlTextAction("", "format")).toEqual(ok(""));
+-    expect(applyYamlTextAction("# just a note\n", "format")).toEqual(
+-      ok("# just a note\n"),
+-    );
+-  });
+-
+-  it("reports invalid YAML without output", () => {
+-    const result = applyYamlTextAction("a: 1\n b: 2\n", "format");
+-    expect(result.kind).toBe("error");
+-    if (result.kind === "error") {
+-      expect(result.message).toMatch(/^Not valid YAML: /);
+-      // The parser's excerpt-and-caret tail is not part of the message.
+-      expect(result.message).not.toContain("\n");
+-    }
+-  });
+-
+-  it("reports a duplicate key", () => {
+-    const result = applyYamlTextAction("a: 1\na: 2\n", "format");
+-    expect(result.kind).toBe("error");
+-    if (result.kind === "error") {
+-      expect(result.message).toBe("Not valid YAML: Map keys must be unique");
+-    }
+-  });
+-});
+-
+-describe("applyYamlTextAction sortKeys", () => {
+-  it("sorts mapping keys recursively", () => {
+-    expect(
+-      applyYamlTextAction("b:\n  d: 1\n  c: 2\na: 3\n", "sortKeys"),
+-    ).toEqual(ok("a: 3\nb:\n  c: 2\n  d: 1\n"));
+-  });
+-
+-  it("keeps sequence order but sorts mappings inside sequences", () => {
+-    expect(
+-      applyYamlTextAction("- z: 1\n  a: 2\n- 3\n- 1\n", "sortKeys"),
+-    ).toEqual(ok("- a: 2\n  z: 1\n- 3\n- 1\n"));
+-  });
+-
+-  it("carries each entry's comment along with it", () => {
+-    expect(
+-      applyYamlTextAction("b: 1 # about b\na: 2 # about a\n", "sortKeys"),
+-    ).toEqual(ok("a: 2 # about a\nb: 1 # about b\n"));
+-  });
+-
+-  it("leaves a mapping with a non-scalar key alone", () => {
+-    const text = "? - a\n  - b\n: pair\n";
+-    expect(applyYamlTextAction(text, "sortKeys")).toEqual(ok(text));
+-  });
+-
+-  it("reports invalid YAML without output", () => {
+-    expect(applyYamlTextAction("a: 1\na: 2\n", "sortKeys").kind).toBe("error");
+-  });
+-});
+-
+-describe("jsonToYaml", () => {
+-  it("converts an object to block YAML", () => {
+-    expect(jsonToYaml('{"b":1,"a":{"x":[1,2]},"s":"hi: there"}')).toEqual(
+-      ok('b: 1\na:\n  x:\n    - 1\n    - 2\ns: "hi: there"\n'),
+-    );
+-  });
+-
+-  it("converts an array to a block sequence", () => {
+-    expect(jsonToYaml('[1,"two",{"three":3}]')).toEqual(
+-      ok("- 1\n- two\n- three: 3\n"),
+-    );
+-  });
+-
+-  it("declines a bare scalar", () => {
+-    expect(jsonToYaml("42").kind).toBe("error");
+-    expect(jsonToYaml('"note"').kind).toBe("error");
+-    expect(jsonToYaml("null").kind).toBe("error");
+-  });
+-
+-  it("declines text that is not JSON", () => {
+-    expect(jsonToYaml("a: 1").kind).toBe("error");
+-    expect(jsonToYaml("{ nope }").kind).toBe("error");
+-  });
+-});
+-
+-describe("yamlDiagnostics", () => {
+-  it("says nothing about an empty or valid buffer", () => {
+-    expect(yamlDiagnostics("")).toEqual([]);
+-    expect(yamlDiagnostics("   \n\n")).toEqual([]);
+-    expect(yamlDiagnostics("a: 1\nb:\n  - x\n")).toEqual([]);
+-  });
+-
+-  it("reports a tab used as indentation, at its offset", () => {
+-    const text = "a:\n\tb: 1\n";
+-    const [first] = yamlDiagnostics(text);
+-    expect(first.severity).toBe("error");
+-    expect(first.message).toBe("Tabs are not allowed as indentation");
+-    expect(text.slice(first.from, first.to)).toBe("\t");
+-  });
+-
+-  it("reports a duplicate key", () => {
+-    const found = yamlDiagnostics("a: 1\na: 2\n");
+-    expect(found).toHaveLength(1);
+-    expect(found[0].message).toBe("Map keys must be unique");
+-  });
+-
+-  it("reports the parser's warnings too", () => {
+-    const found = yamlDiagnostics("%FOO bar\n---\na: 1\n");
+-    expect(found).toHaveLength(1);
+-    expect(found[0].severity).toBe("warning");
+-    expect(found[0].message).toBe("Unknown directive %FOO");
+-  });
+-
+-  it("keeps every range inside the document and non-empty", () => {
+-    const text = "a: [1, 2\n";
+-    for (const found of yamlDiagnostics(text)) {
+-      expect(found.from).toBeGreaterThanOrEqual(0);
+-      expect(found.to).toBeGreaterThan(found.from);
+-      expect(found.to).toBeLessThanOrEqual(text.length);
+-    }
+-  });
+-
+-  it("reports every document of a multi-document file", () => {
+-    expect(yamlDiagnostics("a: 1\n---\nb: 1\nb: 2\n")).toHaveLength(1);
+-  });
+-});
+diff --git a/src/lib/yamlAutoEdit.test.ts b/src/lib/yamlAutoEdit.test.ts
+deleted file mode 100644
+index 5a5c730..0000000
+--- a/src/lib/yamlAutoEdit.test.ts
++++ /dev/null
+@@ -1,303 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-import { EditorState, type Extension } from "@codemirror/state";
+-import { EditorView } from "@codemirror/view";
+-import { history, undo } from "@codemirror/commands";
+-import { yaml } from "@codemirror/lang-yaml";
+-import { closeBrackets, insertBracket } from "@codemirror/autocomplete";
+-import { Text } from "@codemirror/state";
+-import {
+-  applyYamlColon,
+-  applyYamlEnter,
+-  outerIndent,
+-  pasteJsonAsYaml,
+-  planYamlColon,
+-  planYamlEnter,
+-  yamlTypingExtensions,
+-} from "./yamlAutoEdit";
+-
+-// Same harness as the JSON comforts: a real — but headless — view under jsdom,
+-// with the neighbours these extensions have in the editor (yaml() for the
+-// language data closeBrackets reads, history() for the undo assertions). The
+-// spec string carries the caret inline as `|`.
+-function viewFrom(
+-  spec: string,
+-  extra: Extension = closeBrackets(),
+-): { view: EditorView; caret: number } {
+-  const caret = spec.indexOf("|");
+-  if (caret < 0) throw new Error(`no caret marker in: ${spec}`);
+-  const doc = spec.slice(0, caret) + spec.slice(caret + 1);
+-  const parent = document.createElement("div");
+-  document.body.appendChild(parent);
+-  const view = new EditorView({
+-    state: EditorState.create({
+-      doc,
+-      selection: { anchor: caret },
+-      extensions: [yaml(), history(), extra],
+-    }),
+-    parent,
+-  });
+-  return { view, caret };
+-}
+-
+-/** The document with `|` marking the caret. */
+-function mark(view: EditorView): string {
+-  const doc = view.state.doc.toString();
+-  const head = view.state.selection.main.head;
+-  return `${doc.slice(0, head)}|${doc.slice(head)}`;
+-}
+-
+-/** Press Enter the way the keymap does. */
+-function enter(spec: string): string {
+-  const { view } = viewFrom(spec);
+-  if (!applyYamlEnter(view)) {
+-    view.dispatch(view.state.replaceSelection("\n"));
+-  }
+-  const out = mark(view);
+-  view.destroy();
+-  return out;
+-}
+-
+-/** Type one character: the auto-edit layer first, then a plain insertion. */
+-function type(spec: string, input: string): string {
+-  const { view, caret } = viewFrom(spec);
+-  if (input !== ":" || !applyYamlColon(view, caret)) {
+-    view.dispatch(
+-      insertBracket(view.state, input) ?? view.state.replaceSelection(input),
+-    );
+-  }
+-  const out = mark(view);
+-  view.destroy();
+-  return out;
+-}
+-
+-describe("planYamlEnter", () => {
+-  it("continues a sequence item", () => {
+-    expect(planYamlEnter("- a")).toEqual({
+-      kind: "continue",
+-      insert: "- ",
+-      trimTrailing: 0,
+-    });
+-    expect(planYamlEnter("  - a")).toEqual({
+-      kind: "continue",
+-      insert: "  - ",
+-      trimTrailing: 0,
+-    });
+-    expect(planYamlEnter("- - a")).toEqual({
+-      kind: "continue",
+-      insert: "- - ",
+-      trimTrailing: 0,
+-    });
+-  });
+-
+-  it("ends the list on an item that is still empty", () => {
+-    expect(planYamlEnter("- ")).toEqual({ kind: "exitItem", indent: "" });
+-    expect(planYamlEnter("    - ")).toEqual({
+-      kind: "exitItem",
+-      indent: "    ",
+-    });
+-  });
+-
+-  it("indents one level below a key with no value", () => {
+-    expect(planYamlEnter("key:")).toEqual({
+-      kind: "continue",
+-      insert: "  ",
+-      trimTrailing: 0,
+-    });
+-    expect(planYamlEnter("  key:")).toEqual({
+-      kind: "continue",
+-      insert: "    ",
+-      trimTrailing: 0,
+-    });
+-  });
+-
+-  it("indents below a key inside an item, past the marker", () => {
+-    expect(planYamlEnter("- name:")).toEqual({
+-      kind: "continue",
+-      insert: "    ",
+-      trimTrailing: 0,
+-    });
+-  });
+-
+-  it("drops the space the colon comfort left behind", () => {
+-    expect(planYamlEnter("key: ")).toEqual({
+-      kind: "continue",
+-      insert: "  ",
+-      trimTrailing: 1,
+-    });
+-  });
+-
+-  it("leaves everything else to CodeMirror", () => {
+-    expect(planYamlEnter("")).toBeNull();
+-    expect(planYamlEnter("  ")).toBeNull();
+-    expect(planYamlEnter("key: value")).toBeNull();
+-    expect(planYamlEnter("-")).toBeNull();
+-    // A colon in prose is not a key: comments and quoted or multi-word text
+-    // stay outside the rule.
+-    expect(planYamlEnter("# a note:")).toBeNull();
+-    expect(planYamlEnter("key: value # why:")).toBeNull();
+-    expect(planYamlEnter("  and then this:")).toBeNull();
+-    expect(planYamlEnter('"quoted key":')).toBeNull();
+-  });
+-});
+-
+-describe("outerIndent", () => {
+-  const doc = (text: string) => Text.of(text.split("\n"));
+-
+-  it("finds the indent of the block's own key", () => {
+-    expect(outerIndent(doc("steps:\n  - a\n  - "), 3, "  ")).toBe("");
+-    expect(
+-      outerIndent(doc("jobs:\n  build:\n    steps:\n      - a\n      - "), 5, "      "),
+-    ).toBe("    ");
+-  });
+-
+-  it("skips blank lines on the way up", () => {
+-    expect(outerIndent(doc("a:\n\n    - x\n\n    - "), 5, "    ")).toBe("");
+-  });
+-
+-  it("falls back to the left margin", () => {
+-    expect(outerIndent(doc("- a\n- "), 2, "")).toBe("");
+-  });
+-});
+-
+-describe("Enter", () => {
+-  it("opens the next item of a sequence", () => {
+-    expect(enter("steps:\n  - build|")).toBe("steps:\n  - build\n  - |");
+-  });
+-
+-  it("clears an item marker the user did not fill in", () => {
+-    expect(enter("steps:\n  - build\n  - |")).toBe("steps:\n  - build\n|");
+-  });
+-
+-  it("steps back out to the indent the sequence hangs off", () => {
+-    expect(enter("jobs:\n  build:\n    steps:\n      - a\n      - |")).toBe(
+-      "jobs:\n  build:\n    steps:\n      - a\n    |",
+-    );
+-  });
+-
+-  it("opens the block below a key", () => {
+-    expect(enter("jobs:\n  build:|")).toBe("jobs:\n  build:\n    |");
+-  });
+-
+-  it("keeps the rest of the document", () => {
+-    expect(enter("a:\n  - one|\nb: 2\n")).toBe("a:\n  - one\n  - |\nb: 2\n");
+-  });
+-
+-  it("leaves a break in the middle of a line alone", () => {
+-    const { view } = viewFrom("- one| two");
+-    expect(applyYamlEnter(view)).toBe(false);
+-    view.destroy();
+-  });
+-
+-  it("leaves a break over a selection alone", () => {
+-    const { view } = viewFrom("- one|");
+-    view.dispatch({ selection: { anchor: 0, head: 5 } });
+-    expect(applyYamlEnter(view)).toBe(false);
+-    view.destroy();
+-  });
+-});
+-
+-describe("colon", () => {
+-  it("adds the space YAML needs after a key", () => {
+-    expect(type("name|", ":")).toBe("name: |");
+-    expect(type("  name|", ":")).toBe("  name: |");
+-    expect(type("- name|", ":")).toBe("- name: |");
+-    expect(type("a:\n  b|", ":")).toBe("a:\n  b: |");
+-  });
+-
+-  it("stays literal once the line already has its colon", () => {
+-    expect(type("url: http|", ":")).toBe("url: http:|");
+-    expect(planYamlColon("url: http")).toBe(false);
+-  });
+-
+-  it("stays literal in a comment or a quoted scalar", () => {
+-    expect(planYamlColon("# note")).toBe(false);
+-    expect(planYamlColon('"key')).toBe(false);
+-  });
+-
+-  it("stays literal where there is no key to end", () => {
+-    expect(planYamlColon("")).toBe(false);
+-    expect(planYamlColon("  ")).toBe(false);
+-    expect(planYamlColon("- ")).toBe(false);
+-    expect(planYamlColon("two words")).toBe(false);
+-  });
+-
+-  it("is not applied in the middle of a line", () => {
+-    const { view, caret } = viewFrom("nam|e");
+-    expect(applyYamlColon(view, caret)).toBe(false);
+-    view.destroy();
+-  });
+-});
+-
+-describe("extension bundle", () => {
+-  // CodeMirror walks the inputHandler facet in order and stops at the first
+-  // handler that returns true — the loop below is that walk.
+-  function typeThrough(spec: string, input: string): string {
+-    const { view, caret } = viewFrom(spec, yamlTypingExtensions());
+-    const handled = view.state
+-      .facet(EditorView.inputHandler)
+-      .some((handler) =>
+-        handler(view, caret, caret, input, () =>
+-          view.state.update({
+-            changes: { from: caret, insert: input },
+-            selection: { anchor: caret + input.length },
+-          }),
+-        ),
+-      );
+-    if (!handled) view.dispatch(view.state.replaceSelection(input));
+-    const out = mark(view);
+-    view.destroy();
+-    return out;
+-  }
+-
+-  it("adds the space after a key", () => {
+-    expect(typeThrough("name|", ":")).toBe("name: |");
+-  });
+-
+-  it("still lets closeBrackets pair a flow collection", () => {
+-    expect(typeThrough("ports: |", "[")).toBe("ports: [|]");
+-    expect(typeThrough("name: |", '"')).toBe('name: "|"');
+-  });
+-});
+-
+-describe("paste", () => {
+-  const json = '{"name":"markpad","tags":["editor","tauri"]}';
+-  const converted = "name: markpad\ntags:\n  - editor\n  - tauri\n";
+-
+-  it("lands JSON pasted into an empty buffer as YAML", () => {
+-    const { view } = viewFrom("|");
+-    expect(pasteJsonAsYaml(view, 0, 0, json)).toBe(true);
+-    expect(view.state.doc.toString()).toBe(converted);
+-    view.destroy();
+-  });
+-
+-  it("lands JSON pasted over a fully selected buffer as YAML", () => {
+-    const { view } = viewFrom("old: 1|");
+-    expect(pasteJsonAsYaml(view, 0, view.state.doc.length, json)).toBe(true);
+-    expect(view.state.doc.toString()).toBe(converted);
+-    view.destroy();
+-  });
+-
+-  it("keeps the raw paste as its own undo step", () => {
+-    const { view } = viewFrom("|");
+-    pasteJsonAsYaml(view, 0, 0, json);
+-    undo(view);
+-    expect(view.state.doc.toString()).toBe(json);
+-    undo(view);
+-    expect(view.state.doc.toString()).toBe("");
+-    view.destroy();
+-  });
+-
+-  it("leaves a paste into an existing document verbatim", () => {
+-    const { view, caret } = viewFrom("name: |\n");
+-    expect(pasteJsonAsYaml(view, caret, caret, json)).toBe(false);
+-    view.destroy();
+-  });
+-
+-  it("leaves clipboard text that is not JSON verbatim", () => {
+-    const { view } = viewFrom("|");
+-    expect(pasteJsonAsYaml(view, 0, 0, "a: 1\nb: 2\n")).toBe(false);
+-    expect(pasteJsonAsYaml(view, 0, 0, '"just a string"')).toBe(false);
+-    expect(view.state.doc.toString()).toBe("");
+-    view.destroy();
+-  });
+-});
+diff --git a/src/main.tsx b/src/main.tsx
+index 81da346..d2e67dc 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,6 +1,8 @@
+ import React from "react";
+ import ReactDOM from "react-dom/client";
+ import App from "./App";
++// RepairBench instrumentation: the read-only probe publisher.
++import { publishRbProbe } from "./rbProbe";
+ import "./styles.css";
+ 
+ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+@@ -8,3 +10,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+     <App />
+   </React.StrictMode>,
+ );
++
++// RepairBench instrumentation: publish window.__rb exactly once, after the first render
++// is scheduled. The probe only reads what the app itself rendered.
++publishRbProbe();
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+index 0000000..718b8cb
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,846 @@
++// RepairBench instrumentation: a strictly READ-ONLY probe published once as
++// `window.__rb` (see src/main.tsx).
++//
++// Contract:
++//   * published exactly once, right after the first render is scheduled;
++//   * every member is a pure read of the DOM / storage / location / performance
++//     timeline that the application itself already produced - the probe never
++//     writes application state, never dispatches an event, never touches
++//     storage, never mutates the DOM and never changes what is rendered;
++//   * every member is FAIL-CLOSED. A reading that cannot be taken returns a
++//     sentinel that the verifier's loose comparison can never mistake for a
++//     real one: counts return -999999, strings return "__NOPROBE__", and
++//     booleans return the STRING "__NOPROBE__" (so a probe failure can never
++//     read as true, false, 0, 1 or "");
++//   * the two error counters are passive listeners: they observe, and they do
++//     not capture, cancel, swallow or re-dispatch anything;
++//   * the members whose ABSENCE is itself the intended reading say so in a
++//     comment and return "" / 0 / false instead of a sentinel. They are the
++//     exception, and each one is paired with a checkpoint that asserts the
++//     opposite value in another state, so neither can go vacuous.
++//
++// It exists so the verifier can read scalars off the app's own render path
++// (accessible names, ARIA state, the app's own class names) instead of
++// scraping framework internals.
++
++const NUM_FAIL = -999999;
++const STR_FAIL = "__NOPROBE__";
++
++const TOOLBAR = '[role="toolbar"][aria-label="Workspace controls"]';
++const RECENTS_NAV = 'nav[aria-label="Recent files"]';
++const RECENT_NAME = '[data-testid="recents-name"]';
++const RECENT_BADGE = '[data-testid="recents-badge"]';
++const MENU = 'div[role="menu"]';
++const MENU_ITEM = 'div[role="menu"] button[role="menuitem"]';
++const FIND_BAR = 'div[role="search"][aria-label="Find in document"]';
++const FIND_STATUS = 'div[role="search"][aria-label="Find in document"] span[role="status"]';
++const PREVIEW = ".markpad-preview";
++const EDITOR_PANE = 'section[aria-label="Editor"]';
++const PREVIEW_PANE = 'section[aria-label="Preview"]';
++const LANGUAGE_SELECT = 'select[aria-label="Document language"]';
++const DATA_TOOLBAR = '[role="toolbar"][aria-label$=" actions"]';
++const FORMAT_TOOLBAR = '[role="toolbar"][aria-label="Text formatting"]';
++const VIEW_GROUP = '[data-testid="view-mode-group"]';
++const WS_PANEL = 'section[aria-label="Search files"]';
++const WS_LIVE = 'section[aria-label="Search files"] div.sr-only[aria-live="polite"]';
++const WS_SUMMARY = 'section[aria-label="Search files"] div.sticky';
++const WS_INPUT = "#workspace-search-input";
++const WS_SCOPE_FOLDER = '[data-testid="ws-scope-folder"]';
++const WS_RESULT = '[data-testid="ws-result"]';
++const WS_LINE = '[data-testid="ws-line"]';
++const ERROR_BANNER = '[data-testid="error-banner"]';
++const PREVIEW_BLOCKS = "h1,h2,h3,h4,h5,h6,p,ul,ol,pre,blockquote";
++const VIEW_UNAVAILABLE_TITLE =
++  "View modes are unavailable for JSON and YAML documents";
++
++// The application's own localStorage namespace (src/lib/preferences.ts:8-12).
++// Anything outside it is residue the verifier wants to hear about.
++const PREF_PREFIX = "markpad.";
++
++// Globals that are legitimately present once the app is running in a plain
++// browser: the probe itself, the offline host stub installed by
++// environment/adaptation.patch, and the runner's own paste detector
++// (evaluation/dsl_runner.mjs sets window.__wlbPasteFired for Ctrl+V).
++const GLOBAL_ALLOW = [
++  "__rb",
++  "__TAURI_INTERNALS__",
++  "__TAURI_EVENT_PLUGIN_INTERNALS__",
++  "__wlbPasteFired",
++];
++
++function q(sel: string): Element | null {
++  try {
++    return document.querySelector(sel);
++  } catch {
++    return null;
++  }
++}
++
++function qa(sel: string): Element[] {
++  try {
++    return Array.from(document.querySelectorAll(sel));
++  } catch {
++    return [];
++  }
++}
++
++function norm(v: unknown): string {
++  return String(v == null ? "" : v).replace(/\s+/g, " ").trim();
++}
++
++function elText(el: Element | null): string {
++  if (el == null) return STR_FAIL;
++  const h = el as HTMLElement;
++  return norm(h.innerText || el.textContent || "");
++}
++
++function elAttr(el: Element | null, name: string): string {
++  if (el == null) return STR_FAIL;
++  const v = el.getAttribute(name);
++  return v == null ? STR_FAIL : norm(v);
++}
++
++function joinTexts(list: Element[]): string {
++  return list
++    .map((el) => norm((el as HTMLElement).innerText || el.textContent || ""))
++    .join("|");
++}
++
++function num(v: number): number {
++  return typeof v === "number" && Number.isFinite(v) ? v : NUM_FAIL;
++}
++
++function count(sel: string): number {
++  return num(qa(sel).length);
++}
++
++// A menu item renders `<span>label</span><span>count</span>`, so its text is
++// "Close others 2". The count belongs to the bulk-close bookkeeping, not to the
++// label, and reading it would make a guard checkpoint depend on idsToClose() -
++// the very function two of the defects live in. Strip it.
++function menuLabel(el: Element): string {
++  const raw = norm((el as HTMLElement).innerText || el.textContent || "");
++  return norm(raw.replace(/\d+$/, ""));
++}
++
++function emptyRoot(): HTMLElement | null {
++  for (const h of qa("h2")) {
++    if (/no file open/i.test(h.textContent || "")) {
++      const p = h.parentElement;
++      if (p) return p;
++    }
++  }
++  return null;
++}
++
++function findStatusText(): string {
++  const el = q(FIND_STATUS);
++  return el == null ? STR_FAIL : norm(el.textContent || "");
++}
++
++// SearchBar.tsx:38-43 is the only place this text is composed:
++//   ""            -> "Type to search"   (no query typed yet - NOT a real zero)
++//   total === 0   -> "No results"
++//   current === 0 -> "<total> results"
++//   otherwise     -> "<current> of <total>"
++// "Type to search" deliberately parses to null so it can never masquerade as a
++// measured zero.
++function findStatusParts(): { current: number; total: number } | null {
++  const s = findStatusText();
++  const both = /^(\d+) of (\d+)$/.exec(s);
++  if (both) {
++    return { current: parseInt(both[1], 10), total: parseInt(both[2], 10) };
++  }
++  const many = /^(\d+) results$/.exec(s);
++  if (many) return { current: 0, total: parseInt(many[1], 10) };
++  if (s === "No results") return { current: 0, total: 0 };
++  return null;
++}
++
++function pressedOf(sel: string): boolean | string {
++  try {
++    const el = q(sel);
++    if (el == null) return STR_FAIL;
++    return el.getAttribute("aria-pressed") === "true";
++  } catch {
++    return STR_FAIL;
++  }
++}
++
++function underscoreGlobals(): string[] {
++  try {
++    return Object.getOwnPropertyNames(window).filter(
++      (k) => k.indexOf("__") === 0,
++    );
++  } catch {
++    return [];
++  }
++}
++
++function localKeys(): string[] {
++  const out: string[] = [];
++  try {
++    for (let i = 0; i < localStorage.length; i += 1) {
++      const k = localStorage.key(i);
++      if (k != null) out.push(k);
++    }
++  } catch {
++    return [];
++  }
++  return out;
++}
++
++let uncaughtCount = 0;
++let rejectionCount = 0;
++let lastErrorMessage = "";
++let globalsAtPublish: string[] = [];
++let published = false;
++
++const probe = {
++  version: 1,
++
++  boot: {
++    // True once React has mounted the real chrome: #root has children, the
++    // workspace toolbar and the recents sidebar are both in the DOM, and the
++    // body carries text. Every checkpoint polls this before it interacts.
++    ready: (): boolean | string => {
++      try {
++        const root = document.getElementById("root");
++        if (root == null || root.children.length === 0) return false;
++        if (q(TOOLBAR) == null) return false;
++        if (q(RECENTS_NAV) == null) return false;
++        return norm(document.body.textContent || "").length > 0;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    rootKids: (): number => {
++      try {
++        const root = document.getElementById("root");
++        return root == null ? NUM_FAIL : num(root.children.length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++  },
++
++  net: {
++    // Cross-origin references, counted two ways at once: the resource-timing
++    // buffer (what the browser actually fetched) and the DOM's own url-bearing
++    // attributes (what the markup asks for). Only http/https can count, so
++    // data:, blob: and fragment urls are never mistaken for an external host,
++    // and the SVG xmlns string http://www.w3.org/2000/svg is an attribute the
++    // selector list does not look at.
++    externalResources: (): number => {
++      try {
++        const origin = location.origin;
++        const foreign = (raw: string): boolean => {
++          if (!raw) return false;
++          let u: URL;
++          try {
++            u = new URL(raw, location.href);
++          } catch {
++            return false;
++          }
++          if (u.protocol !== "http:" && u.protocol !== "https:") return false;
++          return u.origin !== origin;
++        };
++        let n = 0;
++        for (const e of performance.getEntriesByType("resource")) {
++          if (foreign(String(e.name))) n += 1;
++        }
++        const refs = qa(
++          "img[src],script[src],link[href],source[src],iframe[src],video[src],audio[src],use[href],image[href]",
++        );
++        for (const el of refs) {
++          const raw = el.getAttribute("src") || el.getAttribute("href") || "";
++          if (foreign(raw)) n += 1;
++        }
++        return num(n);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    resourceEntries: (): number => {
++      try {
++        return num(performance.getEntriesByType("resource").length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++  },
++
++  globals: {
++    // Own `__`-prefixed window globals that appeared AFTER the probe was
++    // published. The baseline-relative form is the asserted one: it cannot
++    // false-red on whatever the host browser happens to own, and it still
++    // catches a "fix" that parks a flag on window (including the harness's own
++    // latch global, which is why no latch checkpoint also asserts this).
++    unexpected: (): number => {
++      try {
++        const now = underscoreGlobals();
++        let n = 0;
++        for (const k of now) {
++          if (GLOBAL_ALLOW.indexOf(k) >= 0) continue;
++          if (globalsAtPublish.indexOf(k) >= 0) continue;
++          n += 1;
++        }
++        return num(n);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    // Absolute form, kept as a diagnostic sidecar reading (not asserted): the
++    // same count against the fixed allowlist only.
++    unexpectedAbsolute: (): number => {
++      try {
++        const now = underscoreGlobals();
++        let n = 0;
++        for (const k of now) if (GLOBAL_ALLOW.indexOf(k) < 0) n += 1;
++        return num(n);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    atPublish: (): number => num(globalsAtPublish.length),
++    rbIsFrozen: (): boolean | string => {
++      try {
++        const w = window as unknown as Record<string, unknown>;
++        return Object.isFrozen(w.__rb) === true;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  errors: {
++    uncaught: (): number => num(uncaughtCount),
++    rejections: (): number => num(rejectionCount),
++    lastMessage: (): string => (lastErrorMessage === "" ? "" : lastErrorMessage),
++  },
++
++  storage: {
++    localKeysExtra: (): number => {
++      try {
++        let n = 0;
++        for (const k of localKeys()) if (k.indexOf(PREF_PREFIX) !== 0) n += 1;
++        return num(n);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    localKeys: (): string => {
++      try {
++        return localKeys().sort().join("|");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    prefRaw: (key: string): string => {
++      try {
++        const v = localStorage.getItem(String(key));
++        // "" is the legitimate reading for an unset preference.
++        return v == null ? "" : norm(v);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    themeRaw: (): string => {
++      try {
++        const v = localStorage.getItem(PREF_PREFIX + "theme");
++        return v == null ? "" : norm(v);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    sessionLen: (): number => {
++      try {
++        return num(sessionStorage.length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    cookies: (): string => {
++      try {
++        // "" is the legitimate reading for a cookie-free origin.
++        return norm(document.cookie);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    urlTail: (): string => {
++      try {
++        // "" is the legitimate reading: markpad is a single-route desktop shell
++        // and a plain boot must not park state in the URL.
++        return norm(location.search + location.hash);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  toolbar: {
++    buttons: (): number => count(TOOLBAR + " button"),
++    labels: (): string => {
++      try {
++        return joinTexts(qa(TOOLBAR + " button"));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    autoSaveChecked: (): boolean | string => {
++      try {
++        const el = q(TOOLBAR + ' input[type="checkbox"]') as HTMLInputElement | null;
++        if (el == null) return STR_FAIL;
++        return el.checked === true;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  empty: {
++    present: (): boolean | string => {
++      try {
++        return emptyRoot() != null;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    h2: (): string => {
++      try {
++        for (const h of qa("h2")) {
++          if (/no file open/i.test(h.textContent || "")) return norm(h.textContent);
++        }
++        return STR_FAIL;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    kbdCount: (): number => {
++      try {
++        const r = emptyRoot();
++        return r == null ? NUM_FAIL : num(r.querySelectorAll("kbd").length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    kbds: (): string => {
++      try {
++        const r = emptyRoot();
++        return r == null ? STR_FAIL : joinTexts(Array.from(r.querySelectorAll("kbd")));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    modKey: (): string => {
++      try {
++        const r = emptyRoot();
++        if (r == null) return STR_FAIL;
++        const k = r.querySelector("kbd");
++        if (k == null) return STR_FAIL;
++        const t = norm(k.textContent);
++        const i = t.indexOf("+");
++        return i > 0 ? t.slice(0, i) : STR_FAIL;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    panes: (): number => {
++      try {
++        return num(qa(EDITOR_PANE).length + qa(PREVIEW_PANE).length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++  },
++
++  doc: {
++    lines: (): number => count(".cm-line"),
++    len: (): number => {
++      try {
++        const c = q(".cm-content");
++        return c == null ? NUM_FAIL : num(norm(c.textContent || "").length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    text: (): string => {
++      try {
++        return joinTexts(qa(".cm-line"));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    editors: (): number => count(".cm-editor"),
++  },
++
++  recents: {
++    rows: (): number => count(RECENTS_NAV + ' li[role="listitem"]'),
++    name: (i: number): string => {
++      try {
++        const els = qa(RECENT_NAME);
++        const el = els[Number(i)];
++        return el == null ? STR_FAIL : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    names: (): string => {
++      try {
++        return joinTexts(qa(RECENT_NAME));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    namesSorted: (): string => {
++      try {
++        return qa(RECENT_NAME)
++          .map((el) => norm(el.textContent || ""))
++          .sort()
++          .join("|");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    distinctNames: (): number => {
++      try {
++        const seen: string[] = [];
++        for (const el of qa(RECENT_NAME)) {
++          const t = norm(el.textContent || "");
++          if (seen.indexOf(t) < 0) seen.push(t);
++        }
++        return num(seen.length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    ariaCurrent: (): number => count(RECENTS_NAV + ' button[aria-current="true"]'),
++    // "" is the legitimate reading: RecentsPanel.tsx:166-170 renders the count
++    // badge only when the list is non-empty, so its absence IS the empty-list
++    // fact. P04 asserts "2" on the same getter, which keeps it from going
++    // vacuous.
++    badgeText: (): string => {
++      try {
++        const el = q(RECENT_BADGE);
++        return el == null ? "" : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    emptyText: (): string => {
++      try {
++        const el = q(RECENTS_NAV + " p");
++        return el == null ? STR_FAIL : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    menus: (): number => count(MENU),
++    menuCount: (): number => count(MENU_ITEM),
++    menuLabels: (): string => {
++      try {
++        return qa(MENU_ITEM).map(menuLabel).join("|");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    menuDisabled: (): number => count(MENU_ITEM + "[disabled]"),
++  },
++
++  find: {
++    open: (): boolean | string => {
++      try {
++        return q(FIND_BAR) != null;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    status: (): string => findStatusText(),
++    total: (): number => {
++      try {
++        const p = findStatusParts();
++        return p == null ? NUM_FAIL : num(p.total);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    current: (): number => {
++      try {
++        const p = findStatusParts();
++        return p == null ? NUM_FAIL : num(p.current);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    highlights: (): number => count(".cm-searchMatch"),
++    selectedHighlights: (): number => count(".cm-searchMatch-selected"),
++    inputValue: (): string => {
++      try {
++        const el = q('[data-testid="find-input"]') as HTMLInputElement | null;
++        return el == null ? STR_FAIL : norm(el.value);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  preview: {
++    panes: (): number => count(PREVIEW),
++    paragraphs: (): number => count(PREVIEW + " p"),
++    brInFirstParagraph: (): number => {
++      try {
++        const p = q(PREVIEW + " p");
++        return p == null ? NUM_FAIL : num(p.querySelectorAll("br").length);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    firstSourceLine: (): string =>
++      elAttr(q(PREVIEW + " [data-source-line]"), "data-source-line"),
++    stampedBlocks: (): number => count(PREVIEW + " [data-source-line]"),
++    unstampedBlocks: (): number => {
++      try {
++        let n = 0;
++        // PREVIEW_BLOCKS is a comma list, so `PREVIEW + " " + PREVIEW_BLOCKS`
++        // would scope only its FIRST selector: ".markpad-preview h1,h2,p,..."
++        // counts every h2/p/ul/pre in the whole DOCUMENT, and the app shell
++        // renders <p> of its own (App.tsx:185 EmptyState, ConfirmDialog.tsx:55,
++        // WorkspaceSearchPanel.tsx:323-348). Scope each block selector on its
++        // own so the reading is really "preview blocks with no source stamp".
++        for (const block of PREVIEW_BLOCKS.split(",")) {
++          for (const el of qa(PREVIEW + " " + block)) {
++            if (!el.hasAttribute("data-source-line")) n += 1;
++          }
++        }
++        return num(n);
++      } catch {
++        return NUM_FAIL;
++      }
++    },
++    headings: (): number => count(PREVIEW + " h1"),
++    lists: (): number => count(PREVIEW + " ul"),
++    pres: (): number => count(PREVIEW + " pre"),
++    svgs: (): number => count(PREVIEW + " svg"),
++    diagramPlaceholders: (): number => count(".markpad-diagram"),
++    diagramSvgs: (): number => count(".markpad-diagram-view svg"),
++    head: (): string => {
++      try {
++        const el = q(PREVIEW);
++        return el == null ? STR_FAIL : norm(el.textContent || "").slice(0, 120);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  lang: {
++    value: (): string => {
++      try {
++        const el = q(LANGUAGE_SELECT) as HTMLSelectElement | null;
++        return el == null ? STR_FAIL : norm(el.value);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    previewPanes: (): number => count(PREVIEW_PANE),
++    editorPanes: (): number => count(EDITOR_PANE),
++    dataToolbars: (): number => count(DATA_TOOLBAR),
++    dataToolbarLabel: (): string => elAttr(q(DATA_TOOLBAR), "aria-label"),
++    formatToolbars: (): number => count(FORMAT_TOOLBAR),
++  },
++
++  view: {
++    groupButtons: (): number => count(VIEW_GROUP + " button"),
++    labels: (): string => {
++      try {
++        return joinTexts(qa(VIEW_GROUP + " button"));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    pressedCount: (): number => count(VIEW_GROUP + ' button[aria-pressed="true"]'),
++    // "" is the legitimate reading for "no segment is pressed", which is exactly
++    // what a data document must show; F12/P19 assert the pressed count on the
++    // same state, so the empty string cannot carry a green on its own.
++    pressedLabel: (): string => {
++      try {
++        const el = q(VIEW_GROUP + ' button[aria-pressed="true"]');
++        return el == null ? "" : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    pressedIsDisabled: (): boolean | string => {
++      try {
++        const el = q(VIEW_GROUP + ' button[aria-pressed="true"]') as HTMLButtonElement | null;
++        if (el == null) return false;
++        return el.disabled === true;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    disabledCount: (): number => count(VIEW_GROUP + " button[disabled]"),
++    unavailableTitles: (): number =>
++      count(VIEW_GROUP + ' button[title="' + VIEW_UNAVAILABLE_TITLE + '"]'),
++  },
++
++  ws: {
++    open: (): boolean | string => {
++      try {
++        return q(WS_PANEL) != null;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    // "" is the legitimate reading before a search has run (the live region is
++    // always mounted and empty until then); F10 polls it until it is non-empty.
++    statusText: (): string => {
++      try {
++        const el = q(WS_LIVE);
++        return el == null ? STR_FAIL : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    summary: (): string => {
++      try {
++        const el = q(WS_SUMMARY);
++        return el == null ? STR_FAIL : norm(el.textContent || "");
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    rows: (): number => count(WS_RESULT),
++    lineBadges: (): string => {
++      try {
++        return joinTexts(qa(WS_LINE));
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    firstLineBadge: (): string => elText(q(WS_LINE)),
++    firstRowTitle: (): string => elAttr(q(WS_RESULT), "title"),
++    folderPressed: (): boolean | string => pressedOf(WS_SCOPE_FOLDER),
++    inputDisabled: (): boolean | string => {
++      try {
++        const el = q(WS_INPUT) as HTMLInputElement | null;
++        if (el == null) return STR_FAIL;
++        return el.disabled === true;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    inputValue: (): string => {
++      try {
++        const el = q(WS_INPUT) as HTMLInputElement | null;
++        return el == null ? STR_FAIL : norm(el.value);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    pickScopeText: (): boolean | string => {
++      try {
++        for (const el of qa(WS_PANEL + " p")) {
++          if (norm(el.textContent || "") === "Pick a search scope") return true;
++        }
++        return false;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    noResultsText: (): boolean | string => {
++      try {
++        for (const el of qa(WS_PANEL + " p")) {
++          if (norm(el.textContent || "") === "No results found") return true;
++        }
++        return false;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    errorText: (): string => {
++      try {
++        for (const el of qa(WS_PANEL + " div")) {
++          const t = norm(el.textContent || "");
++          if (t.length > 0 && t.length < 200 && el.children.length === 0) {
++            if (/could not|failed|permission/i.test(t)) return t;
++          }
++        }
++        return "";
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  theme: {
++    name: (): string => {
++      try {
++        const v = document.documentElement.dataset.theme;
++        return v == null ? STR_FAIL : norm(v);
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++
++  banner: {
++    present: (): boolean | string => {
++      try {
++        return q(ERROR_BANNER) != null;
++      } catch {
++        return STR_FAIL;
++      }
++    },
++    text: (): string => elText(q(ERROR_BANNER)),
++    // The offline host stub must never surface in user-visible copy: every
++    // caller of the Tauri commands has its own documented fallback
++    // (src/lib/fileOpen.ts:87-108 friendlyMessage), so a banner that quotes the
++    // stub, the IPC layer or a raw JS value is a leak.
++    leaksHostError: (): boolean | string => {
++      try {
++        const el = q(ERROR_BANNER);
++        if (el == null) return STR_FAIL;
++        const t = norm(el.textContent || "").toLowerCase();
++        return /tauri|rb-offline-stub|invoke|ipc|transformcallback|undefined|\[object object\]|null is not/.test(
++          t,
++        );
++      } catch {
++        return STR_FAIL;
++      }
++    },
++  },
++};
++
++export type RbProbe = typeof probe;
++
++export function publishRbProbe(): void {
++  try {
++    if (published) return;
++    published = true;
++    globalsAtPublish = underscoreGlobals();
++    window.addEventListener("error", (ev: ErrorEvent) => {
++      uncaughtCount += 1;
++      const m = ev && ev.message ? String(ev.message) : "";
++      if (m.length > 0 && lastErrorMessage.length < 200) {
++        lastErrorMessage = m.slice(0, 200);
++      }
++    });
++    window.addEventListener("unhandledrejection", () => {
++      rejectionCount += 1;
++    });
++    const w = window as unknown as Record<string, unknown>;
++    // Freeze every namespace as well as the root, so nothing can add a member
++    // to the probe after the fact (a "fix" that teaches the probe a new reading
++    // would be indistinguishable from the app behaving).
++    const root = probe as unknown as Record<string, unknown>;
++    for (const k of Object.keys(root)) {
++      const v = root[k];
++      if (v != null && typeof v === "object") Object.freeze(v);
++    }
++    w.__rb = Object.freeze(probe);
++  } catch {
++    // Instrumentation must never be the reason the app fails to boot.
++  }
++}
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index 306010b..0000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { defineConfig } from "vitest/config";
+-
+-// A standalone Vitest config (takes precedence over vite.config.ts) so the
+-// Tauri-tuned dev server config is not loaded for unit tests. jsdom provides
+-// the `window` that DOMPurify needs in src/lib/markdown.ts; the CodeMirror
+-// state/tree used by the formatting tests is pure JS and needs no DOM.
+-export default defineConfig({
+-  test: {
+-    environment: "jsdom",
+-    include: ["src/**/*.test.ts"],
+-  },
+-});

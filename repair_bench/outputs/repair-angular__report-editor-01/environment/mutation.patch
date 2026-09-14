@@ -1,0 +1,143 @@
+diff --git a/src/app/core/directive/autofous.directive.ts b/src/app/core/directive/autofous.directive.ts
+index 7e6f1ea..c7c2b6e 100644
+--- a/src/app/core/directive/autofous.directive.ts
++++ b/src/app/core/directive/autofous.directive.ts
+@@ -8,7 +8,7 @@ export class AutoFocusDirective implements OnInit, OnChanges {
+   constructor(private elementRef: ElementRef) {}
+ 
+   ngOnInit(): void {
+-    if (this.appAutoFocus) {
++    if (!this.appAutoFocus) {
+       this.elementRef.nativeElement.focus();
+     }
+   }
+diff --git a/src/app/core/model/key-code.enmu.ts b/src/app/core/model/key-code.enmu.ts
+index 651011b..b5b1e54 100644
+--- a/src/app/core/model/key-code.enmu.ts
++++ b/src/app/core/model/key-code.enmu.ts
+@@ -1,6 +1,6 @@
+ export enum KeyboardCode {
+   Tab = 'Tab',
+-  Enter = 'Enter',
++  Enter = 'NumpadEnter',
+   PageUp = 'PageUp',
+   PageDown = 'PageDown',
+   Home = 'Home',
+diff --git a/src/app/core/model/style.const.ts b/src/app/core/model/style.const.ts
+index ac07b40..d03563f 100644
+--- a/src/app/core/model/style.const.ts
++++ b/src/app/core/model/style.const.ts
+@@ -9,7 +9,7 @@ export const Style = {
+   scrollBarThumbMinSize: 15,
+   scrollBarThumbRadius: 4,
+   cellWidth: 100,
+-  cellHeight: 30,
++  cellHeight: 22,
+   rulerCellBackgroundColor: '#f0f0f0',
+   activeRulerCellBacgroundColor: '#c9c9c9',
+   rulerCellColor: '#000',
+diff --git a/src/app/editor/editor-panel/cell-edit/cell-edit.component.html b/src/app/editor/editor-panel/cell-edit/cell-edit.component.html
+index eb560e0..7f8af0d 100644
+--- a/src/app/editor/editor-panel/cell-edit/cell-edit.component.html
++++ b/src/app/editor/editor-panel/cell-edit/cell-edit.component.html
+@@ -1,7 +1,7 @@
+ <div
+   style="position: absolute; overflow: hidden"
+   [ngStyle]="{
+-    'left.px': (editingCell?.x - scrollLeft - offsetLeft + 1) * multiple,
++    'left.px': (editingCell?.x - scrollLeft + 1) * multiple,
+     'top.px': (editingCell?.y - scrollTop - offsetTop + 1) * multiple,
+     'width.px':
+       (editingCell?.width - editingCell?.style.borderWidth) * multiple,
+diff --git a/src/app/editor/editor-panel/editor-panel.component.html b/src/app/editor/editor-panel/editor-panel.component.html
+index 6e92229..add06f4 100644
+--- a/src/app/editor/editor-panel/editor-panel.component.html
++++ b/src/app/editor/editor-panel/editor-panel.component.html
+@@ -147,7 +147,7 @@
+       }"
+     ></i>
+     <div
+-      *ngIf="showBackColorPanel"
++      *ngIf="showBackColorPanel && showFontColorPanel"
+       style="position: absolute; left: 0; top: 44px; z-index: 1000"
+     >
+       <ng-container *ngTemplateOutlet="colorPanel"></ng-container>
+diff --git a/src/app/editor/editor-panel/editor-panel.component.scss b/src/app/editor/editor-panel/editor-panel.component.scss
+index 2fb7234..90c7331 100644
+--- a/src/app/editor/editor-panel/editor-panel.component.scss
++++ b/src/app/editor/editor-panel/editor-panel.component.scss
+@@ -88,7 +88,7 @@
+       box-sizing: border-box;
+       pointer-events: auto;
+       // white-space: nowrap;
+-      white-space:pre;
++      white-space:nowrap;
+       overflow: hidden;
+       vertical-align: middle;
+       line-height: 1;
+diff --git a/src/app/editor/editor-panel/editor-panel.component.ts b/src/app/editor/editor-panel/editor-panel.component.ts
+index 39fc0f4..a6c7a16 100644
+--- a/src/app/editor/editor-panel/editor-panel.component.ts
++++ b/src/app/editor/editor-panel/editor-panel.component.ts
+@@ -82,7 +82,7 @@ export class EditorPanelComponent
+ 
+   zoomIn() {
+     if (this.multiple < 1.5) {
+-      this.multiple += 0.1;
++      this.multiple -= 0.1;
+       this.init();
+       this.cdr.detectChanges();
+     }
+@@ -137,7 +137,7 @@ export class EditorPanelComponent
+   }
+   changeColor(event) {
+     if (this.showFontColorPanel) {
+-      this.changeStyle({ color: event.target.style.backgroundColor });
++      this.changeStyle({ background: event.target.style.backgroundColor });
+     } else if (this.showBackColorPanel) {
+       this.changeStyle({ background: event.target.style.backgroundColor });
+     }
+diff --git a/src/app/editor/editor-panel/panel.ts b/src/app/editor/editor-panel/panel.ts
+index b86ce83..9988e87 100644
+--- a/src/app/editor/editor-panel/panel.ts
++++ b/src/app/editor/editor-panel/panel.ts
+@@ -1382,7 +1382,7 @@ export class Panel {
+       columnNumArr.unshift(String.fromCharCode((columnIndex % 26 || 26) + 64));
+       columnIndex = Math.floor(columnIndex / 26);
+     }
+-    columnNumArr.unshift(String.fromCharCode(columnIndex + 64));
++    columnNumArr.unshift(String.fromCharCode(columnIndex + 65));
+ 
+     return columnNumArr.join('');
+   }
+@@ -4212,7 +4212,7 @@ export class Panel {
+         }
+         if (!hasCombine) {
+           cell.rowSpan = rowEnd - rowStart + 1;
+-          cell.colSpan = columnEnd - columnStart + 1;
++          cell.colSpan = columnEnd - columnStart;
+           for (
+             let i = rowStart, rLen = Math.min(this.rows.length - 1, rowEnd);
+             i <= rLen;
+@@ -4410,7 +4410,7 @@ export class Panel {
+           j++
+         ) {
+           // this.cells[i][j].style.fontWeight = fontWeight;
+-          Object.assign(this.cells[i][j].style, style);
++          Object.assign(style, this.cells[i][j].style);
+           if (this.cells[i][j].content.html) {
+             if (style.fontSize) {
+               this.cells[i][j].content.html = this.cells[i][
+diff --git a/src/styles.scss b/src/styles.scss
+index b61f0c4..94e5028 100644
+--- a/src/styles.scss
++++ b/src/styles.scss
+@@ -5,7 +5,7 @@ body {
+   height: 100%;
+   margin: 0;
+   padding: 0;
+-  overflow: hidden;
++  overflow: auto;
+ }
+ 
+ article,

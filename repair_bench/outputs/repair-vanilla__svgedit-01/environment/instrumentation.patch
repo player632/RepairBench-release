@@ -1,0 +1,599 @@
+diff --git a/packages/svgcanvas/core/clear.js b/packages/svgcanvas/core/clear.js
+index 713a37d..3110e0a 100644
+--- a/packages/svgcanvas/core/clear.js
++++ b/packages/svgcanvas/core/clear.js
+@@ -35,6 +35,7 @@ export const clearSvgContentElementInit = () => {
+ 
+   const pel = svgCanvas.getSvgRoot()
+   el.setAttribute('id', 'svgcontent')
++  el.setAttribute('data-testid', 'svgcontent')
+   el.setAttribute('width', dimensions[0])
+   el.setAttribute('height', dimensions[1])
+   el.setAttribute('x', dimensions[0])
+diff --git a/packages/svgcanvas/core/draw.js b/packages/svgcanvas/core/draw.js
+index aa20f15..b15657c 100644
+--- a/packages/svgcanvas/core/draw.js
++++ b/packages/svgcanvas/core/draw.js
+@@ -435,6 +435,7 @@ export class Drawing {
+       this.all_layers.splice(index, 1)
+       delete this.layer_map[name]
+     }
++    this.tagLayers()
+ 
+     hrService.endBatchCommand()
+   }
+@@ -548,6 +549,19 @@ export class Drawing {
+       layer.activate()
+     }
+     this.current_layer = layer
++    this.tagLayers()
++  }
++
++  /**
++    * Tags every layer group with deterministic probe attributes.
++    * @returns {void}
++    */
++  tagLayers () {
++    this.all_layers.forEach((l, idx) => {
++      const g = l.getGroup()
++      g.setAttribute('data-testid', 'layer-g-' + idx)
++      g.setAttribute('data-layer-name', l.getName())
++    })
+   }
+ 
+   /**
+@@ -584,6 +598,7 @@ export class Drawing {
+     this.all_layers.push(layer)
+     this.layer_map[name] = layer
+     this.current_layer = layer
++    this.tagLayers()
+     return layer.getGroup()
+   }
+ 
+@@ -642,6 +657,7 @@ export class Drawing {
+     }
+     this.layer_map[name] = layer
+     this.current_layer = layer
++    this.tagLayers()
+     return group
+   }
+ 
+diff --git a/packages/svgcanvas/core/json.js b/packages/svgcanvas/core/json.js
+index 08e6cd7..1c7d4d3 100644
+--- a/packages/svgcanvas/core/json.js
++++ b/packages/svgcanvas/core/json.js
+@@ -134,6 +134,9 @@ export const addSVGElementsFromJson = (data) => {
+   }
+   assignAttributes(shape, attrs, 100)
+   cleanupElement(shape)
++  if (typeof id === 'string' && /^svg_/.test(id)) {
++    shape.setAttribute('data-testid', 'shape-' + id)
++  }
+ 
+   // Children
+   if (data.children) {
+diff --git a/packages/svgcanvas/core/select.js b/packages/svgcanvas/core/select.js
+index e01e16f..f313cb1 100644
+--- a/packages/svgcanvas/core/select.js
++++ b/packages/svgcanvas/core/select.js
+@@ -71,6 +71,7 @@ export class Selector {
+       element: 'path',
+       attr: {
+         id: `selectedBox${this.id}`,
++        'data-testid': 'selector-box',
+         fill: 'none',
+         stroke: '#22C',
+         'stroke-width': '1',
+@@ -364,6 +365,7 @@ export class SelectorManager {
+         element: 'circle',
+         attr: {
+           id: `selectorGrip_resize_${dir}`,
++          'data-testid': 'grip-' + dir,
+           fill: '#22C',
+           r: gripRadius,
+           style: `cursor:${dir}-resize`,
+diff --git a/packages/svgcanvas/core/text-actions.js b/packages/svgcanvas/core/text-actions.js
+index cbb7382..90e5f05 100644
+--- a/packages/svgcanvas/core/text-actions.js
++++ b/packages/svgcanvas/core/text-actions.js
+@@ -108,6 +108,7 @@ class TextActions {
+       this.#cursor = document.createElementNS(NS.SVG, 'line')
+       assignAttributes(this.#cursor, {
+         id: 'text_cursor',
++        'data-testid': 'text-cursor',
+         stroke: '#333',
+         'stroke-width': 1
+       })
+diff --git a/packages/svgcanvas/svgcanvas.js b/packages/svgcanvas/svgcanvas.js
+index dc856f5..ec782a3 100644
+--- a/packages/svgcanvas/svgcanvas.js
++++ b/packages/svgcanvas/svgcanvas.js
+@@ -180,6 +180,7 @@ class SvgCanvas {
+     // This is a container for the document being edited, not the document itself.
+     this.svgroot = svgRootElement(this.svgdoc, dimensions)
+     container.append(this.svgroot)
++    this.svgroot.setAttribute('data-testid', 'svgroot')
+     // The actual element that represents the final output SVG element.
+     this.svgContent = this.svgdoc.createElementNS(NS.SVG, 'svg')
+     touchInit(this)
+@@ -313,6 +314,30 @@ class SvgCanvas {
+ 
+     // creates custom modeEvent for editor
+     this.modeChangeEvent()
++
++    // Fixed canvas-coordinate drag anchors for deterministic pointer checks.
++    const anchorDefs = [
++      ['anchor-draw-start', 100, 80],
++      ['anchor-draw-end', 260, 200],
++      ['anchor-move-target', 320, 260],
++      ['anchor-resize-s-target', 180, 260],
++      ['anchor-resize-e-target', 320, 140],
++      ['anchor-text-point', 450, 320],
++      ['anchor-focus-point', 500, 350]
++    ]
++    const placeAnchors = () => {
++      const contentX = parseFloat(this.svgContent.getAttribute('x')) || 0
++      const contentY = parseFloat(this.svgContent.getAttribute('y')) || 0
++      anchorDefs.forEach(([testid, cx, cy]) => {
++        const anchor = document.createElement('div')
++        anchor.dataset.testid = testid
++        anchor.style.cssText = 'position:absolute;width:2px;height:2px;opacity:0.01;z-index:0;'
++        anchor.style.left = (contentX + cx) + 'px'
++        anchor.style.top = (contentY + cy) + 'px'
++        container.appendChild(anchor)
++      })
++    }
++    setTimeout(placeAnchors, 0)
+   } // End constructor
+ 
+   getSvgOption () {
+diff --git a/src/editor/MainMenu.js b/src/editor/MainMenu.js
+index 5101273..7cfd12e 100644
+--- a/src/editor/MainMenu.js
++++ b/src/editor/MainMenu.js
+@@ -226,7 +226,7 @@ class MainMenu {
+     // add Top panel
+     const template = document.createElement('template')
+     template.innerHTML = `
+-    <se-menu id="main_button" label="SVG-Edit" src="logo.svg" alt="logo">
++    <se-menu id="main_button" data-testid="mainmenu" label="SVG-Edit" src="logo.svg" alt="logo">
+         <se-menu-item id="tool_export" label="tools.export_img" src="export.svg"></se-menu-item>
+         <se-menu-item id="tool_docprops" label="tools.docprops" shortcut="shift+D" src="docprop.svg"></se-menu-item>
+         <se-menu-item id="tool_editor_prefs" label="config.editor_prefs" src="editPref.svg"></se-menu-item>
+diff --git a/src/editor/components/seButton.js b/src/editor/components/seButton.js
+index d7eb258..9a55e56 100644
+--- a/src/editor/components/seButton.js
++++ b/src/editor/components/seButton.js
+@@ -121,6 +121,7 @@ export class ToolButton extends HTMLElement {
+         } else {
+           this.$div.classList.remove('disabled')
+         }
++        this.setAttribute('data-disabled', String(this.hasAttribute('disabled')))
+         break
+       default:
+         console.error(`unknown attribute: ${name}`)
+diff --git a/src/editor/components/seFlyingButton.js b/src/editor/components/seFlyingButton.js
+index 3415c1c..0da70b6 100644
+--- a/src/editor/components/seFlyingButton.js
++++ b/src/editor/components/seFlyingButton.js
+@@ -265,6 +265,7 @@ export class FlyingButton extends HTMLElement {
+    * @returns {void}
+    */
+   connectedCallback () {
++    this.$handle.setAttribute('data-testid', this.id + '-handle')
+     this.activeSlot = this.shadowRoot.querySelector('slot').assignedElements()[0]
+     this.$img.setAttribute('src', this.imgPath + '/' + this.activeSlot.getAttribute('src'))
+     // capture click event on the button to manage the logic
+diff --git a/src/editor/components/sePalette.js b/src/editor/components/sePalette.js
+index 400d529..70998dc 100644
+--- a/src/editor/components/sePalette.js
++++ b/src/editor/components/sePalette.js
+@@ -161,6 +161,7 @@ export class SEPalette extends HTMLElement {
+         newDiv.style.backgroundColor = rgb
+       }
+       newDiv.dataset.rgb = rgb
++      newDiv.dataset.testid = 'swatch-' + rgb.slice(1)
+       const clickCb = (evt) => {
+         evt.preventDefault()
+         // shift key or right click for stroke
+@@ -184,6 +185,7 @@ export class SEPalette extends HTMLElement {
+       this.$strip.append(newDiv)
+ 
+       const divDialog = newDiv.cloneNode(true)
++      divDialog.dataset.testid = 'popup-swatch-' + rgb.slice(1)
+       svgEditor.$click(divDialog, clickCb)
+       this.popUp.append(divDialog)
+     })
+diff --git a/src/editor/components/seSpinInput.js b/src/editor/components/seSpinInput.js
+index 5f86242..159fd4d 100644
+--- a/src/editor/components/seSpinInput.js
++++ b/src/editor/components/seSpinInput.js
+@@ -218,6 +218,7 @@ export class SESpinInput extends HTMLElement {
+     const childNodes = Array.from(shadow.childNodes)
+     childNodes.forEach((childNode) => {
+       if (childNode?.id === 'input') {
++        childNode.setAttribute('data-testid', 'spin-' + this.id + '-input')
+         childNode.addEventListener('keyup', (e) => {
+           e.preventDefault()
+           if (!isNaN(e.target.value)) {
+diff --git a/src/editor/components/seZoom.js b/src/editor/components/seZoom.js
+index 562439d..03ddeb6 100644
+--- a/src/editor/components/seZoom.js
++++ b/src/editor/components/seZoom.js
+@@ -93,10 +93,10 @@ template.innerHTML = `
+   </style>
+   <div id="tool-wrapper">
+     <img id="icon" alt="icon" width="18" height="18"/>
+-    <input/>
++    <input data-testid="zoom-input"/>
+     <div id="spinner">
+-      <div id="arrow-up">▲</div>
+-      <div id="arrow-down">▼</div>
++      <div id="arrow-up" data-testid="zoom-arrow-up">▲</div>
++      <div id="arrow-down" data-testid="zoom-arrow-down">▼</div>
+     </div>
+     <div id="down">
+       <img width="16" height="8" src="arrow_down.svg" alt="Zoom dropdown"/>
+diff --git a/src/editor/dialogs/cmenuDialog.html b/src/editor/dialogs/cmenuDialog.html
+index dbd1717..e890a82 100644
+--- a/src/editor/dialogs/cmenuDialog.html
++++ b/src/editor/dialogs/cmenuDialog.html
+@@ -63,56 +63,56 @@
+         margin-top: 5px;
+     }
+ </style>
+-<ul id="cmenu_canvas" class="contextMenu">
++<ul id="cmenu_canvas" data-testid="cmenu-dialog" class="contextMenu">
+     <li>
+-        <a href="#cut" id="se-cut">
++        <a href="#cut" id="se-cut" data-testid="cmenu-cut">
+             <span class="shortcut">META+X</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#copy" id="se-copy">
++        <a href="#copy" id="se-copy" data-testid="cmenu-copy">
+             <span class="shortcut">META+C</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#paste" id="se-paste"></a>
++        <a href="#paste" id="se-paste" data-testid="cmenu-paste"></a>
+     </li>
+     <li>
+-        <a href="#paste_in_place" id="se-paste-in-place"></a>
++        <a href="#paste_in_place" id="se-paste-in-place" data-testid="cmenu-paste-in-place"></a>
+     </li>
+     <li class="separator">
+-        <a href="#delete" id="se-delete">
++        <a href="#delete" id="se-delete" data-testid="cmenu-delete">
+             <span class="shortcut">BACKSPACE</span>
+         </a>
+     </li>
+     <li class="separator">
+-        <a href="#group" id="se-group">
++        <a href="#group" id="se-group" data-testid="cmenu-group">
+             <span class="shortcut">G</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#ungroup" id="se-ungroup">
++        <a href="#ungroup" id="se-ungroup" data-testid="cmenu-ungroup">
+             <span class="shortcut">G</span>
+         </a>
+     </li>
+     <li class="separator">
+-        <a href="#move_front" id="se-move-front">
++        <a href="#move_front" id="se-move-front" data-testid="cmenu-move-front">
+             <span class="shortcut">CTRL+SHFT+]</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#move_up" id="se-move-up">
++        <a href="#move_up" id="se-move-up" data-testid="cmenu-move-up">
+             <span class="shortcut">CTRL+]</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#move_down" id="se-move-down">
++        <a href="#move_down" id="se-move-down" data-testid="cmenu-move-down">
+             <span class="shortcut">CTRL+[</span>
+         </a>
+     </li>
+     <li>
+-        <a href="#move_back" id="se-move-back">
++        <a href="#move_back" id="se-move-back" data-testid="cmenu-move-back">
+             <span class="shortcut">CTRL+SHFT+[</span>
+         </a>
+     </li>
+-</ul>
+\ No newline at end of file
++</ul>
+diff --git a/src/editor/dialogs/svgSourceDialog.html b/src/editor/dialogs/svgSourceDialog.html
+index 1612b4a..6fab98f 100644
+--- a/src/editor/dialogs/svgSourceDialog.html
++++ b/src/editor/dialogs/svgSourceDialog.html
+@@ -74,7 +74,7 @@
+         background-color: #c8c8c8;
+     }
+ </style>
+-<elix-dialog id="svg_source_editor" aria-label="SVG Source Editor" closed>
++<elix-dialog id="svg_source_editor" data-testid="svg-source-dialog" aria-label="SVG Source Editor" closed>
+     <div id="svg_source_container">
+         <div id="tool_source_back" class="toolbar_button">
+             <button id="tool_source_save"></button>
+@@ -85,10 +85,10 @@
+             <button id="copy_save_done"></button>
+         </div>
+         <form>
+-            <textarea id="svg_source_textarea" spellcheck="false" rows="5" cols="80"></textarea>
++            <textarea id="svg_source_textarea" data-testid="svg-source-text" spellcheck="false" rows="5" cols="80"></textarea>
+         </form>
+         <label class="tool_label" for="tool_source_dynamic">
+           <input type="checkbox" id="tool_source_dynamic" checked>Toggle dynamic size
+         </label>
+     </div>
+-</elix-dialog>
+\ No newline at end of file
++</elix-dialog>
+diff --git a/src/editor/extensions/ext-storage/storageDialog.html b/src/editor/extensions/ext-storage/storageDialog.html
+index 4f3db9a..cf8ae38 100644
+--- a/src/editor/extensions/ext-storage/storageDialog.html
++++ b/src/editor/extensions/ext-storage/storageDialog.html
+@@ -44,12 +44,12 @@
+         margin: 0 1em;
+     }
+ </style>
+-<elix-dialog id="dialog_box" aria-label="SVG-Edit storage preferences" closed>
++<elix-dialog id="dialog_box" data-testid="storage_dialog" aria-label="SVG-Edit storage preferences" closed>
+     <div class="overlay"></div>
+     <div id="dialog_container">
+         <div id="dialog_content">
+             <p id="notificationNote"> </p>
+-            <select id="se-storage-pref">
++            <select id="se-storage-pref" data-testid="storage_pref">
+                 <option value="prefsAndContent" id="prefsAndContent"></option>
+                 <option value="prefsOnly" id="prefsOnly"></option>
+                 <option value="noPrefsOrContent" id="noPrefsOrContent"></option>
+@@ -59,8 +59,8 @@
+             </label>
+         </div>
+         <div id="dialog_buttons">
+-            <button id="storage_ok"></button>
+-            <button id="storage_cancel"></button>
++            <button id="storage_ok" data-testid="storage_ok"></button>
++            <button id="storage_cancel" data-testid="storage_cancel"></button>
+         </div>
+     </div>
+ </elix-dialog>
+\ No newline at end of file
+diff --git a/src/editor/panels/BottomPanel.html b/src/editor/panels/BottomPanel.html
+index 8d50e73..bd4930d 100644
+--- a/src/editor/panels/BottomPanel.html
++++ b/src/editor/panels/BottomPanel.html
+@@ -1,20 +1,20 @@
+ <div id="tools_bottom">
+     <!-- Zoom buttons -->
+-    <se-zoom id="zoom" src="zoom.svg" title="Change zoom level" inputsize="40px">
+-      <se-text value="1000" text="1000%"></se-text>
+-      <se-text value="400" text="400%"></se-text>
+-      <se-text value="200" text="200%"></se-text>
+-      <se-text value="100" text="100%"></se-text>
+-      <se-text value="50" text="50%"></se-text>
+-      <se-text value="25" text="25%"></se-text>
+-      <se-text value="canvas" text="tools.fit_to_canvas"></se-text>
+-      <se-text value="selection" text="tools.fit_to_sel"></se-text>
+-      <se-text value="layer" text="tools.fit_to_layer_content"></se-text>
+-      <se-text value="content" text="tools.fit_to_all"></se-text>
++    <se-zoom id="zoom" data-testid="zoom" src="zoom.svg" title="Change zoom level" inputsize="40px">
++      <se-text value="1000" text="1000%" data-testid="zoom-opt-1000"></se-text>
++      <se-text value="400" text="400%" data-testid="zoom-opt-400"></se-text>
++      <se-text value="200" text="200%" data-testid="zoom-opt-200"></se-text>
++      <se-text value="100" text="100%" data-testid="zoom-opt-100"></se-text>
++      <se-text value="50" text="50%" data-testid="zoom-opt-50"></se-text>
++      <se-text value="25" text="25%" data-testid="zoom-opt-25"></se-text>
++      <se-text value="canvas" text="tools.fit_to_canvas" data-testid="zoom-opt-canvas"></se-text>
++      <se-text value="selection" text="tools.fit_to_sel" data-testid="zoom-opt-selection"></se-text>
++      <se-text value="layer" text="tools.fit_to_layer_content" data-testid="zoom-opt-layer"></se-text>
++      <se-text value="content" text="tools.fit_to_all" data-testid="zoom-opt-content"></se-text>
+     </se-zoom>
+-    <se-colorpicker id="fill_color" src="fill.svg" label="properties.fill_color" type="fill"></se-colorpicker>
+-    <se-colorpicker id="stroke_color" src="stroke.svg" label="properties.stroke_color" type="stroke"></se-colorpicker>
+-    <se-spin-input id="stroke_width" min=0 max=99 step=1 title="properties.stroke_width" label=""></se-spin-input>
++    <se-colorpicker id="fill_color" data-testid="fill_color" src="fill.svg" label="properties.fill_color" type="fill"></se-colorpicker>
++    <se-colorpicker id="stroke_color" data-testid="stroke_color" src="stroke.svg" label="properties.stroke_color" type="stroke"></se-colorpicker>
++    <se-spin-input id="stroke_width" data-testid="stroke_width" min=0 max=99 step=1 title="properties.stroke_width" label=""></se-spin-input>
+     <se-select id="stroke_style" title="properties.stroke_style" label="" width="22px" height="22px"
+       options="&#8212;,...,- -,- .,- .."
+       values="none::2,2::5,5::5,2,2,2::5,2,2,2,2,2">     
+@@ -29,6 +29,6 @@
+       <se-list-item id="linecap_square" value="square" src="linecap_square.svg" title="properties.linecap_square" img-height="22px"></se-list-item>
+       <se-list-item id="linecap_round" value="round" src="linecap_round.svg" title="properties.linecap_round" img-height="22px"></se-list-item>
+     </se-list>
+-    <se-spin-input size="3" id="opacity" min=0 max=100 step=5 title="properties.opacity" src="opacity.svg"></se-spin-input>
+-    <se-palette id="palette"></se-palette>
+-  </div>
+\ No newline at end of file
++    <se-spin-input size="3" id="opacity" data-testid="opacity" min=0 max=100 step=5 title="properties.opacity" src="opacity.svg"></se-spin-input>
++    <se-palette id="palette" data-testid="palette"></se-palette>
++  </div>
+diff --git a/src/editor/panels/LayersPanel.html b/src/editor/panels/LayersPanel.html
+index c6d25d2..7fbadf8 100644
+--- a/src/editor/panels/LayersPanel.html
++++ b/src/editor/panels/LayersPanel.html
+@@ -1,26 +1,26 @@
+ <div id="sidepanels">
+-    <se-text id="sidepanel_handle" title="ui.panel_action" text="ui.panel"></se-text>
++    <se-text id="sidepanel_handle" data-testid="sidepanel_handle" title="ui.panel_action" text="ui.panel"></se-text>
+     <div id="sidepanel_content">
+         <div id="layerpanel">
+             <se-text id="layersLabel" text="layers.layers"></se-text>
+             <fieldset id="layerbuttons">
+-                <se-button id="layer_new" title="layers.new" size="small" src="new.svg"></se-button>
+-                <se-button id="layer_delete" title="layers.del" size="small" src="delete.svg"></se-button>
+-                <se-button id="layer_rename" title="layers.rename" size="small" src="text.svg"></se-button>
+-                <se-button id="layer_up" title="layers.move_up" size="small" src="go_up.svg"></se-button>
+-                <se-button id="layer_down" title="layers.move_down" size="small" src="go_down.svg"></se-button>
++                <se-button id="layer_new" data-testid="layer_new" title="layers.new" size="small" src="new.svg"></se-button>
++                <se-button id="layer_delete" data-testid="layer_delete" title="layers.del" size="small" src="delete.svg"></se-button>
++                <se-button id="layer_rename" data-testid="layer_rename" title="layers.rename" size="small" src="text.svg"></se-button>
++                <se-button id="layer_up" data-testid="layer_up" title="layers.move_up" size="small" src="go_up.svg"></se-button>
++                <se-button id="layer_down" data-testid="layer_down" title="layers.move_down" size="small" src="go_down.svg"></se-button>
+                 <se-button id="layer_moreopts" title="common.more_opts" size="small" src="context_menu.svg">
+                 </se-button>
+             </fieldset>
+-            <table id="layerlist">
++            <table id="layerlist" data-testid="layerlist">
+                 <tr class="layer">
+                     <td class="layervis"></td>
+                     <td class="layername">Layer 1</td>
+                 </tr>
+             </table>
+-            <se-select id="selLayerNames" title="layers.move_selected" label="layers.move_elems_to" options="Layer 1"
++            <se-select id="selLayerNames" data-testid="selLayerNames" title="layers.move_selected" label="layers.move_elems_to" options="Layer 1"
+                 values="layer1" value="layer1" disabled="disabled">
+             </se-select>
+         </div>
+     </div>
+-</div>
+\ No newline at end of file
++</div>
+diff --git a/src/editor/panels/LayersPanel.js b/src/editor/panels/LayersPanel.js
+index ed70835..027b8c6 100644
+--- a/src/editor/panels/LayersPanel.js
++++ b/src/editor/panels/LayersPanel.js
+@@ -250,12 +250,15 @@ class LayersPanel {
+     // we get the layers in the reverse z-order (the layer rendered on top is listed first)
+     let values = ''
+     let text = ''
++    let listIndex = 0
+     while (layer--) {
+       const name = drawing.getLayerName(layer)
+       const layerTr = document.createElement('tr')
+       layerTr.className = (name === currentLayerName) ? 'layer layersel' : 'layer'
+       const layerVis = document.createElement('td')
+       layerVis.className = (!drawing.getLayerVisibility(name)) ? 'layerinvis layervis' : 'layervis'
++      layerTr.dataset.testid = 'layer-row-' + listIndex
++      layerVis.dataset.testid = 'layer-eye-' + listIndex
+ 
+       // fix the eye icon lost at right layers
+       const _eye = document.createElement('img')
+@@ -267,6 +270,8 @@ class LayersPanel {
+       const layerName = document.createElement('td')
+       layerName.className = 'layername'
+       layerName.textContent = name
++      layerName.dataset.testid = 'layer-name-' + listIndex
++      listIndex++
+       layerTr.appendChild(layerVis)
+       layerTr.appendChild(layerName)
+       layerlist.appendChild(layerTr)
+diff --git a/src/editor/panels/LeftPanel.html b/src/editor/panels/LeftPanel.html
+index 644efdf..a9094ee 100644
+--- a/src/editor/panels/LeftPanel.html
++++ b/src/editor/panels/LeftPanel.html
+@@ -1,19 +1,19 @@
+ <div id="tools_left">
+-    <se-button id="tool_select" title="tools.mode_select" src="select.svg"></se-button>
+-    <se-button id="tool_zoom" title="tools.mode_zoom" src="zoom.svg" shortcut="Z / Alt + wheels"></se-button>
+-    <se-button id="tool_fhpath" title="tools.mode_fhpath" src="pencil.svg" shortcut="Q"></se-button>
+-    <se-button id="tool_line" title="tools.mode_line" src="pen.svg" shortcut="L"></se-button>
+-    <se-button id="tool_path" title="tools.mode_path" src="path.svg" shortcut="P"></se-button>
+-    <se-flyingbutton id="tools_rect" title="tools.square_rect_tool">
+-        <se-button id="tool_rect" title="tools.mode_rect" src="rect.svg" shortcut="R"></se-button>
+-        <se-button id="tool_square" title="tools.mode_square" src="square.svg"></se-button>
+-        <se-button id="tool_fhrect" title="tools.mode_fhrect" src="fh_rect.svg"></se-button>
++    <se-button id="tool_select" data-testid="tool_select" title="tools.mode_select" src="select.svg"></se-button>
++    <se-button id="tool_zoom" data-testid="tool_zoom" title="tools.mode_zoom" src="zoom.svg" shortcut="Z / Alt + wheels"></se-button>
++    <se-button id="tool_fhpath" data-testid="tool_fhpath" title="tools.mode_fhpath" src="pencil.svg" shortcut="Q"></se-button>
++    <se-button id="tool_line" data-testid="tool_line" title="tools.mode_line" src="pen.svg" shortcut="L"></se-button>
++    <se-button id="tool_path" data-testid="tool_path" title="tools.mode_path" src="path.svg" shortcut="P"></se-button>
++    <se-flyingbutton id="tools_rect" data-testid="tools_rect" title="tools.square_rect_tool">
++        <se-button id="tool_rect" data-testid="tool_rect" title="tools.mode_rect" src="rect.svg" shortcut="R"></se-button>
++        <se-button id="tool_square" data-testid="tool_square" title="tools.mode_square" src="square.svg"></se-button>
++        <se-button id="tool_fhrect" data-testid="tool_fhrect" title="tools.mode_fhrect" src="fh_rect.svg"></se-button>
+     </se-flyingbutton>
+-    <se-flyingbutton id="tools_ellipse" title="tools.ellipse_circle_tool">
+-        <se-button id="tool_ellipse" title="tools.mode_ellipse" src="ellipse.svg" shortcut="E"></se-button>
+-        <se-button id="tool_circle" title="tools.mode_circle" src="circle.svg"></se-button>
+-        <se-button id="tool_fhellipse" title="tools.mode_fhellipse" src="fh_ellipse.svg"></se-button>
++    <se-flyingbutton id="tools_ellipse" data-testid="tools_ellipse" title="tools.ellipse_circle_tool">
++        <se-button id="tool_ellipse" data-testid="tool_ellipse" title="tools.mode_ellipse" src="ellipse.svg" shortcut="E"></se-button>
++        <se-button id="tool_circle" data-testid="tool_circle" title="tools.mode_circle" src="circle.svg"></se-button>
++        <se-button id="tool_fhellipse" data-testid="tool_fhellipse" title="tools.mode_fhellipse" src="fh_ellipse.svg"></se-button>
+     </se-flyingbutton>
+-    <se-button id="tool_text" title="tools.mode_text" src="text.svg" shortcut="T"></se-button>
+-    <se-button id="tool_image" title="tools.mode_image" src="image.svg"></se-button>
+-</div>
+\ No newline at end of file
++    <se-button id="tool_text" data-testid="tool_text" title="tools.mode_text" src="text.svg" shortcut="T"></se-button>
++    <se-button id="tool_image" data-testid="tool_image" title="tools.mode_image" src="image.svg"></se-button>
++</div>
+diff --git a/src/editor/panels/TopPanel.html b/src/editor/panels/TopPanel.html
+index 481bb66..e5ba5f5 100644
+--- a/src/editor/panels/TopPanel.html
++++ b/src/editor/panels/TopPanel.html
+@@ -5,12 +5,12 @@
+   <div id="editor_panel">
+     <div class="tool_sep"></div>
+     <se-button id="tool_source" title="tools.tool_source" shortcut="U" src="source.svg"></se-button>
+-    <se-button id="tool_wireframe" title="tools.wireframe_mode" shortcut="F" src="wireframe.svg"></se-button>
++    <se-button id="tool_wireframe" data-testid="tool_wireframe" title="tools.wireframe_mode" shortcut="F" src="wireframe.svg"></se-button>
+   </div> <!-- editor_panel -->
+   <div id="history_panel">
+     <div class="tool_sep"></div>
+-    <se-button id="tool_undo" title="tools.undo" shortcut="ctrl+Z" src="undo.svg" disabled></se-button>
+-    <se-button id="tool_redo" title="tools.redo" shortcut="ctrl+Y" src="redo.svg" disabled></se-button>
++    <se-button id="tool_undo" data-testid="tool_undo" title="tools.undo" shortcut="ctrl+Z" src="undo.svg" disabled></se-button>
++    <se-button id="tool_redo" data-testid="tool_redo" title="tools.redo" shortcut="ctrl+Y" src="redo.svg" disabled></se-button>
+   </div> <!-- history_panel -->
+   <!-- Buttons when a single element is selected -->
+   <div class="selected_panel">
+@@ -39,7 +39,7 @@
+   <div class="selected_panel">
+     <se-input id="elem_class" data-attr="class" size="10" label="properties.class_label" title="properties.class">
+     </se-input>
+-    <se-spin-input size="3" id="angle" min=-180 max=180 step=5 src="angle.svg" title="properties.angle">
++    <se-spin-input size="3" id="angle" data-testid="angle" min=-180 max=180 step=5 src="angle.svg" title="properties.angle">
+     </se-spin-input>
+     <se-spin-input size="2" id="blur" min=0 max=100 step=5 src="blur.svg" title="properties.blur"></se-spin-input>
+     <se-list id="tool_position" title="tools.align_to_page" label="" width="22px" height="22px">
+@@ -62,10 +62,10 @@
+     </se-list>
+   </div>
+   <div class="xy_panel">
+-    <se-spin-input id="selected_x" data-attr="x" size="4" type="text" label="properties.x_label"
++    <se-spin-input id="selected_x" data-testid="rect_x" data-attr="x" size="4" type="text" label="properties.x_label"
+       title="properties.pos_x">
+     </se-spin-input>
+-    <se-spin-input id="selected_y" data-attr="y" size="4" type="text" label="properties.y_label"
++    <se-spin-input id="selected_y" data-testid="rect_y" data-attr="y" size="4" type="text" label="properties.y_label"
+       title="properties.pos_y">
+     </se-spin-input>
+   </div>
+@@ -97,9 +97,9 @@
+     </se-select>
+   </div> <!-- multiselected_panel -->
+   <div class="rect_panel">
+-    <se-spin-input id="rect_width" data-attr="width" size="4" label="properties.w_label"
++    <se-spin-input id="rect_width" data-testid="rect_width" data-attr="width" size="4" label="properties.w_label"
+       title="properties.rect_width"></se-spin-input>
+-    <se-spin-input id="rect_height" data-attr="height" size="4" label="properties.h_label"
++    <se-spin-input id="rect_height" data-testid="rect_height" data-attr="height" size="4" label="properties.h_label"
+       title="properties.rect_height"></se-spin-input>
+     <se-spin-input id="rect_rx" min=0 max=1000 step=1 size="3" title="properties.corner_radius"
+       data-attr="Corner Radius" src="c_radius.svg"></se-spin-input>
+diff --git a/src/editor/templates/editorTemplate.html b/src/editor/templates/editorTemplate.html
+index 59cb1a8..2f661dd 100644
+--- a/src/editor/templates/editorTemplate.html
++++ b/src/editor/templates/editorTemplate.html
+@@ -1,5 +1,5 @@
+-<div class="svg_editor">
+-  <div id="workarea">
+-    <div id="svgcanvas"></div>
++<div class="svg_editor" data-testid="svg-editor-root">
++  <div id="workarea" data-testid="workarea">
++    <div id="svgcanvas" data-testid="svgcanvas"></div>
+   </div>
+-</div>
+\ No newline at end of file
++</div>

@@ -1,0 +1,173 @@
+diff --git a/projects/angular-ngrx-material-starter/src/app/app/app.component.html b/projects/angular-ngrx-material-starter/src/app/app/app.component.html
+index b24b98f..7c574c8 100755
+--- a/projects/angular-ngrx-material-starter/src/app/app/app.component.html
++++ b/projects/angular-ngrx-material-starter/src/app/app/app.component.html
+@@ -18,7 +18,7 @@
+ 
+     <div class="wrapper">
+ 
+-      <div class="toolbar" [style.position]="(stickyHeader$ | async) ? 'fixed' : 'inherit'" [class.mat-elevation-z4]="(stickyHeader$ | async)" data-testid="anms-toolbar">
++      <div class="toolbar" [style.position]="(stickyHeader$ | async) ? 'inherit' : 'fixed'" [class.mat-elevation-z4]="(stickyHeader$ | async)" data-testid="anms-toolbar">
+         <mat-toolbar color="primary">
+           <button mat-icon-button class="d-md-none" (click)="sidenav.open()">
+             <fa-icon icon="bars"></fa-icon>
+@@ -39,7 +39,7 @@
+             </button>
+           </span>
+ 
+-          <button mat-button mat-stroked-button color="accent" data-testid="anms-login" *ngIf="!(isAuthenticated$ | async)" (click)="onLoginClick()">
++          <button mat-button mat-stroked-button color="accent" data-testid="anms-login" *ngIf="!(isAuthenticated$ | async)" (click)="onLogoutClick()">
+             {{ 'anms.menu.login' | translate }}
+           </button>
+ 
+diff --git a/projects/angular-ngrx-material-starter/src/app/core/meta-reducers/init-state-from-local-storage.reducer.ts b/projects/angular-ngrx-material-starter/src/app/core/meta-reducers/init-state-from-local-storage.reducer.ts
+index 9f5f70e..acabe71 100755
+--- a/projects/angular-ngrx-material-starter/src/app/core/meta-reducers/init-state-from-local-storage.reducer.ts
++++ b/projects/angular-ngrx-material-starter/src/app/core/meta-reducers/init-state-from-local-storage.reducer.ts
+@@ -9,7 +9,7 @@ export function initStateFromLocalStorage(
+   return function (state, action) {
+     const newState = reducer(state, action);
+     if ([INIT.toString(), UPDATE.toString()].includes(action.type)) {
+-      return { ...newState, ...LocalStorageService.loadInitialState() };
++      return { ...LocalStorageService.loadInitialState(), ...newState };
+     }
+     return newState;
+   };
+diff --git a/projects/angular-ngrx-material-starter/src/app/core/settings/settings.selectors.ts b/projects/angular-ngrx-material-starter/src/app/core/settings/settings.selectors.ts
+index 6082937..709d22b 100755
+--- a/projects/angular-ngrx-material-starter/src/app/core/settings/settings.selectors.ts
++++ b/projects/angular-ngrx-material-starter/src/app/core/settings/settings.selectors.ts
+@@ -51,7 +51,7 @@ export const selectHour = createSelector(
+ export const selectIsNightHour = createSelector(
+   selectAutoNightMode,
+   selectHour,
+-  (autoNightMode, hour) => autoNightMode && (hour >= 21 || hour <= 7)
++  (autoNightMode, hour) => autoNightMode && (hour >= 21 && hour <= 7)
+ );
+ 
+ export const selectEffectiveTheme = createSelector(
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/authenticated/authenticated.component.html b/projects/angular-ngrx-material-starter/src/app/features/examples/authenticated/authenticated.component.html
+index 7807adc..c85021a 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/authenticated/authenticated.component.html
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/authenticated/authenticated.component.html
+@@ -3,7 +3,7 @@
+     <div class="col-12">
+       <h1 class="main-heading">{{ 'anms.examples.auth.title' | translate }}</h1>
+       <p [ngClass]="routeAnimationsElements" data-testid="anms-auth-desc1">
+-        {{ 'anms.examples.auth.description1' | translate }}
++        {{ 'anms.examples.auth.description1' }}
+       </p>
+       <p [ngClass]="routeAnimationsElements" data-testid="anms-auth-desc2">
+         {{ 'anms.examples.auth.description2' | translate }}
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/examples-routing.module.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/examples-routing.module.ts
+index b5a9164..c86c3a9 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/examples-routing.module.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/examples-routing.module.ts
+@@ -72,7 +72,6 @@ const routes: Routes = [
+       {
+         path: 'authenticated',
+         component: AuthenticatedComponent,
+-        canActivate: [AuthGuardService],
+         data: { title: 'anms.examples.menu.auth' }
+       }
+     ]
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/form/components/form.component.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/form/components/form.component.ts
+index a045dd2..070dea0 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/form/components/form.component.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/form/components/form.component.ts
+@@ -53,7 +53,7 @@ export class FormComponent implements OnInit {
+ 
+   ngOnInit() {
+     this.formValueChanges$ = this.form.valueChanges.pipe(
+-      filter((form: Form) => form.autosave),
++      filter((form: Form) => !form.autosave),
+       tap((updatedForm) => this.update(updatedForm))
+     );
+     this.store
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/simple-state-management/user.service.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/simple-state-management/user.service.ts
+index b53216c..f8128b0 100644
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/simple-state-management/user.service.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/simple-state-management/user.service.ts
+@@ -41,7 +41,7 @@ export class UserService {
+     const users = this.model.get();
+ 
+     const indexToRemove = users.findIndex((user) => user.id === id);
+-    users.splice(indexToRemove, 1);
++    users.splice(indexToRemove, 0);
+ 
+     this.model.set(users);
+   }
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/stock-market/components/stock-market-container.component.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/stock-market/components/stock-market-container.component.ts
+index 9ec85f2..590aa82 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/stock-market/components/stock-market-container.component.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/stock-market/components/stock-market-container.component.ts
+@@ -25,7 +25,7 @@ export class StockMarketContainerComponent implements OnInit {
+   ngOnInit() {
+     this.stocks$ = this.store.pipe(select(selectStockMarket));
+     this.stocks$
+-      .pipe(take(1))
++      .pipe(take(0))
+       .subscribe((stocks) => this.onSymbolValue(stocks.symbol));
+   }
+ 
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.html b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.html
+index 174e79d..8ddb3de 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.html
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.html
+@@ -2,7 +2,7 @@
+   <div class="row">
+     <div class="offset-md-2 col-md-8 entry">
+       <anms-big-input rtl [placeholder]="'anms.examples.todos.input' | translate" [value]="newTodo" (keyup)="onNewTodoChange($event)"
+-        (keyup.enter)="!isAddTodoDisabled && onAddTodo()" (keyup.escape)="onNewTodoClear()">
++        (keyup.enter)="isAddTodoDisabled && onAddTodo()" (keyup.escape)="onNewTodoClear()">
+         <anms-big-input-action testid="anms-todo-add" fontSet="fas" fontIcon="plus" faIcon="plus" color="accent"
+           (action)="onAddTodo()" [disabled]="isAddTodoDisabled" [matTooltip]="'anms.examples.todos.tooltip.add' | translate"
+           matTooltipPosition="before">
+@@ -44,7 +44,7 @@
+           </mat-menu>
+           <mat-chip-list class="todos-filter-info d-none d-sm-block d-md-none d-lg-block">
+             <mat-chip data-testid="anms-todos-chip" [disabled]=true [ngPlural]="todos.length">
+-              {{ 'anms.examples.todos.filter.description' | translate }}
++              {{ 'anms.examples.todos.filter.descriptions' | translate }}
+               <ng-template ngPluralCase="other">{{ todos.length }} {{ 'anms.examples.todos.filter.items' |
+                 translate }}</ng-template>
+               <ng-template ngPluralCase="=1">{{ 'anms.examples.todos.filter.one' | translate }} {{
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.ts
+index 60779e3..1186c72 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/components/todos-container.component.ts
+@@ -79,7 +79,7 @@ export class TodosContainerComponent implements OnInit {
+ 
+     this.snackBar
+       .open(`${toggledMessage} ${newStatus}`, undo, {
+-        duration: 2500,
++        duration: 100,
+         panelClass: 'todos-notification-overlay'
+       })
+       .onAction()
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/todos.selectors.ts b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/todos.selectors.ts
+index 8eea5ed..8909f78 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/examples/todos/todos.selectors.ts
++++ b/projects/angular-ngrx-material-starter/src/app/features/examples/todos/todos.selectors.ts
+@@ -26,7 +26,7 @@ export const selectTodos = createSelector(
+       return items;
+     } else {
+       const predicate =
+-        filter === 'DONE' ? (t: Todo) => t.done : (t: Todo) => !t.done;
++        filter === 'DONE' ? (t: Todo) => t.done : (t: Todo) => t.done;
+       return items.filter(predicate);
+     }
+   }
+diff --git a/projects/angular-ngrx-material-starter/src/app/features/settings/settings/settings-container.component.html b/projects/angular-ngrx-material-starter/src/app/features/settings/settings/settings-container.component.html
+index e87816b..656be9e 100755
+--- a/projects/angular-ngrx-material-starter/src/app/features/settings/settings/settings-container.component.html
++++ b/projects/angular-ngrx-material-starter/src/app/features/settings/settings/settings-container.component.html
+@@ -33,7 +33,7 @@
+            </mat-placeholder>
+            <mat-slide-toggle
+              data-testid="anms-set-sticky"
+-             [checked]="settings.stickyHeader"
++             [checked]="settings.pageAnimations"
+              (change)="onStickyHeaderToggle($event)">
+            </mat-slide-toggle>
+          </div>

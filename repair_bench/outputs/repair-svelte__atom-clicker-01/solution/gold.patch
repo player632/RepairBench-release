@@ -1,0 +1,170 @@
+diff --git a/src/lib/components/game/Atom.svelte b/src/lib/components/game/Atom.svelte
+index 6a3728a..38af0a8 100644
+--- a/src/lib/components/game/Atom.svelte
++++ b/src/lib/components/game/Atom.svelte
+@@ -33,10 +33,8 @@
+ 		}
+ 	});
+ 
+-	const initialClickPower = gameManager.clickPower;
+-
+ 	async function handleClick(event: MouseEvent) {
+-		gameManager.addAtoms(initialClickPower);
++		gameManager.addAtoms(gameManager.clickPower);
+ 		gameManager.incrementClicks(!event.isTrusted);
+ 
+ 		// TODO: Re-add main atom click animation
+diff --git a/src/lib/components/game/Bonus.svelte b/src/lib/components/game/Bonus.svelte
+index 9e2c851..bead65a 100644
+--- a/src/lib/components/game/Bonus.svelte
++++ b/src/lib/components/game/Bonus.svelte
+@@ -74,6 +74,7 @@
+ 		clickable = false;
+ 		messageShown = true;
+ 		powerUp.startTime = Date.now();
++		gameManager.addPowerUp(powerUp);
+ 		gameManager.incrementBonusHiggsBosonClicks();
+ 		quarksManager.collectHiggsBoson();
+ 
+diff --git a/src/lib/components/game/Buildings.svelte b/src/lib/components/game/Buildings.svelte
+index a215773..767713c 100644
+--- a/src/lib/components/game/Buildings.svelte
++++ b/src/lib/components/game/Buildings.svelte
+@@ -66,7 +66,7 @@
+ 				const amount = purchaseAmounts[type];
+ 				if (amount <= 0) return false;
+ 				const cost = gameManager.getBuildingCost(type, amount);
+-				return !gameManager.canAfford({ amount: cost, currency: BUILDINGS[type].cost.currency });
++				return gameManager.canAfford({ amount: cost, currency: BUILDINGS[type].cost.currency });
+ 			})
+ 			.map(([type]) => type),
+ 	);
+diff --git a/src/lib/components/game/Counter.svelte b/src/lib/components/game/Counter.svelte
+index 49d1a39..2bac8fb 100644
+--- a/src/lib/components/game/Counter.svelte
++++ b/src/lib/components/game/Counter.svelte
+@@ -72,7 +72,7 @@
+ 				data-testid="atoms-value"
+ 				class="text-3xl sm:text-4xl md:text-5xl font-bold text-accent-500 transition-[filter] duration-200 {gameManager.hasBonus ?
+ 					'drop-shadow-[0_0_10px_#4a90e2]'
+-				:	''}">{formatNumber(gameManager.atomsPerSecond)}</span
++				:	''}">{formatNumber(gameManager.atoms)}</span
+ 			>
+ 			<span class="font-bold text-xl sm:text-2xl opacity-80">atoms</span>
+ 
+diff --git a/src/lib/components/layout/NavBar.svelte b/src/lib/components/layout/NavBar.svelte
+index 29cb130..7d3ea02 100644
+--- a/src/lib/components/layout/NavBar.svelte
++++ b/src/lib/components/layout/NavBar.svelte
+@@ -68,7 +68,7 @@
+ 			icon: Atom,
+ 			label: 'Protonise',
+ 			component: Protonise,
+-			condition: () => gameManager.atoms >= PROTONS_ATOMS_REQUIRED && gameManager.totalProtonisesAllTime > 0,
++			condition: () => gameManager.atoms >= PROTONS_ATOMS_REQUIRED || gameManager.totalProtonisesAllTime > 0,
+ 			notification: () => gameManager.protoniseProtonsGain > gameManager.protons,
+ 		},
+ 		{
+diff --git a/src/lib/data/achievements.ts b/src/lib/data/achievements.ts
+index 3198de5..b8c2963 100644
+--- a/src/lib/data/achievements.ts
++++ b/src/lib/data/achievements.ts
+@@ -240,7 +240,7 @@ function createTotalClicksAchievements(): Achievement[] {
+ 			description: `Click ${formatNumber(count)} times`,
+ 			iconStack: tierIconStack('click', tierIndex, count),
+ 			hiddenCondition: (manager: GameManager) => manager.totalClicksAllTime === 0,
+-			condition: (manager: GameManager) => manager.totalClicksAllTime <= count,
++			condition: (manager: GameManager) => manager.totalClicksAllTime >= count,
+ 		};
+ 	}
+ 
+diff --git a/src/lib/helpers/GameManager.svelte.ts b/src/lib/helpers/GameManager.svelte.ts
+index c927277..e6f69b7 100644
+--- a/src/lib/helpers/GameManager.svelte.ts
++++ b/src/lib/helpers/GameManager.svelte.ts
+@@ -222,7 +222,7 @@ export class GameManager {
+ 	clickPower = $derived.by(() => {
+ 		const options = { type: 'click' as const };
+ 		const clickUpgrades = getUpgradesWithEffects(this.allEffectSources, options);
+-		return calculateEffects(clickUpgrades, this, 1, options);
++		return calculateEffects(clickUpgrades, this, 1, options) * this.bonusMultiplier;
+ 	});
+ 
+ 	currentLevelXP = $derived.by(() => {
+@@ -314,7 +314,7 @@ export class GameManager {
+ 	protoniseProtonsGain = $derived.by(() => {
+ 		if (this.atoms < PROTONS_ATOMS_REQUIRED) return 0;
+ 
+-		const baseGain = Math.ceil(Math.sqrt(this.atoms / PROTONS_ATOMS_REQUIRED));
++		const baseGain = Math.floor(Math.sqrt(this.atoms / PROTONS_ATOMS_REQUIRED));
+ 		const options = { type: 'proton_gain' as const };
+ 		const protonGainUpgrades = getUpgradesWithEffects(this.allEffectSources, options);
+ 		const boostedGain = calculateEffects(protonGainUpgrades, this, baseGain, options);
+@@ -532,19 +532,19 @@ export class GameManager {
+ 					const defaultSettings = this.statsConfig.settings.defaultValue as Settings;
+ 
+ 					this.settings = {
+-						...savedSettings,
+ 						...defaultSettings,
++						...savedSettings,
+ 						automation: {
+-							...(savedSettings?.automation ?? {}),
+ 							...defaultSettings.automation,
++							...(savedSettings?.automation ?? {}),
+ 						},
+ 						gameplay: {
+-							...(savedSettings?.gameplay ?? {}),
+ 							...defaultSettings.gameplay,
++							...(savedSettings?.gameplay ?? {}),
+ 						},
+ 						upgrades: {
+-							...(savedSettings?.upgrades ?? {}),
+ 							...defaultSettings.upgrades,
++							...(savedSettings?.upgrades ?? {}),
+ 						},
+ 					};
+ 				} else if (key === 'currencyBoosts') {
+@@ -766,7 +766,7 @@ export class GameManager {
+ 		const purchased = this.upgrades.includes(id);
+ 
+ 		if (!purchased && this.spendCurrency(upgrade.cost)) {
+-			this.upgrades = [...this.upgrades];
++			this.upgrades = [...this.upgrades, id];
+ 			this.syncFeatures();
+ 
+ 			this.checkRealmUnlocks();
+@@ -953,7 +953,7 @@ export class GameManager {
+ 
+ 		setTimeout(() => {
+ 			this.removePowerUp(newPowerUp.id);
+-		}, 0);
++		}, newPowerUp.duration);
+ 	}
+ 
+ 	removePowerUp(id: string) {
+diff --git a/src/lib/helpers/TutorialManager.svelte.ts b/src/lib/helpers/TutorialManager.svelte.ts
+index beec6a8..3c150d4 100644
+--- a/src/lib/helpers/TutorialManager.svelte.ts
++++ b/src/lib/helpers/TutorialManager.svelte.ts
+@@ -21,7 +21,7 @@ export class TutorialManager {
+ 			this.complete();
+ 			return;
+ 		}
+-		this.state = { ...this.state, step: stepCount - 1 };
++		this.state = { ...this.state, step: this.state.step + 1 };
+ 	}
+ 
+ 	skip() {
+diff --git a/src/lib/utils/saveIntegrity.ts b/src/lib/utils/saveIntegrity.ts
+index 9387af2..132856a 100644
+--- a/src/lib/utils/saveIntegrity.ts
++++ b/src/lib/utils/saveIntegrity.ts
+@@ -38,7 +38,7 @@ export function unwrapStoredSave(raw: string): UnwrappedSave {
+ 		if (parsed && typeof parsed === 'object' && typeof parsed.payload === 'string' && typeof parsed.checksum === 'string') {
+ 			return {
+ 				payload: parsed.payload,
+-				tampered: computeSaveChecksum(parsed.checksum) !== parsed.checksum,
++				tampered: computeSaveChecksum(parsed.payload) !== parsed.checksum,
+ 			};
+ 		}
+ 	} catch {

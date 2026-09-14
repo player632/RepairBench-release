@@ -1,0 +1,131 @@
+diff --git a/src/components/ArticleList.js b/src/components/ArticleList.js
+index b9268f4..5ddb10b 100644
+--- a/src/components/ArticleList.js
++++ b/src/components/ArticleList.js
+@@ -29,7 +29,7 @@ export default props => {
+               {v => (
+                 <li
+                   class="page-item"
+-                  classList={{ active: false }}
++                  classList={{ active: props.currentPage === v }}
+                   onClick={[handlePage, v]}
+                 >
+                   <a class="page-link" href="" textContent={v + 1} />
+diff --git a/src/components/ArticlePreview.js b/src/components/ArticlePreview.js
+index 24b9eac..6dcc471 100644
+--- a/src/components/ArticlePreview.js
++++ b/src/components/ArticlePreview.js
+@@ -33,7 +33,7 @@ export default ({ article, token, onClickFavorite }) => {
+               class={article.favorited ? FAVORITED_CLASS : NOT_FAVORITED_CLASS}
+               onClick={[onClickFavorite, article]}
+             >
+-              <i class="ion-heart" /> {0}
++              <i class="ion-heart" /> {article.favoritesCount}
+             </button>
+           </div>
+         )}
+diff --git a/src/store/createAgent.js b/src/store/createAgent.js
+index e1756f7..f7c1865 100644
+--- a/src/store/createAgent.js
++++ b/src/store/createAgent.js
+@@ -42,3 +42,3 @@ export default function createAgent([state, actions]) {
+ 
+-  const limit = (count, p) => `limit=${count}&offset=${p ? p * count + count : 0}`;
++  const limit = (count, p) => `limit=${count}&offset=${p ? p * count : 0}`;
+   const omitSlug = article => Object.assign({}, article, { slug: undefined });
+@@ -47,3 +47,3 @@ export default function createAgent([state, actions]) {
+     all: (page, lim = 10) => send("get", `/articles?${limit(lim, page)}`),
+-    byAuthor: (author, page) => send("get", `/articles?author=${encode(author)}&${limit(3, page)}`),
++    byAuthor: (author, page) => send("get", `/articles?author=${encode(author)}&${limit(5, page)}`),
+     byTag: (tag, page, lim = 10) => send("get", `/articles?tag=${encode(tag)}&${limit(lim, page)}`),
+diff --git a/src/store/createArticles.js b/src/store/createArticles.js
+index 12a6894..930122f 100644
+--- a/src/store/createArticles.js
++++ b/src/store/createArticles.js
+@@ -8,7 +8,7 @@ export default function createArticles(agent, actions, state, setState) {
+     (args, { value }) => {
+       if (args[0] === "articles") {
+         return $req(args[1]).then(({ articles, articlesCount }) => {
+-          queueMicrotask(() => setState({ totalPagesCount: Math.floor(articlesCount / LIMIT) }));
++          queueMicrotask(() => setState({ totalPagesCount: Math.ceil(articlesCount / LIMIT) }));
+           return articles.reduce((memo, article) => {
+             memo[article.slug] = article;
+             return memo;
+@@ -44,7 +44,7 @@ export default function createArticles(agent, actions, state, setState) {
+       if (article && !article.favorited) {
+         setState("articles", slug, (s) => ({
+           favorited: true,
+-          favoritesCount: s.favoritesCount
++          favoritesCount: s.favoritesCount + 1
+         }));
+         try {
+           await agent.Articles.favorite(slug);
+diff --git a/src/store/createAuth.js b/src/store/createAuth.js
+index 2a8f19f..aa2e9b7 100644
+--- a/src/store/createAuth.js
++++ b/src/store/createAuth.js
+@@ -18,7 +18,10 @@ export default function createAuth(agent, actions, setState) {
+       setLoggedIn(true);
+     },
+     logout() {
+-      batch(() => {})
++      batch(() => {
++        setState({ token: undefined });
++        mutate(undefined);
++      })
+     },
+     async updateUser(newUser) {
+       const { user, errors } = await agent.Auth.save(newUser);
+diff --git a/src/store/createComments.js b/src/store/createComments.js
+index 627e5ac..7fef9f9 100644
+--- a/src/store/createComments.js
++++ b/src/store/createComments.js
+@@ -16,7 +16,7 @@ export default function createComments(agent, actions, state, setState) {
+       if (errors) throw errors;
+     },
+     async deleteComment(id) {
+-      mutate(comments().filter((c) => c.id === id));
++      mutate(comments().filter((c) => c.id !== id));
+       try {
+         await agent.Comments.delete(state.articleSlug, id);
+       } catch (err) {
+diff --git a/src/store/createCommon.js b/src/store/createCommon.js
+index 77a4455..1c0e2eb 100644
+--- a/src/store/createCommon.js
++++ b/src/store/createCommon.js
+@@ -5,3 +5,3 @@ export default function createCommon(agent, actions, state, setState) {
+     "tags",
+-    () => agent.Tags.getAll().then((tags) => tags.map((t) => t)),
++    () => agent.Tags.getAll().then((tags) => tags.map((t) => t.toLowerCase())),
+     { initialValue: [] }
+@@ -9,3 +9,3 @@ export default function createCommon(agent, actions, state, setState) {
+   createEffect(() => {
+-    state.token ? localStorage.setItem("token", state.token) : localStorage.removeItem("token");
++    state.token ? localStorage.setItem("jwt", state.token) : localStorage.removeItem("jwt");
+   });
+diff --git a/src/store/createProfile.js b/src/store/createProfile.js
+index b716b42..04988fb 100644
+--- a/src/store/createProfile.js
++++ b/src/store/createProfile.js
+@@ -6,7 +6,7 @@ export default function createProfile(agent, actions, state, setState) {
+   Object.assign(actions, {
+     loadProfile: setUsername,
+     async follow() {
+-      if (state.profile && state.profile.following) {
++      if (state.profile && !state.profile.following) {
+         setState("profile", "following", true);
+         try {
+           await agent.Profile.follow(state.profile.username);
+diff --git a/src/store/createRouteHandler.js b/src/store/createRouteHandler.js
+index 0aed98f..99f46fc 100644
+--- a/src/store/createRouteHandler.js
++++ b/src/store/createRouteHandler.js
+@@ -11,7 +11,7 @@ export default function createRouteHandler(init) {
+   return {
+     location,
+     match: (name, test) => {
+-      const loc = location();
++      const loc = location().split("?")[0];
+       const match = test.exec(loc);
+       if (match) {
+         params = { params: match.slice(1), routeName: name };

@@ -1,0 +1,106 @@
+diff --git a/examples/destroy-many-boards.html b/examples/destroy-many-boards.html
+--- a/examples/destroy-many-boards.html
++++ b/examples/destroy-many-boards.html
+@@ -31,7 +31,7 @@
+ <script type="module">
+     import {Chessboard} from "../src/Chessboard.js"
+     import {FEN} from "../src/model/Position.js"
+-    import {Chess} from "https://cdn.jsdelivr.net/npm/chess.mjs@1/src/chess.mjs/Chess.js"
++    import {Chess} from "../rb-offline/chess-inert.js"
+ 
+     const boardsDiv = document.getElementById("boards")
+     const boardDiv = document.createElement("div")
+diff --git a/examples/many-boards.html b/examples/many-boards.html
+--- a/examples/many-boards.html
++++ b/examples/many-boards.html
+@@ -23,7 +23,7 @@
+ <!--suppress JSUnresolvedFunction -->
+ <script type="module">
+     import {Chessboard} from "../src/Chessboard.js"
+-    import {Chess} from "https://cdn.jsdelivr.net/npm/chess.mjs@1/src/chess.mjs/Chess.js"
++    import {Chess} from "../rb-offline/chess-inert.js"
+ 
+     const boardsDiv = document.getElementById("boards")
+     const game = new Chess()
+diff --git a/examples/validate-moves-chess960.html b/examples/validate-moves-chess960.html
+--- a/examples/validate-moves-chess960.html
++++ b/examples/validate-moves-chess960.html
+@@ -23,7 +23,7 @@
+     import {MARKER_TYPE, Markers} from "../src/extensions/markers/Markers.js"
+     import {PROMOTION_DIALOG_RESULT_TYPE, PromotionDialog} from "../src/extensions/promotion-dialog/PromotionDialog.js"
+     import {Accessibility} from "../src/extensions/accessibility/Accessibility.js"
+-    import {Chess} from "https://cdn.jsdelivr.net/npm/chess.mjs@2/src/Chess.js"
++    import {Chess} from "../rb-offline/chess-inert.js"
+     import {RightClickAnnotator} from "../src/extensions/right-click-annotator/RightClickAnnotator.js"
+ 
+     const chess = new Chess("bnrqnkrb/pppppppp/8/8/8/8/PPPPPPPP/BNRQNKRB w KQkq - 0 1", {chess960: true})
+diff --git a/examples/validate-moves.html b/examples/validate-moves.html
+--- a/examples/validate-moves.html
++++ b/examples/validate-moves.html
+@@ -22,7 +22,7 @@
+     import {MARKER_TYPE, Markers} from "../src/extensions/markers/Markers.js"
+     import {PROMOTION_DIALOG_RESULT_TYPE, PromotionDialog} from "../src/extensions/promotion-dialog/PromotionDialog.js"
+     import {Accessibility} from "../src/extensions/accessibility/Accessibility.js"
+-    import {Chess} from "https://cdn.jsdelivr.net/npm/chess.mjs@1/src/chess.mjs/Chess.js"
++    import {Chess} from "../rb-offline/chess-inert.js"
+     import {RightClickAnnotator} from "../src/extensions/right-click-annotator/RightClickAnnotator.js";
+ 
+     const chess = new Chess()
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -52,7 +52,7 @@
+ <script type="module">
+     import {Chessboard} from "./src/Chessboard.js"
+     import {FEN} from "./src/model/Position.js"
+-    import {Chess} from "https://cdn.jsdelivr.net/npm/chess.mjs@1/src/chess.mjs/Chess.js"
++    import {Chess} from "./rb-offline/chess-inert.js"
+ 
+     const chess = new Chess()
+     const board = new Chessboard(document.getElementById("board"), {
+diff --git a/rb-offline/chess-inert.js b/rb-offline/chess-inert.js
+new file mode 100644
+--- /dev/null
++++ b/rb-offline/chess-inert.js
+@@ -0,0 +1,41 @@
++/**
++ * Offline stand-in for the third-party chess engine that the pristine example
++ * pages import from a public CDN. The verified surface of this task never uses
++ * an engine, so this module is deliberately inert: it holds a FEN string and
++ * reports that no move is available. Every page that drives itself from the
++ * engine's move list already guards on an empty move list, so each of them
++ * settles on its initial position instead of reaching out to the network.
++ */
++const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
++
++export class Chess {
++    constructor(fen, options) {
++        this.options = options || {}
++        this._fen = typeof fen === "string" && fen.length ? fen : START
++    }
++    fen() { return this._fen }
++    get_fen() { return this._fen }
++    load(fen) { this._fen = fen; return true }
++    reset() { this._fen = START }
++    moves() { return [] }
++    move() { return null }
++    undo() { return null }
++    turn() { return (this._fen.split(" ")[1] || "w") }
++    history() { return [] }
++    header() { return {} }
++    game_over() { return false }
++    is_game_over() { return false }
++    in_check() { return false }
++    in_checkmate() { return false }
++    in_stalemate() { return false }
++    in_draw() { return false }
++    in_threefold_repetition() { return false }
++    insufficient_material() { return false }
++    is_check() { return false }
++    is_checkmate() { return false }
++    is_stalemate() { return false }
++    is_draw() { return false }
++    board() { return [] }
++}
++
++export default Chess

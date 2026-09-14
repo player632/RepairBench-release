@@ -1,0 +1,158 @@
+diff --git a/src/components/Application/hooks/createApplyTheme.ts b/src/components/Application/hooks/createApplyTheme.ts
+index d00dc91..579279c 100644
+--- a/src/components/Application/hooks/createApplyTheme.ts
++++ b/src/components/Application/hooks/createApplyTheme.ts
+@@ -20,7 +20,7 @@ export default function createApplyTheme(): void {
+       return themeColorMode === ThemeColorMode.Auto ? (isOSDark() ? 'dark' : 'light') : themeColorMode
+     },
+     (theme) => {
+-      document.body.setAttribute('data-theme', theme)
++      document.documentElement.setAttribute('data-theme', theme)
+     },
+   )
+ 
+diff --git a/src/components/Application/hooks/createMountEffect.ts b/src/components/Application/hooks/createMountEffect.ts
+index 104a197..c931233 100644
+--- a/src/components/Application/hooks/createMountEffect.ts
++++ b/src/components/Application/hooks/createMountEffect.ts
+@@ -1,6 +1,6 @@
+ import { onSettled } from 'solid-js'
+ 
+-const DurationInSeconds = (1 / 60) * 180 // 6 frames or 100 ms
++const DurationInSeconds = (1 / 60) * 6 // 6 frames or 100 ms
+ 
+ export default function createMountEffect(): void {
+   onSettled(() => {
+diff --git a/src/components/Application/hooks/createSettingsDialog.tsx b/src/components/Application/hooks/createSettingsDialog.tsx
+index 8bb2272..a08e5f4 100644
+--- a/src/components/Application/hooks/createSettingsDialog.tsx
++++ b/src/components/Application/hooks/createSettingsDialog.tsx
+@@ -14,7 +14,7 @@ interface CreateSettingsDialogReturnValue {
+ export default function createSettingsDialog(): CreateSettingsDialogReturnValue {
+   const [settings, setSettings] = useSettings()
+ 
+-  const [showSettings, setShowSettings] = createSignal(true)
++  const [showSettings, setShowSettings] = createSignal(false)
+ 
+   const handleSettingsRequest = (): void => {
+     setShowSettings(true)
+diff --git a/src/components/Modal/hooks/useDialogHooks.ts b/src/components/Modal/hooks/useDialogHooks.ts
+index ef659af..5b793ba 100644
+--- a/src/components/Modal/hooks/useDialogHooks.ts
++++ b/src/components/Modal/hooks/useDialogHooks.ts
+@@ -57,7 +57,7 @@ export default function useDialogHooks(config: OverlayHooksConfig): void {
+         fallbackFocus: $dialog,
+       })
+ 
+-      focusTrap.deactivate()
++      focusTrap.activate()
+       return () => {
+         focusTrap.deactivate()
+       }
+@@ -101,5 +101,5 @@ export default function useDialogHooks(config: OverlayHooksConfig): void {
+ }
+ 
+ function shouldClose(e: MouseEvent, $dialog: HTMLElement | undefined): boolean {
+-  return e.target instanceof Node && $dialog != null && $dialog.contains(e.target)
++  return e.target instanceof Node && $dialog != null && !$dialog.contains(e.target)
+ }
+diff --git a/src/components/Time/index.tsx b/src/components/Time/index.tsx
+index db1b97e..061f5a0 100644
+--- a/src/components/Time/index.tsx
++++ b/src/components/Time/index.tsx
+@@ -12,7 +12,7 @@ export default function Time(): JSX.Element {
+   return (
+     <time aria-live="polite" aria-atomic="true" aria-label="Current date time" class={css(s.container)}>
+       <span aria-current="date" aria-label="Date">
+-        {format.date(dateTime(), { dateStyle: 'full' })}
++        {format.date(dateTime())}
+       </span>
+       <span aria-current="time" aria-label="Time">
+         {format.date(dateTime(), {
+diff --git a/src/components/TimeMilestones/components/Milestone/components/Progress/index.tsx b/src/components/TimeMilestones/components/Milestone/components/Progress/index.tsx
+index 1912dda..5a1bcec 100644
+--- a/src/components/TimeMilestones/components/Milestone/components/Progress/index.tsx
++++ b/src/components/TimeMilestones/components/Milestone/components/Progress/index.tsx
+@@ -68,7 +68,7 @@ function buildPathCalculator(p: {
+   height: number
+ }): (index: number) => JSX.PathSVGAttributes<SVGPathElement> {
+   return (index) => {
+-    const lineProgress = Math.max(p.progress * p.barsNumber - index, 0)
++    const lineProgress = Math.min(Math.max(p.progress * p.barsNumber - index, 0), 1)
+ 
+     const barSpacing = (p.width - p.barWidth) / (p.barsNumber - 1)
+     const barHeight = p.minHeight + (p.height - p.minHeight) * lineProgress
+diff --git a/src/components/TimeMilestones/components/Milestone/index.tsx b/src/components/TimeMilestones/components/Milestone/index.tsx
+index 5759359..4d22884 100644
+--- a/src/components/TimeMilestones/components/Milestone/index.tsx
++++ b/src/components/TimeMilestones/components/Milestone/index.tsx
+@@ -41,7 +41,7 @@ export default function Milestone(props: MilestoneProps): JSX.Element {
+   const format = createIntlFormatter()
+ 
+   const formatPercent = (value: number): string => format.number(value, PercentFormatOptions)
+-  const formatValue = (value: number): string => formatPercent(round(value * 100, 2)).replaceAll(/\s/g, '')
++  const formatValue = (value: number): string => formatPercent(round(value, 2)).replaceAll(/\s/g, '')
+ 
+   return (
+     <div role="group" aria-label={props.description} class={css(s.container)}>
+diff --git a/src/components/TimeMilestones/utils.ts b/src/components/TimeMilestones/utils.ts
+index 6d573e7..6bcf71e 100644
+--- a/src/components/TimeMilestones/utils.ts
++++ b/src/components/TimeMilestones/utils.ts
+@@ -5,8 +5,8 @@ import {
+   getYear,
+   setYear,
+   startOfDay,
++  startOfISOWeek,
+   startOfMonth,
+-  startOfWeek,
+   startOfYear,
+ } from 'date-fns'
+ import { roundDown } from '@/utils/rounds'
+@@ -32,7 +32,7 @@ const getSecondsInMonth = mul(getDaysInMonth, getSecondsInDay)
+ const getSecondsInYear = mul(getDaysInYear, getSecondsInDay)
+ 
+ export const getDayMilestone = milestone(getSecondsInDay, startOfDay)
+-export const getWeekMilestone = milestone(getSecondsInWeek, startOfWeek)
++export const getWeekMilestone = milestone(getSecondsInWeek, startOfISOWeek)
+ export const getMonthMilestone = milestone(getSecondsInMonth, startOfMonth)
+ export const getYearMilestone = milestone(getSecondsInYear, startOfYear)
+ 
+diff --git a/src/hooks/createUniqueIds.ts b/src/hooks/createUniqueIds.ts
+index e244331..aa865c5 100644
+--- a/src/hooks/createUniqueIds.ts
++++ b/src/hooks/createUniqueIds.ts
+@@ -4,6 +4,6 @@ type UniqueIdsMap<T extends string> = Readonly<Record<T, string>>
+ 
+ export default function createUniqueIds<T extends string>(names: readonly T[]): UniqueIdsMap<T> {
+   const uniqueIds: Partial<UniqueIdsMap<T>> = {}
+-  for (const name of [names[0]]) uniqueIds[name] = createUniqueId()
++  for (const name of names) uniqueIds[name] = createUniqueId()
+   return uniqueIds as UniqueIdsMap<T>
+ }
+diff --git a/src/utils/intl.ts b/src/utils/intl.ts
+index faf77f9..0549d7e 100644
+--- a/src/utils/intl.ts
++++ b/src/utils/intl.ts
+@@ -53,7 +53,7 @@ function getCacheKey<T extends AnyOptions>(
+ ): string {
+   const separator = '-'
+   const localeKey = Array.isArray(locales) ? locales.slice().sort().join(separator) : locales
+-  const optionsKey = ''
++  const optionsKey = JSON.stringify(options)
+ 
+   let key = ''
+   if (localeKey !== '') key += localeKey
+diff --git a/src/utils/storage/adapters/local-storage-adapter.ts b/src/utils/storage/adapters/local-storage-adapter.ts
+index 8d4250c..09490de 100644
+--- a/src/utils/storage/adapters/local-storage-adapter.ts
++++ b/src/utils/storage/adapters/local-storage-adapter.ts
+@@ -19,7 +19,7 @@ export default class LocalStorageAdapter extends AbstractStorageAdapter {
+   write(value: JsonValue): void {
+     localStorage.setItem(this.storageKey, this.serialize(value))
+     // `storage` events fire in *other* tabs only — echo own writes here.
+-    this.subscription.notify(null)
++    this.subscription.notify(value)
+   }
+ 
+   override dispose(): void {

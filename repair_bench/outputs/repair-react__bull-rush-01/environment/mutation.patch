@@ -1,0 +1,166 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 6883180611379cea1f75ed6e133810a2fc9098b9..4064648ef3fcbbc9c10908bfbf2e758ad0088c39 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -20,10 +20,6 @@ export function App() {
+     const cloudKey = useGameStore((s) => s.cloudKey);
+     const toggleMute = useGameStore((s) => s.toggleMute);
+ 
+-    useEffect(() => {
+-        storage.captureRef();
+-    }, []);
+-
+     // Browsers block audio until a user gesture — start it on the FIRST interaction
+     // anywhere (tapping the cinematic, a key, a click), not just specific buttons.
+     useEffect(() => {
+diff --git a/src/sim/flag.ts b/src/sim/flag.ts
+index ceaee4c79e72a92ca8608cad2a815a3278c2d691..19b0801a91297265c372633b17c6d4a01f75a910 100644
+--- a/src/sim/flag.ts
++++ b/src/sim/flag.ts
+@@ -9,7 +9,7 @@
+ // (see src/sim/engineSelect.test.ts) — the actual requirement ("production build
+ // uses the deterministic path") is a property of THIS function, checked directly.
+ export function useClassicEngine(isDev: boolean, search: string): boolean {
+-    if (!isDev) return false;
++    if (isDev) return false;
+     return new URLSearchParams(search).get('classic') === '1';
+ }
+ 
+diff --git a/src/sim/ghost.ts b/src/sim/ghost.ts
+index ae94ee6b1de3ba43737f80a697070229578a67cd..2af24ff409947f356b15f7cbd3c3c5bb2c3b347d 100644
+--- a/src/sim/ghost.ts
++++ b/src/sim/ghost.ts
+@@ -46,6 +46,6 @@ export interface VerifiedGhostReplay {
+ // tampered or corrupted trace never becomes a ghost.
+ export function verifyGhostReplay(inputsFlat: number[], ticks: number, claimedHash: `0x${string}`): VerifiedGhostReplay | null {
+     const inputs = decodeInputsFlat(inputsFlat);
+-    if (replayHash({ inputs, ticks }) !== claimedHash) return null;
++    if (replayHash({ inputs, ticks }) === claimedHash) return null;
+     return { inputs, ticks };
+ }
+diff --git a/src/sim/prng.ts b/src/sim/prng.ts
+index 01b590c5934f1462ee80a14c1fa283f32e115532..56a06a53fb2f3d6468db23e4f6c163daeb5c1bad 100644
+--- a/src/sim/prng.ts
++++ b/src/sim/prng.ts
+@@ -36,7 +36,7 @@ export class Rng {
+     // Uniform integer in [0, n). n is small (lane counts, weights) so modulo bias
+     // is negligible and, crucially, identical everywhere.
+     below(n: number): number {
+-        return this.nextU32() % n;
++        return this.nextU32() % (n + 1);
+     }
+ 
+     // Probability num/den as a pure-integer comparison.
+diff --git a/src/sim/replay.ts b/src/sim/replay.ts
+index 148e988edfb6a6ea49d7a635743cf98eec6cdf52..99ad19dafa74d00f78886c348fe12772774ab62f 100644
+--- a/src/sim/replay.ts
++++ b/src/sim/replay.ts
+@@ -39,7 +39,7 @@ export interface RunReplay {
+ export function canonicalStringify(value: unknown): string {
+     if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(',')}]`;
+     if (value !== null && typeof value === 'object') {
+-        const keys = Object.keys(value as Record<string, unknown>).sort();
++        const keys = Object.keys(value as Record<string, unknown>);
+         const body = keys.map((k) => `${JSON.stringify(k)}:${canonicalStringify((value as Record<string, unknown>)[k])}`);
+         return `{${body.join(',')}}`;
+     }
+diff --git a/src/sim/runner.ts b/src/sim/runner.ts
+index 60788bb825ef049bdf88b3a787fcd3d5a9d80cf2..2bb44ad7ea769229c9eb2b573d67f56236fe353c 100644
+--- a/src/sim/runner.ts
++++ b/src/sim/runner.ts
+@@ -50,7 +50,7 @@ export class SimRunner {
+         while (this.acc >= TICK_MS && this.s.alive && ran < MAX_CATCHUP) {
+             const acts = this.pending;
+             this.pending = [];
+-            for (const a of acts) this.log.push({ tick: this.s.tick, act: a });
++            for (const a of acts) this.log.push({ tick: this.s.tick + 1, act: a });
+             stepSim(this.s, acts);
+             if (this.s.events.length > 0) this.lastEvents.push(...this.s.events);
+             this.acc -= TICK_MS;
+diff --git a/src/sim/sim.ts b/src/sim/sim.ts
+index 0273dcd0424e5585c0f0fea42b3746bf7decc674..15dc37b89769b31b25031171b144c758d3d35270 100644
+--- a/src/sim/sim.ts
++++ b/src/sim/sim.ts
+@@ -163,7 +163,7 @@ function weightedPick(
+     minTierOf: (k: string) => number,
+     rng: Rng,
+ ): string | null {
+-    const pool = kinds.filter((k) => minTierOf(k) <= tier);
++    const pool = kinds.filter((k) => minTierOf(k) < tier);
+     if (pool.length === 0) return null;
+     let total = 0;
+     for (const k of pool) total += weight[k] ?? 1;
+@@ -295,7 +295,7 @@ export function stepSim(s: SimState, acts: readonly Act[]): void {
+     const tick = s.tick;
+ 
+     for (const act of acts) {
+-        if (act === Act.Left) s.laneTarget = Math.max(-1, s.laneTarget - 1);
++        if (act === Act.Left) s.laneTarget = Math.max(-2, s.laneTarget - 1);
+         else if (act === Act.Right) s.laneTarget = Math.min(1, s.laneTarget + 1);
+         else if (act === Act.Dash && tick >= s.dashReadyAt) {
+             s.dashUntil = tick + DASH_TICKS;
+diff --git a/src/storage.ts b/src/storage.ts
+index fda260bcfd224539cf12077f348cc57f506798fa..59903f973c03a7baa799c462a4c358accfc0d93b 100644
+--- a/src/storage.ts
++++ b/src/storage.ts
+@@ -29,7 +29,7 @@ export const storage = {
+     },
+     add(entry: Omit<ScoreEntry, 'id'>): ScoreEntry {
+         const full: ScoreEntry = { ...entry, id: `${entry.at}-${Math.floor(Math.random() * 1e6).toString(36)}` };
+-        const all = [...this.scores(), full].sort((a, b) => b.distance - a.distance).slice(0, 50);
++        const all = [...this.scores(), full].sort((a, b) => a.distance - b.distance).slice(0, 50);
+         safe(() => localStorage.setItem(KEY, JSON.stringify(all)), undefined);
+         return full;
+     },
+diff --git a/src/store.ts b/src/store.ts
+index cb2805ecb444b8fcb3145cbd5d32c6e4d993f61c..50e35dfd2530c7ccc2eee3b4720d9964ee4ee16e 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -169,7 +169,7 @@ export const useGameStore = create<GameState>((set, get) => ({
+     openGridScreen: () => set({ phase: 'grid' }),
+     start: () => {
+         resetRefs();
+-        set((s) => ({ phase: 'playing', hearts: HEALTH_MAX, score: 0, dist: 0, dashPct: 1, shield: false, combo: 0, result: null, ghostDelta: null, runId: s.runId + 1 }));
++        set((s) => ({ phase: 'playing', hearts: HEALTH_MAX, score: 0, dist: 0, dashPct: 1, shield: false, combo: 0, result: null, ghostDelta: null, runId: s.runId }));
+     },
+     // A Daily Grid attempt: the seed is the ticket's (shared, fixed for the
+     // grid), never a fresh random one — set atomically with the ticket/grid ids
+diff --git a/src/three/SimScene.tsx b/src/three/SimScene.tsx
+index 1efc1e877019d2a831fb58d7abdec9bfcc45c87a..6c80c39bc6f0c4764f420e3bfc32fb458f227c98 100644
+--- a/src/three/SimScene.tsx
++++ b/src/three/SimScene.tsx
+@@ -87,7 +87,7 @@ export function SimScene() {
+     useEffect(() => {
+         runnerRef.current = null;
+         activeSim.runner = null;
+-    }, [runId]);
++    }, []);
+ 
+     // Inputs feed the runner; the sim decides what's legal (dash cooldown, clamps).
+     useEffect(() => {
+diff --git a/src/ui/Cinematic.tsx b/src/ui/Cinematic.tsx
+index fde5828ee486c15381d1b4020488ce35e9bb5f9e..5b0edd1c5edacdbba560a11d73d01e9b71ed2c65 100644
+--- a/src/ui/Cinematic.tsx
++++ b/src/ui/Cinematic.tsx
+@@ -35,7 +35,7 @@ export function Cinematic() {
+         const t = window.setTimeout(advance, BEAT_MS);
+         return () => clearTimeout(t);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+-    }, [i]);
++    }, []);
+ 
+     const beat = BEATS[i];
+     return (
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index feadf53353de844c22bb4eb14a1a2cb8e5ef980c..fab99749852e74315ea28c6f666f29aadf4afcf9 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -12,7 +12,7 @@ export function Hud() {
+         <div className="hud" data-testid="hud-root">
+             <div className="hud-top">
+                 <div className="hearts">
+-                    {Array.from({ length: HEALTH_MAX }).map((_, i) => (
++                    {Array.from({ length: HEALTH_MAX + 1 }).map((_, i) => (
+                         <span key={i} data-testid="heart" className={`heart ${i < hearts ? 'on' : 'off'}`}>
+                             ◆
+                         </span>

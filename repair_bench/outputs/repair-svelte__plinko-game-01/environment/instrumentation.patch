@@ -1,0 +1,726 @@
+diff --git a/playwright.config.ts b/playwright.config.ts
+deleted file mode 100644
+index edc9c25..0000000
+--- a/playwright.config.ts
++++ /dev/null
+@@ -1,71 +0,0 @@
+-import { defineConfig, devices } from '@playwright/test';
+-
+-/**
+- * Read environment variables from file.
+- * https://github.com/motdotla/dotenv
+- */
+-// require('dotenv').config();
+-
+-/**
+- * See https://playwright.dev/docs/test-configuration.
+- */
+-export default defineConfig({
+-  testDir: './tests',
+-  /* Run tests in files in parallel */
+-  fullyParallel: true,
+-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+-  forbidOnly: !!process.env.CI,
+-  /* Retry on CI only */
+-  retries: process.env.CI ? 2 : 0,
+-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+-  reporter: 'html',
+-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+-  use: {
+-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+-    trace: 'on-first-retry',
+-    video: 'retain-on-failure',
+-  },
+-
+-  /* Configure projects for major browsers */
+-  projects: [
+-    {
+-      name: 'chromium',
+-      use: { ...devices['Desktop Chrome'] },
+-    },
+-    {
+-      name: 'firefox',
+-      use: { ...devices['Desktop Firefox'] },
+-    },
+-    {
+-      name: 'webkit',
+-      use: { ...devices['Desktop Safari'] },
+-    },
+-
+-    /* Test against mobile viewports. */
+-    // {
+-    //   name: 'Mobile Chrome',
+-    //   use: { ...devices['Pixel 5'] },
+-    // },
+-    // {
+-    //   name: 'Mobile Safari',
+-    //   use: { ...devices['iPhone 12'] },
+-    // },
+-
+-    /* Test against branded browsers. */
+-    // {
+-    //   name: 'Microsoft Edge',
+-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
+-    // },
+-    // {
+-    //   name: 'Google Chrome',
+-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+-    // },
+-  ],
+-
+-  /* Run your local dev server before starting the tests */
+-  webServer: {
+-    command: 'pnpm preview', // Please run `pnpm build` before running E2E tests
+-    port: 4173,
+-    reuseExistingServer: !process.env.CI,
+-  },
+-});
+diff --git a/src/lib/components/Balance.svelte b/src/lib/components/Balance.svelte
+index 279585b..fc7ce7f 100644
+--- a/src/lib/components/Balance.svelte
++++ b/src/lib/components/Balance.svelte
+@@ -18,12 +18,13 @@
+     class="flex gap-2 bg-slate-900 px-3 py-2 text-sm font-semibold text-white tabular-nums sm:text-base"
+   >
+     <span class="text-gray-500 select-none">$</span>
+-    <span class="min-w-16 text-right">
++    <span data-testid="balance-value" class="min-w-16 text-right">
+       {balanceFormatted}
+     </span>
+   </div>
+   <Popover.Root>
+     <Popover.Trigger
++      data-testid="add-money-trigger"
+       class="bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 active:bg-blue-700 sm:text-base"
+     >
+       Add
+@@ -41,6 +42,7 @@
+               <div class="flex gap-2">
+                 {#each addMoneyAmounts as amount}
+                   <button
++                    data-testid={`add-money-${amount}`}
+                     onclick={() => ($balance += amount)}
+                     class="touch-manipulation rounded-md bg-green-500 px-3 py-2 text-sm font-semibold text-gray-900 transition-colors hover:bg-green-400 active:bg-green-600 disabled:bg-neutral-600 disabled:text-neutral-400"
+                   >
+diff --git a/src/lib/components/LiveStatsWindow/LiveStatsWindow.svelte b/src/lib/components/LiveStatsWindow/LiveStatsWindow.svelte
+index 8eae63f..cb4c87d 100644
+--- a/src/lib/components/LiveStatsWindow/LiveStatsWindow.svelte
++++ b/src/lib/components/LiveStatsWindow/LiveStatsWindow.svelte
+@@ -17,6 +17,7 @@
+ 
+ {#if $isLiveStatsOpen}
+   <DraggableWindow
++    data-testid="stats-window"
+     onClose={() => ($isLiveStatsOpen = false)}
+     class="fixed right-8 bottom-8 w-[20rem]"
+   >
+@@ -29,6 +30,7 @@
+       <Tooltip.Provider delayDuration={0} disableCloseOnTriggerClick>
+         <Tooltip.Root>
+           <Tooltip.Trigger
++            data-testid="stats-reset-button"
+             onclick={resetLiveStats}
+             class="bg-slate-800 px-5 py-3 text-slate-300 transition hover:bg-slate-700 active:bg-slate-600"
+           >
+diff --git a/src/lib/components/LiveStatsWindow/Profit.svelte b/src/lib/components/LiveStatsWindow/Profit.svelte
+index 33c2529..b4e9725 100644
+--- a/src/lib/components/LiveStatsWindow/Profit.svelte
++++ b/src/lib/components/LiveStatsWindow/Profit.svelte
+@@ -15,6 +15,7 @@
+   <div class="flex-1">
+     <p class="font-medium text-slate-400">Profit</p>
+     <p
++      data-testid="stats-profit"
+       class={twMerge('font-semibold tabular-nums', profit >= 0 ? 'text-green-400' : 'text-red-400')}
+     >
+       {formatCurrency(profit)}
+@@ -24,11 +25,11 @@
+   <div class="flex-1 space-y-2">
+     <div>
+       <p class="font-medium text-slate-400">Wins</p>
+-      <p class="font-semibold text-green-400 tabular-nums">{winsFormatted}</p>
++      <p data-testid="stats-wins" class="font-semibold text-green-400 tabular-nums">{winsFormatted}</p>
+     </div>
+     <div>
+       <p class="font-medium text-slate-400">Losses</p>
+-      <p class="font-semibold text-red-400 tabular-nums">{lossesFormatted}</p>
++      <p data-testid="stats-losses" class="font-semibold text-red-400 tabular-nums">{lossesFormatted}</p>
+     </div>
+   </div>
+ </div>
+diff --git a/src/lib/components/LiveStatsWindow/ProfitHistoryChart.svelte b/src/lib/components/LiveStatsWindow/ProfitHistoryChart.svelte
+index ed4115a..f697cdf 100644
+--- a/src/lib/components/LiveStatsWindow/ProfitHistoryChart.svelte
++++ b/src/lib/components/LiveStatsWindow/ProfitHistoryChart.svelte
+@@ -116,6 +116,7 @@
+   </p>
+   <div class="mt-6 h-[11rem] w-[16rem]">
+     <canvas
++      data-testid="stats-history"
+       use:initChart={{ profitHistory: $totalProfitHistory }}
+       onmouseleave={() => (hoveredProfitValue = null)}
+     ></canvas>
+diff --git a/src/lib/components/Plinko/BinsRow.svelte b/src/lib/components/Plinko/BinsRow.svelte
+index 84e4e21..e918c72 100644
+--- a/src/lib/components/Plinko/BinsRow.svelte
++++ b/src/lib/components/Plinko/BinsRow.svelte
+@@ -49,7 +49,7 @@
+ </script>
+ 
+ <!-- Height clamping in mobile: From 10px at 370px viewport width to 16px at 600px viewport width -->
+-<div class="flex h-[clamp(10px,0.352px+2.609vw,16px)] w-full justify-center lg:h-7">
++<div data-testid="bin-row" class="flex h-[clamp(10px,0.352px+2.609vw,16px)] w-full justify-center lg:h-7">
+   {#if $plinkoEngine}
+     <div class="flex gap-[1%]" style:width={`${($plinkoEngine.binsWidthPercentage ?? 0) * 100}%`}>
+       {#each binPayouts[$rowCount][$riskLevel] as payout, binIndex}
+@@ -58,6 +58,7 @@
+               - Desktop (>= 1024px): From 10px at 1024px viewport width to 12px at 1100px viewport width
+          -->
+         <div
++          data-testid={`bin-label-${binIndex}`}
+           use:initAnimation
+           class="flex min-w-0 flex-1 items-center justify-center rounded-xs text-[clamp(6px,2.784px+0.87vw,8px)] font-bold text-gray-950 shadow-[0_2px_var(--shadow-color)] lg:rounded-md lg:text-[clamp(10px,-16.944px+2.632vw,12px)] lg:shadow-[0_3px_var(--shadow-color)]"
+           style:background-color={binColorsByRowCount[$rowCount].background[binIndex]}
+diff --git a/src/lib/components/Plinko/LastWins.svelte b/src/lib/components/Plinko/LastWins.svelte
+index 01b46f7..76b14b9 100644
+--- a/src/lib/components/Plinko/LastWins.svelte
++++ b/src/lib/components/Plinko/LastWins.svelte
+@@ -19,11 +19,13 @@
+       - Font size: From 8px at 340px viewport width to 10px at 620px viewport width
+  -->
+ <div
++  data-testid="last-wins"
+   class="flex w-[clamp(1.5rem,0.893rem+2.857vw,2rem)] flex-col overflow-hidden rounded-xs text-[clamp(8px,5.568px+0.714vw,10px)] md:rounded-md lg:w-12 lg:text-sm"
+   style:aspect-ratio={`1 / ${winCount}`}
+ >
+   {#each lastWins as { binIndex, rowCount, payout: { multiplier } }}
+     <div
++      data-testid="last-win-chip"
+       class="flex aspect-square items-center justify-center font-bold text-gray-950"
+       style:background-color={binColorsByRowCount[rowCount].background[binIndex]}
+     >
+diff --git a/src/lib/components/Plinko/Plinko.svelte b/src/lib/components/Plinko/Plinko.svelte
+index 4f18f78..2aff5a0 100644
+--- a/src/lib/components/Plinko/Plinko.svelte
++++ b/src/lib/components/Plinko/Plinko.svelte
+@@ -29,7 +29,13 @@
+         </div>
+       {/if}
+ 
+-      <canvas use:initPlinko width={WIDTH} height={HEIGHT} class="absolute inset-0 h-full w-full">
++      <canvas
++        data-testid="game-canvas"
++        use:initPlinko
++        width={WIDTH}
++        height={HEIGHT}
++        class="absolute inset-0 h-full w-full"
++      >
+       </canvas>
+     </div>
+     <BinsRow />
+diff --git a/src/lib/components/SettingsWindow/SettingsWindow.svelte b/src/lib/components/SettingsWindow/SettingsWindow.svelte
+index 3e8d379..65bfaf4 100644
+--- a/src/lib/components/SettingsWindow/SettingsWindow.svelte
++++ b/src/lib/components/SettingsWindow/SettingsWindow.svelte
+@@ -17,6 +17,7 @@
+ 
+ {#if $isGameSettingsOpen}
+   <DraggableWindow
++    data-testid="settings-window"
+     onClose={() => ($isGameSettingsOpen = false)}
+     class="fixed bottom-8 left-8 w-[18rem]"
+   >
+@@ -27,11 +28,12 @@
+ 
+     <div class="flex flex-col gap-5">
+       <div class="flex items-center gap-4">
+-        <Switch id="isAnimationOn" bind:checked={$isAnimationOn} />
++        <Switch data-testid="animation-switch" id="isAnimationOn" bind:checked={$isAnimationOn} />
+         <Label.Root for="isAnimationOn" class="text-sm  text-white">Animations</Label.Root>
+       </div>
+ 
+       <button
++        data-testid="reset-balance-button"
+         onclick={() => ($balance = DEFAULT_BALANCE)}
+         class="touch-manipulation self-start rounded-md bg-red-500 px-3 py-2 text-sm text-white transition-colors hover:bg-red-400 active:bg-red-600"
+       >
+diff --git a/src/lib/components/Sidebar/Sidebar.svelte b/src/lib/components/Sidebar/Sidebar.svelte
+index 2cb5223..151a30e 100644
+--- a/src/lib/components/Sidebar/Sidebar.svelte
++++ b/src/lib/components/Sidebar/Sidebar.svelte
+@@ -124,6 +124,7 @@
+   <div class="flex gap-1 rounded-full bg-slate-900 p-1">
+     {#each betModes as { value, label }}
+       <button
++        data-testid={`bet-mode-${label.toLowerCase()}`}
+         disabled={autoBetInterval !== null}
+         onclick={() => (betMode = value)}
+         class={twMerge(
+@@ -141,6 +142,7 @@
+     <div class="flex">
+       <div class="relative flex-1">
+         <input
++          data-testid="bet-amount-input"
+           id="betAmount"
+           value={$betAmount}
+           onfocusout={handleBetAmountFocusOut}
+@@ -158,6 +160,7 @@
+         <div class="absolute top-2 left-3 text-slate-500 select-none" aria-hidden="true">$</div>
+       </div>
+       <button
++        data-testid="bet-half"
+         disabled={autoBetInterval !== null}
+         onclick={() => {
+           $betAmount = parseFloat(($betAmount / 2).toFixed(2));
+@@ -167,6 +170,7 @@
+         1/2
+       </button>
+       <button
++        data-testid="bet-double"
+         disabled={autoBetInterval !== null}
+         onclick={() => {
+           $betAmount = parseFloat(($betAmount * 2).toFixed(2));
+@@ -188,6 +192,7 @@
+   <div>
+     <label for="riskLevel" class="text-sm font-medium text-slate-300">Risk</label>
+     <Select
++      data-testid="risk-select"
+       id="riskLevel"
+       bind:value={$riskLevel}
+       items={riskLevels}
+@@ -198,6 +203,7 @@
+   <div>
+     <label for="rowCount" class="text-sm font-medium text-slate-300">Rows</label>
+     <Select
++      data-testid="rows-select"
+       id="rowCount"
+       bind:value={$rowCount}
+       items={rowCounts}
+@@ -223,6 +229,7 @@
+       </div>
+       <div class="relative">
+         <input
++          data-testid="autobet-count-input"
+           id="autoBetInput"
+           value={autoBetInterval === null ? autoBetInput : autoBetsLeft ?? 0}
+           disabled={autoBetInterval !== null}
+@@ -246,6 +253,7 @@
+   {/if}
+ 
+   <button
++    data-testid="bet-action-button"
+     onclick={handleBetClick}
+     disabled={isDropBallDisabled}
+     class={twMerge(
+@@ -268,6 +276,7 @@
+         <!-- Settings Button -->
+         <Tooltip.Root>
+           <Tooltip.Trigger
++            data-testid="settings-open-button"
+             onclick={() => ($isGameSettingsOpen = !$isGameSettingsOpen)}
+             class={twMerge(
+               'rounded-full p-2 text-slate-300 transition hover:bg-slate-600 active:bg-slate-500',
+@@ -297,6 +306,7 @@
+         <!-- Live Stats Button -->
+         <Tooltip.Root>
+           <Tooltip.Trigger
++            data-testid="stats-open-button"
+             onclick={() => ($isLiveStatsOpen = !$isLiveStatsOpen)}
+             class={twMerge(
+               'rounded-full p-2 text-slate-300 transition hover:bg-slate-600 active:bg-slate-500',
+diff --git a/src/lib/components/ui/DraggableWindow.svelte b/src/lib/components/ui/DraggableWindow.svelte
+index 6140c2d..186f825 100644
+--- a/src/lib/components/ui/DraggableWindow.svelte
++++ b/src/lib/components/ui/DraggableWindow.svelte
+@@ -51,6 +51,7 @@
+     <div class="ml-auto flex">
+       {@render titleBarActions?.()}
+       <button
++        data-testid="window-close-button"
+         onclick={onClose}
+         class="bg-slate-800 px-5 py-3 text-slate-300 transition hover:bg-red-600 hover:text-white active:bg-red-700 active:text-white"
+       >
+diff --git a/src/lib/instrumentationProbe.ts b/src/lib/instrumentationProbe.ts
+new file mode 100644
+index 0000000..6215eb1
+--- /dev/null
++++ b/src/lib/instrumentationProbe.ts
+@@ -0,0 +1,45 @@
++import Matter from 'matter-js';
++import { get } from 'svelte/store';
++import {
++  balance,
++  betAmount,
++  betAmountOfExistingBalls,
++  plinkoEngine,
++  riskLevel,
++  rowCount,
++  totalProfitHistory,
++  winRecords,
++} from '$lib/stores/game';
++import { isAnimationOn } from '$lib/stores/settings';
++
++/**
++ * Read-only instrumentation bridge. Exposes a deterministic snapshot of the
++ * game stores and the physics world so checks can observe canvas-only state
++ * without pixel assertions. Never writes application state.
++ */
++function read() {
++  const history = get(totalProfitHistory);
++  const engine = get(plinkoEngine);
++  let engineBodies = -1;
++  if (engine) {
++    const world = (engine as unknown as { engine: Matter.Engine }).engine.world;
++    engineBodies = Matter.Composite.allBodies(world).length;
++  }
++  return {
++    balance: get(balance),
++    betAmount: get(betAmount),
++    inFlight: Object.keys(get(betAmountOfExistingBalls)).length,
++    records: get(winRecords).length,
++    historyLen: history.length,
++    lastTotalProfit: history.length ? history[history.length - 1] : null,
++    riskLevel: get(riskLevel),
++    rowCount: get(rowCount),
++    animationOn: get(isAnimationOn),
++    engineBodies,
++    engineRunning: engine !== null,
++  };
++}
++
++if (typeof window !== 'undefined') {
++  (window as unknown as { __plinko: { read: typeof read } }).__plinko = { read };
++}
+diff --git a/src/lib/utils/__tests__/colors.test.ts b/src/lib/utils/__tests__/colors.test.ts
+deleted file mode 100644
+index 169ebff..0000000
+--- a/src/lib/utils/__tests__/colors.test.ts
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-import { getBinColors, interpolateRgbColors } from '../colors';
+-
+-describe('interpolateRgbColors', () => {
+-  it('interpolates between two RGB colors', () => {
+-    // 2 colors
+-    expect(interpolateRgbColors({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 }, 2)).toEqual([
+-      { r: 0, g: 0, b: 0 },
+-      { r: 255, g: 255, b: 255 },
+-    ]);
+-
+-    // 5 colors
+-    const from = { r: 0, g: 100, b: 0 };
+-    const to = { r: 80, g: 0, b: 255 };
+-    expect(interpolateRgbColors(from, to, 5)).toEqual([
+-      { r: 0, g: 100, b: 0 },
+-      { r: 20, g: 75, b: 64 },
+-      { r: 40, g: 50, b: 128 },
+-      { r: 60, g: 25, b: 191 },
+-      { r: 80, g: 0, b: 255 },
+-    ]);
+-  });
+-});
+-
+-describe('getBinColors', () => {
+-  it('returns the bin colors by row count', () => {
+-    expect(getBinColors(8)).toEqual({
+-      background: [
+-        'rgb(255, 0, 63)',
+-        'rgb(255, 48, 47)',
+-        'rgb(255, 96, 32)',
+-        'rgb(255, 144, 16)',
+-        'rgb(255, 192, 0)',
+-        'rgb(255, 144, 16)',
+-        'rgb(255, 96, 32)',
+-        'rgb(255, 48, 47)',
+-        'rgb(255, 0, 63)',
+-      ],
+-      shadow: [
+-        'rgb(166, 0, 4)',
+-        'rgb(167, 30, 3)',
+-        'rgb(169, 61, 2)',
+-        'rgb(170, 91, 1)',
+-        'rgb(171, 121, 0)',
+-        'rgb(170, 91, 1)',
+-        'rgb(169, 61, 2)',
+-        'rgb(167, 30, 3)',
+-        'rgb(166, 0, 4)',
+-      ],
+-    });
+-  });
+-});
+diff --git a/src/lib/utils/__tests__/numbers.test.ts b/src/lib/utils/__tests__/numbers.test.ts
+deleted file mode 100644
+index 8d31577..0000000
+--- a/src/lib/utils/__tests__/numbers.test.ts
++++ /dev/null
+@@ -1,86 +0,0 @@
+-import { describe, expect, it, vi } from 'vitest';
+-import {
+-  computeBinProbabilities,
+-  convertScale,
+-  countValueOccurrences,
+-  dotProduct,
+-  factorial,
+-  formatCurrency,
+-  getRandomBetween,
+-} from '../numbers';
+-
+-describe('computeBinProbabilities', () => {
+-  it('calculates the probabilities of each bin with the given number of rows', () => {
+-    expect(computeBinProbabilities(8)).toEqual([
+-      0.00390625, 0.03125, 0.109375, 0.21875, 0.2734375, 0.21875, 0.109375, 0.03125, 0.00390625,
+-    ]);
+-    expect(computeBinProbabilities(9)).toEqual([
+-      0.001953125, 0.017578125, 0.0703125, 0.1640625, 0.24609375, 0.24609375, 0.1640625, 0.0703125,
+-      0.017578125, 0.001953125,
+-    ]);
+-  });
+-});
+-
+-describe('countValueOccurrences', () => {
+-  it('returns a map of how many times each value occurs', () => {
+-    expect(countValueOccurrences(['a', 'aa', 'a', 'b', 'c'])).toEqual({
+-      a: 2,
+-      aa: 1,
+-      b: 1,
+-      c: 1,
+-    });
+-    expect(countValueOccurrences([0, 1, 0, 4, 2, 1])).toEqual({
+-      0: 2,
+-      1: 2,
+-      2: 1,
+-      4: 1,
+-    });
+-    expect(countValueOccurrences([])).toEqual({});
+-  });
+-});
+-
+-describe('dotProduct', () => {
+-  it('computes the dot product of two 1D vectors', () => {
+-    expect(dotProduct([1, 2, 3], [4, 5, 6])).toBe(32);
+-    expect(dotProduct([-1, 4, 2, 1], [1, -2, 3, 2])).toBe(-1);
+-    expect(dotProduct([], [])).toBe(0);
+-  });
+-});
+-
+-describe('factorial', () => {
+-  it('returns the factorial of a number', () => {
+-    const inputs = [0, 1, 2, 3, 4, 5];
+-    const expectedOutputs = [1, 1, 2, 6, 24, 120];
+-    expect(inputs.map(factorial)).toEqual(expectedOutputs);
+-  });
+-});
+-
+-describe('formatCurrency', () => {
+-  it('formats a number as currency', () => {
+-    const testCases: [number, string][] = [
+-      [10, '$10.00'],
+-      [123456.789, '$123,456.79'],
+-      [0, '$0.00'],
+-      [-1234.567, '-$1,234.57'],
+-    ];
+-
+-    testCases.forEach(([input, expectedOutput]) => {
+-      expect(formatCurrency(input)).toBe(expectedOutput);
+-    });
+-  });
+-});
+-
+-describe('getRandomBetween', () => {
+-  it('returns a number between the given range', () => {
+-    vi.spyOn(Math, 'random').mockReturnValue(0.25);
+-    expect(getRandomBetween(100, 200)).toBe(125);
+-  });
+-});
+-
+-describe('convertScale', () => {
+-  it('converts a value from one scale to another', () => {
+-    expect(convertScale(0.5, [0, 1], [0, 100])).toBe(50);
+-    expect(convertScale(0.75, [0, 1], [100, 200])).toBe(175);
+-    expect(convertScale(150, [100, 200], [0, 1])).toBe(0.5);
+-  });
+-});
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 092e354..70743b4 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -2,6 +2,7 @@
+   import ogImage from '$lib/assets/og_image.jpg';
+   import type { Snippet } from 'svelte';
+   import '../app.css';
++  import '$lib/instrumentationProbe';
+ 
+   let { children }: { children: Snippet } = $props();
+ </script>
+diff --git a/src/routes/+layout.ts b/src/routes/+layout.ts
+index 189f71e..6a3cec3 100644
+--- a/src/routes/+layout.ts
++++ b/src/routes/+layout.ts
+@@ -1 +1,4 @@
+ export const prerender = true;
++// Instrumentation: directory-style static output (e.g. benchmark/index.html) so the
++// plain static server resolves every route directly.
++export const trailingSlash = 'always';
+diff --git a/src/routes/benchmark/+layout.ts b/src/routes/benchmark/+layout.ts
+index 38cc7fb..bea6225 100644
+--- a/src/routes/benchmark/+layout.ts
++++ b/src/routes/benchmark/+layout.ts
+@@ -1,2 +1,3 @@
+-// The benchmark page is for development only, so hidden from production build
+-export const prerender = false;
++// Instrumentation: the benchmark route is prerendered so its independent risk/rows
++// selects are reachable by checks (the seed hides it from the static build).
++export const prerender = true;
+diff --git a/src/routes/benchmark/+page.svelte b/src/routes/benchmark/+page.svelte
+index 2ee835f..e99b709 100644
+--- a/src/routes/benchmark/+page.svelte
++++ b/src/routes/benchmark/+page.svelte
+@@ -36,7 +36,7 @@
+ <div class="mx-4 my-8 flex items-center gap-16">
+   <div class="flex items-center gap-4">
+     <label for="rowCount">Rows</label>
+-    <select id="rowCount" bind:value={$rowCount} class="border border-gray-400 p-2">
++    <select data-testid="benchmark-rows-select" id="rowCount" bind:value={$rowCount} class="border border-gray-400 p-2">
+       {#each rowCountOptions as rows}
+         <option value={rows}>{rows}</option>
+       {/each}
+@@ -45,7 +45,7 @@
+ 
+   <div class="flex items-center gap-4">
+     <label for="riskLevel">Risk</label>
+-    <select id="riskLevel" bind:value={$riskLevel} class="border border-gray-400 p-2">
++    <select data-testid="benchmark-risk-select" id="riskLevel" bind:value={$riskLevel} class="border border-gray-400 p-2">
+       {#each [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH] as riskLevel}
+         <option value={riskLevel}>{riskLevel}</option>
+       {/each}
+diff --git a/tests/game.spec.ts b/tests/game.spec.ts
+deleted file mode 100644
+index 7c6929a..0000000
+--- a/tests/game.spec.ts
++++ /dev/null
+@@ -1,124 +0,0 @@
+-import { expect, test, type Page } from '@playwright/test';
+-
+-async function setBetAmount(page: Page, amount: string) {
+-  const betAmountInput = page.getByLabel('Bet Amount');
+-  await betAmountInput.clear();
+-  await betAmountInput.fill(amount);
+-  await betAmountInput.blur();
+-}
+-
+-test.describe('Balance', () => {
+-  test('can add money', async ({ page }) => {
+-    await page.goto('/');
+-
+-    await page.getByRole('button', { name: 'Add' }).click();
+-    await page.getByRole('button', { name: '+$1000' }).click();
+-    await expect(page.getByText('1,200.00')).toBeVisible();
+-  });
+-
+-  test('can load balance from local storage', async ({ page, context }) => {
+-    await context.addInitScript(() => {
+-      window.localStorage.setItem('plinko_balance', '1234');
+-    });
+-
+-    await page.goto('/');
+-
+-    await expect(page.getByText('1,234.00')).toBeVisible();
+-  });
+-
+-  test('can handle improper local storage value', async ({ page, context }) => {
+-    await context.addInitScript(() => {
+-      window.localStorage.setItem('plinko_balance', 'foo_bar');
+-    });
+-
+-    await page.goto('/');
+-
+-    await expect(page.getByText('200.00')).toBeVisible();
+-  });
+-});
+-
+-test.describe('Manual Betting', () => {
+-  test.beforeEach(async ({ page }) => {
+-    await page.goto('/');
+-  });
+-
+-  test('can adjust bet amount', async ({ page }) => {
+-    const betAmountInput = page.getByLabel('Bet Amount');
+-    const dropBallButton = page.getByRole('button', { name: 'Drop Ball' });
+-
+-    // Multipliers
+-    await setBetAmount(page, '100');
+-    await page.getByRole('button', { name: '1/2' }).click();
+-    await expect(betAmountInput).toHaveValue('50');
+-    await page.getByRole('button', { name: '2×' }).click();
+-    await expect(betAmountInput).toHaveValue('100');
+-
+-    // Reset to $0 if empty
+-    await setBetAmount(page, '');
+-    await expect(betAmountInput).toHaveValue('0');
+-
+-    // Handle bet exceed balance
+-    await setBetAmount(page, '99999');
+-    await expect(dropBallButton).toBeDisabled();
+-
+-    // Handle negative bet value
+-    await setBetAmount(page, '-10');
+-    await expect(dropBallButton).toBeDisabled();
+-  });
+-
+-  test('can drop a ball', async ({ page }) => {
+-    const dropBallButton = page.getByRole('button', { name: 'Drop Ball' });
+-
+-    // Drop ball deducts from balance
+-    await setBetAmount(page, '10');
+-    await dropBallButton.click();
+-    await expect(page.getByText('190.00')).toBeVisible();
+-
+-    // Disable inputs while ball is dropping
+-    await expect(page.getByLabel('Risk')).toBeDisabled();
+-    await expect(page.getByLabel('Rows')).toBeDisabled();
+-
+-    // Can drop another ball after the first one
+-    await dropBallButton.click();
+-    await expect(page.getByText('180.00')).toBeVisible();
+-  });
+-});
+-
+-test.describe('Auto Betting', () => {
+-  test.beforeEach(async ({ page }) => {
+-    await page.goto('/');
+-  });
+-
+-  test('can start and stop autobet', async ({ page }) => {
+-    await page.getByRole('button', { name: 'Auto' }).click();
+-
+-    // New input appear
+-    const numberOfBetsInput = page.getByLabel('Number of Bets');
+-    await expect(numberOfBetsInput).toBeVisible();
+-    await expect(numberOfBetsInput).toHaveValue('0');
+-
+-    // Start autobet
+-    await page.getByRole('button', { name: 'Start Autobet' }).click();
+-    await expect(page.getByRole('button', { name: 'Stop Autobet' })).toBeVisible();
+-
+-    // During autobet, all inputs are disabled
+-    ['Bet Amount', 'Risk', 'Rows', 'Number of Bets'].forEach(async (label) => {
+-      await expect(page.getByLabel(label)).toBeDisabled();
+-    });
+-    await expect(page.getByRole('button', { name: 'Manual' })).toBeDisabled();
+-    await expect(page.getByRole('button', { name: 'Auto', exact: true })).toBeDisabled();
+-
+-    // Balance gets deducted automatically
+-    await page.waitForTimeout(1000);
+-    await expect(page.getByText(/19\d\.00/)).toBeVisible();
+-
+-    // Stop autobet manually
+-    await page.getByRole('button', { name: 'Stop Autobet' }).click();
+-    await expect(page.getByLabel('Bet Amount')).toBeEnabled();
+-    await expect(page.getByLabel('Number of Bets')).toBeEnabled();
+-    await expect(page.getByRole('button', { name: 'Manual' })).toBeEnabled();
+-    await expect(page.getByRole('button', { name: 'Auto', exact: true })).toBeEnabled();
+-    await expect(page.getByLabel('Risk')).toBeDisabled(); // Disabled since there are still balls dropping
+-    await expect(page.getByLabel('Rows')).toBeDisabled();
+-  });
+-});

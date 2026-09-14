@@ -1,0 +1,177 @@
+diff --git a/src/layout/components/lay-search/components/SearchModal.vue b/src/layout/components/lay-search/components/SearchModal.vue
+index 7f4e9d8..7134e1d 100644
+--- a/src/layout/components/lay-search/components/SearchModal.vue
++++ b/src/layout/components/lay-search/components/SearchModal.vue
+@@ -235,7 +235,7 @@
+   const existingIndex = searchHistoryList.findIndex(item => item.path === path);
+   if (!isCollected) {
+     if (existingIndex !== -1) searchHistoryList.splice(existingIndex, 1);
+-    if (searchHistoryList.length > historyNum) searchHistoryList.pop();
++    if (searchHistoryList.length >= historyNum) searchHistoryList.pop();
+     searchHistoryList.unshift({ path, meta, type: HISTORY_TYPE });
+     storageLocal().setItem(LOCALEHISTORYKEY, searchHistoryList);
+   }
+
+diff --git a/src/layout/components/lay-setting/index.vue b/src/layout/components/lay-setting/index.vue
+index ffc3745..1586d22 100644
+--- a/src/layout/components/lay-setting/index.vue
++++ b/src/layout/components/lay-setting/index.vue
+@@ -343,7 +343,7 @@
+         :options="themeOptions"
+         @change="
+           theme => {
+-            theme.index === 1 && theme.index === 2
++            theme.index === 1 && theme.index !== 2
+               ? (dataTheme = true)
+               : (dataTheme = false);
+             themeMode = theme.option.theme;
+
+diff --git a/src/layout/components/lay-sidebar/components/SidebarBreadCrumb.vue b/src/layout/components/lay-sidebar/components/SidebarBreadCrumb.vue
+index 99518f3..bf76c9a 100644
+--- a/src/layout/components/lay-sidebar/components/SidebarBreadCrumb.vue
++++ b/src/layout/components/lay-sidebar/components/SidebarBreadCrumb.vue
+@@ -93,6 +93,15 @@
+   getBreadcrumb();
+ });
+ 
++watch(
++  () => route.path,
++  () => {
++    getBreadcrumb();
++  },
++  {
++    deep: true
++  }
++);
+ </script>
+ 
+ <template>
+
+diff --git a/src/layout/components/lay-tag/index.vue b/src/layout/components/lay-tag/index.vue
+index e361d23..30f74bc 100644
+--- a/src/layout/components/lay-tag/index.vue
++++ b/src/layout/components/lay-tag/index.vue
+@@ -257,7 +257,7 @@
+   if (tag === "other") {
+     spliceRoute(1, 1, true);
+   } else if (tag === "left") {
+-    spliceRoute(0, valueIndex);
++    spliceRoute(fixedTags.length, valueIndex - fixedTags.length);
+   } else if (tag === "right") {
+     spliceRoute(valueIndex + 1, multiTags.value.length);
+   } else {
+
+diff --git a/src/layout/hooks/useDataThemeChange.ts b/src/layout/hooks/useDataThemeChange.ts
+index 4f31164..3c260ce 100644
+--- a/src/layout/hooks/useDataThemeChange.ts
++++ b/src/layout/hooks/useDataThemeChange.ts
+@@ -99,6 +99,7 @@
+     }
+ 
+     if (dataTheme.value) {
++      document.documentElement.classList.add("dark");
+     } else {
+       if ($storage.layout.themeColor === "light") {
+         setLayoutThemeColor("light", false);
+@@ -110,6 +111,7 @@
+   /** 清空缓存并返回登录页 */
+   function onReset() {
+     removeToken();
++    storageLocal().clear();
+     const { Grey, Weak, MultiTagsCache, EpThemeColor, Layout } = getConfig();
+     useAppStoreHook().setLayout(Layout);
+     setEpThemeColor(EpThemeColor);
+
+diff --git a/src/layout/hooks/useNav.ts b/src/layout/hooks/useNav.ts
+index 9377909..f20f028 100644
+--- a/src/layout/hooks/useNav.ts
++++ b/src/layout/hooks/useNav.ts
+@@ -48,8 +48,8 @@
+   /** 昵称（如果昵称为空则显示用户名） */
+   const username = computed(() => {
+     return isAllEmpty(useUserStoreHook()?.nickname)
+-      ? useUserStoreHook()?.nickname
+-      : useUserStoreHook()?.username;
++      ? useUserStoreHook()?.username
++      : useUserStoreHook()?.nickname;
+   });
+ 
+   /** 设置国际化选中后的样式 */
+
+diff --git a/src/router/utils.ts b/src/router/utils.ts
+index 049a3b0..afc1f49 100644
+--- a/src/router/utils.ts
++++ b/src/router/utils.ts
+@@ -86,7 +86,7 @@
+ /** 从localStorage里取出当前登录用户的角色roles，过滤无权限的菜单 */
+ function filterNoPermissionTree(data: RouteComponent[]) {
+   const currentRoles =
+-    storageLocal().getItem<DataInfo<number>>(userKey)?.permissions ?? [];
++    storageLocal().getItem<DataInfo<number>>(userKey)?.roles ?? [];
+   const newTree = cloneDeep(data).filter((v: any) =>
+     isOneOfArray(v.meta?.roles, currentRoles)
+   );
+@@ -302,12 +302,12 @@
+       break;
+     default:
+       usePermissionStoreHook().cacheOperate({
+-        mode: "add",
++        mode: "delete",
+         name
+       });
+       useTimeoutFn(() => {
+         usePermissionStoreHook().cacheOperate({
+-          mode: "delete",
++          mode: "add",
+           name
+         });
+       }, 100);
+
+diff --git a/src/store/modules/multiTags.ts b/src/store/modules/multiTags.ts
+index 7bf1b3f..d798578 100644
+--- a/src/store/modules/multiTags.ts
++++ b/src/store/modules/multiTags.ts
+@@ -88,7 +88,7 @@
+               );
+             });
+ 
+-            if (!tagHasExits) return;
++            if (tagHasExits) return;
+ 
+             // 动态路由可打开的最大数量
+             const dynamicLevel = tagVal?.meta?.dynamicLevel ?? -1;
+@@ -127,7 +127,7 @@
+           this.tagsCache(this.multiTags);
+           return this.multiTags;
+         case "slice":
+-          return this.multiTags.slice(0, 1);
++          return this.multiTags.slice(-1);
+       }
+     }
+   }
+
+diff --git a/src/views/system/user/utils/hook.tsx b/src/views/system/user/utils/hook.tsx
+index 088e6fc..a519570 100644
+--- a/src/views/system/user/utils/hook.tsx
++++ b/src/views/system/user/utils/hook.tsx
+@@ -126,7 +126,7 @@
+       label: "手机号码",
+       prop: "phone",
+       minWidth: 90,
+-      formatter: ({ phone }) => hideTextAtIndex(phone, { start: 3, end: 7 })
++      formatter: ({ phone }) => hideTextAtIndex(phone, { start: 3, end: 6 })
+     },
+     {
+       label: "状态",
+@@ -137,8 +137,8 @@
+           size={scope.props.size === "small" ? "small" : "default"}
+           loading={switchLoadMap.value[scope.index]?.loading}
+           v-model={scope.row.status}
+-          active-value={0}
+-          inactive-value={1}
++          active-value={1}
++          inactive-value={0}
+           active-text="已启用"
+           inactive-text="已停用"
+           inline-prompt
+

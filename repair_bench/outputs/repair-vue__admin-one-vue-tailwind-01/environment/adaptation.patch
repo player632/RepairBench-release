@@ -1,0 +1,154 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -37,16 +37,13 @@
+     <meta property="twitter:image:width" content="1920" />
+     <meta property="twitter:image:height" content="960" />
+ 
+-    <!-- Global site tag (gtag.js) - Google Analytics -->
+-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-130795909-1"></script>
+-    <script>
+-      window.dataLayer = window.dataLayer || []
+-      function gtag() {
+-        dataLayer.push(arguments)
+-      }
+-      gtag('js', new Date())
+-      gtag('config', 'UA-130795909-1')
+-    </script>
++    <!-- OFFLINE ADAPTATION (repair-bench): the Google Analytics block that stood here (an async
++         beacon to www.googletagmanager.com plus the inline window.dataLayer/gtag shim that only
++         feeds it) is removed. It is the one real runtime request in the document head, and
++         [environment] allow_internet=false forbids it. No file under src/ reads window.dataLayer
++         or gtag (grep-verified), so removing both halves changes no application behaviour; the
++         og:/twitter: image meta literals below are KEPT - a browser never fetches them, they are
++         document metadata, and dropping them would shrink the observable face for no reason. -->
+   </head>
+   <body>
+     <noscript>
+diff --git a/public/vendor/avatar-placeholder.svg b/public/vendor/avatar-placeholder.svg
+new file mode 100644
+--- /dev/null
++++ b/public/vendor/avatar-placeholder.svg
+@@ -0,0 +1,5 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="offline avatar placeholder">
++  <rect width="128" height="128" rx="64" fill="#e2e8f0" />
++  <circle cx="64" cy="50" r="22" fill="#94a3b8" />
++  <path d="M20 118c6-26 22-38 44-38s38 12 44 38z" fill="#94a3b8" />
++</svg>
+diff --git a/public/vendor/screenshot-placeholder.svg b/public/vendor/screenshot-placeholder.svg
+new file mode 100644
+--- /dev/null
++++ b/public/vendor/screenshot-placeholder.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="offline screenshot placeholder">
++  <rect width="1280" height="720" fill="#f1f5f9" />
++  <rect width="1280" height="72" fill="#e2e8f0" />
++  <rect y="72" width="240" height="648" fill="#e2e8f0" />
++  <rect x="288" y="120" width="944" height="180" rx="16" fill="#e2e8f0" />
++  <text x="640" y="420" font-family="sans-serif" font-size="34" fill="#94a3b8" text-anchor="middle">offline placeholder</text>
++</svg>
+diff --git a/src/components/UserAvatar.vue b/src/components/UserAvatar.vue
+--- a/src/components/UserAvatar.vue
++++ b/src/components/UserAvatar.vue
+@@ -13,10 +13,13 @@
+   },
+ })
+ 
++// OFFLINE ADAPTATION (repair-bench): same substitution as src/stores/main.js - the dicebear
++// request becomes a local placeholder while the api name and the sanitised seed stay in the
++// query string, so every avatar src is still distinct and still encodes its username.
+ const avatar = computed(
+   () =>
+     props.avatar ??
+-    `https://api.dicebear.com/7.x/${props.api}/svg?seed=${props.username.replace(
++    `/vendor/avatar-placeholder.svg?api=${props.api}&seed=${props.username.replace(
+       /[^a-z0-9]+/gi,
+       '-',
+     )}.svg`,
+diff --git a/src/stores/main.js b/src/stores/main.js
+--- a/src/stores/main.js
++++ b/src/stores/main.js
+@@ -6,9 +6,14 @@
+   const userName = ref('John Doe')
+   const userEmail = ref('doe.doe.doe@example.com')
+ 
++  // OFFLINE ADAPTATION (repair-bench): upstream builds a dicebear URL here, i.e. a real runtime
++  // request to api.dicebear.com for every rendered avatar. The generated SVG is per-seed, so it
++  // cannot be vendored byte-for-byte; the request is re-pointed at a local placeholder that ships
++  // in public/vendor/ while the seed derivation stays in the query string. The observable contract
++  // (an <img> whose src encodes the sanitised e-mail) is preserved and no byte leaves the machine.
+   const userAvatar = computed(
+     () =>
+-      `https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail.value.replace(
++      `/vendor/avatar-placeholder.svg?seed=${userEmail.value.replace(
+         /[^a-z0-9]+/gi,
+         '-',
+       )}`,
+diff --git a/src/views/ResponsiveView.vue b/src/views/ResponsiveView.vue
+--- a/src/views/ResponsiveView.vue
++++ b/src/views/ResponsiveView.vue
+@@ -13,7 +13,7 @@
+         class="overflow-hidden rounded-3xl border-8 border-white shadow-2xl md:mx-auto md:w-10/12"
+       >
+         <img
+-          src="https://static.justboil.me/templates/one/one-tailwind-vue-mobile.png"
++          src="/vendor/screenshot-placeholder.svg?view=mobile"
+           class="block"
+         />
+       </div>
+@@ -26,7 +26,7 @@
+         class="overflow-hidden rounded-3xl border-8 border-white shadow-2xl md:mx-auto md:w-10/12"
+       >
+         <img
+-          src="https://static.justboil.me/templates/one/one-tailwind-vue-1024.png"
++          src="/vendor/screenshot-placeholder.svg?view=1024"
+           class="block"
+         />
+       </div>
+@@ -37,7 +37,7 @@
+         class="overflow-hidden rounded-3xl border-8 border-white shadow-2xl md:mx-auto md:w-10/12"
+       >
+         <img
+-          src="https://static.justboil.me/templates/one/one-tailwind-vue-1024-menu-open.png"
++          src="/vendor/screenshot-placeholder.svg?view=1024-menu-open"
+           class="block"
+         />
+       </div>
+@@ -50,7 +50,7 @@
+         class="overflow-hidden rounded-3xl border-8 border-white shadow-2xl md:mx-auto md:w-10/12"
+       >
+         <img
+-          src="https://static.justboil.me/templates/one/one-tailwind-vue-widescreen.png"
++          src="/vendor/screenshot-placeholder.svg?view=widescreen"
+           class="block"
+         />
+       </div>
+diff --git a/src/views/StyleView.vue b/src/views/StyleView.vue
+--- a/src/views/StyleView.vue
++++ b/src/views/StyleView.vue
+@@ -46,7 +46,7 @@
+           >
+             <div class="mb-3 md:mb-6">
+               <img
+-                :src="`https://static.justboil.me/templates/one/small/${style}-v3.png`"
++                :src="`/vendor/screenshot-placeholder.svg?style=${style}`"
+                 width="1280"
+                 height="720"
+               />
+diff --git a/vite.config.js b/vite.config.js
+--- a/vite.config.js
++++ b/vite.config.js
+@@ -8,7 +8,12 @@
+ 
+ // https://vite.dev/config/
+ export default defineConfig({
+-  base: "/admin-one-vue-tailwind/",
++  // OFFLINE ADAPTATION (repair-bench): upstream ships base "/admin-one-vue-tailwind/" for the
++  // GitHub-Pages deployment, which makes every emitted asset URL absolute under that prefix. The
++  // benchmark serves dist/ at the origin root, so the page would 404 on its own bundle and script.
++  // A relative base keeps the emitted module graph byte-identical in shape while resolving against
++  // whatever path serves it (the router is createWebHashHistory, so no history-base coupling).
++  base: "./",
+   plugins: [vue(), vueDevTools(), tailwindcss()],
+   resolve: {
+     alias: {

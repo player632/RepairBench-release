@@ -1,0 +1,318 @@
+<script lang="ts">
+	import { dev } from "$app/environment";
+	import { page } from "$app/stores";
+	import {
+		PlayerState,
+		playerAmmo,
+		playerHealth,
+		playerLives,
+		playerScore
+	} from "$lib/stores/player";
+	import { MapHandler } from "$lib/stores/stats";
+	import { frameLoop } from "$lib/utils/raf";
+	import { getContext, onDestroy, onMount } from "svelte";
+
+	const FACE_MAP = $page.data.FACES;
+	let PORTRAIT_STATE: keyof typeof FACE_MAP = "full";
+	let CURRENT_IDX: number = 0;
+
+	$: PORTRAIT_STATE =
+		$playerHealth > 0 ? $page.data.FACE_KEYS[Math.floor($playerHealth / 30)] : "dead";
+
+	let start: number | null = null;
+
+	$: HUD_SECTIONS = [
+		["level", $MapHandler],
+		["score", $playerScore],
+		["lives", $playerLives],
+		["portrait", null],
+		["health", $playerHealth],
+		["ammo", $playerAmmo],
+		["gap", null],
+		["weapon", null]
+	] as const;
+
+	const loop = frameLoop((now) => {
+		if (!start) start = now;
+		const elapsed = now - start;
+
+		if (elapsed >= 15000) {
+			start = now;
+			CURRENT_IDX = (CURRENT_IDX + 1) % 3;
+		}
+		return true;
+	});
+
+	onMount(() => {
+		return () => loop.abort();
+	});
+
+	function getFacingDirection(angle: number): string {
+		angle = angle < 0 ? 360 + angle : angle;
+		if (angle >= 315 || angle < 45) {
+			return "front";
+		} else if (angle >= 45 && angle < 135) {
+			return "right";
+		} else if (angle >= 135 && angle < 225) {
+			return "back";
+		} else {
+			return "left";
+		}
+	}
+</script>
+
+<!--
+{#if dev}
+	<div class="debug">
+		{#key $PlayerState.rotation.y}
+			<p>rot: {JSON.stringify($PlayerState.rotation.y)}</p>
+			<p>{getFacingDirection($PlayerState.rotation.y)}</p>
+		{/key}
+	</div>
+{/if} -->
+<div class="hud" data-testid="hud-root">
+		<span data-testid="probe-portrait-idx" style="position:absolute;left:-9999px;">{CURRENT_IDX}</span>
+	<div class="stats">
+		{#each HUD_SECTIONS as [name, value] (name)}
+			<div class="col {name === 'portrait' ? 'player' : name}">
+				{#if name === "portrait"}
+					{#each FACE_MAP[PORTRAIT_STATE] as img, idx (img)}
+						<div
+							data-testid="portrait-face"
+							role="img"
+							class="portrait {PORTRAIT_STATE}"
+							class:show={PORTRAIT_STATE === "dead" ? true : idx === CURRENT_IDX}
+							style={FACE_MAP[PORTRAIT_STATE][idx]}
+						/>
+					{/each}
+				{:else if value !== null}
+					<b />
+					{#if name.match(/lives|score|ammo|health/g)}
+						<div class="numbers {name === 'health' ? 'pad' : ''}">
+							{#each value.toString() as num}
+								<span class="font-{num}" />
+							{/each}
+						</div>
+					{/if}
+					<div />
+				{/if}
+			</div>
+		{/each}
+		<!-- <div class="col">
+			<b />
+			<span class="font-{1}" />
+		</div>
+		<div class="col">
+			<b />
+
+			<div class="numbers">
+				{#each $playerScore.toString() as num}
+					<span class="font-{num}" />
+				{/each}
+			</div>
+		</div>
+		<div class="col">
+			<b />
+			<div class="numbers">
+				<span class="font-{$playerLives}" />
+			</div>
+		</div>
+		<div class="col">
+			{#each FACE_MAP[PORTRAIT_STATE] as img, idx}
+				<div
+					role="img"
+					class="portrait {PORTRAIT_STATE}"
+					class:show={PORTRAIT_STATE === "dead" ? true : idx === CURRENT_IDX}
+					style={FACE_MAP[PORTRAIT_STATE][idx]}
+				/>
+			{/each}
+		</div>
+		<div class="col">
+			<b />
+			<div class="numbers pad">
+				{#each $playerHealth.toString() as num}
+					<span class="font-{num}" />
+				{/each}
+			</div>
+		</div>
+		<div class="col">
+			<b />
+
+			<div class="numbers">
+				{#each $playerAmmo.toString() as num}
+					<span class="font-{num}" />
+				{/each}
+			</div>
+		</div>
+	</div> -->
+		<!-- <div /> -->
+	</div>
+</div>
+
+<style lang="scss">
+	$FACES: (full, low_hp, beat_up, dying, near_death, hurt, dead);
+	$BASE_URL: unquote("../sprites/hud/");
+
+	@for $num from 0 through 9 {
+		.font-#{$num} {
+			background-image: url(#{$BASE_URL}#{$num}.BMP);
+			background-repeat: no-repeat;
+			background-size: contain;
+			width: 1.5vw;
+			contain: content;
+			display: block;
+
+			max-height: calc(10vh - 3.25rem);
+			height: 5.25vw;
+		}
+	}
+
+	.numbers {
+		display: flex;
+		will-change: contents;
+		flex-direction: row;
+		align-items: center;
+		contain: style;
+		justify-content: flex-end;
+		&.pad {
+			padding-right: 3vw;
+		}
+	}
+
+	.portrait {
+		position: absolute;
+		inset: 0;
+		&::before {
+			background-color: #555;
+			z-index: -1;
+			inset: 0;
+			content: "";
+		}
+		background-size: 100px 128px;
+		background-repeat: no-repeat;
+		background-image: var(--img);
+		background-position: center;
+
+		justify-self: center;
+		place-self: center;
+		height: 100%;
+		left: 0;
+		right: 0;
+		width: 100%;
+		bottom: 0;
+		top: 0;
+		opacity: 0;
+		image-rendering: pixelated;
+
+		&.show {
+			opacity: 1;
+		}
+	}
+	.stats {
+		margin: 0 auto;
+
+		display: grid;
+		display: grid;
+		grid-template-columns: 0.9fr 1.5fr 0.9fr 0.9fr 1fr 0.9fr 0.2fr 1.7fr;
+		grid-template-rows: 1fr;
+		gap: 0px 0em;
+		grid-template-areas: "level score lives player health ammo gap weapon";
+
+		width: 100%;
+		max-width: 100%;
+		text-align: center;
+		height: 100%;
+
+		background-image: url(../sprites/hud/main.BMP);
+		background-repeat: no-repeat;
+		background-size: cover;
+		background-position: center;
+		font-size: 3vh;
+		> :nth-last-child(2) {
+			margin: 0em;
+		}
+	}
+	.col {
+		grid-template-columns: 1fr;
+		contain: layout style paint;
+
+		position: relative;
+		width: 100%;
+		justify-content: center;
+		display: grid;
+		grid-template-rows: 0.25fr 1fr;
+		justify-items: center;
+
+		line-height: 1;
+		font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+			Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+
+		font-size: 100%;
+
+		align-content: center;
+		place-items: flex-end;
+
+		place-items: flex-end;
+		justify-items: center;
+		align-items: center;
+	}
+	.hud {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		top: 0;
+		text-align: center;
+		padding: 0em;
+		height: 100%;
+		margin-bottom: 1rem;
+		max-height: 100%;
+
+		color: white;
+
+		image-rendering: pixelated;
+		max-width: 85%;
+		margin: 0 auto;
+		font-size: 75%;
+		font-weight: 500;
+
+		// height: 100%;
+	}
+
+	.debug {
+		background-color: hsla(0, 0%, 0%, 0.7);
+		display: flex;
+		flex-direction: column;
+		position: fixed;
+		top: 2.25rem;
+		z-index: 10000;
+		left: 0;
+		color: #fff;
+		width: auto;
+		height: 3rem;
+	}
+	.weapon {
+		grid-area: weapon;
+	}
+	.gap {
+		grid-area: gap;
+	}
+	.ammo {
+		grid-area: ammo;
+	}
+	.health {
+		grid-area: health;
+	}
+	.player {
+		grid-area: player;
+	}
+	.lives {
+		grid-area: lives;
+	}
+	.score {
+		grid-area: score;
+	}
+	.level {
+		grid-area: level;
+	}
+</style>

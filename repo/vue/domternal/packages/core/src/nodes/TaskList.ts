@@ -1,0 +1,145 @@
+/**
+ * TaskList Node
+ *
+ * Block-level task/checkbox list container.
+ * Supports markdown-style input rules with `[ ]` and `[x]`.
+ */
+
+import { Node } from '../Node.js';
+import { wrappingInputRule, notInsideList } from '../helpers/wrappingInputRule.js';
+import type { CommandSpec } from '../types/Commands.js';
+import type { ToolbarItem } from '../types/Toolbar.js';
+import type { FloatingMenuItem } from '../types/FloatingMenu.js';
+import { TaskItem } from './TaskItem.js';
+
+declare module '@domternal/core' {
+  interface RawCommands {
+    toggleTaskList: CommandSpec;
+    turnIntoTaskList: CommandSpec;
+  }
+}
+
+export interface TaskListOptions {
+  HTMLAttributes: Record<string, unknown>;
+  itemTypeName: string;
+}
+
+export const TaskList = Node.create<TaskListOptions>({
+  name: 'taskList',
+  group: 'block list',
+  content: 'taskItem+',
+
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+      itemTypeName: 'taskItem',
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: `ul[data-type="${this.name}"]`,
+        priority: 51, // Higher priority than regular bulletList
+      },
+      // GFM / markdown task lists: `<ul class="contains-task-list">`. Priority
+      // 51 keeps it ahead of the generic `ul` (bulletList, 50); class-scoped so
+      // it only matches real GFM task-list containers, not ordinary bullets.
+      {
+        tag: 'ul.contains-task-list',
+        priority: 51,
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'ul',
+      {
+        ...this.options.HTMLAttributes,
+        ...HTMLAttributes,
+        'data-type': this.name,
+      },
+      0,
+    ];
+  },
+
+  addCommands() {
+    const { name, options } = this;
+    return {
+      toggleTaskList:
+        () =>
+        ({ commands }) => {
+          return commands.toggleList(name, options.itemTypeName);
+        },
+      // Notion "turn into" (slash menu / block menu): convert only the cursor's
+      // item and split the run, instead of retyping the whole list.
+      turnIntoTaskList:
+        () =>
+        ({ commands }) => {
+          return commands.toggleList(name, options.itemTypeName, undefined, { perItem: true });
+        },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    const { editor } = this;
+    return {
+      'Mod-Shift-9': () => {
+        return editor?.commands['toggleTaskList']?.() ?? false;
+      },
+    };
+  },
+
+  addToolbarItems(): ToolbarItem[] {
+    return [
+      {
+        type: 'button',
+        name: 'taskList',
+        command: 'toggleTaskList',
+        isActive: 'taskList',
+        icon: 'listChecks',
+        label: 'Task List',
+        shortcut: 'Mod-Shift-9',
+        group: 'lists',
+        priority: 170,
+      },
+    ];
+  },
+
+  addFloatingMenuItems(): FloatingMenuItem[] {
+    return [
+      {
+        name: 'task-list',
+        label: 'To-do list',
+        description: 'Track tasks with a checkbox list',
+        icon: 'listChecks',
+        group: 'Lists',
+        priority: 180,
+        keywords: ['todo', 'task', 'checkbox', 'check'],
+        shortcut: '[ ] ',
+        command: 'turnIntoTaskList',
+        hideWhenInside: ['taskList'],
+      },
+    ];
+  },
+
+  addExtensions() {
+    return [TaskItem];
+  },
+
+  addInputRules() {
+    const { nodeType } = this;
+
+    if (!nodeType) {
+      return [];
+    }
+
+    return [
+      // [ ] at start of line creates unchecked task
+      wrappingInputRule({ find: /^\s*\[\s?\]\s$/, type: nodeType, guard: notInsideList, joinForward: true }),
+      // [x] or [X] at start of line creates checked task
+      wrappingInputRule({ find: /^\s*\[[xX]\]\s$/, type: nodeType, guard: notInsideList, joinForward: true }),
+    ];
+  },
+});

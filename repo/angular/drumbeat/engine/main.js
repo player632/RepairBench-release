@@ -1,0 +1,243 @@
+/**
+ * Repair-Bench adaptation artifact.
+ *
+ * Faithful plain-JS port of the upstream Scala.js sequencer engine. Upstream
+ * builds engine/src/main/scala/com/drumbeatrepo/** with sbt/Scala.js into
+ * frontend/engine/main.js (see engine/build.sbt: scalaJSLinkerOutputDirectory
+ * := ../frontend/engine). The benchmark snapshot ships without the Scala
+ * toolchain, so this file reproduces the exact command/state semantics of the
+ * Scala sources captured in scout/check3/drumbeat/engine/src:
+ *   - sequencer/Command.scala       (command decoding)
+ *   - sequencer/SequencerState.scala (reducer + undo/redo + tempo coalescing)
+ *   - sequencer/Track.scala          (JS boundary mapping + ordering)
+ *   - sequencer/Velocity.scala       (boolean boundary: None<->Normal only)
+ *   - sequencer/MidiDrumType.scala   (notes 35..81)
+ *   - library/beatLibrary.scala      (manifest fetch)
+ * The JS boundary only ever transports booleans for steps (Track.toJS maps
+ * velocity>0, Track.fromJS maps true->Normal), so a boolean representation is
+ * observationally identical to the Velocity enum.
+ */
+(function () {
+  'use strict';
+
+  var OPEN_TRIANGLE_NOTE = 81; // MidiDrumType.OPEN_TRIANGLE, fallback for tracks without a note
+
+  function initialState() {
+    return {
+      genre: 'Hypnotic Techno',
+      beat: 'Tresillo',
+      tracks: [],
+      tempo: 128,
+      beatsPerBar: 4,
+      subdivisionsPerBeat: 4,
+      numberOfBars: 1,
+      history: [],
+      future: []
+    };
+  }
+
+  function withFields(state, fields) {
+    return {
+      genre: 'genre' in fields ? fields.genre : state.genre,
+      beat: 'beat' in fields ? fields.beat : state.beat,
+      tracks: 'tracks' in fields ? fields.tracks : state.tracks,
+      tempo: 'tempo' in fields ? fields.tempo : state.tempo,
+      beatsPerBar: 'beatsPerBar' in fields ? fields.beatsPerBar : state.beatsPerBar,
+      subdivisionsPerBeat: 'subdivisionsPerBeat' in fields ? fields.subdivisionsPerBeat : state.subdivisionsPerBeat,
+      numberOfBars: 'numberOfBars' in fields ? fields.numberOfBars : state.numberOfBars,
+      history: 'history' in fields ? fields.history : state.history,
+      future: 'future' in fields ? fields.future : state.future
+    };
+  }
+
+  function trackFromJS(raw) {
+    var midiNote = null;
+    if (typeof raw.midiNote === 'number' && raw.midiNote >= 35 && raw.midiNote <= 81) {
+      midiNote = raw.midiNote;
+    }
+    return {
+      name: raw.name,
+      filename: raw.filename,
+      midiNote: midiNote,
+      steps: Array.isArray(raw.steps) ? raw.steps.map(Boolean) : [],
+      isMuted: !!raw.isMuted
+    };
+  }
+
+  function trackToJS(track) {
+    return {
+      name: track.name,
+      filename: track.filename,
+      steps: track.steps.map(function (s) { return !!s; }),
+      midiNote: track.midiNote === null ? null : track.midiNote,
+      isMuted: track.isMuted
+    };
+  }
+
+  function withTrackFields(track, fields) {
+    return {
+      name: 'name' in fields ? fields.name : track.name,
+      filename: 'filename' in fields ? fields.filename : track.filename,
+      midiNote: 'midiNote' in fields ? fields.midiNote : track.midiNote,
+      steps: 'steps' in fields ? fields.steps : track.steps,
+      isMuted: 'isMuted' in fields ? fields.isMuted : track.isMuted
+    };
+  }
+
+  function noteOf(track) {
+    return track.midiNote === null ? OPEN_TRIANGLE_NOTE : track.midiNote;
+  }
+
+  function findTrack(tracks, name) {
+    for (var i = 0; i < tracks.length; i++) {
+      if (tracks[i].name === name) return tracks[i];
+    }
+    return null;
+  }
+
+  function reduce(state, command) {
+    switch (command.type) {
+      case 'SELECT_BEAT': {
+        var p = command.payload || {};
+        var tracks = Array.isArray(p.tracks) ? p.tracks.map(trackFromJS) : [];
+        return {
+          genre: p.genre,
+          beat: p.beat,
+          tracks: tracks,
+          tempo: p.tempo,
+          beatsPerBar: p.beatsPerBar,
+          subdivisionsPerBeat: p.subdivisionsPerBeat,
+          numberOfBars: p.numberOfBars,
+          history: state.history.concat([state]),
+          future: []
+        };
+      }
+      case 'SET_TEMPO': {
+        var newTempo = command.payload.tempo;
+        var history = state.history;
+        var last = history.length > 0 ? history[history.length - 1] : null;
+        if (last !== null && last.genre === state.genre && last.beat === state.beat) {
+          // Coalesce consecutive tempo edits within the same beat.
+          return withFields(state, { tempo: newTempo, future: [] });
+        }
+        return withFields(state, { tempo: newTempo, history: history.concat([state]), future: [] });
+      }
+      case 'TOGGLE_STEP': {
+        var trackName = command.payload.trackName;
+        var stepIndex = command.payload.stepIndex;
+        var target = findTrack(state.tracks, trackName);
+        if (target === null) return state;
+        if (stepIndex < 0 || stepIndex >= target.steps.length) return state;
+        var toggledTracks = state.tracks.map(function (t) {
+          if (t.name !== trackName) return t;
+          var steps = t.steps.slice();
+          steps[stepIndex] = !steps[stepIndex];
+          return withTrackFields(t, { steps: steps });
+        });
+        return withFields(state, { tracks: toggledTracks, history: state.history.concat([state]), future: [] });
+      }
+      case 'SET_STEPS': {
+        var sp = command.payload;
+        var fromStepIndex = sp.fromStepIndex;
+        var toStepIndex = sp.toStepIndex;
+        var velocity = !!sp.velocity;
+        if (fromStepIndex < 0 || toStepIndex < fromStepIndex) return state;
+        var changed = false;
+        var rangeTracks = state.tracks.map(function (t) {
+          if (t.name !== sp.trackName) return t;
+          if (toStepIndex >= t.steps.length) return t;
+          var same = true;
+          var steps = t.steps.map(function (s, i) {
+            var next = (i >= fromStepIndex && i <= toStepIndex) ? velocity : s;
+            if (next !== s) same = false;
+            return next;
+          });
+          if (same) return t;
+          changed = true;
+          return withTrackFields(t, { steps: steps });
+        });
+        if (!changed) return state;
+        return withFields(state, { tracks: rangeTracks, history: state.history.concat([state]), future: [] });
+      }
+      case 'ADD_TRACK': {
+        return withFields(state, {
+          tracks: state.tracks.concat([trackFromJS(command.payload.track)]),
+          history: state.history.concat([state]),
+          future: []
+        });
+      }
+      case 'TOGGLE_MUTE_TRACK': {
+        var muteName = command.payload.trackName;
+        var muteChanged = false;
+        var mutedTracks = state.tracks.map(function (t) {
+          if (t.name !== muteName) return t;
+          muteChanged = true;
+          return withTrackFields(t, { isMuted: !t.isMuted });
+        });
+        if (!muteChanged) return state;
+        return withFields(state, { tracks: mutedTracks, history: state.history.concat([state]), future: [] });
+      }
+      case 'UNDO': {
+        var undoHistory = state.history;
+        if (undoHistory.length === 0) return state;
+        var init = undoHistory.slice(0, undoHistory.length - 1);
+        var restored = undoHistory[undoHistory.length - 1];
+        return withFields(restored, { history: init, future: [state].concat(state.future) });
+      }
+      case 'REDO': {
+        if (state.future.length === 0) return state;
+        var next = state.future[0];
+        var rest = state.future.slice(1);
+        return withFields(next, { future: rest });
+      }
+      default:
+        throw new Error('Unknown command: ' + command.type);
+    }
+  }
+
+  var state = initialState();
+
+  globalThis.SequencerEngine = {
+    dispatch: function (cmd) {
+      if (cmd && (cmd.type === 'UNDO' || cmd.type === 'REDO')) {
+        state = reduce(state, cmd);
+      } else {
+        state = withFields(reduce(state, cmd), { future: [] });
+      }
+      return Promise.resolve();
+    },
+    getState: function () {
+      // Upstream returns tracks sorted by midi note ascending, then reversed.
+      var sortedTracks = state.tracks.slice().sort(function (a, b) {
+        return noteOf(a) - noteOf(b);
+      }).reverse();
+      return {
+        genre: state.genre,
+        beat: state.beat,
+        tracks: sortedTracks.map(trackToJS),
+        tempo: state.tempo,
+        beatsPerBar: state.beatsPerBar,
+        subdivisionsPerBeat: state.subdivisionsPerBeat,
+        numberOfBars: state.numberOfBars,
+        historyLength: state.history.length,
+        futureLength: state.future.length
+      };
+    },
+    reset: function () {
+      state = initialState();
+    }
+  };
+
+  globalThis.BeatLibrary = {
+    loadBeatsManifest: function () {
+      return fetch('/assets/beats/beats-metadata.json').then(function (response) {
+        return response.text();
+      }).then(function (text) {
+        var decoded = JSON.parse(text);
+        return decoded.map(function (meta) {
+          return { genre: meta.genre, label: meta.label, filename: meta.filename };
+        });
+      });
+    }
+  };
+})();

@@ -1,0 +1,80 @@
+import '../assets/global.css'
+import React, { ComponentType, ReactNode, useMemo } from 'react'
+import { BrowserRouter as Router } from 'react-router-dom'
+import { ThemeProvider } from '../theme'
+import { NavProvider } from '../navigation/NavContext'
+import { LogoType } from '../ui/Layout/LayoutHeader'
+import { DataProviderContextProvider, DataProvider } from '../dataProvider'
+import { AuthContextProvider } from '../auth/AuthContext'
+import { UserContextProvider } from '../auth/UserContext'
+import type { AuthProvider } from '../auth/interfaces'
+import { ConfigContextProvider } from '../config/ConfigContext'
+import { ThemePreset } from '../theme/interfaces'
+import { OAuthProvidersEnum } from '../auth/interfaces'
+import { AdmiralLocale, LocaleContextProvider } from '../locale'
+import { ErrorBoundary, ErrorBoundaryProps } from '../ui/ErrorBoundary/ErrorBoundary'
+import { NotificationHost } from '../ui/Notification'
+
+export type AdminProps = {
+    menu: ComponentType
+    menuPopupExtraComponents?: ReactNode
+    logo?: LogoType
+    loginLogo?: LogoType
+    asideContent?: React.ReactNode
+    dataProvider: DataProvider
+    authProvider?: AuthProvider
+    themePresets?: { light: ThemePreset; dark: ThemePreset }
+    locale?: Partial<AdmiralLocale>
+    oauthProviders?: OAuthProvidersEnum[]
+    baseAppUrl?: string
+    errorFallback?: ErrorBoundaryProps['fallback']
+}
+
+const defaultErrorFallback = (error: Error) => (
+    <div role="alert" style={{ padding: '24px' }}>
+        <h1>Something went wrong</h1>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{error.message}</pre>
+    </div>
+)
+
+export function Admin({
+    logo,
+    loginLogo,
+    asideContent,
+    menu,
+    menuPopupExtraComponents,
+    dataProvider,
+    authProvider,
+    themePresets,
+    locale,
+    children,
+    oauthProviders,
+    baseAppUrl = '',
+    errorFallback = defaultErrorFallback,
+}: AdminProps & { children?: React.ReactNode }) {
+    const configValue = useMemo(
+        () => ({ logo, loginLogo, asideContent, oauthProviders, menuPopupExtraComponents }),
+        [logo, loginLogo, asideContent, oauthProviders, menuPopupExtraComponents],
+    )
+
+    return (
+        <ErrorBoundary fallback={errorFallback}>
+            <AuthContextProvider value={authProvider}>
+                <DataProviderContextProvider value={dataProvider}>
+                    <ConfigContextProvider value={configValue}>
+                        <LocaleContextProvider value={locale}>
+                            <UserContextProvider>
+                                <Router basename={baseAppUrl}>
+                                    <ThemeProvider presets={themePresets}>
+                                        <NavProvider menu={menu}>{children}</NavProvider>
+                                        <NotificationHost />
+                                    </ThemeProvider>
+                                </Router>
+                            </UserContextProvider>
+                        </LocaleContextProvider>
+                    </ConfigContextProvider>
+                </DataProviderContextProvider>
+            </AuthContextProvider>
+        </ErrorBoundary>
+    )
+}

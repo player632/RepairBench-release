@@ -1,0 +1,160 @@
+diff --git a/editor/MuteEditor.ts b/editor/MuteEditor.ts
+index 7233748..b3c59b8 100644
+--- a/editor/MuteEditor.ts
++++ b/editor/MuteEditor.ts
+@@ -17,7 +17,7 @@ export class MuteEditor {
+ 	}
+ 	
+ 	private _onClick = (event: MouseEvent): void => {
+-		const index = this._buttons.indexOf(<HTMLButtonElement> event.target);
++		const index = this._buttons.indexOf(<HTMLButtonElement> event.currentTarget);
+ 		if (index == -1) return;
+ 		this._doc.song.channels[index].muted = !this._doc.song.channels[index].muted;
+ 		this._doc.notifier.changed();
+diff --git a/editor/SongDocument.ts b/editor/SongDocument.ts
+index a8cca04..28dc0f8 100644
+--- a/editor/SongDocument.ts
++++ b/editor/SongDocument.ts
+@@ -59,6 +59,7 @@ export class SongDocument {
+ 	private _stateShouldBePushed: boolean = false;
+ 	private _recordedNewSong: boolean = false;
+ 	private _waitingToUpdateState: boolean = false;
++	private _capturedHash: string = "";
+ 	
+ 	constructor() {
+ 		ColorConfig.setTheme(this.prefs.colorTheme);
+@@ -338,7 +339,8 @@ export class SongDocument {
+ 		let hash: string;
+ 		try {
+ 			// Ensure that the song is not corrupted before saving it.
+-			hash = this.song.toBase64String();
++			hash = this._capturedHash;
++			this._capturedHash = this.song.toBase64String();
+ 		} catch (error) {
+ 			errorAlert(error);
+ 			return;
+@@ -366,7 +368,7 @@ export class SongDocument {
+ 		} else {
+ 			change.commit();
+ 			this._recentChange = change;
+-			this._stateShouldBePushed = this._stateShouldBePushed || !replace;
++			this._stateShouldBePushed = this._stateShouldBePushed || replace;
+ 			this._recordedNewSong = this._recordedNewSong || newSong;
+ 			if (!this._waitingToUpdateState) {
+ 				// Defer updating the url/history until all sequenced changes have
+diff --git a/editor/SongEditor.ts b/editor/SongEditor.ts
+index 7d3e3dc..437bb52 100644
+--- a/editor/SongEditor.ts
++++ b/editor/SongEditor.ts
+@@ -538,8 +538,9 @@ export class SongEditor {
+ 			div({style: "width: 3em; margin-right: .3em;", class: "tip", onclick: ()=>this._openPrompt("operatorFrequency")}, "Freq:"),
+ 			div({class: "tip", onclick: ()=>this._openPrompt("operatorVolume")}, "Volume:"),
+ 		));
++		let operatorIndex: number = 0;
+ 		for (let i: number = 0; i < Config.operatorCount; i++) {
+-			const operatorIndex: number = i;
++			operatorIndex = i;
+ 			const operatorNumber: HTMLDivElement = div({style: `margin-right: .1em; color: ${ColorConfig.secondaryText};`}, i + 1 + ".");
+ 			const frequencySelect: HTMLSelectElement = buildOptions(select({style: "width: 100%;", title: "Frequency", "data-testid": "bb-op-freq-" + i}), Config.operatorFrequencies.map(freq=>freq.name));
+ 			const amplitudeSlider: Slider = new Slider(input({type: "range", min: "0", max: Config.operatorAmplitudeMax, value: "0", step: "1", title: "Volume", "data-testid": "bb-op-amp-" + i}), this.doc, (oldValue: number, newValue: number) => new ChangeOperatorAmplitude(this.doc, operatorIndex, oldValue, newValue));
+@@ -1221,7 +1222,7 @@ export class SongEditor {
+ 	}
+ 	
+ 	public updatePlayButton = (): void => {
+-		if (this._renderedIsPlaying != this.doc.synth.playing || this._renderedIsRecording != this.doc.synth.recording || this._renderedShowRecordButton != this.doc.prefs.showRecordButton || this._renderedCtrlHeld != this._ctrlHeld) {
++		if (this._renderedIsPlaying != this.doc.synth.recording || this._renderedIsRecording != this.doc.synth.recording || this._renderedShowRecordButton != this.doc.prefs.showRecordButton || this._renderedCtrlHeld != this._ctrlHeld) {
+ 			this._renderedIsPlaying = this.doc.synth.playing;
+ 			this._renderedIsRecording = this.doc.synth.recording;
+ 			this._renderedShowRecordButton = this.doc.prefs.showRecordButton;
+@@ -1802,7 +1803,7 @@ export class SongEditor {
+ 			}
+ 			this.doc.notifier.changed();
+ 		} else {
+-			this.doc.record(new ChangeScale(this.doc, this._scaleSelect.selectedIndex));
++			this.doc.record(new ChangeScale(this.doc, this._scaleSelect.selectedIndex + 1));
+ 		}
+ 	}
+ 	
+@@ -1815,7 +1816,7 @@ export class SongEditor {
+ 			}
+ 			this.doc.notifier.changed();
+ 		} else {
+-			this.doc.record(new ChangeKey(this.doc, Config.keys.length - 1 - this._keySelect.selectedIndex));
++			this.doc.record(new ChangeKey(this.doc, Config.keys.length - 2 - this._keySelect.selectedIndex));
+ 		}
+ 	}
+ 	
+diff --git a/editor/TrackEditor.ts b/editor/TrackEditor.ts
+index 7b8a820..de98433 100644
+--- a/editor/TrackEditor.ts
++++ b/editor/TrackEditor.ts
+@@ -52,15 +52,13 @@ export class TrackEditor {
+ 		
+ 		this.container.addEventListener("pointerenter", this._onPointerMove);
+ 		this.container.addEventListener("pointerleave", this._onPointerLeave);
+-		this.container.addEventListener("pointerdown", this._onPointerDown);
+ 		this.container.addEventListener("pointermove", this._onPointerMove);
+-		this.container.addEventListener("pointerup", this._onPointerUp);
+ 		//this.container.addEventListener("pointercancel", this._onPointerUp);
+ 		
+ 		this._select.addEventListener("change", this._whenSelectChanged);
+ 	}
+ 	
+-	private _whenSelectChanged = (): void => {
++	private _whenSelectChanged(): void {
+ 		this._doc.selection.setPattern(this._select.selectedIndex);
+ 	}
+ 	
+@@ -211,6 +209,8 @@ export class TrackEditor {
+ 			
+ 			this._channels.length = this._doc.song.getChannelCount();
+ 			this._pointers.latest.cancel();
++			this.container.addEventListener("pointerdown", (event: PointerEvent) => this._onPointerDown(event));
++			this.container.addEventListener("pointerup", (event: PointerEvent) => this._onPointerUp(event));
+ 		}
+ 		
+ 		for (let j: number = 0; j < this._doc.song.getChannelCount(); j++) {
+@@ -234,14 +234,16 @@ export class TrackEditor {
+ 			this.container.style.height = editorHeight + "px";
+ 		}
+ 		
++		const deferredBar: number = this._doc.bar;
++		const deferredChannel: number = this._doc.channel;
+ 		setTimeout(() => {
+ 			// HACK: In my testing of mobile Chrome, it seems to open the select menu
+ 			// after pointerup even if the select element wasn't under the finger until
+ 			// rendering, unless I defer moving the select menu by a few milliseconds. :(
+ 			this._select.style.display = this._pointers.latest.isTouch ? "" : "none";
+-			this._select.style.left = (this._barWidth * this._doc.bar) + "px";
++			this._select.style.left = (this._barWidth * deferredBar) + "px";
+ 			this._select.style.width = this._barWidth + "px";
+-			this._select.style.top = (ChannelRow.patternHeight * this._doc.channel) + "px";
++			this._select.style.top = (ChannelRow.patternHeight * deferredChannel) + "px";
+ 			this._select.style.height = ChannelRow.patternHeight + "px";
+ 		}, 50);
+ 		
+diff --git a/editor/changes.ts b/editor/changes.ts
+index 7d05a8d..a3b62c5 100644
+--- a/editor/changes.ts
++++ b/editor/changes.ts
+@@ -2571,7 +2571,6 @@ export class ChangeTempo extends Change {
+ 	constructor(doc: SongDocument, oldValue: number, newValue: number) {
+ 		super();
+ 		doc.song.tempo = Math.max(Config.tempoMin, Math.min(Config.tempoMax, Math.round(newValue)));
+-		doc.notifier.changed();
+ 		if (oldValue != newValue) this._didSomething();
+ 	}
+ }
+diff --git a/synth/synth.ts b/synth/synth.ts
+index 163f2cc..8c64750 100644
+--- a/synth/synth.ts
++++ b/synth/synth.ts
+@@ -365,7 +365,7 @@ export class Note {
+ 	
+ 	public clone(): Note {
+ 		const newNote: Note = new Note(-1, this.start, this.end, Config.noteSizeMax);
+-		newNote.pitches = this.pitches.concat();
++		newNote.pitches = this.pitches;
+ 		newNote.pins = [];
+ 		for (const pin of this.pins) {
+ 			newNote.pins.push(makeNotePin(pin.interval, pin.time, pin.size));

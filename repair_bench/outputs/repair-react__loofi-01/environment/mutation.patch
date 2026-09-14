@@ -1,0 +1,142 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 68761e5..b4bcc4b 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -47,7 +47,7 @@ export default function App() {
+             }
+             window.localStorage.setItem('tab-session', a.value);
+         },
+-        [properties]
++        []
+     );
+ 
+     return (
+diff --git a/src/components/app.component.tsx b/src/components/app.component.tsx
+index 7298817..b023f0b 100644
+--- a/src/components/app.component.tsx
++++ b/src/components/app.component.tsx
+@@ -47,7 +47,7 @@ async function unlistenUpdaterEvent() {
+ const App = ({ properties, handleChange }: AppInterface) => {
+     const musicSession =
+         localStorage.getItem('continue-previous-session') === 'true'
+-            ? JSON.parse(localStorage.getItem('music-session') || '{}')
++            ? JSON.parse(localStorage.getItem('theme-session') || '{}')
+             : {};
+     const [data, setData] = useState<any>([]);
+     const [isOffline, setConnectionState] = useState<boolean>(false);
+@@ -141,7 +141,7 @@ const App = ({ properties, handleChange }: AppInterface) => {
+ 
+         const themeURL = JSON.parse(
+             localStorage.getItem('theme-session') || `{}`
+-        ).url;
++        ).type;
+         const backgroundElement = document.getElementById('backdrop-image');
+ 
+         if (backgroundElement && themeURL)
+diff --git a/src/components/controls.component.tsx b/src/components/controls.component.tsx
+index 1aac80b..058a2bb 100644
+--- a/src/components/controls.component.tsx
++++ b/src/components/controls.component.tsx
+@@ -41,7 +41,7 @@ const Controls = ({ song, songData, handleSong }: any) => {
+         localStorage.setItem('muted', String(property.muted));
+         localStorage.setItem('volume', String(property.volume));
+         song.audio.volume = property.muted ? 0 : property.volume / 100;
+-    }, [song.audio, property.volume, property.muted]);
++    }, [song.audio, property.volume]);
+ 
+     useEffect(() => {
+         // async function shuffle(rawData: any) {
+@@ -55,7 +55,7 @@ const Controls = ({ song, songData, handleSong }: any) => {
+ 
+         // }
+         if (songData?.length > 0) handleQueue('queue', songData);
+-    }, [songData]); // eslint-disable-line
++    }, []); // eslint-disable-line
+ 
+     useEffect(() => {
+         song.playing ? song.audio.play() : song.audio.pause();
+@@ -97,8 +97,6 @@ const Controls = ({ song, songData, handleSong }: any) => {
+         handleSong({ id: 'playing', value: true });
+     };
+ 
+-    song.audio.onloadeddata = () =>
+-        handleChange('duration', song.audio.duration);
+     song.audio.ontimeupdate = () => {
+         handleChange(
+             'progress',
+diff --git a/src/components/home.component.tsx b/src/components/home.component.tsx
+index d508d16..c4ffe1f 100644
+--- a/src/components/home.component.tsx
++++ b/src/components/home.component.tsx
+@@ -32,7 +32,7 @@ const Home = ({ song, songData, handleSong }: any) => {
+ 
+     useEffect(() => {
+         const btn = document.getElementById(
+-            (song.title + song.author).replace(/\s/g, '-')
++            song.title.replace(/\s/g, '-')
+         );
+         song.playing
+             ? btn?.classList.add('pause')
+diff --git a/src/components/navbar.component.tsx b/src/components/navbar.component.tsx
+index 42af190..707144b 100644
+--- a/src/components/navbar.component.tsx
++++ b/src/components/navbar.component.tsx
+@@ -12,9 +12,7 @@ const Navbar = ({ properties, handleChange }: any) => {
+     useEffect(() => {
+         setProperty({
+             disablePrevious:
+-                properties.history?.length > 1 && properties.action > 0
+-                    ? false
+-                    : true,
++                properties.history?.length > 1 ? false : true,
+             disableForward:
+                 properties.action + 1 < properties.history?.length
+                     ? false
+diff --git a/src/components/preferences.component.tsx b/src/components/preferences.component.tsx
+index 76ba0cb..41fcbc2 100644
+--- a/src/components/preferences.component.tsx
++++ b/src/components/preferences.component.tsx
+@@ -22,7 +22,6 @@ const About = () => {
+         );
+     function setContinuePreviousState(e: boolean) {
+         setContinuePreviousSession(e);
+-        localStorage.setItem('continue-previous-session', e.toString());
+     }
+ 
+     const setTheme = (type: string, url: string | boolean) => {
+diff --git a/src/components/search.component.tsx b/src/components/search.component.tsx
+index 9f58d26..ee85b89 100644
+--- a/src/components/search.component.tsx
++++ b/src/components/search.component.tsx
+@@ -41,7 +41,7 @@ const Search = ({ song, songData, handleSong }: any) => {
+             const music: any = [];
+             const author: any = [];
+             for (let i = 0; i < songData.length; i++) {
+-                if (String(songData[i].title).toLowerCase().includes(keyword))
++                if (String(songData[i].title).includes(keyword))
+                     music.push(songData[i]);
+                 if (String(songData[i].author).toLowerCase().includes(keyword))
+                     author.push(songData[i]);
+@@ -148,7 +148,7 @@ const Search = ({ song, songData, handleSong }: any) => {
+                     label="Search (Artists or Songs)"
+                     variant="outlined"
+                     className="search"
+-                    value={keyword}
++                    defaultValue={keyword}
+                     onChange={(e) => setKeyword(e.target.value)}
+                     id="search-query"
+                     autoFocus
+diff --git a/src/components/sidebar.component.tsx b/src/components/sidebar.component.tsx
+index a31cdb6..9ee50e8 100644
+--- a/src/components/sidebar.component.tsx
++++ b/src/components/sidebar.component.tsx
+@@ -37,8 +37,7 @@ const SideBar = ({ handleChange, properties }: any) => {
+     }, [properties]);
+ 
+     const switchTab = (target: string) => {
+-        if (target !== properties.activeTab)
+-            handleChange({ id: 'activeTab', value: target });
++        handleChange({ id: 'activeTab', value: target });
+     };
+ 
+     return (

@@ -1,0 +1,153 @@
+name: 'app-android'
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Auto Version Bump"]
+    types: [completed]
+  push:
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Determine release tag
+        id: release
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_run" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag=" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+        with:
+          cache-disabled: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: ndk;26.1.10909125
+
+      - name: Setup Android Environment
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125/" > $GITHUB_ENV
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # v 1.94.1
+        with:
+          toolchain: stable
+
+      - name: Install node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install tauri dependencies
+        run: cd resources/apps && npm ci
+
+      - name: Initialize Android project
+        run: |
+          cd resources/apps
+          npm run tauri android init -- --skip-targets-install
+
+      - name: Decode Keystore
+        env:
+          ENCODED_STRING: ${{ secrets.KEYSTORE }}
+        run: |
+          echo $ENCODED_STRING | base64 -di > resources/apps/tauri/gen/android/swarlehtaire_keystore.jks
+
+
+      - name: Setup Android signing
+        run: |
+          cd resources/apps/tauri/gen/android
+          echo "keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.SIGNING_KEY_PASSWORD }}" >> keystore.properties
+          echo "storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}" >> keystore.properties
+          echo "storeFile=swarlehtaire_keystore.jks" >> keystore.properties
+
+      - name: Configure Gradle signing
+        run: |
+          cd resources/apps/tauri/gen/android/app
+          
+          # Create Python script using base64 to avoid YAML parsing issues
+          # This script modifies build.gradle.kts (Kotlin DSL) files
+          # Ensures imports come before code that uses them
+          echo 'aW1wb3J0IHJlCgp3aXRoIG9wZW4oJ2J1aWxkLmdyYWRsZS5rdHMnLCAncicpIGFzIGY6CiAgICBjb250ZW50ID0gZi5yZWFkKCkKCiMgQ2hlY2sgaWYgaW1wb3J0cyBhbHJlYWR5IGV4aXN0Cmhhc19wcm9wZXJ0aWVzX2ltcG9ydCA9ICdpbXBvcnQgamF2YS51dGlsLlByb3BlcnRpZXMnIGluIGNvbnRlbnQKaGFzX2ZpbGVzdHJlYW1faW1wb3J0ID0gJ2ltcG9ydCBqYXZhLmlvLkZpbGVJbnB1dFN0cmVhbScgaW4gY29udGVudAoKIyBGaW5kIHRoZSBpbXBvcnRzIHNlY3Rpb24KaW1wb3J0X21hdGNoID0gcmUuc2VhcmNoKHInKCg/Ol5pbXBvcnRccytbXlxuXStcbikrKD86XHMqXG4pKiknLCBjb250ZW50LCByZS5NVUxUSUxJTkUpCgojIEJ1aWxkIHRoZSBjb21wbGV0ZSBjb2RlIGJsb2NrIHRvIGluc2VydApjb2RlX3RvX2luc2VydF9wYXJ0cyA9IFtdCgojIEFkZCBtaXNzaW5nIGltcG9ydHMgZmlyc3QKaWYgbm90IGhhc19maWxlc3RyZWFtX2ltcG9ydDoKICAgIGNvZGVfdG9faW5zZXJ0X3BhcnRzLmFwcGVuZCgnaW1wb3J0IGphdmEuaW8uRmlsZUlucHV0U3RyZWFtJykKaWYgbm90IGhhc19wcm9wZXJ0aWVzX2ltcG9ydDoKICAgIGNvZGVfdG9faW5zZXJ0X3BhcnRzLmFwcGVuZCgnaW1wb3J0IGphdmEudXRpbC5Qcm9wZXJ0aWVzJykKCiMgQWRkIGtleXN0b3JlIGxvYWRpbmcgY29kZQpjb2RlX3RvX2luc2VydF9wYXJ0cy5hcHBlbmQoJycnCi8vIExvYWQga2V5c3RvcmUgcHJvcGVydGllcwp2YWwga2V5c3RvcmVQcm9wZXJ0aWVzRmlsZSA9IHJvb3RQcm9qZWN0LmZpbGUoImtleXN0b3JlLnByb3BlcnRpZXMiKQp2YWwga2V5c3RvcmVQcm9wZXJ0aWVzID0gUHJvcGVydGllcygpCmlmIChrZXlzdG9yZVByb3BlcnRpZXNGaWxlLmV4aXN0cygpKSB7CiAgICBrZXlzdG9yZVByb3BlcnRpZXMubG9hZChGaWxlSW5wdXRTdHJlYW0oa2V5c3RvcmVQcm9wZXJ0aWVzRmlsZSkpCn0KJycnKQoKY29kZV90b19pbnNlcnQgPSAnXG4nLmpvaW4oY29kZV90b19pbnNlcnRfcGFydHMpCgojIEluc2VydCBhZnRlciBleGlzdGluZyBpbXBvcnRzCmlmIGltcG9ydF9tYXRjaDoKICAgIGluc2VydF9wb3MgPSBpbXBvcnRfbWF0Y2guZW5kKCkKICAgIGNvbnRlbnQgPSBjb250ZW50WzppbnNlcnRfcG9zXSArIGNvZGVfdG9faW5zZXJ0ICsgY29udGVudFtpbnNlcnRfcG9zOl0KZWxzZToKICAgICMgTm8gaW1wb3J0cyBmb3VuZCwgaW5zZXJ0IGF0IGJlZ2lubmluZwogICAgY29udGVudCA9IGNvZGVfdG9faW5zZXJ0ICsgJ1xuJyArIGNvbnRlbnQKCnNpZ25pbmdfY29uZmlncyA9ICcnJyAgICBzaWduaW5nQ29uZmlncyB7CiAgICAgICAgY3JlYXRlKCJyZWxlYXNlIikgewogICAgICAgICAgICBpZiAoa2V5c3RvcmVQcm9wZXJ0aWVzRmlsZS5leGlzdHMoKSkgewogICAgICAgICAgICAgICAgc3RvcmVGaWxlID0gZmlsZSgiLi4vIiArIGtleXN0b3JlUHJvcGVydGllc1sic3RvcmVGaWxlIl0udG9TdHJpbmcoKSkKICAgICAgICAgICAgICAgIHN0b3JlUGFzc3dvcmQgPSBrZXlzdG9yZVByb3BlcnRpZXNbInN0b3JlUGFzc3dvcmQiXS50b1N0cmluZygpCiAgICAgICAgICAgICAgICBrZXlBbGlhcyA9IGtleXN0b3JlUHJvcGVydGllc1sia2V5QWxpYXMiXS50b1N0cmluZygpCiAgICAgICAgICAgICAgICBrZXlQYXNzd29yZCA9IGtleXN0b3JlUHJvcGVydGllc1sicGFzc3dvcmQiXS50b1N0cmluZygpCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9CgonJycKCiMgSW5zZXJ0IHNpZ25pbmdDb25maWdzIGFmdGVyICdhbmRyb2lkIHsnIGxpbmUKY29udGVudCA9IHJlLnN1YihyJyhhbmRyb2lkXHMqXHspJywgcidcMVxuJyArIHNpZ25pbmdfY29uZmlncywgY29udGVudCwgY291bnQ9MSkKCiMgQWRkIHNpZ25pbmdDb25maWcgdG8gcmVsZWFzZSBidWlsZFR5cGUKY29udGVudCA9IHJlLnN1YigKICAgIHInKGdldEJ5TmFtZVwoInJlbGVhc2UiXClccypceyknLAogICAgcidcMVxuICAgICAgICAgICAgc2lnbmluZ0NvbmZpZyA9IHNpZ25pbmdDb25maWdzLmdldEJ5TmFtZSgicmVsZWFzZSIpJywKICAgIGNvbnRlbnQsCiAgICBjb3VudD0xCikKCndpdGggb3BlbignYnVpbGQuZ3JhZGxlLmt0cycsICd3JykgYXMgZjoKICAgIGYud3JpdGUoY29udGVudCkK' | base64 -d > modify_gradle.py
+          
+          python3 modify_gradle.py
+          rm modify_gradle.py
+
+      - name: Build Android app
+        run: |
+          cd resources/apps
+          npm run android:apk
+
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.release.outputs.is_release != 'true'
+        with:
+          name: android
+          retention-days: 10
+          path: |
+            resources/apps/tauri/gen/android/app/build/outputs/apk/**/*.apk
+            resources/apps/tauri/gen/android/app/build/outputs/bundle/**/*.aab
+
+      - name: Wait for release
+        if: steps.release.outputs.is_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          for i in $(seq 1 20); do
+            gh release view "$TAG" > /dev/null 2>&1 && exit 0
+            echo "Waiting for release to be created ($i/20)..."
+            sleep 30
+          done
+          echo "Release not found after waiting" && exit 1
+
+      - name: Upload release
+        if: steps.release.outputs.is_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          shopt -s globstar nullglob
+          for apk in resources/apps/tauri/gen/android/app/build/outputs/apk/**/*.apk; do
+            [ -f "$apk" ] && gh release upload "$TAG" "$apk"
+          done
+          for aab in resources/apps/tauri/gen/android/app/build/outputs/bundle/**/*.aab; do
+            [ -f "$aab" ] && gh release upload "$TAG" "$aab"
+          done

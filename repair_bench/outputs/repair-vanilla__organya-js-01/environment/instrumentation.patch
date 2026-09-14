@@ -1,0 +1,500 @@
+diff --git a/organya.js b/organya.js
+index f9a57f4..84ab240 100644
+--- a/organya.js
++++ b/organya.js
+@@ -321,4 +321,315 @@
+ 
+         window.Organya = Organya;
+     };
++
++    // ---- repair-bench instrumentation: read-only verification facade, ENGINE half ----
++    // Additive probe block. It deletes 0 seed statements and edits 0 seed logic line: the
++    // classes, the constant tables and the loader above are byte-identical to the seed.
++    // Two groups of handles live here and they are kept apart on purpose:
++    //   rig*  - drivers. They construct THIS BLOCK'S OWN probe objects (a probe player built
++    //           from an in-page byte fixture, never the page's own instance) and hand them the
++    //           inputs a direct drive needs (a sample rate and a tick length). They are called
++    //           from a checkpoint's setup only, and every reading they take is frozen into
++    //           rbFrozen at that moment, because asserts are polled and must stay pure reads.
++    //   every other handle - a pure read returning one scalar (string, number, boolean, null).
++    // Nothing here writes to a page-owned object, to the document, to a storage object or to
++    // the network. The only application entry point it calls is the seed's own local loader
++    // window.initOrganya(), which reads the shipped wavetable file from the same origin and is
++    // idempotent; it is awaited once per page through a memoised promise.
++    {
++        const RB_TICK_SAMPLES = 8;
++        const rb = (typeof window.__rb_org === "object" && window.__rb_org) ? window.__rb_org : {};
++        const rbFrozen = {};
++        let rbEng = null;
++        let rbFixture = null;
++        let rbInitPromise = null;
++        let rbUiSquare = null;
++        let rbUiLiveSized = null;
++        let rbUiSquareCanvas = null;
++
++        const rbR4 = (v) => (typeof v === "number" && isFinite(v) ? Math.round(v * 10000) / 10000 : null);
++        const rbDef = (name, fallback, fn) => {
++            Object.defineProperty(rb, name, {
++                value: function () {
++                    try {
++                        const v = fn.apply(null, arguments);
++                        return v === undefined ? fallback : v;
++                    } catch (e) { return fallback; }
++                },
++                writable: false, enumerable: false, configurable: false
++            });
++        };
++
++        // --- the byte fixture: a whole song image built in page, so every engine reading is
++        //     reproducible from constants and no checkpoint depends on a shipped song file ---
++        const RB_SPEC = {
++            wait: 250, meas: [6, 3], start: 4, end: 10,
++            inst: [
++                { freq: 1000, wave: 2, pipi: 0, notes: [{ pos: 4, key: 24, len: 3, vol: 200, pan: 6 }, { pos: 6, key: 26, len: 2, vol: 255, pan: 255 }, { pos: 8, key: 255, len: 0, vol: 180, pan: 3 }] },
++                { freq: 1050, wave: 5, pipi: 1, notes: [{ pos: 4, key: 12, len: 1, vol: 255, pan: 255 }] },
++                { freq: 980, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 1, pipi: 0, notes: [] },
++                { freq: 1000, wave: 1, pipi: 0, notes: [] },
++                { freq: 1000, wave: 1, pipi: 0, notes: [] },
++                { freq: 1000, wave: 1, pipi: 0, notes: [] },
++                { freq: 1000, wave: 1, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [{ pos: 4, key: 5, len: 0, vol: 220, pan: 6 }] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] },
++                { freq: 1000, wave: 0, pipi: 0, notes: [] }
++            ]
++        };
++        const rbBuildFixture = () => {
++            let n = 4 + 2 + 2 + 2 + 4 + 4 + 16 * 6;
++            for (const it of RB_SPEC.inst) n += it.notes.length * 8;
++            const buf = new ArrayBuffer(n);
++            const v = new DataView(buf);
++            let p = 0;
++            v.setUint32(p, 0x2d67724f, true); p += 4;
++            v.setUint16(p, 0x3230, true); p += 2;
++            v.setUint16(p, RB_SPEC.wait, true); p += 2;
++            v.setUint8(p, RB_SPEC.meas[0]); p += 1;
++            v.setUint8(p, RB_SPEC.meas[1]); p += 1;
++            v.setInt32(p, RB_SPEC.start, true); p += 4;
++            v.setInt32(p, RB_SPEC.end, true); p += 4;
++            for (const it of RB_SPEC.inst) {
++                v.setInt16(p, it.freq, true); p += 2;
++                v.setUint8(p, it.wave); p += 1;
++                v.setUint8(p, it.pipi); p += 1;
++                v.setUint16(p, it.notes.length, true); p += 2;
++            }
++            // the image is TRACK-MAJOR: for each track the parser walks five field runs in
++            // order (every position, then every key, then every length, then every volume,
++            // then every pan) before it moves to the next track.
++            for (const it of RB_SPEC.inst) {
++                for (const nt of it.notes) { v.setInt32(p, nt.pos, true); p += 4; }
++                for (const nt of it.notes) { v.setUint8(p, nt.key); p += 1; }
++                for (const nt of it.notes) { v.setUint8(p, nt.len); p += 1; }
++                for (const nt of it.notes) { v.setUint8(p, nt.vol); p += 1; }
++                for (const nt of it.notes) { v.setUint8(p, nt.pan); p += 1; }
++            }
++            return buf;
++        };
++
++        const rbInit = () => {
++            if (!rbInitPromise) {
++                rbInitPromise = Promise.resolve()
++                    .then(() => window.initOrganya())
++                    .then(() => true)
++                    .catch((e) => { rbInitPromise = null; rbFrozen.initError = String((e && e.message) || e); return false; });
++            }
++            return rbInitPromise;
++        };
++
++        // --- rig drivers (setup only) ---
++        Object.defineProperty(rb, "rigPrepare", {
++            value: async function () {
++                try {
++                    const okInit = await rbInit();
++                    if (!rbFixture) rbFixture = rbBuildFixture();
++                    rbEng = new Organya(rbFixture);
++                    rbEng.sampleRate = 44100;
++                    rbEng.samplesPerTick = RB_TICK_SAMPLES;
++                    rbFrozen.fixtureBytes = rbFixture.byteLength;
++                    rbFrozen.initOk = okInit === true;
++                    rbFrozen.waveTableLen = waveTable.length;
++                    rbFrozen.drumCount = drums.length;
++                    rbFrozen.drum0Samples = drums.length ? drums[0].samples : null;
++                    return true;
++                } catch (e) { rbFrozen.prepareError = String((e && e.message) || e); return false; }
++            }, writable: false, enumerable: false, configurable: false
++        });
++        rbDef("rigSetPlayPos", -1, (pos) => { if (!rbEng) return -1; rbEng.playPos = pos | 0; rbEng.samplesThisTick = 0; return rbEng.playPos; });
++        rbDef("rigUpdate", -1, () => { if (!rbEng) return -1; rbEng.update(); return 1; });
++        rbDef("rigWalk", -1, (from, to) => {
++            if (!rbEng) return -1;
++            let n = 0;
++            for (let pos = from | 0; pos <= (to | 0); pos++) { rbEng.playPos = pos; rbEng.samplesThisTick = 0; rbEng.update(); n++; }
++            return n;
++        });
++        rbDef("rigTick", -1, (n) => {
++            if (!rbEng) return -1;
++            let done = 0;
++            for (let i = 0; i < (n | 0); i++) {
++                const L = new Float32Array(RB_TICK_SAMPLES), R = new Float32Array(RB_TICK_SAMPLES);
++                rbEng.synth(L, R);
++                rbFrozen.lastLeft0 = rbR4(L[0]); rbFrozen.lastRight0 = rbR4(R[0]);
++                rbFrozen.lastLeftFinite = isFinite(L[R.length - 1]);
++                done++;
++            }
++            rbFrozen.tickCalls = done;
++            return done;
++        });
++        rbDef("rigMarkPhase", "", (name) => {
++            if (!rbEng) return "";
++            const k = String(name);
++            rbFrozen["phasePlayPos_" + k] = rbEng.playPos;
++            rbFrozen["phaseStt_" + k] = rbEng.samplesThisTick;
++            rbFrozen["phaseAtOrAfterStart_" + k] = rbEng.playPos >= rbEng.song.start;
++            rbFrozen["phaseNames"] = (rbFrozen.phaseNames || "") + (rbFrozen.phaseNames ? "|" : "") + k;
++            return k;
++        });
++        rbDef("frozenPhasePlayPos", null, (name) => { const v = rbFrozen["phasePlayPos_" + String(name)]; return v === undefined ? null : v; });
++        rbDef("frozenPhaseStt", null, (name) => { const v = rbFrozen["phaseStt_" + String(name)]; return v === undefined ? null : v; });
++        rbDef("frozenPhaseAtOrAfterStart", null, (name) => { const v = rbFrozen["phaseAtOrAfterStart_" + String(name)]; return v === undefined ? null : v; });
++        rbDef("frozenPhaseNames", "", () => String(rbFrozen.phaseNames || ""));
++        rbDef("rigResetEngine", false, () => {
++            if (!rbFixture) return false;
++            rbEng = new Organya(rbFixture);
++            rbEng.sampleRate = 44100;
++            rbEng.samplesPerTick = RB_TICK_SAMPLES;
++            return true;
++        });
++        rbDef("rigUiSquare", -1, (size) => {
++            if (typeof window.OrganyaUI !== "function") return -1;
++            rbUiSquareCanvas = document.createElement("canvas");
++            rbUiSquareCanvas.width = size | 0;
++            rbUiSquareCanvas.height = size | 0;
++            rbUiSquare = new window.OrganyaUI(rbUiSquareCanvas);
++            rbFrozen.squareInitScroll = rbUiSquare.scrollY;
++            rbFrozen.squareCanvasW = rbUiSquareCanvas.width;
++            rbFrozen.squareCanvasH = rbUiSquareCanvas.height;
++            return 1;
++        });
++        rbDef("rigUiWheelSquare", null, (dy) => {
++            if (!rbUiSquare) return null;
++            const before = rbUiSquare.scrollY;
++            rbUiSquareCanvas.dispatchEvent(new WheelEvent("wheel", { deltaY: Number(dy) }));
++            rbUiSquare.draw();
++            rbFrozen.squareWheelBefore = before;
++            rbFrozen.squareWheelAfter = rbUiSquare.scrollY;
++            return rbUiSquare.scrollY;
++        });
++        rbDef("rigUiLiveSized", -1, () => {
++            if (typeof window.OrganyaUI !== "function") return -1;
++            const live = document.getElementById("org-canvas");
++            if (!live) return -1;
++            const c = document.createElement("canvas");
++            c.width = live.width; c.height = live.height;
++            rbUiLiveSized = new window.OrganyaUI(c);
++            rbFrozen.liveSizedInitScroll = rbUiLiveSized.scrollY;
++            rbFrozen.liveSizedCanvasW = c.width;
++            rbFrozen.liveSizedCanvasH = c.height;
++            return 1;
++        });
++        rbDef("rigSetOrganya", false, () => {
++            if (!rbUiSquare || !rbEng) return false;
++            rbUiSquare.setOrganya(rbEng);
++            rbFrozen.handoverSame = rbUiSquare.organya === rbEng;
++            rbFrozen.engineOnUpdateIsFn = typeof rbEng.onUpdate === "function";
++            return true;
++        });
++        rbDef("rigCallbackProbe", null, () => {
++            if (!rbUiSquare || !rbEng) return null;
++            rbUiSquare.requested = false;
++            rbUiSquare.onUpdate();
++            const requestedBefore = rbUiSquare.requested;
++            rbEng.update();
++            rbFrozen.cbRequestedBefore = requestedBefore;
++            rbFrozen.cbRequestedAfter = rbUiSquare.requested;
++            return rbUiSquare.requested;
++        });
++        Object.defineProperty(rb, "rigFetchSelected", {
++            value: async function () {
++                try {
++                    const el = document.getElementById("songs");
++                    const val = el.options[el.selectedIndex].value;
++                    const res = await fetch(val);
++                    rbFrozen.selectedValue = val;
++                    rbFrozen.selectedFetchOk = res.ok === true;
++                    rbFrozen.selectedFetchStatus = res.status | 0;
++                    return res.ok === true;
++                } catch (e) { rbFrozen.selectedFetchError = String((e && e.message) || e); rbFrozen.selectedFetchOk = false; return false; }
++            }, writable: false, enumerable: false, configurable: false
++        });
++
++        // --- pure reads: frozen rig scalars ---
++        rbDef("frozenInitOk", null, () => rbFrozen.initOk === undefined ? null : rbFrozen.initOk);
++        rbDef("frozenPrepareOk", true, () => rbEng !== null);
++        rbDef("frozenFixtureBytes", -1, () => rbFrozen.fixtureBytes);
++        rbDef("frozenWaveTableLen", -1, () => rbFrozen.waveTableLen);
++        rbDef("frozenDrumCount", -1, () => rbFrozen.drumCount);
++        rbDef("frozenDrum0Samples", -1, () => rbFrozen.drum0Samples);
++        rbDef("frozenTickCalls", -1, () => rbFrozen.tickCalls);
++        rbDef("frozenLastLeft0", null, () => rbFrozen.lastLeft0 === undefined ? null : rbFrozen.lastLeft0);
++        rbDef("frozenLastLeftFinite", null, () => rbFrozen.lastLeftFinite === undefined ? null : rbFrozen.lastLeftFinite);
++        rbDef("frozenSquareInitScroll", null, () => rbFrozen.squareInitScroll === undefined ? null : rbFrozen.squareInitScroll);
++        rbDef("frozenSquareCanvasW", -1, () => rbFrozen.squareCanvasW);
++        rbDef("frozenSquareCanvasH", -1, () => rbFrozen.squareCanvasH);
++        rbDef("frozenSquareWheelBefore", null, () => rbFrozen.squareWheelBefore === undefined ? null : rbFrozen.squareWheelBefore);
++        rbDef("frozenSquareWheelAfter", null, () => rbFrozen.squareWheelAfter === undefined ? null : rbFrozen.squareWheelAfter);
++        rbDef("squareWheelAfterIsBelowInit", null, () => (rbFrozen.squareWheelAfter === undefined || rbFrozen.squareInitScroll === undefined) ? null : rbFrozen.squareWheelAfter < rbFrozen.squareInitScroll);
++        rbDef("frozenLiveSizedInitScroll", null, () => rbFrozen.liveSizedInitScroll === undefined ? null : rbFrozen.liveSizedInitScroll);
++        rbDef("frozenHandoverSame", null, () => rbFrozen.handoverSame === undefined ? null : rbFrozen.handoverSame);
++        rbDef("frozenEngineOnUpdateIsFn", null, () => rbFrozen.engineOnUpdateIsFn === undefined ? null : rbFrozen.engineOnUpdateIsFn);
++        rbDef("frozenCbRequestedBefore", null, () => rbFrozen.cbRequestedBefore === undefined ? null : rbFrozen.cbRequestedBefore);
++        rbDef("frozenCbRequestedAfter", null, () => rbFrozen.cbRequestedAfter === undefined ? null : rbFrozen.cbRequestedAfter);
++        rbDef("frozenSelectedFetchOk", null, () => rbFrozen.selectedFetchOk === undefined ? null : rbFrozen.selectedFetchOk);
++        rbDef("frozenSelectedFetchStatus", -1, () => rbFrozen.selectedFetchStatus);
++        rbDef("frozenSelectedValue", "", () => rbFrozen.selectedValue === undefined ? "" : rbFrozen.selectedValue);
++        rbDef("frozenErrorText", "", () => String(rbFrozen.prepareError || rbFrozen.initError || rbFrozen.selectedFetchError || ""));
++
++        // --- pure reads: module-private loader results ---
++        rbDef("waveTableLen", -1, () => waveTable.length);
++        rbDef("drumCount", -1, () => drums.length);
++        rbDef("drumSamplesAt", -1, (i) => (drums[i | 0] ? drums[i | 0].samples : -1));
++        rbDef("drumBitsAt", -1, (i) => (drums[i | 0] ? drums[i | 0].bits : -1));
++
++        // --- pure reads: the probe player's song image ---
++        rbDef("songWait", -1, () => rbEng.song.wait);
++        rbDef("songMeas0", -1, () => rbEng.song.meas[0]);
++        rbDef("songMeas1", -1, () => rbEng.song.meas[1]);
++        rbDef("songMeasLen", -1, () => rbEng.song.meas.length);
++        rbDef("songStart", -1, () => rbEng.song.start);
++        rbDef("songEnd", -1, () => rbEng.song.end);
++        rbDef("instFreq", -1, (i) => rbEng.song.instruments[i | 0].freq);
++        rbDef("instWave", -1, (i) => rbEng.song.instruments[i | 0].wave);
++        rbDef("instPipi", -1, (i) => rbEng.song.instruments[i | 0].pipi);
++        rbDef("instNotes", -1, (i) => rbEng.song.instruments[i | 0].notes);
++        rbDef("instCount", -1, () => rbEng.song.instruments.length);
++        rbDef("trackCount", -1, () => rbEng.song.tracks.length);
++        rbDef("trackLen", -1, (t) => rbEng.song.tracks[t | 0].length);
++        rbDef("notePos", -1, (t, j) => rbEng.song.tracks[t | 0][j | 0].pos);
++        rbDef("noteKey", -1, (t, j) => rbEng.song.tracks[t | 0][j | 0].key);
++        rbDef("noteLen", -1, (t, j) => rbEng.song.tracks[t | 0][j | 0].len);
++        rbDef("noteVol", -1, (t, j) => rbEng.song.tracks[t | 0][j | 0].vol);
++        rbDef("notePan", -1, (t, j) => rbEng.song.tracks[t | 0][j | 0].pan);
++
++        // --- pure reads: the probe player's transport + per-track state ---
++        rbDef("playPos", -1, () => rbEng.playPos);
++        rbDef("samplesThisTick", -1, () => rbEng.samplesThisTick);
++        rbDef("samplesPerTick", -1, () => rbEng.samplesPerTick);
++        rbDef("engineSampleRate", -1, () => rbEng.sampleRate);
++        rbDef("engineNodeIsNull", null, () => rbEng.node === null);
++        rbDef("playPosIsAtOrAfterSongStart", null, () => rbEng.playPos >= rbEng.song.start);
++        rbDef("playPosIsBeforeSongEnd", null, () => rbEng.playPos < rbEng.song.end);
++        rbDef("playPosIsZero", null, () => rbEng.playPos === 0);
++        rbDef("playPosEqualsSongStart", null, () => rbEng.playPos === rbEng.song.start);
++        rbDef("stateCount", -1, () => rbEng.state.length);
++        rbDef("stTR", null, (t) => rbR4(rbEng.state[t | 0].t));
++        rbDef("stKey", -1, (t) => rbEng.state[t | 0].key);
++        rbDef("stFrequency", -1, (t) => rbEng.state[t | 0].frequency);
++        rbDef("stOctave", -1, (t) => rbEng.state[t | 0].octave);
++        rbDef("stPan", -1, (t) => rbEng.state[t | 0].pan);
++        rbDef("stVol", null, (t) => rbR4(rbEng.state[t | 0].vol));
++        rbDef("stVolLog", null, (t) => rbR4(rbEng.state[t | 0].vol_log));
++        rbDef("stLength", -1, (t) => rbEng.state[t | 0].length);
++        rbDef("stNumLoops", -1, (t) => rbEng.state[t | 0].num_loops);
++        rbDef("stPlaying", null, (t) => rbEng.state[t | 0].playing === true);
++        rbDef("stLooping", null, (t) => rbEng.state[t | 0].looping === true);
++        rbDef("stKeyIsSentinel", null, (t) => rbEng.state[t | 0].key === 255);
++        rbDef("stFreqIsPositive", null, (t) => rbEng.state[t | 0].frequency > 0);
++
++        // --- facade self-integrity (anti-cheat sentinels) ---
++        rbDef("facadeHandleCount", -1, () => Object.getOwnPropertyNames(rb).length);
++        rbDef("facadeWritableCount", -1, () => Object.getOwnPropertyNames(rb).filter((k) => Object.getOwnPropertyDescriptor(rb, k).writable !== false).length);
++        rbDef("facadeNonFunctionCount", -1, () => Object.getOwnPropertyNames(rb).filter((k) => typeof Object.getOwnPropertyDescriptor(rb, k).value !== "function").length);
++        rbDef("facadeConfigurableCount", -1, () => Object.getOwnPropertyNames(rb).filter((k) => Object.getOwnPropertyDescriptor(rb, k).configurable !== false).length);
++
++        if (!window.__rb_org) Object.defineProperty(window, "__rb_org", { value: rb, writable: false, enumerable: false, configurable: false });
++    }
+ })();
+\ No newline at end of file
+diff --git a/index.html b/index.html
+index 7fd54f7..7f68c69 100644
+--- a/index.html
++++ b/index.html
+@@ -42,13 +42,13 @@
+ </head>
+ 
+ <body>
+-    <div id="toolbar">
+-        <select id="songs"></select>
+-        <button onclick="playOrg()">Play</button>
+-        <button onclick="stopOrg()">Stop</button>
++    <div id="toolbar" data-testid="rb-control-bar">
++        <select id="songs" data-testid="rb-song-list"></select>
++        <button onclick="playOrg()" data-testid="rb-transport-play">Play</button>
++        <button onclick="stopOrg()" data-testid="rb-transport-stop">Stop</button>
+     </div>
+-    <div id="canvas-container">
+-        <canvas id="org-canvas"></canvas>
++    <div id="canvas-container" data-testid="rb-roll-container">
++        <canvas id="org-canvas" data-testid="rb-roll-surface"></canvas>
+     </div>
+ 
+     <!-- increment before each deploy -->
+@@ -160,6 +160,7 @@ Rxo/town0.org`.split("\n").sort();
+                 const opt = document.createElement("option");
+                 opt.value = "songs/" + song;
+                 opt.textContent = song;
++                opt.setAttribute("data-testid", "rb-song-option");
+ 
+                 songListEl.appendChild(opt);
+             }
+@@ -196,6 +197,146 @@ Rxo/town0.org`.split("\n").sort();
+                 ui.setOrganya(currentOrg);
+                 currentOrg.play();
+             }
++
++            // ---- repair-bench instrumentation: read-only verification facade, PAGE half ----
++            // Additive probe block appended inside the entry document's own bootstrap closure, so
++            // it can read the closure-locals (the song dropdown, the drawing surface, its container
++            // and the renderer instance) that no outside script can reach. It edits 0 seed logic
++            // line. Every handle below is a pure read returning one scalar; the drivers that need
++            // to hand an event to the page are named rig* and are called from a checkpoint's setup
++            // only, freezing their readings at that moment.
++            {
++                const rb = (typeof window.__rb_org === "object" && window.__rb_org) ? window.__rb_org : {};
++                const rbStr = (v) => (v === null || v === undefined ? "" : String(v));
++                const rbEl = (id) => document.getElementById(id);
++                const rbDef = (name, fallback, fn) => {
++                    Object.defineProperty(rb, name, {
++                        value: function () {
++                            try {
++                                const v = fn.apply(null, arguments);
++                                return v === undefined ? fallback : v;
++                            } catch (e) { return fallback; }
++                        },
++                        writable: false, enumerable: false, configurable: false
++                    });
++                };
++                const rbList = () => rbEl("songs");
++                const rbBox = () => rbEl("org-canvas");
++                const rbWrap = () => rbEl("canvas-container");
++
++                // --- document / control bar ---
++                rbDef("docTitle", "", () => document.title);
++                rbDef("toolbarExists", false, () => !!rbEl("toolbar"));
++                rbDef("toolbarChildCount", -1, () => rbEl("toolbar").children.length);
++                rbDef("toolbarButtonCount", -1, () => rbEl("toolbar").querySelectorAll("button").length);
++                rbDef("toolbarButtonTexts", "", () => Array.prototype.map.call(rbEl("toolbar").querySelectorAll("button"), (b) => rbStr(b.textContent).trim()).join("|"));
++                rbDef("pauseButtonExists", null, () => Array.prototype.some.call(rbEl("toolbar").querySelectorAll("button"), (b) => /pause/i.test(rbStr(b.textContent))));
++                rbDef("listExists", false, () => !!rbList());
++                rbDef("listTagName", "", () => rbStr(rbList().tagName).toLowerCase());
++                rbDef("listSelectedIndex", -1, () => rbList().selectedIndex);
++                rbDef("playHandlerIsFunction", false, () => typeof window.playOrg === "function");
++                rbDef("stopHandlerIsFunction", false, () => typeof window.stopOrg === "function");
++                rbDef("currentInstanceIsNull", null, () => currentOrg === null);
++                rbDef("engineCtorExposed", false, () => typeof window.Organya === "function");
++                rbDef("rendererCtorExposed", false, () => typeof window.OrganyaUI === "function");
++                rbDef("loaderExposed", false, () => typeof window.initOrganya === "function");
++
++                // --- song dropdown ---
++                rbDef("optionCount", -1, () => rbList().options.length);
++                rbDef("optionTextAt", "", (i) => rbStr(rbList().options[i | 0].textContent));
++                rbDef("optionValueAt", "", (i) => rbStr(rbList().options[i | 0].value));
++                rbDef("optionTestIdCount", -1, () => rbList().querySelectorAll("option[data-testid]").length);
++                rbDef("optionIndexOfText", -1, (t) => {
++                    const o = rbList().options;
++                    for (let i = 0; i < o.length; i++) if (rbStr(o[i].textContent) === rbStr(t)) return i;
++                    return -1;
++                });
++                rbDef("optionValuePrefixedCount", -1, (pre) => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value).indexOf(rbStr(pre)) === 0).length);
++                rbDef("optionValueEmptyCount", -1, () => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value) === "").length);
++                rbDef("optionValueDistinctCount", -1, () => new Set(Array.prototype.map.call(rbList().options, (o) => rbStr(o.value))).size);
++                rbDef("optionTextAndValueAgreeCount", -1, (pre) => Array.prototype.filter.call(rbList().options, (o) => rbStr(o.value) === rbStr(pre) + rbStr(o.textContent)).length);
++                rbDef("optionTextIsSorted", null, () => {
++                    const t = Array.prototype.map.call(rbList().options, (o) => rbStr(o.textContent));
++                    for (let i = 1; i < t.length; i++) if (t[i - 1] > t[i]) return false;
++                    return true;
++                });
++
++                // --- drawing surface geometry (relative readings: no absolute layout figure is
++                //     asserted anywhere, so nothing here depends on a scrollbar or a font metric) ---
++                rbDef("boxExists", false, () => !!rbBox());
++                rbDef("boxTagName", "", () => rbStr(rbBox().tagName).toLowerCase());
++                rbDef("boxWidth", -1, () => rbBox().width);
++                rbDef("boxHeight", -1, () => rbBox().height);
++                rbDef("wrapClientWidth", -1, () => rbWrap().clientWidth);
++                rbDef("wrapClientHeight", -1, () => rbWrap().clientHeight);
++                rbDef("boxWidthIsWrapWidth", null, () => rbBox().width === rbWrap().clientWidth);
++                rbDef("boxHeightIsWrapHeight", null, () => rbBox().height === rbWrap().clientHeight);
++                rbDef("boxWidthIsWrapHeight", null, () => rbBox().width === rbWrap().clientHeight);
++                rbDef("boxHeightIsWrapWidth", null, () => rbBox().height === rbWrap().clientWidth);
++                rbDef("boxAreaIsPositive", null, () => rbBox().width > 0 && rbBox().height > 0);
++                rbDef("boxIsNotSquare", null, () => rbBox().width !== rbBox().height);
++                rbDef("wrapIsLandscape", null, () => rbWrap().clientWidth > rbWrap().clientHeight);
++                rbDef("wrapWidthIsOverOneThousand", null, () => rbWrap().clientWidth > 1152);
++                rbDef("wrapHeightIsUnderOneThousand", null, () => rbWrap().clientHeight < 1152);
++                rbDef("rigResize", false, () => { window.dispatchEvent(new Event("resize")); return true; });
++
++                // --- the page's own renderer instance (a closure-local in the seed) ---
++                rbDef("uiExists", false, () => !!ui);
++                rbDef("uiIsRenderer", null, () => ui instanceof window.OrganyaUI);
++                rbDef("uiBoxIsPageBox", null, () => ui.canvas === rbBox());
++                rbDef("uiScrollYIsNumber", null, () => typeof ui.scrollY === "number" && isFinite(ui.scrollY));
++                rbDef("uiScrollY", null, () => (typeof ui.scrollY === "number" && isFinite(ui.scrollY) ? Math.round(ui.scrollY * 10000) / 10000 : null));
++                rbDef("uiScrollIsNegative", null, () => ui.scrollY < 0);
++                rbDef("uiScrollIsZero", null, () => ui.scrollY === 0);
++                rbDef("uiScrollIsPositive", null, () => ui.scrollY > 0);
++                rbDef("uiRequestedIsBoolean", null, () => typeof ui.requested === "boolean");
++                rbDef("uiHasInstance", null, () => ui.organya !== null);
++                rbDef("uiImageCount", -1, () => [ui.noteImg, ui.pianoRoll, ui.number].filter((im) => im && typeof im.src === "string").length);
++                rbDef("uiImageCompleteCount", -1, () => [ui.noteImg, ui.pianoRoll, ui.number].filter((im) => im && im.complete === true).length);
++                rbDef("uiImageSrcsAreRelative", null, () => [ui.noteImg, ui.pianoRoll, ui.number].every((im) => {
++                    const s = rbStr(im.getAttribute ? im.getAttribute("src") : im.src);
++                    return s !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.charAt(0) !== "/";
++                }));
++                rbDef("uiScrollEqualsLiveSizedProbeInit", null, () => {
++                    const f = rb.frozenLiveSizedInitScroll();
++                    return typeof f === "number" && typeof ui.scrollY === "number" ? ui.scrollY === f : null;
++                });
++                rbDef("liveSizedProbeInitIsNotNegative", null, () => {
++                    const f = rb.frozenLiveSizedInitScroll();
++                    return typeof f === "number" ? f >= 0 : null;
++                });
++                rbDef("liveSizedProbeInitEqualsSquareProbeInit", null, () => {
++                    const a = rb.frozenLiveSizedInitScroll(), b = rb.frozenSquareInitScroll();
++                    return (typeof a === "number" && typeof b === "number") ? a === b : null;
++                });
++
++                // --- offline self-sufficiency + state isolation sentinels ---
++                rbDef("scriptSrcCount", -1, () => document.querySelectorAll("script[src]").length);
++                rbDef("scriptSrcsAreRelative", null, () => Array.prototype.every.call(document.querySelectorAll("script[src]"), (s) => {
++                    const u = rbStr(s.getAttribute("src"));
++                    return u !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(u) && u.charAt(0) !== "/";
++                }));
++                rbDef("outboundRefCount", -1, () => {
++                    const here = location.origin;
++                    return Array.prototype.filter.call(document.querySelectorAll("link[href], script[src], img[src], iframe[src], source[src]"), (e) => {
++                        const u = rbStr(e.getAttribute("href") || e.getAttribute("src"));
++                        if (!u || !/^[a-z][a-z0-9+.-]*:/i.test(u)) return false;
++                        try { return new URL(u, location.href).origin !== here; } catch (err) { return false; }
++                    }).length;
++                });
++                rbDef("dataUriRefCount", -1, () => Array.prototype.filter.call(document.querySelectorAll("link[href], script[src], img[src]"), (e) => /^(data|blob):/i.test(rbStr(e.getAttribute("href") || e.getAttribute("src")))).length);
++                rbDef("localStorageKeyCount", -1, () => window.localStorage.length);
++                rbDef("sessionStorageKeyCount", -1, () => window.sessionStorage.length);
++                rbDef("localStorageKeys", "", () => Object.keys(window.localStorage).sort().join("|"));
++                rbDef("urlIsEntryDocument", null, () => /\/(index\.html)?$/.test(location.pathname));
++                rbDef("urlHasNoQueryOrHash", null, () => location.search === "" && location.hash === "");
++                rbDef("rbGlobalIsEnumerable", null, () => Object.getOwnPropertyDescriptor(window, "__rb_org").enumerable === true);
++                rbDef("rbGlobalIsWritable", null, () => Object.getOwnPropertyDescriptor(window, "__rb_org").writable === true);
++                rbDef("rbGlobalIsObject", null, () => typeof window.__rb_org === "object" && window.__rb_org !== null);
++                rbDef("probeTestIdTotal", -1, () => document.querySelectorAll("[data-testid]").length);
++
++                if (!window.__rb_org) Object.defineProperty(window, "__rb_org", { value: rb, writable: false, enumerable: false, configurable: false });
++            }
+         })();
+     </script>
+ </body>

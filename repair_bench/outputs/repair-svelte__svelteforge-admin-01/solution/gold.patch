@@ -1,0 +1,132 @@
+diff --git a/src/lib/components/animated-counter.svelte b/src/lib/components/animated-counter.svelte
+index fe00306..82c0dc7 100644
+--- a/src/lib/components/animated-counter.svelte
++++ b/src/lib/components/animated-counter.svelte
+@@ -13,6 +13,7 @@
+ 
+ 	$effect(() => {
+ 		const target = value;
++		const start = performance.now();
+ 		let frame: number;
+ 
+ 		function easeOutExpo(t: number): number {
+@@ -20,7 +21,6 @@
+ 		}
+ 
+ 		function animate(now: number) {
+-			const start = performance.now();
+ 			const elapsed = now - start;
+ 			const progress = Math.min(elapsed / duration, 1);
+ 			const eased = easeOutExpo(progress);
+diff --git a/src/lib/components/data-table-pagination.svelte b/src/lib/components/data-table-pagination.svelte
+index 53491ac..524e659 100644
+--- a/src/lib/components/data-table-pagination.svelte
++++ b/src/lib/components/data-table-pagination.svelte
+@@ -16,7 +16,7 @@
+ 		currentPage: number;
+ 	} = $props();
+ 
+-	const totalPages = $derived(Math.max(1, Math.floor(totalItems / pageSize)));
++	const totalPages = $derived(Math.max(1, Math.ceil(totalItems / pageSize)));
+ 	const startItem = $derived((currentPage - 1) * pageSize + 1);
+ 	const endItem = $derived(Math.min(currentPage * pageSize, totalItems));
+ 
+@@ -44,6 +44,7 @@
+ 				onValueChange={(v) => {
+ 					if (v) {
+ 						pageSize = Number(v);
++						currentPage = 1;
+ 					}
+ 				}}
+ 			>
+diff --git a/src/lib/components/user-form-dialog.svelte b/src/lib/components/user-form-dialog.svelte
+index af07847..f2734c5 100644
+--- a/src/lib/components/user-form-dialog.svelte
++++ b/src/lib/components/user-form-dialog.svelte
+@@ -42,6 +42,7 @@
+ 					if (result.type === "success" || result.type === "redirect") {
+ 						open = false;
+ 					}
++					await update();
+ 				};
+ 			}}
+ 		>
+diff --git a/src/routes/(app)/+page.svelte b/src/routes/(app)/+page.svelte
+index dcbbb31..65e57e1 100644
+--- a/src/routes/(app)/+page.svelte
++++ b/src/routes/(app)/+page.svelte
+@@ -330,7 +330,7 @@
+ 			</Card.Header>
+ 			<Card.Content>
+ 				{#key mode.current}
+-					{#if contentTrendData.length > 0}
++					{#if contentTrendData().length > 0}
+ 						<Chart.Container data-testid="chart-content-trend" config={contentTrendConfig} class="h-[300px] w-full">
+ 							<BarChart
+ 								data={contentTrendData()}
+diff --git a/src/routes/(app)/content/new/+page.svelte b/src/routes/(app)/content/new/+page.svelte
+index 987900c..fe399e5 100644
+--- a/src/routes/(app)/content/new/+page.svelte
++++ b/src/routes/(app)/content/new/+page.svelte
+@@ -37,6 +37,7 @@
+ 
+ 	function handleSlugInput(e: Event) {
+ 		slug = (e.target as HTMLInputElement).value;
++		autoSlug = false;
+ 	}
+ </script>
+ 
+diff --git a/src/routes/(app)/settings/+page.svelte b/src/routes/(app)/settings/+page.svelte
+index 965110c..f57078b 100644
+--- a/src/routes/(app)/settings/+page.svelte
++++ b/src/routes/(app)/settings/+page.svelte
+@@ -313,7 +313,7 @@
+ 										When enabled, non-admin users will see a maintenance page.
+ 									</p>
+ 								</div>
+-								<Switch data-testid="maintenance-switch" checked={data.settings.maintenanceMode === "true"} />
++								<Switch data-testid="maintenance-switch" name="maintenanceMode" checked={data.settings.maintenanceMode === "true"} />
+ 							</div>
+ 
+ 							<Button data-testid="settings-save" type="submit">Save Settings</Button>
+diff --git a/src/routes/(app)/users/+page.svelte b/src/routes/(app)/users/+page.svelte
+index c592ae7..d4c7c15 100644
+--- a/src/routes/(app)/users/+page.svelte
++++ b/src/routes/(app)/users/+page.svelte
+@@ -55,7 +55,7 @@
+ 			const aVal = String((a as Record<string, unknown>)[sortKey] ?? "");
+ 			const bVal = String((b as Record<string, unknown>)[sortKey] ?? "");
+ 			const cmp = aVal.localeCompare(bVal);
+-			return sortDir === "asc" ? cmp : cmp;
++			return sortDir === "asc" ? cmp : -cmp;
+ 		});
+ 		return arr;
+ 	});
+@@ -64,7 +64,8 @@
+ 
+ 	$effect(() => {
+ 		// Reset page when search changes
+-		if (search) currentPage = 1;
++		search;
++		currentPage = 1;
+ 	});
+ 
+ 	$effect(() => {
+@@ -97,7 +98,7 @@
+ 	}
+ 
+ 	function toggleSelectAll() {
+-		if (selectedIds.size === filtered.length) {
++		if (selectedIds.size === paginated.length) {
+ 			selectedIds = new Set();
+ 		} else {
+ 			selectedIds = new Set(paginated.map((u) => u.id));
+@@ -290,7 +291,7 @@
+ 				{/each}
+ 			</Table.Body>
+ 		</Table.Root>
+-		<DataTablePagination totalItems={filtered.length} pageSize={pageSize} bind:currentPage />
++		<DataTablePagination totalItems={filtered.length} bind:pageSize bind:currentPage />
+ 	</div>
+ </div>
+ 

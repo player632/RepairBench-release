@@ -1,0 +1,115 @@
+diff --git a/src/App.vue b/src/App.vue
+index f14c1cc..4981a4c 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -58,7 +58,6 @@ export default {
+     },
+     /* Apply the effective theme whenever it changes */
+     effectiveTheme: {
+-      immediate: true,
+       handler(t) { applyTheme(t, this.appConfig); },
+     },
+     /* Keep i18n in sync with the active page's language (incl. sub-page overrides) */
+diff --git a/src/components/Settings/SearchBar.vue b/src/components/Settings/SearchBar.vue
+index fb65f28..08bfd27 100644
+--- a/src/components/Settings/SearchBar.vue
++++ b/src/components/Settings/SearchBar.vue
+@@ -74,7 +74,6 @@ export default {
+     window.addEventListener('keydown', this.handleKeyPress);
+   },
+   beforeUnmount() {
+-    window.removeEventListener('keydown', this.handleKeyPress);
+     if (this.emitFrame != null) cancelAnimationFrame(this.emitFrame);
+   },
+   methods: {
+@@ -113,7 +112,6 @@ export default {
+       if (event) this.input = event.target.value;
+       if (this.emitFrame != null) return;
+       this.emitFrame = requestAnimationFrame(() => {
+-        this.emitFrame = null;
+         this.$emit('user-is-searchin', this.input);
+       });
+     },
+diff --git a/src/directives/ClickOutside.js b/src/directives/ClickOutside.js
+index 892e693..62074f0 100644
+--- a/src/directives/ClickOutside.js
++++ b/src/directives/ClickOutside.js
+@@ -10,7 +10,7 @@ const instances = []; // List of click event instances
+ /* Trigger action when click anywhere, except target elem */
+ function onDocumentClick(event, elem, action) {
+   const { target } = event;
+-  if (elem !== target && !elem.contains(target)) {
++  if (elem === target || elem.contains(target)) {
+     action(event);
+   }
+ }
+diff --git a/src/mixins/HomeMixin.js b/src/mixins/HomeMixin.js
+index 9ecf24b..cdb2209 100644
+--- a/src/mixins/HomeMixin.js
++++ b/src/mixins/HomeMixin.js
+@@ -37,11 +37,6 @@ const HomeMixin = {
+   data: () => ({
+     searchValue: '',
+   }),
+-  watch: {
+-    async $route() {
+-      this.loadUpConfig();
+-    },
+-  },
+   async created() {
+     this.loadUpConfig();
+   },
+diff --git a/src/mixins/ItemMixin.js b/src/mixins/ItemMixin.js
+index b7186a8..3f2ad41 100644
+--- a/src/mixins/ItemMixin.js
++++ b/src/mixins/ItemMixin.js
+@@ -264,7 +264,7 @@ export default {
+     startLocalUrlChecks() {
+       if (!this.hasLocalUrl) return;
+       this.probeLocalUrl();
+-      if (this.localUrlCheckInterval > 0) {
++      if (this.localUrlCheckInterval <= 0) {
+         this.localUrlIntervalId = setInterval(this.probeLocalUrl, this.localUrlCheckInterval * 1000);
+       }
+       // Re-probe when the tab becomes visible again (e.g. user switched networks)
+@@ -276,7 +276,6 @@ export default {
+     },
+     /* Tears down local-URL probing timers, listeners and any in-flight probe */
+     stopLocalUrlChecks() {
+-      if (this.localUrlIntervalId) clearInterval(this.localUrlIntervalId);
+       if (this.localUrlController) this.localUrlController.abort();
+       document.removeEventListener('visibilitychange', this.onVisibilityProbe);
+     },
+@@ -305,7 +304,7 @@ export default {
+       } else if (this.accumulatedTarget === 'newwindow') {
+         e.preventDefault();
+         const { width, height } = window.screen;
+-        window.open(url, '_blank', `width=${width},height=${height},noopener,noreferrer`);
++        window.open(url, '_self', `width=${width},height=${height},noopener,noreferrer`);
+       }
+       // Emit event to clear search field, etc
+       this.$emit('itemClicked');
+diff --git a/src/utils/NavLinks.js b/src/utils/NavLinks.js
+index 7101ae0..4c4978c 100644
+--- a/src/utils/NavLinks.js
++++ b/src/utils/NavLinks.js
+@@ -27,6 +27,6 @@ export const openLink = (link, event) => {
+ export const buildAllLinks = (store, route, extraLinks = []) => {
+   const view = viewFromPath(route.path);
+   const subPages = (store.getters.pages || []).filter(checkPageVisibility)
+-    .map((page) => ({ path: makePageSlug(page.name, view), title: page.name }));
++    .map((page) => ({ path: makePageSlug(view, page.name), title: page.name }));
+   return [...(extraLinks || []), ...subPages];
+ };
+diff --git a/src/utils/Toast.js b/src/utils/Toast.js
+index ad4df76..68e8510 100644
+--- a/src/utils/Toast.js
++++ b/src/utils/Toast.js
+@@ -222,7 +222,6 @@ function show(message, opts = {}) {
+     const start = () => { entry.timer = setTimeout(() => dismiss(id), cfg.duration); };
+     start();
+     el.addEventListener('mouseenter', () => clearTimeout(entry.timer));
+-    el.addEventListener('mouseleave', start);
+     el.addEventListener('focusin', () => clearTimeout(entry.timer));
+     el.addEventListener('focusout', start);
+   }

@@ -1,0 +1,328 @@
+diff --git a/frontend/index.html b/frontend/index.html
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -13,6 +13,8 @@
+ </head>
+ <body>
+   <div id="root"></div>
++  <!-- rb-stub: offline environment stub for the same-origin /api/* backend (adaptation face, see meta.json patch_ledger) -->
++  <script src="/rb-stub.js"></script>
+   <script src="/src/index.tsx" type="module"></script>
+ </body>
+ </html>
+diff --git a/frontend/public/rb-stub.js b/frontend/public/rb-stub.js
+new file mode 100644
+--- /dev/null
++++ b/frontend/public/rb-stub.js
+@@ -0,0 +1,311 @@
++// RepairBench offline environment stub.
++// Answers the application's remote endpoints from deterministic local fixtures. The stub
++// performs no writes to application state and issues no network requests.
++(() => {
++  if (window.__RB_STUB__) return;
++
++  const T0 = Date.now();
++  const MIN = 60000;
++  const iso = (minsAgo) => new Date(T0 - minsAgo * MIN).toISOString();
++  const dateOnly = (daysAgo) => new Date(T0 - daysAgo * 86400000).toISOString().slice(0, 10);
++  const KEY_SLOT = "iplayer-arr.api-key";
++  const SEEDED_KEY = "rb-probe-key-0123456789abcdef";   // 固定测试凭据（＝探针 B1 pass 用的同一枚，掩码面 "rb-p••••••••cdef"）
++  try {
++    if (!String(window.localStorage.getItem(KEY_SLOT) || "").trim()) window.localStorage.setItem(KEY_SLOT, SEEDED_KEY);
++  } catch {}
++
++  // 确定性失败面：删这四行必 500，且每枚带自己的 id 文案。
++  //
++  //   3 枚错误提示时 length===3 **顶不动**那道闸 ⇒ clean 与 mut 都是 3 条，D10 完全不可观察。第 4 枚才让
++  //   clean 落 slice(-3)＝3 条、mut 落 slice(-2)＝2 条。每枚文案带 id ⇒ 断言不止能数条数，还能钉住
++  //   「clean 留的是后 3 枚、mut 留的是后 2 枚」（比裸计数强得多）。四枚都是 error ⇒ 统一 6000ms 生命周期，时序余量最大。
++  const DELETE_FAIL_IDS = ["h-2", "h-4", "h-6", "h-8"];
++
++  const mk = (o) => Object.assign({
++    id: "dl-1", pid: "p0000001", vpid: "v0000001", title: "Episode 1", show_name: "Archive A",
++    season: 1, episode: 1, air_date: dateOnly(30), identity_tier: "series", quality: "1080p",
++    actual_quality: "1080p", status: "downloading", category: "tv",
++    stream_url: "https://example.invalid/p0000001",
++    output_dir: "/downloads/iplayer/Archive A", output_file: "Archive A - S01E01.mkv",
++    progress: 42.5, size: 1073741824, downloaded: 456340275, duration: 7260, error: "",
++    failure_code: "", retryable: false, retry_count: 0,
++    created_at: iso(12), started_at: iso(11), completed_at: "", file_exists: true,
++  }, o);
++
++  function seedHistory() {
++    const out = [];
++    for (let i = 1; i <= 23; i++) {
++      const failed = i % 5 === 0;
++      out.push(mk({
++        id: "h-" + i, pid: "p" + String(1000000 + i), title: "Episode " + i,
++        show_name: "Archive " + String.fromCharCode(65 + (i % 4)), episode: i,
++        status: failed ? "failed" : "completed", progress: failed ? 8 + (i % 40) : 100,
++        downloaded: failed ? 0 : 1073741824 - i * 1048576, size: 1073741824 - i * 1048576,
++        error: failed ? (i % 10 === 0 ? "geo blocked" : "playlist unavailable") : "",
++        failure_code: failed ? (i % 10 === 0 ? "GEO_BLOCKED" : "NO_PLAYLIST") : "",
++        retryable: failed && i % 10 !== 0, retry_count: failed ? (i % 3) : 0,
++        completed_at: failed ? "" : iso(i * 7), created_at: iso(i * 7 + 5), started_at: iso(i * 7 + 4),
++        actual_quality: i % 3 === 0 ? "720p" : "1080p", quality: "1080p",
++        file_exists: !failed && i % 7 !== 0,       // i%7===0 ⇒ 已完成但文件不在 ⇒ 应显示 "imported"
++      }));
++    }
++    return out;
++  }
++
++  function seedState() {
++    return {
++      paused: false,
++      active: [
++        mk({ id: "dl-1", progress: 42.5, downloaded: 456340275, status: "downloading" }),
++        mk({ id: "dl-3", pid: "p0000003", title: "Episode 3", episode: 3, status: "failed", progress: 12.5,
++             downloaded: 134217728, error: "ffmpeg exited with code 1", failure_code: "FFMPEG_FAILED",
++             retryable: true, retry_count: 2 }),
++      ],
++      queue: [
++        mk({ id: "dl-2", pid: "p0000002", title: "Episode 2", episode: 2, status: "pending", progress: 0,
++             downloaded: 0, quality: "720p", category: "tv", created_at: iso(3), started_at: "" }),
++      ],
++      history: seedHistory(),
++      config: { quality: "1080p", max_workers: "3", download_dir: "/downloads/iplayer", auto_cleanup: "true" },
++      overrides: [
++        { show_name: "Archive A", force_date_based: false, force_series_num: 2, force_position: true,
++          series_offset: 0, episode_offset: 1, custom_name: "Archive A (UK)" },
++        { show_name: "Archive C", force_date_based: true, force_series_num: 0, force_position: false,
++          series_offset: -1, episode_offset: 0, custom_name: "" },
++      ],
++      directory: [
++        { name: "Archive A", path: "/downloads/iplayer/Archive A", total_size: 1807741000, owned: true,
++          files: [{ name: "Archive A - S01E01.mkv", size: 1073741824 }, { name: "Archive A - S01E02.mkv", size: 734003200 }] },
++        { name: "Archive B", path: "/downloads/iplayer/Archive B", total_size: 524288000, owned: false,
++          files: [{ name: "Archive B - S01E02.mkv", size: 524288000 }] },
++        { name: "Loose Files", path: "/downloads/iplayer/Loose Files", total_size: 2048, owned: true,
++          files: [{ name: "notes.txt", size: 2048 }] },
++      ],
++      logs: [
++        { timestamp: iso(6), level: "info", message: "worker 1 started download p0000001" },
++        { timestamp: iso(5), level: "debug", message: "playlist fetched for p0000001" },
++        { timestamp: iso(4), level: "warn", message: "quality 1080p unavailable, falling back to 720p" },
++        { timestamp: iso(3), level: "error", message: "ffmpeg exited with code 1 for p0000003" },
++        { timestamp: iso(2), level: "info", message: "retry scheduled for p0000003 (attempt 3)" },
++        { timestamp: iso(1), level: "info", message: "geo check passed (UK)" },
++      ],
++      // total 500 GiB／free 60 GiB ⇒ used 88% ⇒ System 页 diskVariant 落 "paused" 分支（>=80 且 <90）
++      disk_total: 536870912000,
++      disk_free: 64424509440,
++    };
++  }
++
++  let state = seedState();
++
++  // 搜索结果覆盖 tierFor 的四条分支：S##E## ／ Pos N ／ AirDate ／ Manual
++  function searchResults(q) {
++    const base = (n) => ({
++      PID: "p" + String(1000000 + n), Title: (q || "programme") + " result " + n,
++      Subtitle: n % 2 === 0 ? "Subtitle for result " + n : "", Synopsis: "Synopsis for result " + n,
++      Channel: n % 3 === 0 ? "BBC Two" : "BBC One", Series: 0, EpisodeNum: 0, Position: 0, AirDate: "",
++      Thumbnail: "", BrandPID: "b" + String(2000000 + n), Availability: "available",
++    });
++    const out = [];
++    const a = base(1); a.Series = 1; a.EpisodeNum = 2; out.push(a);                       // S01E02
++    const b = base(2); b.Series = 12; b.EpisodeNum = 3; out.push(b);                       // S12E03
++    const c = base(3); c.Position = 5; c.Availability = "not_yet_available"; out.push(c);   // Pos 5
++    const d = base(4); d.AirDate = dateOnly(3) + "T20:00:00Z"; d.Availability = "unknown"; out.push(d); // AirDate
++    out.push(base(5));                                                                     // Manual
++    const f = base(6); f.Series = 2; f.EpisodeNum = 7; f.Channel = "BBC Four"; out.push(f); // S02E07
++    return out;
++  }
++
++  const statusOf = () => ({
++    ffmpeg: "6.1.1-full_build-www.gyan.dev", geo_ok: true, geo_status: "uk_ok", geo_detail: "London",
++    active_workers: state.active.length, queue_depth: state.active.length + state.queue.length,
++    paused: state.paused, disk_free: state.disk_free, disk_total: state.disk_total,
++  });
++  const systemOf = () => ({
++    version: "1.2.0", go_version: "go1.23.4", uptime_seconds: 3725, build_date: dateOnly(7) + "T09:00:00Z",
++    geo_ok: true, geo_status: "uk_ok", geo_detail: "London", geo_checked_at: iso(1),
++    ffmpeg_version: "6.1.1-full_build-www.gyan.dev", ffmpeg_path: "/usr/local/bin/ffmpeg",
++    disk_total: state.disk_total, disk_free: state.disk_free, disk_path: "/downloads",
++    downloads_completed: state.history.filter((h) => h.status === "completed").length,
++    downloads_failed: state.history.filter((h) => h.status === "failed").length,
++    downloads_total_bytes: state.history.reduce((a, b) => a + b.size, 0),
++    last_indexer_request: iso(3),
++  });
++
++  const json = (obj, code = 200) => new Response(JSON.stringify(obj), { status: code, headers: { "Content-Type": "application/json" } });
++  const origFetch = window.fetch.bind(window);
++  const journal = [];
++  const esUrls = [];
++  const liveES = new Set();
++
++  function route(method, p, q, body, headers) {
++    const seg = p.split("/").filter(Boolean);
++    if (seg[0] !== "api") return null;
++    // 真后端鉴权语义：无 key ⇒ 401（api.ts 会派发 UNAUTHORIZED_EVENT ⇒ 重开向导）
++    if (!String(window.localStorage.getItem(KEY_SLOT) || "").trim()) return json({ error: "unauthorized" }, 401);
++    const tail = seg.slice(1), head = tail[0], rest = tail.slice(1);
++    if (head === "status" && method === "GET") return json(statusOf());
++    if (head === "system" && method === "GET") return json(systemOf());
++    if (head === "system" && rest[0] === "geo-check" && method === "POST")
++      return json({ geo_ok: true, geo_status: "uk_ok", geo_detail: "London", geo_checked_at: iso(0) });
++    if (head === "downloads" && rest[0] === "directory") {
++      if (method === "GET") return json(state.directory);
++      if (method === "DELETE") {
++        const name = decodeURIComponent(rest[1] || "");
++        state.directory = state.directory.filter((d) => d.name !== name);
++        return json({ status: "ok" });
++      }
++      return json({ error: "method not allowed" }, 405);
++    }
++    if (head === "downloads") {
++      if (method === "GET") return json([...state.active, ...state.queue]);
++      if (method === "DELETE") {
++        const id = decodeURIComponent(rest[0] || "");
++        state.active = state.active.filter((d) => d.id !== id);
++        state.queue = state.queue.filter((d) => d.id !== id);
++        return json({ status: "ok" });
++      }
++      return json({ error: "method not allowed" }, 405);
++    }
++    if (head === "download" && method === "POST") {
++      const id = "dl-" + (100 + state.queue.length);
++      state.queue.push(mk({
++        id, pid: (body && body.pid) || "p9999999", title: (body && body.title) || "Manual grab",
++        show_name: (body && body.title) || "Manual grab", status: "pending", progress: 0, downloaded: 0,
++        quality: (body && body.quality) || state.config.quality, category: (body && body.category) || "sonarr",
++        season: (body && body.series) || 0, episode: (body && body.episodeNum) || 0,
++        air_date: (body && body.airDate) || "", created_at: iso(0), started_at: "",
++      }));
++      return json({ id });
++    }
++    if (head === "history") {
++      if (rest[0] === "stats" && method === "GET") {
++        const since = q.get("since");
++        const rows = since ? state.history.filter((h) => (h.completed_at || h.created_at) >= since) : state.history;
++        return json({
++          completed: rows.filter((h) => h.status === "completed").length,
++          failed: rows.filter((h) => h.status === "failed").length,
++          total_bytes: rows.reduce((a, b) => a + b.size, 0),
++        });
++      }
++      if (method === "GET") {
++        const page = Math.max(1, Number(q.get("page") || "1"));
++        const per = Math.max(1, Number(q.get("per_page") || "20"));
++        let rows = state.history.slice();
++        const st = q.get("status");
++        if (st && st !== "all") rows = rows.filter((h) => h.status === st);
++        const since = q.get("since");
++        if (since && since !== "all") rows = rows.filter((h) => (h.completed_at || h.created_at) >= since);
++        const field = q.get("sort") || "completed_at";
++        const order = q.get("order") || "desc";
++        rows.sort((x, y) => {
++          const a = String(x[field] === undefined || x[field] === null ? "" : x[field]);
++          const b = String(y[field] === undefined || y[field] === null ? "" : y[field]);
++          return (a < b ? -1 : a > b ? 1 : 0) * (order === "asc" ? 1 : -1);
++        });
++        return json({ items: rows.slice((page - 1) * per, page * per), total: rows.length });
++      }
++      if (method === "DELETE") {
++        const id = rest[0] ? decodeURIComponent(rest[0]) : "";
++        if (DELETE_FAIL_IDS.includes(id)) return json({ error: "row locked by worker: " + id }, 500);
++        if (id) state.history = state.history.filter((h) => h.id !== id);
++        else state.history = [];
++        return json({ status: "ok" });
++      }
++      return json({ error: "method not allowed" }, 405);
++    }
++    if (head === "config") {
++      if (method === "GET") return json(state.config);
++      if (method === "PUT") { if (body && body.key) state.config[body.key] = String(body.value); return json({ status: "ok" }); }
++      return json({ error: "method not allowed" }, 405);
++    }
++    if (head === "overrides") {
++      if (method === "GET") return json(state.overrides);
++      if (method === "PUT") {
++        const name = decodeURIComponent(rest[0] || "");
++        const next = Object.assign({ show_name: name, force_date_based: false, force_series_num: 0, force_position: false, series_offset: 0, episode_offset: 0, custom_name: "" }, body || {});
++        const i = state.overrides.findIndex((o) => o.show_name === name);
++        if (i >= 0) state.overrides[i] = next; else state.overrides.push(next);
++        return json({ status: "ok" });
++      }
++      if (method === "DELETE") {
++        const name = decodeURIComponent(rest[0] || "");
++        state.overrides = state.overrides.filter((o) => o.show_name !== name);
++        return json({ status: "ok" });
++      }
++      return json({ error: "method not allowed" }, 405);
++    }
++    if (head === "search" && method === "GET") return json(searchResults(q.get("q") || ""));
++    if (head === "pause" && method === "POST") { state.paused = true; return json({ paused: true }); }
++    if (head === "resume" && method === "POST") { state.paused = false; return json({ paused: false }); }
++    if (head === "logs" && method === "GET") {
++      const lvl = q.get("level"), needle = (q.get("q") || "").toLowerCase();
++      return json(state.logs.filter((l) => (!lvl || lvl === "all" || l.level === lvl) && (!needle || l.message.toLowerCase().includes(needle))));
++    }
++    return json({ error: "not found: " + method + " " + p }, 404);
++  }
++
++  window.fetch = async (input, init) => {
++    const url = typeof input === "string" ? input : (input && input.url) || "";
++    const method = String((init && init.method) || (typeof input !== "string" && input && input.method) || "GET").toUpperCase();
++    const u = new URL(url, window.location.origin);
++    if (!u.pathname.startsWith("/api/")) return origFetch(input, init);
++    const signal = (init && init.signal) || (typeof input !== "string" && input && input.signal) || null;
++    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
++    let body = null;
++    const raw = init && init.body;
++    if (typeof raw === "string") { try { body = JSON.parse(raw); } catch { body = null; } }
++    const hdrs = {};
++    try {
++      const src = (init && init.headers) || (typeof input !== "string" && input && input.headers) || {};
++      if (typeof src.forEach === "function") src.forEach((v, k) => { hdrs[k] = v; });
++      else Object.assign(hdrs, src);
++    } catch {}
++    journal.push({ method, path: u.pathname, search: u.search, auth: hdrs.Authorization || hdrs.authorization || "", body, at: Date.now() - T0 });
++    if (journal.length > 400) journal.shift();
++    // 保真：真 fetch 是异步的 ⇒ 这里也异步，让 abort／竞态路径照原样跑（Search 的 supersede 靠它）
++    await new Promise((r) => setTimeout(r, 4));
++    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
++    return route(method, u.pathname, u.searchParams, body, hdrs);
++  };
++
++  //
++  //   应用的 connectSSE 注册路径原样跑（G3：不改代码路径）。
++  class StubEventSource {
++    constructor(url) {
++      this.url = String(url); this.readyState = 0; this.listeners = {}; this.onerror = null; this.onopen = null;
++      esUrls.push(this.url);
++      liveES.add(this);
++      setTimeout(() => { this.readyState = 1; this.dispatch("open", {}); if (this.onopen) { try { this.onopen({}); } catch {} } }, 5);
++    }
++    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
++    removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }
++    dispatch(type, data) {
++      for (const fn of (this.listeners[type] || [])) { try { fn({ data: JSON.stringify(data), type }); } catch {} }
++    }
++    close() { this.readyState = 2; this.listeners = {}; liveES.delete(this); }
++  }
++  window.EventSource = StubEventSource;
++
++  window.__RB_STUB__ = {
++    version: 6,
++    seeded_key: SEEDED_KEY,
++    t0: T0,
++    key_slot: KEY_SLOT,
++    delete_fail_ids: DELETE_FAIL_IDS.slice(),
++    get state() { return state; },
++    snapshot: () => JSON.parse(JSON.stringify(state)),
++    requests: journal,
++    es_urls: esUrls,
++    live_es: () => liveES.size,
++    // 按需派发 SSE 事件（确定性；返回收到该事件的活连接数）
++    emit: (type, payload) => { let n = 0; for (const es of liveES) { if ((es.listeners[type] || []).length) n++; es.dispatch(type, payload); } return n; },
++    // 便捷载荷构造：把某条活动/队列下载改成给定进度与状态（返回该对象副本）
++    download: (id, over) => {
++      const all = [...state.active, ...state.queue];
++      const d = all.find((x) => x.id === id);
++      return Object.assign({}, d || mk({ id }), over || {});
++    },
++    logLine: (level, message, minsAgo) => ({ timestamp: iso(minsAgo === undefined ? 0 : minsAgo), level, message }),
++    reset: () => { state = seedState(); journal.length = 0; return true; },
++  };
++})();

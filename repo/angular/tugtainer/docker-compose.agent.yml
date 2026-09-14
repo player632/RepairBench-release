@@ -1,0 +1,76 @@
+networks:
+  tugtainer_agent:
+    driver: bridge
+services:
+  # Socket proxy is used by default,
+  # but you can mount docker socket directly
+  # and remove this service and DOCKER_HOST variable
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: socket-proxy
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      IMAGES: 1
+      INFO: 1
+      LOG_LEVEL: warning
+      PING: 1
+      NETWORKS: 1
+      POST: 1
+      TZ: Europe/Moscow
+      VERSION: 1
+      ALLOW_LOGS: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      ALLOW_PAUSE: 1
+      ALLOW_UNPAUSE: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - tugtainer_agent
+    labels:
+      dev.quenary.tugtainer.protected: True
+  agent:
+    depends_on:
+      - socket-proxy
+    container_name: tugtainer-agent
+    image: ghcr.io/quenary/tugtainer-agent:1
+    # volumes:
+      # You can uncomment this to mount socket directly,
+      # and remove socket-proxy service and DOCKER_HOST variable
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      # TLS without a reverse proxy: mount cert/key and extend uvicorn command.
+      # Paste the CA (or the self-signed cert) into Custom CA on the host in the UI.
+      # - ./certs/cert.pem:/certs/cert.pem:ro
+      # - ./certs/key.pem:/certs/key.pem:ro
+    # command:
+      # - --host
+      # - 0.0.0.0
+      # - --port
+      # - "8001"
+      # - --log-level
+      # - warning
+      # - --ssl-certfile
+      # - /certs/cert.pem
+      # - --ssl-keyfile
+      # - /certs/key.pem
+    restart: unless-stopped
+    environment:
+      # The list of available variables is in env.example
+      # Required: uncomment and replace with a strong, unique shared secret.
+      # AGENT_SECRET: <your-secret>
+      DOCKER_HOST: tcp://socket-proxy:2375
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - tugtainer_agent
+    ports:
+      - '9413:8001'
+    labels:
+      dev.quenary.tugtainer.protected: True

@@ -1,0 +1,526 @@
+diff --git a/index.html b/index.html
+index f3df913..bc53daf 100644
+--- a/index.html
++++ b/index.html
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en">
++<html lang="en" data-testid="html-root">
+ 
+ <head>
+ 	<meta charset="utf-8">
+diff --git a/src/components/Game.svelte b/src/components/Game.svelte
+index b0f0935..7d03af7 100644
+--- a/src/components/Game.svelte
++++ b/src/components/Game.svelte
+@@ -157,7 +157,7 @@
+ 
+ <svelte:body on:click={board.hideCtx} on:contextmenu={board.hideCtx} />
+ 
+-<main class:guesses={game.guesses !== 0} style="--rows: {ROWS}; --cols: {COLS}">
++<main data-testid="game-main" data-answer={word} class:guesses={game.guesses !== 0} style="--rows: {ROWS}; --cols: {COLS}">
+ 	<Header
+ 		bind:showRefresh
+ 		tutorial={$settings.tutorial === 2}
+@@ -195,6 +195,7 @@
+ </main>
+ 
+ <Modal
++		testid="modal-tutorial"
+ 	bind:visible={showTutorial}
+ 	on:close|once={() => $settings.tutorial === 3 && --$settings.tutorial}
+ 	fullscreen={$settings.tutorial === 0}
+@@ -202,7 +203,7 @@
+ 	<Tutorial visible={showTutorial} />
+ </Modal>
+ 
+-<Modal bind:visible={showStats}>
++<Modal testid="modal-stats" bind:visible={showStats}>
+ 	{#if modeData.modes[$mode].historical}
+ 		<h2 class="historical">Statistics not available for historical games</h2>
+ 	{:else}
+@@ -225,6 +226,7 @@
+ 		<!-- Fade with delay is to prevent a bright red button from appearing as soon as refresh is pressed -->
+ 		<div
+ 			in:fade={{ delay: 300 }}
++			data-testid="btn-giveup"
+ 			class="button concede"
+ 			on:click={concede}
+ 			on:keydown={concede}
+@@ -234,10 +236,10 @@
+ 	{/if}
+ </Modal>
+ 
+-<Modal fullscreen={true} bind:visible={showSettings}>
++<Modal testid="modal-settings" fullscreen={true} bind:visible={showSettings}>
+ 	<Settings state={game} on:historical={() => (showHistorical = true)} />
+ 	{#if game.active}
+-		<div class="button concede" on:click={concede} on:keydown={concede}>give up</div>
++		<div data-testid="btn-giveup" class="button concede" on:click={concede} on:keydown={concede}>give up</div>
+ 	{/if}
+ 	<Tips change={showSettings} />
+ 
+@@ -249,6 +251,7 @@
+ 			<div>v{version}</div>
+ 			<div
+ 				title="double click to reset your stats"
++				data-testid="word-number"
+ 				class="word"
+ 				on:dblclick={() => {
+ 					localStorage.clear();
+@@ -261,7 +264,7 @@
+ 	</svelte:fragment>
+ </Modal>
+ 
+-<Modal bind:visible={showHistorical}>
++<Modal testid="modal-historical" bind:visible={showHistorical}>
+ 	<Historical bind:showSettings />
+ </Modal>
+ 
+diff --git a/src/components/GameIcon.svelte b/src/components/GameIcon.svelte
+index ff99987..05db71e 100644
+--- a/src/components/GameIcon.svelte
++++ b/src/components/GameIcon.svelte
+@@ -1,8 +1,10 @@
+ <script lang="ts">
+ 	export let onClick = () => {};
++	export let testid = "";
+ </script>
+ 
+ <svg
++	data-testid={testid || undefined}
+ 	xmlns="http://www.w3.org/2000/svg"
+ 	viewBox="0 0 24 24"
+ 	on:click={onClick}
+diff --git a/src/components/Header.svelte b/src/components/Header.svelte
+index 8a8b706..e3896b4 100644
+--- a/src/components/Header.svelte
++++ b/src/components/Header.svelte
+@@ -22,13 +22,13 @@
+ 
+ <header>
+ 	<div class="icons">
+-		<GameIcon onClick={() => dispatch("tutorial")}>
++		<GameIcon testid="icon-tutorial" onClick={() => dispatch("tutorial")}>
+ 			<path
+ 				d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"
+ 			/>
+ 		</GameIcon>
+ 		{#if showRefresh}
+-			<GameIcon onClick={() => dispatch("reload")}>
++			<GameIcon testid="icon-reload" onClick={() => dispatch("reload")}>
+ 				<path
+ 					transition:fade={{ duration: 200 }}
+ 					d="M4.609 12c0-4.082 3.309-7.391 7.391-7.391a7.39 7.39 0 0 1 6.523 3.912l-1.653 1.567H22v-5.13l-1.572 1.659C18.652 3.841 15.542 2 12 2 6.477 2 2 6.477 2 12s4.477 10 10 10c4.589 0 8.453-3.09 9.631-7.301l-2.512-.703c-.871 3.113-3.73 5.395-7.119 5.395-4.082 0-7.391-3.309-7.391-7.391z"
+@@ -38,6 +38,7 @@
+ 	</div>
+ 	<!-- svelte-ignore a11y-click-events-have-key-events -->
+ 	<h1
++		data-testid="app-title"
+ 		on:click|self={() => {
+ 			$mode = ($mode + 1) % modeData.modes.length;
+ 			toaster.pop(modeData.modes[$mode].name);
+@@ -51,14 +52,14 @@
+ 	</h1>
+ 	<div class="icons">
+ 		{#if showStats}
+-			<GameIcon onClick={() => dispatch("stats")}>
++			<GameIcon testid="icon-stats" onClick={() => dispatch("stats")}>
+ 				<path
+ 					transition:fade={{ duration: 200 }}
+ 					d="M16,11V3H8v6H2v12h20V11H16z M10,5h4v14h-4V5z M4,11h4v8H4V11z M20,19h-4v-6h4V19z"
+ 				/>
+ 			</GameIcon>
+ 		{/if}
+-		<GameIcon onClick={() => dispatch("settings")}>
++		<GameIcon testid="icon-settings" onClick={() => dispatch("settings")}>
+ 			<path
+ 				d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+ 			/>
+@@ -66,6 +67,7 @@
+ 	</div>
+ 	{#if tutorial}
+ 		<div
++			data-testid="header-tutorial"
+ 			transition:scale
+ 			class="tutorial"
+ 			on:click={() => dispatch("closeTutPopUp")}
+diff --git a/src/components/Modal.svelte b/src/components/Modal.svelte
+index a4a28fc..88efdb3 100644
+--- a/src/components/Modal.svelte
++++ b/src/components/Modal.svelte
+@@ -5,6 +5,7 @@
+ 
+ 	export let visible = false;
+ 	export let fullscreen = false;
++	export let testid = "";
+ 
+ 	const dispatch = createEventDispatcher();
+ 
+@@ -15,13 +16,14 @@
+ </script>
+ 
+ <div
++	data-testid={testid || undefined}
+ 	class:visible
+ 	class="overlay {fullscreen ? 'fullscreen' : 'popup'}"
+ 	on:click|self={close}
+ 	on:keydown|self={close}
+ >
+ 	<div class="modal">
+-		<div class="exit" on:click={close} on:keydown={close}>
++		<div data-testid="modal-exit" class="exit" on:click={close} on:keydown={close}>
+ 			<GameIcon>
+ 				<path
+ 					d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+diff --git a/src/components/board/Board.svelte b/src/components/board/Board.svelte
+index 6b16362..d7a76d3 100644
+--- a/src/components/board/Board.svelte
++++ b/src/components/board/Board.svelte
+@@ -72,7 +72,7 @@
+ 	<ContextMenu {possibleSolutions} {validGuesses} {x} {y} {word} />
+ {/if}
+ 
+-<div class="board" on:touchstart={swipeStart} on:touchend={swipeEnd} on:touchmove|preventDefault>
++<div data-testid="board" class="board" on:touchstart={swipeStart} on:touchend={swipeEnd} on:touchmove|preventDefault>
+ 	{#each value as _, i}
+ 		<Row
+ 			num={i}
+@@ -90,6 +90,7 @@
+ 	{/if}
+ 	{#if tutorial}
+ 		<div
++			data-testid="board-tutorial"
+ 			transition:scale
+ 			class="tutorial"
+ 			on:click={() => dispatch("closeTutPopUp")}
+diff --git a/src/components/board/Row.svelte b/src/components/board/Row.svelte
+index ed66530..bfe77bf 100644
+--- a/src/components/board/Row.svelte
++++ b/src/components/board/Row.svelte
+@@ -34,6 +34,7 @@
+ </script>
+ 
+ <div
++	data-testid={"row-" + num}
+ 	class="board-row"
+ 	on:contextmenu|preventDefault={(e) => dispatch("ctx", { x: e.clientX, y: e.clientY })}
+ 	on:dblclick|preventDefault={(e) => dispatch("ctx", { x: e.clientX, y: e.clientY })}
+@@ -43,7 +44,7 @@
+ 	class:complete={guesses > num}
+ >
+ 	{#each Array(COLS) as _, i}
+-		<Tile bind:this={tiles[i]} state={state[i]} value={value.charAt(i)} position={i} />
++		<Tile testid={"tile-" + num + "-" + i} bind:this={tiles[i]} state={state[i]} value={value.charAt(i)} position={i} />
+ 	{/each}
+ </div>
+ 
+diff --git a/src/components/board/Tile.svelte b/src/components/board/Tile.svelte
+index 2657876..53ce94a 100644
+--- a/src/components/board/Tile.svelte
++++ b/src/components/board/Tile.svelte
+@@ -8,6 +8,7 @@
+ 	export let value = "";
+ 	export let state: LetterState;
+ 	export let position = 0;
++	export let testid = "";
+ 	export function bounce() {
+ 		setTimeout(() => (animation = "bounce"), (ROWS + position) * DELAY_INCREMENT);
+ 	}
+@@ -31,6 +32,8 @@
+ </script>
+ 
+ <div
++	data-testid={testid || undefined}
++	data-value={value}
+ 	data-animation={animation}
+ 	class:value
+ 	class:pop
+diff --git a/src/components/keyboard/Key.svelte b/src/components/keyboard/Key.svelte
+index f795960..9117ea4 100644
+--- a/src/components/keyboard/Key.svelte
++++ b/src/components/keyboard/Key.svelte
+@@ -8,7 +8,7 @@
+ </script>
+ 
+ <!-- svelte-ignore a11y-click-events-have-key-events -->
+-<div class={state} class:big={letter.length !== 1} on:click={() => dispatch("keystroke", letter)}>
++<div data-testid={"key-" + (letter ? letter.toLowerCase() : "backspace")} class={state} class:big={letter.length !== 1} on:click={() => dispatch("keystroke", letter)}>
+ 	{letter}<slot />
+ </div>
+ 
+diff --git a/src/components/settings/DropDown.svelte b/src/components/settings/DropDown.svelte
+index e4a29e1..5207605 100644
+--- a/src/components/settings/DropDown.svelte
++++ b/src/components/settings/DropDown.svelte
+@@ -4,7 +4,7 @@
+ 	export let disabled = false;
+ </script>
+ 
+-<select bind:value {disabled}>
++<select data-testid="dropdown" bind:value {disabled}>
+ 	{#each options as val, i}
+ 		<option value={i}>{val}</option>
+ 	{/each}
+diff --git a/src/components/settings/Setting.svelte b/src/components/settings/Setting.svelte
+index 78221db..cdf9fe4 100644
+--- a/src/components/settings/Setting.svelte
++++ b/src/components/settings/Setting.svelte
+@@ -3,6 +3,7 @@
+ 	import DropDown from "./DropDown.svelte";
+ 	export let value: any;
+ 	export let type: SettingType;
++	export let testid = "";
+ 	export let options: (string | number)[] = [];
+ 	export let disabled = false;
+ 	const types = {
+@@ -11,7 +12,7 @@
+ 	};
+ </script>
+ 
+-<div class="setting">
++<div data-testid={testid || undefined} class="setting">
+ 	<div>
+ 		<div class="title"><slot name="title" /></div>
+ 		<div class="desc"><slot name="desc" /></div>
+diff --git a/src/components/settings/Settings.svelte b/src/components/settings/Settings.svelte
+index 57e1b88..ebe43a1 100644
+--- a/src/components/settings/Settings.svelte
++++ b/src/components/settings/Settings.svelte
+@@ -39,34 +39,35 @@
+ 				}
+ 			}}
+ 		>
+-			<Setting type="switch" bind:value={$settings.hard[$mode]} disabled={!state.validHard}>
++			<Setting testid="setting-hard" type="switch" bind:value={$settings.hard[$mode]} disabled={!state.validHard}>
+ 				<svelte:fragment slot="title">Hard Mode</svelte:fragment>
+ 				<svelte:fragment slot="desc">
+ 					Any revealed hints must be used in subsequent guesses
+ 				</svelte:fragment>
+ 			</Setting>
+ 		</div>
+-		<Setting type="switch" bind:value={$settings.dark}>
++		<Setting testid="setting-dark" type="switch" bind:value={$settings.dark}>
+ 			<svelte:fragment slot="title">Dark Theme</svelte:fragment>
+ 		</Setting>
+-		<Setting type="switch" bind:value={$settings.colorblind}>
++		<Setting testid="setting-colorblind" type="switch" bind:value={$settings.colorblind}>
+ 			<svelte:fragment slot="title">Color Blind Mode</svelte:fragment>
+ 			<svelte:fragment slot="desc">High contrast colors</svelte:fragment>
+ 		</Setting>
+-		<Setting type="dropdown" bind:value={$mode} options={modeData.modes.map((e) => e.name)}>
++		<Setting testid="setting-mode" type="dropdown" bind:value={$mode} options={modeData.modes.map((e) => e.name)}>
+ 			<svelte:fragment slot="title">Game Mode</svelte:fragment>
+ 			<svelte:fragment slot="desc">
+ 				The game mode determines how often the word refreshes
+ 			</svelte:fragment>
+ 		</Setting>
+ 		<!-- svelte-ignore a11y-click-events-have-key-events -->
+-		<Setting type="custom" bind:value={$mode}>
++		<Setting testid="setting-historical" type="custom" bind:value={$mode}>
+ 			<svelte:fragment slot="title">Play Historical Game</svelte:fragment>
+ 			<svelte:fragment slot="desc">
+ 				Play a previous word by pasting in a link or setting the date number
+ 			</svelte:fragment>
+ 			<svelte:fragment slot="custom">
+ 				<svg
++					data-testid="hist-open"
+ 					class="custom"
+ 					xmlns="http://www.w3.org/2000/svg"
+ 					viewBox="0 0 24 24"
+diff --git a/src/components/settings/Switch.svelte b/src/components/settings/Switch.svelte
+index a8bda46..02d5d39 100644
+--- a/src/components/settings/Switch.svelte
++++ b/src/components/settings/Switch.svelte
+@@ -4,7 +4,7 @@
+ </script>
+ 
+ <!-- svelte-ignore a11y-click-events-have-key-events -->
+-<div on:click={(e) => !disabled && (value = !value)} class:checked={value} {disabled} />
++<div data-testid="switch" on:click={(e) => !disabled && (value = !value)} class:checked={value} {disabled} />
+ 
+ <style lang="scss">
+ 	div[disabled="true"] {
+diff --git a/src/components/widgets/ContextMenu.svelte b/src/components/widgets/ContextMenu.svelte
+index cb0f6e8..7a32224 100644
+--- a/src/components/widgets/ContextMenu.svelte
++++ b/src/components/widgets/ContextMenu.svelte
+@@ -11,7 +11,7 @@
+ 	$: x = window.innerWidth - x < width ? window.innerWidth - width : x;
+ </script>
+ 
+-<div class="ctx-menu" style="top: {y}px; left: {x}px;">
++<div data-testid="ctx-menu" class="ctx-menu" style="top: {y}px; left: {x}px;">
+ 	{#if word !== ""}
+ 		<div>
+ 			Considering all hints, this row had:
+diff --git a/src/components/widgets/Definition.svelte b/src/components/widgets/Definition.svelte
+index 8874ef2..c0d3119 100644
+--- a/src/components/widgets/Definition.svelte
++++ b/src/components/widgets/Definition.svelte
+@@ -20,11 +20,11 @@
+ 	}
+ </script>
+ 
+-<div class="def">
++<div data-testid="definition" class="def">
+ 	{#await getWordDefinitionData(word)}
+ 		<h4>Fetching definition...</h4>
+ 	{:then data}
+-		<h2>{word}</h2>
++		<h2 data-testid="def-word">{word}</h2>
+ 		<em>{data.meanings[0].partOfSpeech}</em>
+ 		<ol>
+ 			{#if word !== data.word}
+diff --git a/src/components/widgets/Historical.svelte b/src/components/widgets/Historical.svelte
+index 6857b2d..4ca4bfd 100644
+--- a/src/components/widgets/Historical.svelte
++++ b/src/components/widgets/Historical.svelte
+@@ -83,6 +83,7 @@
+ {#key $mode}
+ 	<form>
+ 		<input
++			data-testid="hist-link"
+ 			type="text"
+ 			bind:value={linkValue}
+ 			placeholder="Example: {window.location}/1"
+@@ -97,6 +98,7 @@
+ <div class="number">
+ 	<form>
+ 		<input
++			data-testid="hist-number"
+ 			type="number"
+ 			bind:value={numValue}
+ 			placeholder="Example: 1"
+@@ -105,7 +107,7 @@
+ 			on:keydown={onInput}
+ 		/>
+ 	</form>
+-	<select bind:value={$mode}>
++	<select data-testid="hist-mode" bind:value={$mode}>
+ 		{#each modes as mode, i}
+ 			<option value={i}>{mode}</option>
+ 		{/each}
+@@ -113,6 +115,7 @@
+ </div>
+ <div>Enter a game number between 1 and {getWordNumber($mode, true) - 1}</div>
+ <div
++	data-testid="hist-play"
+ 	class:disabled={!validLink && !validNumber}
+ 	class="button"
+ 	on:click={submit}
+diff --git a/src/components/widgets/Share.svelte b/src/components/widgets/Share.svelte
+index fad5e46..642524d 100644
+--- a/src/components/widgets/Share.svelte
++++ b/src/components/widgets/Share.svelte
+@@ -21,7 +21,7 @@
+ 	}
+ </script>
+ 
+-<div on:click={copyStats} on:keydown={copyStats}>
++<div data-testid="share-stats" on:click={copyStats} on:keydown={copyStats}>
+ 	share
+ 	<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+ 		<path
+diff --git a/src/components/widgets/ShareGame.svelte b/src/components/widgets/ShareGame.svelte
+index 1508dcb..9c379f3 100644
+--- a/src/components/widgets/ShareGame.svelte
++++ b/src/components/widgets/ShareGame.svelte
+@@ -16,7 +16,7 @@
+ 	}
+ </script>
+ 
+-<div class="share-historic" on:click={share} on:keypress={share}>
++<div data-testid="share-game" class="share-historic" on:click={share} on:keypress={share}>
+ 	<GameIcon>
+ 		<path
+ 			d="M4.167 4.167c-1.381 1.381-1.381 3.619 0 5L6.5 11.5a1.18 1.18 0 0 1 0 1.667 1.18 1.18 0 0 1-1.667 0L2.5 10.833C.199 8.532.199 4.801 2.5 2.5s6.032-2.301 8.333 0l3.333 3.333c2.301 2.301 2.301 6.032 0 8.333a1.18 1.18 0 0 1-1.667 0 1.18 1.18 0 0 1 0-1.667c1.381-1.381 1.381-3.619 0-5L9.167 4.167c-1.381-1.381-3.619-1.381-5 0zm5.667 14c-2.301-2.301-2.301-6.032 0-8.333a1.18 1.18 0 0 1 1.667 0 1.18 1.18 0 0 1 0 1.667c-1.381 1.381-1.381 3.619 0 5l3.333 3.333c1.381 1.381 3.619 1.381 5 0s1.381-3.619 0-5L17.5 12.5a1.18 1.18 0 0 1 0-1.667 1.18 1.18 0 0 1 1.667 0l2.333 2.333c2.301 2.301 2.301 6.032 0 8.333s-6.032 2.301-8.333 0l-3.333-3.333z"
+diff --git a/src/components/widgets/Timer.svelte b/src/components/widgets/Timer.svelte
+index 5556e75..407a69f 100644
+--- a/src/components/widgets/Timer.svelte
++++ b/src/components/widgets/Timer.svelte
+@@ -28,15 +28,16 @@
+ </script>
+ 
+ <h3>Next wordle</h3>
+-<div class="container">
++<div data-testid="timer-box" class="container">
+ 	{#if ms > 0}
+-		<div class="timer">
++		<div data-testid="timer-countdown" class="timer">
+ 			{`${Math.floor(ms / MS.HOUR)}`.padStart(2, "0")}:{`${Math.floor(
+ 				(ms % MS.HOUR) / MS.MINUTE
+ 			)}`.padStart(2, "0")}:{`${Math.floor((ms % MS.MINUTE) / MS.SECOND)}`.padStart(2, "0")}
+ 		</div>
+ 	{:else}
+ 		<div
++			data-testid="timer-reload"
+ 			class="button"
+ 			on:click={() => dispatch("reload")}
+ 			on:keydown={() => dispatch("reload")}
+diff --git a/src/components/widgets/Tips.svelte b/src/components/widgets/Tips.svelte
+index 8086a2d..b9f4231 100644
+--- a/src/components/widgets/Tips.svelte
++++ b/src/components/widgets/Tips.svelte
+@@ -28,9 +28,10 @@
+ </script>
+ 
+ <div class="outer">
+-	<div class="number">Tip {index + 1}/{tips.length}</div>
+-	<div class="tip">{tips[index]}</div>
++	<div data-testid="tip-number" class="number">Tip {index + 1}/{tips.length}</div>
++	<div data-testid="tip-text" class="tip">{tips[index]}</div>
+ 	<svg
++		data-testid="tip-prev"
+ 		class="left"
+ 		on:click={previousTip}
+ 		on:keydown={previousTip}
+@@ -40,6 +41,7 @@
+ 		<path d="M75,0L25,50L75,100z" />
+ 	</svg>
+ 	<svg
++		data-testid="tip-next"
+ 		on:click={nextTip}
+ 		on:keypress={nextTip}
+ 		class="right"
+diff --git a/src/components/widgets/Toaster.svelte b/src/components/widgets/Toaster.svelte
+index a86ec0c..941d755 100644
+--- a/src/components/widgets/Toaster.svelte
++++ b/src/components/widgets/Toaster.svelte
+@@ -8,9 +8,9 @@
+ 	let toast: string[] = [];
+ </script>
+ 
+-<div class="toast">
++<div data-testid="toaster" class="toast">
+ 	{#each toast as slice}
+-		<div class="slice" out:fade={{ duration: 200 }}>{slice}</div>
++		<div data-testid="toast-slice" class="slice" out:fade={{ duration: 200 }}>{slice}</div>
+ 	{/each}
+ </div>
+ 
+diff --git a/src/components/widgets/stats/Distribution.svelte b/src/components/widgets/stats/Distribution.svelte
+index e9d4523..6d056c8 100644
+--- a/src/components/widgets/stats/Distribution.svelte
++++ b/src/components/widgets/stats/Distribution.svelte
+@@ -18,6 +18,7 @@
+ 			<div class="graph">
+ 				<span class="guess">{guess[0]}</span>
+ 				<div
++					data-testid={"dist-bar-" + guess[0]}
+ 					class="bar"
+ 					class:this={g === game.guesses && !game.active && !failed(game)}
+ 					style="width: {(guess[1] / max) * 100}%;"
+diff --git a/src/components/widgets/stats/Stat.svelte b/src/components/widgets/stats/Stat.svelte
+index 2e56c8d..61578b7 100644
+--- a/src/components/widgets/stats/Stat.svelte
++++ b/src/components/widgets/stats/Stat.svelte
+@@ -3,7 +3,7 @@
+ 	export let name: string;
+ </script>
+ 
+-<section>
++<section data-testid={"stat-" + name}>
+ 	<div class="stat">{stat}</div>
+ 	<div class="name">{name}</div>
+ </section>

@@ -1,0 +1,141 @@
+import React, { useCallback, useMemo } from 'react'
+import omit from 'rc-util/es/omit'
+import cn from 'classnames'
+import RcSelect, { Option, OptGroup, BaseSelectRef } from 'rc-select'
+import type { BaseOptionType, DefaultOptionType } from 'rc-select/es/Select'
+import { SelectProps } from './interfaces'
+import getIcons from './utils/getIcons'
+import { getPopupContainer } from '../../utils/helpers'
+import './Select.scss'
+import { enUS } from './locales'
+
+const prefixCls = 'select'
+const defaultLocale = enUS
+
+const InternalSelect = <OptionType extends BaseOptionType | DefaultOptionType = DefaultOptionType>({
+    mode,
+    borderless = false,
+    alert = false,
+    className,
+    dropdownClassName,
+    listHeight = 254,
+    size = 'M',
+    notFoundContent,
+    style,
+    virtual = true,
+    dropdownMatchSelectWidth = true,
+    maxTagCount,
+    getPopupContainer: customizeGetPopupContainer,
+    loading,
+    locale,
+    onChange,
+    ref,
+    ...props
+}: SelectProps<OptionType> & { ref?: React.Ref<BaseSelectRef> }) => {
+    const selectLocale = { ...defaultLocale, ...locale }
+    const isMultiple = mode === 'multiple' || mode === 'tags'
+    const listItemHeight = (function calcListItemHeight() {
+        if (size === 'L') return 48
+        if (size === 'S') return 32
+        if (size === 'XS') return 24
+        return 40
+    })()
+
+    // ===================== Empty =====================
+    const mergedNotFound: React.ReactNode = notFoundContent || selectLocale.notFound
+
+    // ===================== Icons =====================
+    const { suffixIcon, itemIcon, removeIcon, clearIcon } = getIcons({
+        loading,
+        multiple: isMultiple,
+        prefixCls,
+    })
+
+    const selectProps = omit(props as typeof props & { itemIcon: any }, ['itemIcon'])
+
+    const mergedClassName = cn(
+        {
+            [`${prefixCls}__SizeL`]: size === 'L',
+            [`${prefixCls}__SizeS`]: size === 'S',
+            [`${prefixCls}__SizeXS`]: size === 'XS',
+            [`${prefixCls}__Alert`]: alert,
+            [`${prefixCls}__Borderless`]: borderless,
+            [`${prefixCls}__MaxTag`]: typeof maxTagCount !== 'undefined',
+        },
+        className,
+    )
+
+    const value = selectProps.value
+
+    const getValue = (value?: OptionType | null | number) =>
+        value || value === 0 || typeof value === 'boolean'
+            ? typeof value !== 'boolean' && Number.isInteger(+value)
+                ? +value
+                : value
+            : undefined
+
+    const selectValue = useMemo(
+        () =>
+            value || typeof value === 'boolean'
+                ? isMultiple
+                    ? value.map(getValue)
+                    : getValue(value)
+                : undefined,
+        [value],
+    )
+
+    const _onChange = useCallback(
+        (value: any, option: any) => {
+            if (onChange) onChange(value ?? null, option)
+        },
+        [onChange],
+    )
+
+    return (
+        <RcSelect<any, any>
+            ref={ref as any}
+            virtual={virtual}
+            style={style}
+            dropdownMatchSelectWidth={dropdownMatchSelectWidth}
+            maxTagCount={maxTagCount}
+            onChange={_onChange}
+            {...selectProps}
+            value={selectValue}
+            className={mergedClassName}
+            animation="slide-up"
+            listHeight={listHeight}
+            listItemHeight={listItemHeight}
+            mode={mode}
+            prefixCls={prefixCls}
+            suffixIcon={suffixIcon}
+            menuItemSelectedIcon={itemIcon}
+            removeIcon={removeIcon}
+            clearIcon={clearIcon}
+            notFoundContent={mergedNotFound}
+            getPopupContainer={customizeGetPopupContainer || getPopupContainer}
+            dropdownClassName={cn(
+                {
+                    [`${prefixCls}-dropdown__SizeL`]: size === 'L',
+                    [`${prefixCls}-dropdown__SizeS`]: size === 'S',
+                    [`${prefixCls}-dropdown__SizeXS`]: size === 'XS',
+                },
+                dropdownClassName,
+            )}
+        />
+    )
+}
+
+export const Select = InternalSelect as unknown as (<
+    ValueType = any,
+    OptionType extends BaseOptionType | DefaultOptionType = DefaultOptionType,
+>(
+    props: React.PropsWithChildren<SelectProps<ValueType, OptionType>> & {
+        ref?: React.Ref<BaseSelectRef>
+    },
+) => React.ReactElement) & {
+    Option: typeof Option
+    OptGroup: typeof OptGroup
+}
+
+Select.Option = Option
+Select.OptGroup = OptGroup

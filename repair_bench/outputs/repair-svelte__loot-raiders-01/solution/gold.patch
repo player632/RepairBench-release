@@ -1,0 +1,150 @@
+diff --git a/src/lib/config/augments.ts b/src/lib/config/augments.ts
+index de8e803..4cff1c7 100644
+--- a/src/lib/config/augments.ts
++++ b/src/lib/config/augments.ts
+@@ -9,7 +9,7 @@ export const AUGMENT_UPGRADES: AugmentUpgrade[] = [
+ 	{
+ 		defId: 'aug_free_loadout',
+ 		nextDefId: 'aug_looting_mk1',
+-		materials: [{ defId: 'res_metal_parts', count: 18 }],
++		materials: [{ defId: 'res_metal_parts', count: 8 }],
+ 		bonusSlots: 2
+ 	},
+ 	{
+diff --git a/src/lib/keyboard.ts b/src/lib/keyboard.ts
+index 5d0a38d..9b8bc27 100644
+--- a/src/lib/keyboard.ts
++++ b/src/lib/keyboard.ts
+@@ -6,9 +6,9 @@ export function handleGlobalKeydown(e: KeyboardEvent, game: Game): void {
+ 	if (e.key === 'Escape') {
+ 		if (gameLoop.status === 'tutorial') return;
+ 		if (gameLoop.status === 'playing') {
+-			gameLoop.resume();
+-		} else if (gameLoop.status === 'paused') {
+ 			gameLoop.pause();
++		} else if (gameLoop.status === 'paused') {
++			gameLoop.resume();
+ 		} else {
+ 			overlay.handleEscape();
+ 		}
+diff --git a/src/lib/store/game-loop.svelte.ts b/src/lib/store/game-loop.svelte.ts
+index eaada24..992793f 100644
+--- a/src/lib/store/game-loop.svelte.ts
++++ b/src/lib/store/game-loop.svelte.ts
+@@ -142,6 +142,7 @@ export class GameLoop {
+ 		if (this.status !== 'paused') return;
+ 		this.audio.unduckBGM();
+ 		this.status = 'playing';
++		this.lastTime = performance.now();
+ 		this.rafId = requestAnimationFrame((t) => this.tick(t));
+ 	}
+ 
+@@ -203,6 +204,10 @@ export class GameLoop {
+ 
+ 		this.loot.tick(dt);
+ 
++		if (this.pendingMatchTime > 0) {
++			this.timeLeft += this.pendingMatchTime;
++			this.pendingMatchTime = 0;
++		}
+ 
+ 		if (this.quest.stageCompleted && !this.quest.allStagesCompleted) {
+ 			const clearedName = this.quest.stageDef.name;
+diff --git a/src/lib/store/interaction.svelte.ts b/src/lib/store/interaction.svelte.ts
+index 916afdd..7892579 100644
+--- a/src/lib/store/interaction.svelte.ts
++++ b/src/lib/store/interaction.svelte.ts
+@@ -10,7 +10,7 @@ import { validateDrop, getDropActionType } from '$lib/inventory-validation';
+ import type { SlotState, ItemLocation, InstanceItem, DragState } from '$lib/types';
+ 
+ const DRAG_THRESHOLD = 3;
+-const DOUBLE_CLICK_DELAY = 6000;
++const DOUBLE_CLICK_DELAY = 600;
+ const LONG_PRESS_DELAY = 450;
+ 
+ type InteractionStatus = 'idle' | 'pressing' | 'dragging';
+diff --git a/src/lib/store/inventory.svelte.ts b/src/lib/store/inventory.svelte.ts
+index 719ac4e..4ec67b5 100644
+--- a/src/lib/store/inventory.svelte.ts
++++ b/src/lib/store/inventory.svelte.ts
+@@ -31,7 +31,7 @@ export class Inventory {
+ 
+ 	maxWeight = $derived.by(() => {
+ 		if (!this.augmentItem) return 25;
+-		return 25;
++		return getDef(this.augmentItem.defId).maxCarryWeight ?? 25;
+ 	});
+ 
+ 	totalExtract = $derived.by(() => {
+@@ -354,7 +354,7 @@ export class Inventory {
+ 		const emptySlot = this.getFirstEmptySlot(loc.storageId);
+ 		if (!emptySlot) return false;
+ 
+-		const splitCount = 1;
++		const splitCount = Math.floor(item.count / 2);
+ 		item.count -= splitCount;
+ 
+ 		this.setItem(emptySlot, this.createItem(item.defId, splitCount));
+@@ -419,7 +419,7 @@ export class Inventory {
+ 
+ 			const slot = this.items[i];
+ 			if (slot.location.type !== 'slot') continue;
+-			if (slot.location.storageId === 'backpack') continue;
++			if (slot.location.storageId === 'lootBack') continue;
+ 			if (slot.item.defId !== defId) continue;
+ 
+ 			if (slot.item.count <= remaining) {
+diff --git a/src/lib/store/loot.svelte.ts b/src/lib/store/loot.svelte.ts
+index db7c422..2e051d1 100644
+--- a/src/lib/store/loot.svelte.ts
++++ b/src/lib/store/loot.svelte.ts
+@@ -126,7 +126,7 @@ export class LootGenerator {
+ 			}
+ 		}
+ 		this.scanIndex++;
+-		if (this.scanIndex > this.lootQueue.length) {
++		if (this.scanIndex >= this.lootQueue.length) {
+ 			this.phase = 'done';
+ 		}
+ 	}
+diff --git a/src/lib/store/quest.svelte.ts b/src/lib/store/quest.svelte.ts
+index 634500c..02bc15a 100644
+--- a/src/lib/store/quest.svelte.ts
++++ b/src/lib/store/quest.svelte.ts
+@@ -25,7 +25,7 @@ export class Quest {
+ 	stageDef = $derived(STAGES[this.currentStage]);
+ 	completed = $derived(this.items.filter((i) => i.matched).length);
+ 	total = $derived(this.items.length);
+-	stageCompleted = $derived(this.items.length > 0 && this.items.some((i) => i.matched));
++	stageCompleted = $derived(this.items.length > 0 && this.items.every((i) => i.matched));
+ 	allStagesCompleted = $derived(this.currentStage >= STAGES.length - 1 && this.stageCompleted);
+ 	stagesCleared = $derived(this.allStagesCompleted ? STAGES.length : this.currentStage);
+ 
+diff --git a/src/lib/store/tutorial.svelte.ts b/src/lib/store/tutorial.svelte.ts
+index 3196e68..a5ed341 100644
+--- a/src/lib/store/tutorial.svelte.ts
++++ b/src/lib/store/tutorial.svelte.ts
+@@ -161,7 +161,7 @@ export class Tutorial {
+ 	get canDrop(): boolean {
+ 		if (!this.active) return true;
+ 		const i = this.steps.findIndex((s) => s.id === 'overweight' || s.id === 'overweight-mobile');
+-		return i === -1 || this.index > i;
++		return i === -1 || this.index >= i;
+ 	}
+ 
+ 	get canDropFromMenu(): boolean {
+diff --git a/src/lib/utils.ts b/src/lib/utils.ts
+index 979e578..a46479d 100644
+--- a/src/lib/utils.ts
++++ b/src/lib/utils.ts
+@@ -33,8 +33,8 @@ export function uuid(): string {
+ }
+ 
+ export const formatTime = (seconds: number) => {
+-	const mins = Math.floor(Math.floor(seconds) / 60);
+-	const secs = Math.floor(seconds) % 60;
++	const mins = Math.floor(Math.ceil(seconds) / 60);
++	const secs = Math.ceil(seconds) % 60;
+ 	return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+ };
+ 

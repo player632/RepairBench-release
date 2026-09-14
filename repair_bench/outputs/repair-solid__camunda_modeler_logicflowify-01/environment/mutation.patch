@@ -1,0 +1,156 @@
+diff --git a/src/components/Form/date.tsx b/src/components/Form/date.tsx
+--- a/src/components/Form/date.tsx
++++ b/src/components/Form/date.tsx
+@@ -21,7 +21,7 @@
+     if (val) {
+       let d = dayjs(val);
+       if (props.type === "datetime-local") {
+-        val = dayjs(val).format("YYYY-MM-DDTHH:mm");
++        val = dayjs(val).format("YYYY-MM-DD");
+       } else if (props.type === "date") {
+         val = dayjs(val).format("YYYY-MM-DD");
+       } else if (props.type === "time") {
+diff --git a/src/components/logicFlow/class/index.ts b/src/components/logicFlow/class/index.ts
+--- a/src/components/logicFlow/class/index.ts
++++ b/src/components/logicFlow/class/index.ts
+@@ -241,8 +241,8 @@
+     return this.forms[id];
+   }
+   mvForm(oldId: string, newId: string) {
+-    this.forms[newId] = this.forms[oldId];
+-    delete this.forms[oldId];
++    this.forms[oldId] = this.forms[newId];
++    delete this.forms[newId];
+   }
+   /**实际存储 */
+   private forms: Record<
+diff --git a/src/components/logicFlow/components/collapse/index.tsx b/src/components/logicFlow/components/collapse/index.tsx
+--- a/src/components/logicFlow/components/collapse/index.tsx
++++ b/src/components/logicFlow/components/collapse/index.tsx
+@@ -30,7 +30,7 @@
+     setState("collapseData", id, defaultCollapse);
+   }
+   let toggleCollapse = () => {
+-    setState("collapseData", id, !state.collapseData[id]);
++    setState("collapseData", id, state.collapseData[id]);
+   };
+   return (
+     <div
+diff --git a/src/components/logicFlow/components/equalInput/index.tsx b/src/components/logicFlow/components/equalInput/index.tsx
+--- a/src/components/logicFlow/components/equalInput/index.tsx
++++ b/src/components/logicFlow/components/equalInput/index.tsx
+@@ -90,9 +90,9 @@
+           onClick={() => {
+             let val: string = model() || "";
+             if (equal() || props.forceEqual) {
+-              setModel(val.slice(1, val.length));
+-            } else {
+               setModel("=" + val);
++            } else {
++              setModel(val.slice(1, val.length));
+             }
+           }}
+           style={{ width: "16px", height: "16px" }}
+diff --git a/src/components/logicFlow/components/rightPanel/common/general.tsx b/src/components/logicFlow/components/rightPanel/common/general.tsx
+--- a/src/components/logicFlow/components/rightPanel/common/general.tsx
++++ b/src/components/logicFlow/components/rightPanel/common/general.tsx
+@@ -20,7 +20,7 @@
+   if (props.model) {
+     createEffect(() => {
+       if (props.model) {
+-        if (props.model.text.value !== model.generalData.name) {
++        if (props.model.text.value === model.generalData.name) {
+           props.model.updateText(model.generalData.name);
+         }
+         if (props.model.id !== model.generalData.id) {
+diff --git a/src/components/logicFlow/nodes/task/userTask.tsx b/src/components/logicFlow/nodes/task/userTask.tsx
+--- a/src/components/logicFlow/nodes/task/userTask.tsx
++++ b/src/components/logicFlow/nodes/task/userTask.tsx
+@@ -243,10 +243,10 @@
+       form.assignee = json["-assignee"];
+     }
+     if (json["-candidateGroups"]) {
+-      form.group = json["-candidateGroups"];
++      form.user = json["-candidateGroups"];
+     }
+     if (json["-candidateUsers"]) {
+-      form.user = json["-candidateUsers"];
++      form.group = json["-candidateUsers"];
+     }
+     if (json["-dueDate"]) {
+       form.dueDate = json["-dueDate"];
+diff --git a/src/components/logicFlow/plugins/Adapter.ts b/src/components/logicFlow/plugins/Adapter.ts
+--- a/src/components/logicFlow/plugins/Adapter.ts
++++ b/src/components/logicFlow/plugins/Adapter.ts
+@@ -21,7 +21,7 @@
+     return tn + frontSpace + "<!--" + obj + "-->";
+   }
+   if (("" + name).charAt(0) === "-") {
+-    return " " + name.substring(1) + '="' + obj + '"';
++    return " " + name + '="' + obj + '"';
+   } else {
+     if (Array.isArray(obj)) {
+       obj.forEach(function (item) {
+@@ -332,13 +332,13 @@
+       // 需要保证incoming在outgoing之前
+       const sourceNode = nodeMap.get(edge.sourceNodeId);
+       if (sourceNode) {
+-        if (!sourceNode["bpmn:outgoing"]) {
+-          sourceNode["bpmn:outgoing"] = edge.id;
+-        } else if (Array.isArray(sourceNode["bpmn:outgoing"])) {
+-          sourceNode["bpmn:outgoing"].push(edge.id);
++        if (!sourceNode["bpmn:incoming"]) {
++          sourceNode["bpmn:incoming"] = edge.id;
++        } else if (Array.isArray(sourceNode["bpmn:incoming"])) {
++          sourceNode["bpmn:incoming"].push(edge.id);
+         } else {
+           // 字符串转数组
+-          sourceNode["bpmn:outgoing"] = [sourceNode["bpmn:outgoing"], edge.id];
++          sourceNode["bpmn:incoming"] = [sourceNode["bpmn:incoming"], edge.id];
+         }
+       }
+     }
+@@ -484,8 +484,8 @@
+       }
+     }
+     if (plane["bpmndi:BPMNShape"]) {
+-      if (!(plane["bpmndi:BPMNShape"] instanceof Array)) {
+-        plane["bpmndi:BPMNShape"] = [plane["bpmndi:BPMNShape"]];
++      if (!(plane["bpmndi:BPMNEdge"] instanceof Array)) {
++        plane["bpmndi:BPMNEdge"] = [plane["bpmndi:BPMNEdge"]];
+       }
+     }
+     g = getGraphConfigData({
+diff --git a/src/components/logicFlow/plugins/contextPad.tsx b/src/components/logicFlow/plugins/contextPad.tsx
+--- a/src/components/logicFlow/plugins/contextPad.tsx
++++ b/src/components/logicFlow/plugins/contextPad.tsx
+@@ -55,7 +55,7 @@
+         if (targetNodeOrEdge.BaseType === "edge") {
+           lf.deleteEdge(targetNodeOrEdge.id);
+         } else if (targetNodeOrEdge.BaseType === "node") {
+-          lf.deleteNode(targetNodeOrEdge.id);
++          lf.deleteEdge(targetNodeOrEdge.id);
+         }
+       }
+     },
+@@ -195,7 +195,7 @@
+     let items: ReturnType<contextPadConfig>[] = [];
+     let target = this.lf.getModelById(data.id);
+     if (target.BaseType === "node") {
+-      if (target.type !== EndEvent.type) {
++      if (target.type === EndEvent.type) {
+         items.push(...this.nodeConfigs.map((conf) => conf(data, this.lf)));
+       }
+     }
+diff --git a/src/components/logicFlow/utils/nodeCommonLogics.tsx b/src/components/logicFlow/utils/nodeCommonLogics.tsx
+--- a/src/components/logicFlow/utils/nodeCommonLogics.tsx
++++ b/src/components/logicFlow/utils/nodeCommonLogics.tsx
+@@ -109,7 +109,7 @@
+           onAdd={() => {
+             setModel(
+               produce((old) => {
+-                old.baseModel.outputs.push({
++                old.baseModel.inputs.push({
+                   target: "",
+                   source: "",
+                 });

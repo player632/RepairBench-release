@@ -1,0 +1,35 @@
+name: Test
+on:
+  push:
+    # Run on every branch push, but not on tag pushes — the moving `nightly`
+    # tag would otherwise re-run the suite redundantly. Filtering on `branches`
+    # (rather than `tags-ignore` alone) is what excludes tags: a `push` filter
+    # that defines only `tags-ignore` runs for tags *only*, disabling branches.
+    branches: ['**']
+jobs:
+  tests:
+    strategy:
+      matrix:
+        step:
+          - name: Lint
+            command: pnpm lint
+          - name: Typecheck
+            command: pnpm typecheck
+          - name: Unit tests
+            command: pnpm test:unit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: ${{ matrix.step.name }}
+        run: ${{ matrix.step.command }}

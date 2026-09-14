@@ -1,0 +1,564 @@
+diff --git a/app/components/article-preview-banner.js b/app/components/article-preview-banner.js
+index a5bf91a..7b938fa 100644
+--- a/app/components/article-preview-banner.js
++++ b/app/components/article-preview-banner.js
+@@ -123,7 +123,7 @@ export class ArticlePreviewBannerComponent extends HTMLElement {
+ 
+     renderFavoriteButton() {
+         return `
+-            ${this._favorited == true ? 'Unfavorite' : 'Favorite'} Post <span class="counter">(${this.favoritesCount})</span>
++            ${this._favorited == true ? 'Unfavorite' : 'Favorite'} Post <span class="counter" data-testid="banner-fav-count">(${this.favoritesCount})</span>
+         `;
+     }
+ 
+@@ -142,7 +142,7 @@ export class ArticlePreviewBannerComponent extends HTMLElement {
+                   <div class="banner">
+                     <div class="container">
+                 
+-                      <h1 id="article-title">
++                      <h1 id="article-title" data-testid="banner-title">
+                         ${this.title}
+                       </h1>
+                 
+@@ -151,24 +151,24 @@ export class ArticlePreviewBannerComponent extends HTMLElement {
+                             <img src="${this.image}" alt="no img" />
+                         </a>
+                         <div class="info">
+-                          <a id="profile-username" href="#/profile/${this._username}" class="author">${this._username}</a>
+-                          <span id="article-date" class="date">${formatDate(this.date)}</span>
++                          <a id="profile-username" href="#/profile/${this._username}" class="author" data-testid="banner-author">${this._username}</a>
++                          <span id="article-date" class="date" data-testid="banner-date">${formatDate(this.date)}</span>
+                         </div>
+ ${
+             this.auth && this.auth.username === this.username ?
+                 `
+                 <span>
+-                <a class="btn btn-outline-secondary btn-sm" href="#/editor/${this._slug}">
++                <a class="btn btn-outline-secondary btn-sm" href="#/editor/${this._slug}" data-testid="btn-edit">
+                     <i class="ion-edit"></i>Edit Article
+                 </a>
+                 <button class="btn btn-outline-danger btn-sm"><i class="ion-trash-a">
+                     </i>TODO Delete Article</button>
+                 </span>` : `
+-                <button id="follow-button" class="btn btn-sm btn-outline-secondary">
++                <button id="follow-button" class="btn btn-sm btn-outline-secondary" data-testid="btn-follow">
+                  ${this.renderFollowButton()}
+                 </button>
+                
+-                <button id="favorite-button" class="btn btn-sm btn-outline-secondary">
++                <button id="favorite-button" class="btn btn-sm btn-outline-secondary" data-testid="btn-favorite">
+                   <i class="ion-heart"></i>
+                     ${this.renderFavoriteButton()}
+                 </button>`
+diff --git a/app/components/article.comp.js b/app/components/article.comp.js
+index 388cbc4..01ef694 100644
+--- a/app/components/article.comp.js
++++ b/app/components/article.comp.js
+@@ -83,15 +83,15 @@ export class ArticleComponent extends HTMLElement {
+             <img src="${this.model.author.image}"/>
+         </a>
+         <div class="info">
+-            <a id="author" href="#/profile/${this.model.author.username}" class="author">${this.model.author.username}</a>
+-            <span class="date">${formatDate(this.model.createdAt)}</span>
++            <a id="author" href="#/profile/${this.model.author.username}" class="author" data-testid="card-author">${this.model.author.username}</a>
++            <span class="date" data-testid="card-date">${formatDate(this.model.createdAt)}</span>
+         </div>
+-        <button id="ion-heart" class="btn btn-outline-primary btn-sm pull-xs-right ${this.model.favorited ? 'active' : ''}">
+-            <i class="ion-heart"></i> <span>${this.model.favoritesCount}</span>
++        <button id="ion-heart" class="btn btn-outline-primary btn-sm pull-xs-right ${this.model.favorited ? 'active' : ''}" data-testid="card-heart">
++            <i class="ion-heart"></i> <span data-testid="card-heart-count">${this.model.favoritesCount}</span>
+         </button>
+     </div>
+-    <a id="preview-link" href="#/article/${this.model.slug}" class="preview-link">
+-        <h1>${this.model.title}</h1>
++    <a id="preview-link" href="#/article/${this.model.slug}" class="preview-link" data-testid="card-link">
++        <h1 data-testid="card-title">${this.model.title}</h1>
+         <p>${this.model.description ? this.model.description : ''}</p>
+         <span>Read more...</span>
+         <ul class="tag-list">
+diff --git a/app/components/comment-create.comp.js b/app/components/comment-create.comp.js
+index 8682a9a..bf56161 100644
+--- a/app/components/comment-create.comp.js
++++ b/app/components/comment-create.comp.js
+@@ -46,11 +46,11 @@ export class CommentCreateComponent extends HTMLElement {
+         return `
+         <form class="card comment-form">
+           <div class="card-block">
+-            <textarea id="comment-value" class="form-control" placeholder="Write a comment..." rows="3"></textarea>
++            <textarea id="comment-value" class="form-control" placeholder="Write a comment..." rows="3" data-testid="comment-input"></textarea>
+           </div>
+           <div class="card-footer">
+             <img src="${this.image ? this.image : LOCAL_AVATAR_DATA_URI}" class="comment-author-img" />
+-            <button id="postCommentBtn" class="btn btn-sm btn-primary">
++            <button id="postCommentBtn" class="btn btn-sm btn-primary" data-testid="comment-post-btn">
+              Post Comment
+             </button>
+           </div>
+@@ -60,7 +60,7 @@ export class CommentCreateComponent extends HTMLElement {
+ 
+     renderLoginButtons() {
+         return `
+-<div class="col-xs-12 col-md-8 offset-md-2">
++<div class="col-xs-12 col-md-8 offset-md-2" data-testid="comment-guest-prompt">
+ <p>
+ <a class="" href="#/login">Sign in</a>
+  or 
+diff --git a/app/components/comment-preview.comp.js b/app/components/comment-preview.comp.js
+index 42deabd..2aeda1b 100644
+--- a/app/components/comment-preview.comp.js
++++ b/app/components/comment-preview.comp.js
+@@ -115,15 +115,15 @@ export class CommentPreviewComponent extends HTMLElement {
+         return `
+         <div class="card">
+           <div class="card-block">
+-            <p id="comment-content" class="card-text"></p>
++            <p id="comment-content" class="card-text" data-testid="comment-content"></p>
+           </div>
+           <div class="card-footer">
+             <a href="" class="comment-author">
+               <img id="author-image" src="${this.image}" class="comment-author-img" />
+             </a>
+             &nbsp;
+-            <a id="author-username" href="#/profile/${this.username}" class="comment-author"></a>
+-            <span id="createdAt" class="date-posted">Dec 29th</span>
++            <a id="author-username" href="#/profile/${this.username}" class="comment-author" data-testid="comment-author"></a>
++            <span id="createdAt" class="date-posted" data-testid="comment-date">Dec 29th</span>
+           </div>
+         </div>
+         `;
+diff --git a/app/components/comments-container.comp.js b/app/components/comments-container.comp.js
+index d0a9db9..26ef987 100644
+--- a/app/components/comments-container.comp.js
++++ b/app/components/comments-container.comp.js
+@@ -34,8 +34,9 @@ export class CommentsContainerComponent extends HTMLElement {
+ 
+     render() {
+         return `
+-            ${this.comments.map(comment => `
++            ${this.comments.map((comment, index) => `
+                 <comment-preview 
++                    data-testid="comment-card-${index}"
+                     username="${comment.author.username}" 
+                     content="${comment.body}"
+                     image="${comment.author.image}"
+diff --git a/app/components/layout/c-nav.comp.js b/app/components/layout/c-nav.comp.js
+index 0ff9451..2210d0b 100644
+--- a/app/components/layout/c-nav.comp.js
++++ b/app/components/layout/c-nav.comp.js
+@@ -64,13 +64,13 @@ export class CNavComponent extends HTMLElement {
+     }
+ 
+     createProfileLinks(user) {
+-        let newArticle = this.createNavItemLink('#/editor', '<i class="ion-compose"></i>&nbsp;New Post');
++        let newArticle = this.createNavItemLink('#/editor', '<i class="ion-compose"></i>&nbsp;New Post', 'nav-link-new-post');
+         this.$navUl.appendChild(newArticle);
+ 
+-        let settings = this.createNavItemLink('#/settings', '<i class="ion-gear-a"></i>&nbsp;Settings');
++        let settings = this.createNavItemLink('#/settings', '<i class="ion-gear-a"></i>&nbsp;Settings', 'nav-link-settings');
+         this.$navUl.appendChild(settings);
+ 
+-        let userProfile = this.createNavItemLink('#/profile/' + user.username, user.username);
++        let userProfile = this.createNavItemLink('#/profile/' + user.username, user.username, 'nav-link-profile-' + user.username);
+         this.$navUl.appendChild(userProfile);
+     }
+ 
+@@ -97,7 +97,7 @@ export class CNavComponent extends HTMLElement {
+         });
+     }
+ 
+-    createNavItemLink(href, content) {
++    createNavItemLink(href, content, testid) {
+         const liNavItem = document.createElement('li');
+         liNavItem.className = 'nav-item';
+ 
+@@ -105,6 +105,9 @@ export class CNavComponent extends HTMLElement {
+         aNavLink.classList.add('nav-link');
+         aNavLink.href = href;
+         aNavLink.innerHTML = content;
++        if (testid) {
++            aNavLink.dataset.testid = testid;
++        }
+ 
+         liNavItem.appendChild(aNavLink);
+         return liNavItem;
+@@ -117,13 +120,13 @@ export class CNavComponent extends HTMLElement {
+                 <a class="navbar-brand" href="#/" data-navigo >conduit</a>
+                 <ul class="nav navbar-nav pull-xs-right">
+                     <li class="nav-item">
+-                        <a href="#/" data-navigo class="nav-link">Home</a>
++                        <a href="#/" data-navigo class="nav-link" data-testid="nav-link-home">Home</a>
+                     </li>
+                     <li id="signin" class="nav-item">
+-                        <a href="#/login" data-navigo class="nav-link">Sign in</a>
++                        <a href="#/login" data-navigo class="nav-link" data-testid="nav-link-signin">Sign in</a>
+                     </li>
+                     <li id="signup" class="nav-item">
+-                        <a href="#/register" data-navigo class="nav-link">Sign up</a>
++                        <a href="#/register" data-navigo class="nav-link" data-testid="nav-link-signup">Sign up</a>
+                     </li>
+                 </ul>
+             </div>
+@@ -133,4 +136,3 @@ export class CNavComponent extends HTMLElement {
+ 
+ 
+ }
+-
+diff --git a/app/components/popular-tags.comp.js b/app/components/popular-tags.comp.js
+index 11d8451..973eab6 100644
+--- a/app/components/popular-tags.comp.js
++++ b/app/components/popular-tags.comp.js
+@@ -55,6 +55,7 @@ export class PopularTagsComponent extends HTMLElement {
+         tagEl.innerHTML = tag;
+         tagEl.href = '#/';
+         tagEl.setAttribute('style', 'cursor: pointer;');
++        tagEl.dataset.testid = 'tag-item-' + tag;
+         return tagEl;
+     }
+ 
+diff --git a/app/components/user-info.comp.js b/app/components/user-info.comp.js
+index eecfa1a..ce74ad5 100644
+--- a/app/components/user-info.comp.js
++++ b/app/components/user-info.comp.js
+@@ -64,16 +64,16 @@ export class UserInfoComponent extends HTMLElement {
+               <div class="row">
+             
+                 <div class="col-xs-12 col-md-10 offset-md-1">
+-                  <img id="user-img" src="${this.model.image}" class="user-img" />
+-                  <h4 id="username">${this.username}</h4>
+-                  <p id="bio">
++                  <img id="user-img" src="${this.model.image}" class="user-img" data-testid="profile-image" />
++                  <h4 id="username" data-testid="profile-username">${this.username}</h4>
++                  <p id="bio" data-testid="profile-bio">
+                     ${this.model.bio ? this.model.bio : ''}
+                   </p>
+                   ${!this.auth || this.username !== this.auth.username ?
+-            `<button id="follow-button" class="btn btn-sm btn-outline-secondary action-btn">
++            `<button id="follow-button" class="btn btn-sm btn-outline-secondary action-btn" data-testid="profile-follow-btn">
+                     ${this.renderFollowButton()}
+                     </button>` :
+-            `<a class="btn btn-sm btn-outline-secondary action-btn" href="/#/settings"><i class="ion-gear-a"></i> Edit Profile Settings</a>`
++            `<a class="btn btn-sm btn-outline-secondary action-btn" href="/#/settings" data-testid="profile-edit-link"><i class="ion-gear-a"></i> Edit Profile Settings</a>`
+             }
+                 </div>
+             
+diff --git a/app/index.html b/app/index.html
+index be539fc..d4203ef 100644
+--- a/app/index.html
++++ b/app/index.html
+@@ -7,10 +7,10 @@
+     <link rel="stylesheet" href="vendor/main.css">
+ </head>
+ <body>
+-<c-nav></c-nav>
++<c-nav data-testid="nav-root"></c-nav>
+ <div class="home-page">
+-    <router-outlet></router-outlet>
++    <router-outlet data-testid="outlet"></router-outlet>
+ </div>
+-<c-footer></c-footer>
++<c-footer data-testid="footer-root"></c-footer>
+ </body>
+ </html>
+diff --git a/app/pages/article-preview.comp.js b/app/pages/article-preview.comp.js
+index 9154647..9dd78cf 100644
+--- a/app/pages/article-preview.comp.js
++++ b/app/pages/article-preview.comp.js
+@@ -75,12 +75,12 @@ class ArticlePreviewComponent extends HTMLElement {
+     render() {
+         return `
+               <div class="article-page">
+-                <article-preview-banner following="" title="Loading .." username=".." date=".." image="${LOCAL_AVATAR_DATA_URI}" favorites-count="Loading ..." ></article-preview-banner>
++                <article-preview-banner data-testid="article-banner" following="" title="Loading .." username=".." date=".." image="${LOCAL_AVATAR_DATA_URI}" favorites-count="Loading ..." ></article-preview-banner>
+                 
+                   <div class="container page">
+                 
+                     <div class="row article-content">
+-                      <div id="article-body" class="col-md-12">
++                      <div id="article-body" class="col-md-12" data-testid="article-body">
+                         Loading ...
+                       </div>
+                     </div>
+@@ -90,8 +90,8 @@ class ArticlePreviewComponent extends HTMLElement {
+                     <div class="row">
+                 
+                       <div class="col-xs-12 col-md-8 offset-md-2">
+-                        <comment-create></comment-create>
+-                        <comments-container slug="${this.slug}"></comments-container>
++                        <comment-create data-testid="comment-create-root"></comment-create>
++                        <comments-container data-testid="comments-root" slug="${this.slug}"></comments-container>
+                       </div>
+                 
+                     </div>
+diff --git a/app/pages/editor.comp.js b/app/pages/editor.comp.js
+index fbe28fc..b7f3b1d 100644
+--- a/app/pages/editor.comp.js
++++ b/app/pages/editor.comp.js
+@@ -52,8 +52,8 @@ export class EditorComponent extends HTMLElement {
+                 this.$description.value = this.article.description;
+                 this.$body.value = this.article.body;
+                 this.$tagList.innerHTML = (this.article.tagList || []).map(tag => `
+-                    <span class="tag-default tag-pill">
+-                        <i class="ion-close-round"></i>
++                    <span class="tag-default tag-pill" data-testid="editor-tag-pill">
++                        <i class="ion-close-round" data-testid="editor-tag-remove"></i>
+                         ${tag}
+                     </span>`
+                 ).join('');
+@@ -71,7 +71,8 @@ export class EditorComponent extends HTMLElement {
+ 
+         const $newTag = document.createElement('span');
+         $newTag.className = 'tag-default tag-pill';
+-        $newTag.innerHTML = `<i class="ion-close-round"></i>${newTag}`
++        $newTag.dataset.testid = 'editor-tag-pill';
++        $newTag.innerHTML = `<i class="ion-close-round" data-testid="editor-tag-remove"></i>${newTag}`
+         this.$tagList.appendChild($newTag);
+         this.$tagInput.value = '';
+     }
+@@ -132,22 +133,22 @@ export class EditorComponent extends HTMLElement {
+   <div class="container page">
+     <div class="row">
+       <div class="col-md-10 offset-md-1 col-xs-12">
+-      <ul class="error-messages"></ul>
++      <ul class="error-messages" data-testid="editor-errors"></ul>
+         <form>
+           <fieldset>
+             <fieldset class="form-group">
+-                <input type="text" class="form-control form-control-lg" id="title" placeholder="Article Title">
++                <input type="text" class="form-control form-control-lg" id="title" placeholder="Article Title" data-testid="editor-title">
+             </fieldset>
+             <fieldset class="form-group">
+-                <input type="text" class="form-control" id="description" placeholder="What's this article about?">
++                <input type="text" class="form-control" id="description" placeholder="What's this article about?" data-testid="editor-description">
+             </fieldset>
+             <fieldset class="form-group">
+-                <textarea class="form-control" rows="8" id="body" placeholder="Write your article (in markdown)"></textarea>
++                <textarea class="form-control" rows="8" id="body" placeholder="Write your article (in markdown)" data-testid="editor-body"></textarea>
+             </fieldset>
+             <fieldset class="form-group">
+-                <input type="text" class="form-control" id="tag-input" placeholder="Enter tags"><div class="tag-list"></div>
++                <input type="text" class="form-control" id="tag-input" placeholder="Enter tags" data-testid="editor-tag-input"><div class="tag-list" data-testid="editor-tag-list"></div>
+             </fieldset>
+-            <button id="submit-button" class="btn btn-lg pull-xs-right btn-primary" type="button">
++            <button id="submit-button" class="btn btn-lg pull-xs-right btn-primary" type="button" data-testid="editor-submit">
+                 Publish Article
+             </button>
+           </fieldset>
+diff --git a/app/pages/home.comp.js b/app/pages/home.comp.js
+index f13243b..1a4227c 100644
+--- a/app/pages/home.comp.js
++++ b/app/pages/home.comp.js
+@@ -66,6 +66,7 @@ export class HomeComponent extends HTMLElement {
+                         </li>`
+             let temp2 = document.createElement('div');
+             temp2.innerHTML = temp;
++            temp2.firstChild.dataset.testid = 'page-item-' + i;
+             ulPagination.appendChild(temp2.firstChild);
+         }
+         const pagination = this.querySelectorAll('li.page-item');
+@@ -123,6 +124,7 @@ export class HomeComponent extends HTMLElement {
+         }
+         let articleComponent = new ArticleComponent();
+         articleComponent.model = article;
++        articleComponent.dataset.testid = 'article-card-' + article.slug;
+         this.$globalFeed.appendChild(articleComponent);
+     }
+ 
+@@ -198,6 +200,7 @@ export class HomeComponent extends HTMLElement {
+     creanteNewNavItem(tag) {
+         const newNavItem = document.createElement('li');
+         newNavItem.className = 'nav-item';
++        newNavItem.dataset.testid = 'feed-tag-pill';
+         const newNavLink = document.createElement('a');
+         newNavLink.className = 'nav-link active';
+         newNavLink.innerHTML = '# ' + tag;
+@@ -210,26 +213,26 @@ export class HomeComponent extends HTMLElement {
+     render() {
+         return `
+         <div>
+-            <c-banner></c-banner>
++            <c-banner data-testid="banner-root"></c-banner>
+             <div class="container page">
+                 <div class="row">
+                     <div class="col-md-9">
+                         <div class="feed-toggle">
+                             <ul id="feedOptions" class="nav nav-pills outline-active">
+                                 <li class="nav-item">
+-                                    <a id="your-feed" class="nav-link active" href="">Your Feed</a>
++                                    <a id="your-feed" class="nav-link active" href="" data-testid="feed-your">Your Feed</a>
+                                 </li>
+                                 <li class="nav-item">
+-                                    <a id="globalFeedButton" href="#" class="nav-link">Global Feed</a>
++                                    <a id="globalFeedButton" href="#" class="nav-link" data-testid="feed-global">Global Feed</a>
+                                 </li>
+                             </ul>
+                         </div>
+-                        <div id="globalFeed">
++                        <div id="globalFeed" data-testid="feed-list">
+                             <span>Loading articles ...</span>
+                         </div>
+                     </div>
+                     <div class="col-md-3">
+-                        <popular-tags></popular-tags>
++                        <popular-tags data-testid="tag-sidebar"></popular-tags>
+                     </div>
+                 </div>
+                 <nav>
+diff --git a/app/pages/login.comp.js b/app/pages/login.comp.js
+index ae0aaa5..ec6b9bf 100644
+--- a/app/pages/login.comp.js
++++ b/app/pages/login.comp.js
+@@ -54,6 +54,7 @@ export class CLoginComponent extends HTMLElement {
+                             let text = prop + " " + m;
+                             let errorItem = document.createElement('li');
+                             errorItem.textContent = text;
++                            errorItem.dataset.testid = 'error-item';
+                             this.$errorMessages.appendChild(errorItem);
+                         });
+                     }
+@@ -73,18 +74,18 @@ export class CLoginComponent extends HTMLElement {
+                       <a href="#/register">Need an account?</a>
+                     </p>
+             
+-                    <ul class="error-messages">
++                    <ul class="error-messages" data-testid="login-errors">
+                       <!--<li>That email is already taken</li>-->
+                     </ul>
+             
+                     <form>
+                       <fieldset class="form-group">
+-                        <input id="email" class="form-control form-control-lg" type="email" required placeholder="Email">
++                        <input id="email" class="form-control form-control-lg" type="email" required placeholder="Email" data-testid="login-email">
+                       </fieldset>
+                       <fieldset class="form-group">
+-                        <input id="password" class="form-control form-control-lg" type="password" placeholder="Password">
++                        <input id="password" class="form-control form-control-lg" type="password" placeholder="Password" data-testid="login-password">
+                       </fieldset>
+-                      <button id="signin-button" class="btn btn-lg btn-primary pull-xs-right">
++                      <button id="signin-button" class="btn btn-lg btn-primary pull-xs-right" data-testid="login-submit">
+                         Sign in
+                       </button>
+                     </form>
+diff --git a/app/pages/profile.comp.js b/app/pages/profile.comp.js
+index 003be4e..2701405 100644
+--- a/app/pages/profile.comp.js
++++ b/app/pages/profile.comp.js
+@@ -80,6 +80,7 @@ export class ProfileComponent extends HTMLElement {
+         }
+         let articleComponent = new ArticleComponent();
+         articleComponent.model = article;
++        articleComponent.dataset.testid = 'article-card-' + article.slug;
+         this.$globalFeed.appendChild(articleComponent);
+     }
+ 
+@@ -97,15 +98,15 @@ export class ProfileComponent extends HTMLElement {
+                         <div class="articles-toggle">
+                           <ul class="nav nav-pills outline-active">
+                             <li class="nav-item">
+-                              <a id="my-articles" class="nav-link active" href="">My Articles</a>
++                              <a id="my-articles" class="nav-link active" href="" data-testid="tab-my-articles">My Articles</a>
+                             </li>
+                             <li class="nav-item">
+-                              <a id="favorited-articles" class="nav-link" href="">Favorited Articles</a>
++                              <a id="favorited-articles" class="nav-link" href="" data-testid="tab-favorited">Favorited Articles</a>
+                             </li>
+                           </ul>
+                         </div>
+                 
+-                        <div id="globalFeed">
++                        <div id="globalFeed" data-testid="profile-feed">
+                             <div class="article-preview">
+                              Loading articles
+                             </div>
+diff --git a/app/pages/register.comp.js b/app/pages/register.comp.js
+index ab62148..41200e7 100644
+--- a/app/pages/register.comp.js
++++ b/app/pages/register.comp.js
+@@ -54,6 +54,7 @@ export class CRegisterComponent extends HTMLElement {
+                             let text = prop + " " + m;
+                             let errorItem = document.createElement('li');
+                             errorItem.textContent = text;
++                            errorItem.dataset.testid = 'error-item';
+                             this.$errorMessages.appendChild(errorItem);
+                         });
+                     }
+@@ -79,21 +80,21 @@ export class CRegisterComponent extends HTMLElement {
+           <a href="#/login">Have an account?</a>
+         </p>
+ 
+-        <ul class="error-messages">
++        <ul class="error-messages" data-testid="register-errors">
+           <!--<li>That email is already taken</li>-->
+         </ul>
+ 
+         <form>
+           <fieldset class="form-group">
+-            <input id="username" required class="form-control form-control-lg" type="text" placeholder="Your Name">
++            <input id="username" required class="form-control form-control-lg" type="text" placeholder="Your Name" data-testid="register-username">
+           </fieldset>
+           <fieldset class="form-group">
+-            <input id="email" required class="form-control form-control-lg" type="text" placeholder="Email">
++            <input id="email" required class="form-control form-control-lg" type="text" placeholder="Email" data-testid="register-email">
+           </fieldset>
+           <fieldset class="form-group">
+-            <input id="password" required class="form-control form-control-lg" type="password" placeholder="Password">
++            <input id="password" required class="form-control form-control-lg" type="password" placeholder="Password" data-testid="register-password">
+           </fieldset>
+-          <button id="register-button" class="btn btn-lg btn-primary pull-xs-right">
++          <button id="register-button" class="btn btn-lg btn-primary pull-xs-right" data-testid="register-submit">
+             Sign up
+           </button>
+         </form>
+diff --git a/app/pages/settings.comp.js b/app/pages/settings.comp.js
+index a0e272a..bac8fb3 100644
+--- a/app/pages/settings.comp.js
++++ b/app/pages/settings.comp.js
+@@ -72,6 +72,7 @@ export class SettingsComponent extends HTMLElement {
+                             let text = prop + " " + m;
+                             let errorItem = document.createElement('li');
+                             errorItem.textContent = text;
++                            errorItem.dataset.testid = 'error-item';
+                             this.$errorMessages.appendChild(errorItem);
+                         });
+                     }
+@@ -90,33 +91,33 @@ export class SettingsComponent extends HTMLElement {
+ 
+       <div class="col-md-6 offset-md-3 col-xs-12">
+         <h1 class="text-xs-center">Your Settings</h1>
+-        <ul class="error-messages">
++        <ul class="error-messages" data-testid="settings-errors">
+           <!--<li>That email is already taken</li>-->
+         </ul>
+         <form>
+           <fieldset>
+               <fieldset class="form-group">
+-                <input id="user-image" class="form-control" value="${this.user.image ? this.user.image : ''}" type="text" placeholder="URL of profile picture">
++                <input id="user-image" class="form-control" value="${this.user.image ? this.user.image : ''}" type="text" placeholder="URL of profile picture" data-testid="settings-image">
+               </fieldset>
+               <fieldset class="form-group">
+-                <input id="username" class="form-control form-control-lg" value="${this.user.username}" type="text" placeholder="Your Name">
++                <input id="username" class="form-control form-control-lg" value="${this.user.username}" type="text" placeholder="Your Name" data-testid="settings-username">
+               </fieldset>
+               <fieldset class="form-group">
+-                <textarea id="user-bio" class="form-control form-control-lg"  rows="8" placeholder="Short bio about you">${this.user.bio ? this.user.bio : ''}</textarea>
++                <textarea id="user-bio" class="form-control form-control-lg"  rows="8" placeholder="Short bio about you" data-testid="settings-bio">${this.user.bio ? this.user.bio : ''}</textarea>
+               </fieldset>
+               <fieldset class="form-group">
+-                <input id="user-email" class="form-control form-control-lg" type="text"  value="${this.user.email}" placeholder="Email">
++                <input id="user-email" class="form-control form-control-lg" type="text"  value="${this.user.email}" placeholder="Email" data-testid="settings-email">
+               </fieldset>
+               <fieldset class="form-group">
+-                <input id="user-password" class="form-control form-control-lg" type="password" placeholder="Password">
++                <input id="user-password" class="form-control form-control-lg" type="password" placeholder="Password" data-testid="settings-password">
+               </fieldset>
+-              <button id="update-button" class="btn btn-lg btn-primary pull-xs-right">
++              <button id="update-button" class="btn btn-lg btn-primary pull-xs-right" data-testid="settings-update">
+                 Update Settings
+               </button>
+           </fieldset>
+         </form>
+         <hr>
+-        <button id="logoutButton" class="btn btn-outline-danger">Or click here to logout.</button>
++        <button id="logoutButton" class="btn btn-outline-danger" data-testid="settings-logout">Or click here to logout.</button>
+       </div>
+ 
+     </div>

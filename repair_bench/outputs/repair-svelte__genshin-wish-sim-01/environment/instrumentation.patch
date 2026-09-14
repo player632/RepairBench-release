@@ -1,0 +1,518 @@
+diff --git a/src/lib/components/ButtonGeneral.svelte b/src/lib/components/ButtonGeneral.svelte
+index de4fd53..3d5944a 100644
+--- a/src/lib/components/ButtonGeneral.svelte
++++ b/src/lib/components/ButtonGeneral.svelte
+@@ -2,12 +2,13 @@
+ 	import { createEventDispatcher } from 'svelte';
+ 	export let disabled = false;
+ 	export let dark = false;
++	export let testid = '';
+ 
+ 	const dispatch = createEventDispatcher();
+ 	const click = () => dispatch('click');
+ </script>
+ 
+-<button on:click|preventDefault|stopPropagation={click} {disabled} class:dark>
++<button on:click|preventDefault|stopPropagation={click} {disabled} class:dark data-testid={testid || undefined}>
+ 	<slot />
+ </button>
+ 
+diff --git a/src/lib/components/ButtonModal.svelte b/src/lib/components/ButtonModal.svelte
+index e6f119f..a1fd5c5 100644
+--- a/src/lib/components/ButtonModal.svelte
++++ b/src/lib/components/ButtonModal.svelte
+@@ -9,6 +9,7 @@
+ 	export let light = false;
+ 	export let width = '';
+ 	export let icon = '';
++	export let testid = '';
+ 
+ 	const dispatch = createEventDispatcher();
+ 	const click = () => dispatch('click');
+@@ -19,6 +20,7 @@
+ 	{disabled}
+ 	class:light
+ 	style={width ? `width:${width}` : ''}
++	data-testid={testid || undefined}
+ >
+ 	{#if icon}
+ 		<i class="gi-{icon}" />
+diff --git a/src/lib/components/ModalTpl.svelte b/src/lib/components/ModalTpl.svelte
+index 7283f29..5c1023e 100644
+--- a/src/lib/components/ModalTpl.svelte
++++ b/src/lib/components/ModalTpl.svelte
+@@ -14,6 +14,9 @@
+ 	export let disabled = false;
+ 	export let confirmOnly = false;
+ 	export let noDimiss = false;
++	export let testid = '';
++	export let confirmTestId = '';
++	export let cancelTestId = '';
+ 
+ 	let content;
+ 	onMount(() =>
+@@ -52,6 +55,7 @@
+ 	in:fade={{ duration: 200 }}
+ 	out:fade={{ duration: 80 }}
+ 	on:mousedown|self={dimiss}
++	data-testid={testid || undefined}
+ >
+ 	<div
+ 		class="modal-content"
+@@ -75,10 +79,10 @@
+ 
+ 				<div class="pop-footer">
+ 					{#if !confirmOnly}
+-						<ButtonModal light={dark} type="cancel" on:click={cancelClik} />
++						<ButtonModal light={dark} type="cancel" on:click={cancelClik} testid={cancelTestId} />
+ 					{/if}
+ 
+-					<ButtonModal light={dark} type="confirm" {disabled} on:click={confirmClick}>
++					<ButtonModal light={dark} type="confirm" {disabled} on:click={confirmClick} testid={confirmTestId}>
+ 						{#if $$slots.confirmtext}
+ 							<slot name="confirmtext" />
+ 						{:else}
+diff --git a/src/lib/components/MyFund.svelte b/src/lib/components/MyFund.svelte
+index 1432229..98bbb1a 100644
+--- a/src/lib/components/MyFund.svelte
++++ b/src/lib/components/MyFund.svelte
+@@ -5,6 +5,7 @@
+ 
+ 	export let type = 'primogem';
+ 	export let plusbutton = false;
++	export let testid = '';
+ 	const allowAddition = type === 'primogem' && plusbutton;
+ 
+ 	const openConvertModal = getContext('openConvertModal');
+@@ -15,7 +16,7 @@
+ 	};
+ </script>
+ 
+-<button class={type} class:increament={allowAddition} on:click={openModal}>
++<button class={type} class:increament={allowAddition} on:click={openModal} data-testid={testid || undefined}>
+ 	<Icon
+ 		{type}
+ 		height="80%"
+diff --git a/src/lib/components/ObtainedItem.svelte b/src/lib/components/ObtainedItem.svelte
+index 8d8de6e..13cbc2b 100644
+--- a/src/lib/components/ObtainedItem.svelte
++++ b/src/lib/components/ObtainedItem.svelte
+@@ -27,7 +27,7 @@
+ 	onDestroy(() => hotkeys.deleteScope('obtain', currentScope));
+ </script>
+ 
+-<section on:mousedown={closeObtained}>
++<section on:mousedown={closeObtained} data-testid="obtained-overlay">
+ 	<div class="container">
+ 		<div class="bg" />
+ 		<div class="content" in:scale={{ start: 0, duration: 200 }}>
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index fa3ba50..10f95b0 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -6,7 +6,24 @@
+ 	import hotkeys from 'hotkeys-js';
+ 
+ 	import browserState from '$lib/helpers/browserState';
+-	import { assets, preloadVersion, showBeginner } from '$lib/store/app-stores';
++	import {
++		assets,
++		preloadVersion,
++		showBeginner,
++		primogem,
++		acquaint,
++		intertwined,
++		stardust,
++		starglitter,
++		genesis,
++		activeBanner,
++		bannerList,
++		wishAmount,
++		multipull,
++		autoskip,
++		beginnerRemaining,
++		course
++	} from '$lib/store/app-stores';
+ 	import { dailyWelkin, localConfig } from '$lib/helpers/dataAPI/api-localstore';
+ 	import { importLocalConfig, setBannerVersionAndPhase } from '$lib/helpers/dataAPI/storage-reader';
+ 	import { handleShowStarter, initializeBanner } from '$lib/helpers/banner-loader';
+@@ -171,6 +188,31 @@
+ 	$: hotkeys('o', pageActive, chatToggle);
+ </script>
+ 
++<div
++	data-testid="gw-probes"
++	style="position:absolute;left:-9999px;top:0;visibility:visible;pointer-events:none"
++	aria-hidden="true"
++>
++	<span data-testid="probe-status">{status}</span>
++	<span data-testid="probe-primogem">{$primogem}</span>
++	<span data-testid="probe-intertwined">{$intertwined}</span>
++	<span data-testid="probe-acquaint">{$acquaint}</span>
++	<span data-testid="probe-stardust">{$stardust}</span>
++	<span data-testid="probe-starglitter">{$starglitter}</span>
++	<span data-testid="probe-genesis">{$genesis}</span>
++	<span data-testid="probe-show-beginner">{$showBeginner}</span>
++	<span data-testid="probe-active-banner">{$activeBanner}</span>
++	<span data-testid="probe-banner-count">{$bannerList.length}</span>
++	<span data-testid="probe-banner-types">{$bannerList.map((b) => b.type).join(',')}</span>
++	<span data-testid="probe-wish-amount">{$wishAmount}</span>
++	<span data-testid="probe-multipull">{$multipull}</span>
++	<span data-testid="probe-autoskip">{$autoskip}</span>
++	<span data-testid="probe-beginner-remaining">{$beginnerRemaining}</span>
++	<span data-testid="probe-on-wish">{$onWish}</span>
++	<span data-testid="probe-course-point">{$course.point}</span>
++	<span data-testid="probe-course-selected">{$course.selected}</span>
++</div>
++
+ {#if status !== 'ok'}
+ 	error bos
+ {/if}
+diff --git a/src/routes/_gachainfo/history/History.svelte b/src/routes/_gachainfo/history/History.svelte
+index fb78181..4c11142 100644
+--- a/src/routes/_gachainfo/history/History.svelte
++++ b/src/routes/_gachainfo/history/History.svelte
+@@ -79,7 +79,7 @@
+ {#if tplVersion === 'v2'}
+ 	<Title type="history" />
+ 	<SelectBanner v2 {banner} />
+-	<div class="container" bind:this={container}>
++	<div class="container" bind:this={container} data-testid="history-page">
+ 		<div class="wrapper">
+ 			<p class="v2">{$t('history.disclaimer')}</p>
+ 			<div class="row">
+diff --git a/src/routes/_gachainfo/history/_list.svelte b/src/routes/_gachainfo/history/_list.svelte
+index e030f21..6badacb 100644
+--- a/src/routes/_gachainfo/history/_list.svelte
++++ b/src/routes/_gachainfo/history/_list.svelte
+@@ -64,8 +64,8 @@
+ 				</div>
+ 			{:else}
+ 				{#each getItemPage(dataToShow, page) as { name, type, rarity, time, pity, bannerName, status, custom }}
+-					<div class="row">
+-						<div class="cell cell0 star{rarity}">
++					<div class="row" data-testid="history-row">
++						<div class="cell cell0 star{rarity}" data-testid="history-pity">
+ 							{pity}
+ 							{#if status}
+ 								<span class="status"> <i class="gi-{status}" /> </span>
+diff --git a/src/routes/_index/ModalConvert.svelte b/src/routes/_index/ModalConvert.svelte
+index ce30ef5..c566add 100644
+--- a/src/routes/_index/ModalConvert.svelte
++++ b/src/routes/_index/ModalConvert.svelte
+@@ -47,6 +47,8 @@
+ 	on:cancel={cancelModal}
+ 	on:confirm={confirmConvert}
+ 	disabled={$genesis < 1}
++	testid="convert-modal"
++	confirmTestId="convert-confirm-btn"
+ >
+ 	<div slot="confirmtext">{$t('shop.purchaseButton')}</div>
+ 	<div class="content">
+diff --git a/src/routes/_index/ModalWelcome.svelte b/src/routes/_index/ModalWelcome.svelte
+index d7e1eb8..9797d04 100644
+--- a/src/routes/_index/ModalWelcome.svelte
++++ b/src/routes/_index/ModalWelcome.svelte
+@@ -32,7 +32,7 @@
+ 	};
+ </script>
+ 
+-<Modal confirmOnly title={$t('title')} on:confirm={handleConfirm}>
++<Modal confirmOnly title={$t('title')} on:confirm={handleConfirm} testid="welcome-modal" confirmTestId="welcome-confirm-btn">
+ 	<section bind:clientHeight={contentHeight} style="--modalHeight:{contentHeight}px">
+ 		<p class="sp">
+ 			{$t('fanmade')} <br />
+diff --git a/src/routes/_inventory/index.svelte b/src/routes/_inventory/index.svelte
+index ffb21fe..9e690b6 100644
+--- a/src/routes/_inventory/index.svelte
++++ b/src/routes/_inventory/index.svelte
+@@ -70,7 +70,7 @@
+ 	<InventoryDetail {...detailItem} />
+ {/if}
+ 
+-<section id="inventory">
++<section id="inventory" data-testid="inventory-page">
+ 	<Background />
+ 	<div class="header" bind:clientHeight={headerHeight} in:fly={{ y: -20 }}>
+ 		<Header {activeItem} />
+diff --git a/src/routes/_menu/Settings.svelte b/src/routes/_menu/Settings.svelte
+index 38cf321..1764990 100644
+--- a/src/routes/_menu/Settings.svelte
++++ b/src/routes/_menu/Settings.svelte
+@@ -191,6 +191,7 @@
+ 		name="autoskip"
+ 		activeIndicator={$autoskip}
+ 		on:select={handleAutoSkip}
++		testid="opt-autoskip"
+ 	>
+ 		{$t('menu.autoskip')}
+ 	</OptionMenu>
+diff --git a/src/routes/_menu/_options.svelte b/src/routes/_menu/_options.svelte
+index 47c075f..abdbc3f 100644
+--- a/src/routes/_menu/_options.svelte
++++ b/src/routes/_menu/_options.svelte
+@@ -22,6 +22,7 @@
+ 	export let sub = false;
+ 	export let activeIndicator = null;
+ 	export let showOption = false;
++	export let testid = '';
+ 
+ 	const handleOption = getContext('handleOption');
+ 	const reset = getContext('factoryReset');
+@@ -102,7 +103,7 @@
+ 	};
+ </script>
+ 
+-<div class="option" class:sub>
++<div class="option" class:sub data-testid={testid || undefined}>
+ 	<div class="option-name">
+ 		<slot />
+ 	</div>
+@@ -224,16 +225,17 @@
+ 				class="selected"
+ 				style="width: 100%; height:100%"
+ 				on:click|stopPropagation={openOption}
++				data-testid={testid ? `${testid}-toggle` : undefined}
+ 			>
+ 				{activeIndicator ? $t('menu.yes') : $t('menu.no')}
+ 			</button>
+ 			<i class="gi-caret-{showOption ? 'up' : 'down'}" />
+ 			{#if showOption}
+ 				<div class="select" in:fly={{ duration: 200, y: -10 }}>
+-					<button class:selected={!activeIndicator} on:click|stopPropagation={() => select('no')}>
++					<button class:selected={!activeIndicator} on:click|stopPropagation={() => select('no')} data-testid={testid ? `${testid}-no` : undefined}>
+ 						{$t('menu.no')}
+ 					</button>
+-					<button class:selected={activeIndicator} on:click|stopPropagation={() => select('yes')}>
++					<button class:selected={activeIndicator} on:click|stopPropagation={() => select('yes')} data-testid={testid ? `${testid}-yes` : undefined}>
+ 						{$t('menu.yes')}
+ 					</button>
+ 				</div>
+diff --git a/src/routes/_menu/index.svelte b/src/routes/_menu/index.svelte
+index 9fab6cc..1bdb222 100644
+--- a/src/routes/_menu/index.svelte
++++ b/src/routes/_menu/index.svelte
+@@ -36,7 +36,7 @@
+ 	onDestroy(() => hotkeys.deleteScope('menu', 'index'));
+ </script>
+ 
+-<section transition:fade={{ duration: 200 }}>
++<section transition:fade={{ duration: 200 }} data-testid="menu-panel">
+ 	<div class="head">
+ 		<h1>{$t('menu.text')} / {$t(`menu.${activeContent}`)}</h1>
+ 		<button class="close" on:click={handleClose}>
+diff --git a/src/routes/_shop/_aside.svelte b/src/routes/_shop/_aside.svelte
+index 208cecb..440fc00 100644
+--- a/src/routes/_shop/_aside.svelte
++++ b/src/routes/_shop/_aside.svelte
+@@ -75,6 +75,7 @@
+ 			class="link"
+ 			class:active={activeShop === 'paimon-bargains'}
+ 			on:click={() => selectShop('paimon-bargains')}
++			data-testid="shop-nav-bargains"
+ 		>
+ 			<span>
+ 				<i class="gi-paimon-bargains" />
+diff --git a/src/routes/_shop/_modal-exchange.svelte b/src/routes/_shop/_modal-exchange.svelte
+index 1bfda4b..d3051f2 100644
+--- a/src/routes/_shop/_modal-exchange.svelte
++++ b/src/routes/_shop/_modal-exchange.svelte
+@@ -82,6 +82,8 @@
+ 	on:cancel={closeModal}
+ 	on:confirm={confirmPurchase}
+ 	disabled={isOwned || max < 1}
++	testid="exchange-modal"
++	confirmTestId="exchange-confirm-btn"
+ >
+ 	<span slot="confirmtext"> {$t('shop.purchaseButton')} </span>
+ 	<div
+diff --git a/src/routes/_shop/_navlink-top-button.svelte b/src/routes/_shop/_navlink-top-button.svelte
+index 18f61e9..6eb8695 100644
+--- a/src/routes/_shop/_navlink-top-button.svelte
++++ b/src/routes/_shop/_navlink-top-button.svelte
+@@ -4,6 +4,7 @@
+ 
+ 	export let active = false;
+ 	export let name = '';
++	export let testid = '';
+ 
+ 	const dispatch = createEventDispatcher();
+ 	const select = () => {
+@@ -18,6 +19,7 @@
+ 	style="--bg-active: url('{$assets['shop-nav-bg.webp']}')"
+ 	class:active
+ 	on:click={select}
++	data-testid={testid || undefined}
+ >
+ 	<div class="border">
+ 		<slot />
+diff --git a/src/routes/_shop/index.svelte b/src/routes/_shop/index.svelte
+index 963a95b..babd0a8 100644
+--- a/src/routes/_shop/index.svelte
++++ b/src/routes/_shop/index.svelte
+@@ -146,7 +146,7 @@
+ 	<ModalExchange data={exchangeData} />
+ {/if}
+ 
+-<section>
++<section data-testid="shop-page">
+ 	<Background />
+ 	<div class="container" out:fade={{ duration: 250 }}>
+ 		<Aside isOpen={showAside} />
+diff --git a/src/routes/_shop/paimon-bargains/PaimonBargains.svelte b/src/routes/_shop/paimon-bargains/PaimonBargains.svelte
+index 4628c02..baffb46 100644
+--- a/src/routes/_shop/paimon-bargains/PaimonBargains.svelte
++++ b/src/routes/_shop/paimon-bargains/PaimonBargains.svelte
+@@ -65,7 +65,7 @@
+ 
+ <NavlinkTop>
+ 	{#each ['starglitter', 'stardust', 'primogem'] as val}
+-		<NavlinkTopButton on:click={handlePaimonClick} name={val} active={activeCurrency === val}>
++		<NavlinkTopButton on:click={handlePaimonClick} name={val} active={activeCurrency === val} testid={`navlink-${val}`}>
+ 			{$t(`shop.exchange.${val}`)}
+ 		</NavlinkTopButton>
+ 	{/each}
+@@ -77,6 +77,7 @@
+ 			<button
+ 				on:click={() => selectItem(fate)}
+ 				in:fade={{ duration: 300, delay: Math.sqrt(i * 5000) }}
++				data-testid={`bargain-item-${fate}`}
+ 			>
+ 				<div class="content">
+ 					<div class="picture" style="background-image: url('{$assets['5star-bg.webp']}')">
+diff --git a/src/routes/_wish/_banner-button.svelte b/src/routes/_wish/_banner-button.svelte
+index 915b64f..877f32c 100644
+--- a/src/routes/_wish/_banner-button.svelte
++++ b/src/routes/_wish/_banner-button.svelte
+@@ -36,7 +36,7 @@
+ 	$: setNotice(active);
+ </script>
+ 
+-<button class="button {type}" class:active on:click={buttonClick}>
++<button class="button {type}" class:active on:click={buttonClick} data-testid="banner-btn-{type}">
+ 	{#if type.match(/event|chronicled/)}
+ 		<NoticeMark
+ 			name={noticeName}
+diff --git a/src/routes/_wish/_footer.svelte b/src/routes/_wish/_footer.svelte
+index 06a5702..2e438df 100644
+--- a/src/routes/_wish/_footer.svelte
++++ b/src/routes/_wish/_footer.svelte
+@@ -150,17 +150,17 @@
+ 	<div class="row" style="--bg:url({$assets['button.webp']})">
+ 		{#if !$editorMode}
+ 			<div class="left menu-button">
+-				<ButtonGeneral on:click={() => changePage('shop')}>
++				<ButtonGeneral on:click={() => changePage('shop')} testid="shop-btn">
+ 					{#if hasNewOutfit}
+ 						<NoticeMark name={openedNotices} style="transform: translateX(70%) translateY(-80%)" />
+ 					{/if}
+ 					{$t('shop.text')}
+ 				</ButtonGeneral>
+ 
+-				<ButtonGeneral on:click={() => changePage('inventory')}>
++				<ButtonGeneral on:click={() => changePage('inventory')} testid="inventory-btn">
+ 					{$t('inventory.text')}
+ 				</ButtonGeneral>
+-				<ButtonGeneral on:click={() => changePage('history')}>
++				<ButtonGeneral on:click={() => changePage('history')} testid="history-btn">
+ 					{$t('history.text')}
+ 				</ButtonGeneral>
+ 			</div>
+@@ -172,6 +172,7 @@
+ 							class="single wish-button"
+ 							on:click={handleSingleRollClick}
+ 							disabled={$onWish || !$readyToPull}
++							data-testid="wish-single-btn"
+ 						>
+ 							<div class="top">{$t('wish.rollButton', { values: { count: '×1' } })}</div>
+ 							<div class="bottom">
+@@ -187,6 +188,7 @@
+ 						class="ten wish-button"
+ 						on:click={handleMultiRollClick}
+ 						disabled={$onWish || !$readyToPull}
++						data-testid="wish-multi-btn"
+ 					>
+ 						{#if bannerType === 'beginner'}
+ 							<span class="discount">-20%</span>
+diff --git a/src/routes/_wish/_header.svelte b/src/routes/_wish/_header.svelte
+index 7d2f672..d4d20da 100644
+--- a/src/routes/_wish/_header.svelte
++++ b/src/routes/_wish/_header.svelte
+@@ -95,7 +95,7 @@
+ 				<span> {$t('customBanner.title')} </span>
+ 			{/if}
+ 
+-			<button class="help" on:click={handleMenu} title="Setting" aria-label="Setting">
++			<button class="help" on:click={handleMenu} title="Setting" aria-label="Setting" data-testid="menu-open-btn">
+ 				<i class="gi-help" />
+ 			</button>
+ 			<button class="chat" on:click={chatToggle} title="Chats" aria-label="Chats">
+@@ -125,10 +125,10 @@
+ 						</MyFund>
+ 					{/if}
+ 
+-					<MyFund type="primogem" plusbutton>
++					<MyFund type="primogem" plusbutton testid="fund-primogem">
+ 						{unlimitedWish ? '∞' : $primogem}
+ 					</MyFund>
+-					<MyFund type={isEvent ? 'intertwined' : 'acquaint'}>
++					<MyFund type={isEvent ? 'intertwined' : 'acquaint'} testid="fund-fate">
+ 						{unlimitedWish ? '∞' : balance}
+ 					</MyFund>
+ 				</div>
+diff --git a/src/routes/_wish/_out-of-primogem.svelte b/src/routes/_wish/_out-of-primogem.svelte
+index f27fa91..99bd3d6 100644
+--- a/src/routes/_wish/_out-of-primogem.svelte
++++ b/src/routes/_wish/_out-of-primogem.svelte
+@@ -57,6 +57,8 @@
+ 	on:cancel={closeModal}
+ 	on:confirm={convertAndRoll}
+ 	disabled={insufficientPrimo}
++	testid="shortage-modal"
++	confirmTestId="shortage-confirm-btn"
+ >
+ 	<div class="exchange">
+ 		<div>
+diff --git a/src/routes/_wish/index.svelte b/src/routes/_wish/index.svelte
+index 12fc2f9..d676aed 100644
+--- a/src/routes/_wish/index.svelte
++++ b/src/routes/_wish/index.svelte
+@@ -194,7 +194,7 @@
+ 
+ <div class="overlay" in:fade|local />
+ 
+-<div class="wish-container" class:show={showMeteor || showWishResult}>
++<div class="wish-container" class:show={showMeteor || showWishResult} data-testid="wish-overlay">
+ 	<Meteor show={showMeteor} isSingle={single} rarity={meteorStar} {radiance} />
+ 	{#if showWishResult}
+ 		<WishResult list={result} skip={skipSplashArt} />
+diff --git a/src/routes/_wish/wish-result/WishResult.svelte b/src/routes/_wish/wish-result/WishResult.svelte
+index 425e490..bc0fadb 100644
+--- a/src/routes/_wish/wish-result/WishResult.svelte
++++ b/src/routes/_wish/wish-result/WishResult.svelte
+@@ -125,6 +125,7 @@
+ 
+ <div
+ 	class="wish-result"
++	data-testid="result-root"
+ 	class:preview
+ 	style="background-image: url({splashBG});"
+ 	out:fade={{ duration: 250 }}
+@@ -139,13 +140,15 @@
+ 	/>
+ 	<!-- End Preview Only -->
+ 
++	<span data-testid="probe-splash-out" style="position:absolute;left:-9999px;top:0;visibility:visible">{isSplashOut}</span>
++
+ 	{#if !standalone}
+ 		{#if list.length > 1 && !showResultList}
+-			<button class="skip" on:click={skipHandle}>
++			<button class="skip" on:click={skipHandle} data-testid="result-skip-btn">
+ 				{$t('wish.result.skip')} <i class="gi-caret-up" />
+ 			</button>
+ 		{:else}
+-			<button class="close" on:click={closeHandle} in:fade={{ delay: 1500 }}>
++			<button class="close" on:click={closeHandle} in:fade={{ delay: 1500 }} data-testid="result-close-btn">
+ 				<i class="gi-close" />
+ 			</button>
+ 		{/if}

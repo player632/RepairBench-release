@@ -1,0 +1,616 @@
+diff --git a/index.html b/index.html
+index ac5a75b..be65891 100644
+--- a/index.html
++++ b/index.html
+@@ -7,50 +7,51 @@
+     <link rel="icon" type="image/png" href="images/favicon.png" />
+   </head>
+   <body>
+-    <div class="svg-canvas">
++    <div class="svg-canvas" data-testid="pp-svg-canvas">
+       <svg 
+         version="1.1"
+         baseProfile="full"
+         width="100%" 
+         height="100%"
+         xmlns="http://www.w3.org/2000/svg"
+-        class="svg-image">
++        class="svg-image"
++        data-testid="pp-svg-image">
+       </svg>
+-      <svg class="svg-points"></svg>
++      <svg class="svg-points" data-testid="pp-svg-points"></svg>
+     </div>
+ 
+     <div class="top-ui">
+       <span class="logo">PolyPal Editor</span>
+ 
+-      <button class="save"    text="Save this picture, it will be here when you come back.">Save</button>
+-      <button class="load"    text="Load the last-saved picture.">Load</button>
++      <button class="save"    text="Save this picture, it will be here when you come back." data-testid="pp-btn-save">Save</button>
++      <button class="load"    text="Load the last-saved picture." data-testid="pp-btn-load">Load</button>
+ 
+-      <button class="reset"   text="Delete everything and start over.">Reset</button>
++      <button class="reset"   text="Delete everything and start over." data-testid="pp-btn-reset">Reset</button>
+ 
+-      <button class="download" text="Download this image as an SVG.">Download SVG</button>
++      <button class="download" text="Download this image as an SVG." data-testid="pp-btn-download">Download SVG</button>
+       &mdash;
+       Extrude type
+-      <button class="extrude" text="Build with squares." type="line">&#9724;</button>
+-      <button class="extrude" text="Build with triangles." type="point">&#9650;</button>
++      <button class="extrude" text="Build with squares." type="line" data-testid="pp-btn-extrude-line">&#9724;</button>
++      <button class="extrude" text="Build with triangles." type="point" data-testid="pp-btn-extrude-point">&#9650;</button>
+       &mdash;
+-      <button class="undo"    text="Undo the last action.">Undo</button>
+-      <button class="delete"  text="Delete selected points & shapes.">Delete</button>
++      <button class="undo"    text="Undo the last action." data-testid="pp-btn-undo">Undo</button>
++      <button class="delete"  text="Delete selected points & shapes." data-testid="pp-btn-delete">Delete</button>
+       &mdash;
+       Z-index
+-      <button class="z-up"    text="Move the shape 1 higher (+ Shift for very top).">&uarr;</button>
+-      <button class="z-down"  text="Move the shape 1 lower (+ Shift for very bottom).">&darr;</button>
++      <button class="z-up"    text="Move the shape 1 higher (+ Shift for very top)." data-testid="pp-btn-z-up">&uarr;</button>
++      <button class="z-down"  text="Move the shape 1 lower (+ Shift for very bottom)." data-testid="pp-btn-z-down">&darr;</button>
+     </div>
+ 
+     <div class="bottom-ui">
+       <span>Scale</span>
+-      <input type="range" class="scale" min="-1" value="0" max="1" step=".05">
++      <input type="range" class="scale" min="-1" value="0" max="1" step=".05" data-testid="pp-slider-scale">
+       <span>Rotate</span>
+-      <input type="range" class="rotate" min="-180" value="0" max="180" step=".25">
++      <input type="range" class="rotate" min="-180" value="0" max="180" step=".25" data-testid="pp-slider-rotate">
+     </div>
+ 
+     <!-- Toolbars -->
+-    <div class="colors"></div>
+-    <div class="tools"></div>
++    <div class="colors" data-testid="pp-colors-bar"></div>
++    <div class="tools" data-testid="pp-tools-bar"></div>
+ 
+     <!-- Code -->
+     <script src="js/editor/utils.js"></script>
+@@ -68,6 +69,7 @@
+     <script src="js/editor/listeners.js"></script>
+     <script src="js/editor/keys.js"></script>
+     <script src="js/editor/tool-create.js"></script>
++    <script src="js/editor/rb-probe.js"></script>
+ 
+   </body>
+ </html>
+diff --git a/js/editor/rb-probe.js b/js/editor/rb-probe.js
+new file mode 100644
+index 0000000..10459d3
+--- /dev/null
++++ b/js/editor/rb-probe.js
+@@ -0,0 +1,529 @@
++//
++//
++// NOT PART OF THE APPLICATION. This file is added by environment/instrumentation.patch
++// and is loaded last, after every application script, so all of the editor's state is
++// already declared when it runs.
++//
++// PolyPal declares its state with top-level `let` / `const` in classic (non-module)
++// scripts. Those bindings live in the GLOBAL LEXICAL environment: they are reachable by
++// BARE NAME from any script in the same realm, but they are NOT properties of `window`
++// (`window.grids` is undefined). Every reader below therefore goes through indirect eval
++// on the bare identifier, guarded by a `typeof` probe, and falls back to a sentinel when
++// the binding is missing. Nothing here is allowed to throw into the application.
++//
++// Two surfaces are exported:
++//   window.__PPQ__()  - PURE READ. Returns one flat object of scalars (numbers, strings,
++//                       booleans) plus `frozen`, a map of tagged snapshots. Grading
++//                       assertions call this and compare scalars only. It never clicks,
++//                       types, dispatches, mutates application state or reads the clock.
++//   window.__PPX__    - SETUP ONLY. Deterministic fixtures and real in-page interactions
++//                       (real MouseEvent / KeyboardEvent / Event dispatch on the real
++//                       elements, and real clicks on the real buttons, swatches, tools and
++//                       sliders). Every side effect a checkpoint needs happens here, before
++//                       the assertions run, because assertions are polled for ~9s and must
++//                       stay pure.
++(function () {
++  "use strict";
++
++  var DEF6 = ["#8F3D61", "#B94B5D", "#DD7E5F", "#EB9762", "#EDBD77", "#DDDDDD"];
++
++  // ---- bare-name global readers (lexical globals, not window properties) ----
++  function rd(name, dflt) {
++    try {
++      if ((0, eval)("typeof " + name) === "undefined") return dflt;
++      return (0, eval)(name);
++    } catch (e) { return dflt; }
++  }
++  function callGlobal(name, args) {
++    try {
++      var fn = rd(name, null);
++      if (typeof fn !== "function") return "ERR:no-function:" + name;
++      return fn.apply(null, args || []);
++    } catch (e) { return "ERR:" + String((e && e.message) || e); }
++  }
++
++  // ---- DOM helpers (prefer the injected probes, fall back to the app selectors) ----
++  function q(sel) { try { return document.querySelector(sel); } catch (e) { return null; } }
++  function qa(sel) { try { return Array.prototype.slice.call(document.querySelectorAll(sel)); } catch (e) { return []; } }
++  function tid(id, fallback) { return q('[data-testid="' + id + '"]') || q(fallback); }
++  function tidAll(bar, sel) {
++    var root = q('[data-testid="' + bar + '"]');
++    if (root) return Array.prototype.slice.call(root.querySelectorAll(sel));
++    return qa(sel);
++  }
++  function canvasEl() { return tid("pp-svg-canvas", ".svg-canvas"); }
++  function imageEl() { return tid("pp-svg-image", ".svg-image"); }
++  function pointsEl() { return tid("pp-svg-points", ".svg-points"); }
++  function polygons() { var r = imageEl(); return r ? Array.prototype.slice.call(r.querySelectorAll("polygon")) : []; }
++  function uiPolygons() { var r = pointsEl(); return r ? Array.prototype.slice.call(r.querySelectorAll("polygon")).filter(function (el) { return el.hasAttribute("stroke-linejoin"); }) : []; } // grid UI faces only: the app parks its own drag-marquee polygon there (index.js drawDragZone) and it carries no stroke-linejoin
++  function pointGroups() { var r = pointsEl(); return r ? Array.prototype.slice.call(r.querySelectorAll("svg")) : []; }
++  function colorWrappers() { return tidAll("pp-colors-bar", ".colors .color-wrapper"); }
++  function swatches() { return tidAll("pp-colors-bar", ".colors .swatch"); }
++  function pickers() { return tidAll("pp-colors-bar", ".colors .colorpicker-wrapper"); }
++  function pickerInputs() { return tidAll("pp-colors-bar", ".colors .colorpicker"); }
++  function toolEls() { return tidAll("pp-tools-bar", ".tools .tool"); }
++  function sliderEl(which) {
++    if (which === "rotate") return tid("pp-slider-rotate", ".bottom-ui .rotate");
++    return tid("pp-slider-scale", ".bottom-ui .scale");
++  }
++  function btnEl(which) {
++    var map = {
++      save: ["pp-btn-save", ".save"], load: ["pp-btn-load", ".load"], reset: ["pp-btn-reset", ".reset"],
++      download: ["pp-btn-download", ".download"], undo: ["pp-btn-undo", ".undo"], del: ["pp-btn-delete", ".delete"],
++      zup: ["pp-btn-z-up", ".z-up"], zdown: ["pp-btn-z-down", ".z-down"],
++      extrudeLine: ["pp-btn-extrude-line", ".extrude[type='line']"],
++      extrudePoint: ["pp-btn-extrude-point", ".extrude[type='point']"]
++    };
++    var m = map[which];
++    return m ? tid(m[0], m[1]) : null;
++  }
++
++  // ---- canonical geometry: rounded integers, sorted numerically by x then y ----
++  function canon(list) {
++    if (!list || !list.length) return "";
++    var pairs = [];
++    for (var i = 0; i < list.length; i++) {
++      var p = list[i];
++      if (!p || typeof p.x !== "number" || typeof p.y !== "number") return "ERR:bad-point";
++      pairs.push([Math.round(p.x), Math.round(p.y)]);
++    }
++    pairs.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
++    var out = [];
++    for (var j = 0; j < pairs.length; j++) out.push("(" + pairs[j][0] + "," + pairs[j][1] + ")");
++    return out.join("|");
++  }
++  function extent(list, key, wantMax) {
++    if (!list || !list.length) return -1;
++    var v = Math.round(list[0][key]);
++    for (var i = 1; i < list.length; i++) {
++      var c = Math.round(list[i][key]);
++      if (wantMax ? c > v : c < v) v = c;
++    }
++    return v;
++  }
++  function num(v, dflt) { return (typeof v === "number" && isFinite(v)) ? v : dflt; }
++  function str(v) { return (v === null || v === undefined) ? "" : String(v); }
++
++  // ---- fixtures -------------------------------------------------------------
++  // Every fixture pins the six default colours so that a picture round-trip can never
++  // be confused with a palette round-trip: the palette faces are asserted separately.
++  function sq(x0, y0, x1, y1) {
++    return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
++  }
++  function pic(grids) { return { grids: grids, colors: DEF6.slice() }; }
++  var FIXTURES = {
++    // one triangle, colour 0
++    tri: function () {
++      return pic([{ points: [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }], fillColorIndex: 0 }]);
++    },
++    // one quadrilateral, colour 0
++    square: function () {
++      return pic([{ points: sq(300, 250, 460, 410), fillColorIndex: 0 }]);
++    },
++    // two overlapping squares: z-order is the observable (grid 0 under grid 1)
++    overlap: function () {
++      return pic([
++        { points: sq(100, 100, 260, 260), fillColorIndex: 0 },
++        { points: sq(180, 180, 340, 340), fillColorIndex: 1 }
++      ]);
++    },
++    // two disjoint squares with caller-chosen colour indexes
++    pair: function (a, b) {
++      return pic([
++        { points: sq(100, 100, 260, 260), fillColorIndex: num(a, 0) },
++        { points: sq(400, 100, 560, 260), fillColorIndex: num(b, 0) }
++      ]);
++    },
++    // triangle + disjoint square, different colour indexes (7 distinct vertices)
++    triq: function () {
++      return pic([
++        { points: [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }], fillColorIndex: 0 },
++        { points: sq(500, 150, 660, 310), fillColorIndex: 3 }
++      ]);
++    }
++  };
++
++  // ---- events ---------------------------------------------------------------
++  function mev(type, x, y) {
++    return new MouseEvent(type, {
++      bubbles: true, cancelable: true, view: window,
++      clientX: x, clientY: y, screenX: x, screenY: y, button: 0, buttons: type === "mouseup" ? 0 : 1
++    });
++  }
++  function send(el, ev) { if (!el) return "ERR:no-element"; try { el.dispatchEvent(ev); return "ok"; } catch (e) { return "ERR:" + String((e && e.message) || e); } }
++  function keyEv(type, code) {
++    var ev = new KeyboardEvent(type, { bubbles: true, cancelable: true, view: window, key: "Shift" });
++    try { Object.defineProperty(ev, "keyCode", { get: function () { return code; } }); } catch (e) { /* ignore */ }
++    try { Object.defineProperty(ev, "which", { get: function () { return code; } }); } catch (e) { /* ignore */ }
++    return ev;
++  }
++
++  // ---- frozen snapshots ------------------------------------------------------
++  var frozen = {};
++  var baselineGlobals = [];
++
++  // ---- PURE READ snapshot ----------------------------------------------------
++  function snapshot() {
++    var pts = rd("points", null); pts = (pts && pts.length !== undefined) ? pts : [];
++    var grs = rd("grids", null); grs = (grs && grs.length !== undefined) ? grs : [];
++    var cols = rd("availableColors", null); cols = (cols && cols.length !== undefined) ? cols : [];
++    var hist = rd("pictureHistory", null); hist = (hist && hist.length !== undefined) ? hist : [];
++    var mouse = rd("mouse", {}) || {};
++    var settings = rd("settings", {}) || {};
++    var cloned = rd("clonedGrid", null);
++    var s = {};
++
++    s.ready = !!(canvasEl() && num(rd("frameCount", 0), 0) >= 1);
++    s.probeVersion = 1;
++
++    // geometry
++    s.pointCount = pts.length;
++    s.gridCount = grs.length;
++    s.canonPoints = canon(pts);
++    s.maxPointX = extent(pts, "x", true);
++    s.minPointX = extent(pts, "x", false);
++    s.maxPointY = extent(pts, "y", true);
++    s.minPointY = extent(pts, "y", false);
++    s.selectedPointCount = pts.filter(function (p) { return !!p.selected; }).length;
++    s.selectedGridCount = grs.filter(function (g) { return !!g.selected; }).length;
++
++    // per-grid faces (grid index == creation order == DOM order in this editor)
++    function gridAt(i) { return (i < grs.length) ? grs[i] : null; }
++    function gridPoints(i) { var g = gridAt(i); return (g && g.points) ? g.points : []; }
++    s.grid0PointCount = gridAt(0) ? gridPoints(0).length : -1;
++    s.grid1PointCount = gridAt(1) ? gridPoints(1).length : -1;
++    s.grid0Canon = gridAt(0) ? canon(gridPoints(0)) : "";
++    s.grid1Canon = gridAt(1) ? canon(gridPoints(1)) : "";
++    s.grid0MinX = extent(gridPoints(0), "x", false);
++    s.grid1MinX = extent(gridPoints(1), "x", false);
++    s.grid0MinY = extent(gridPoints(0), "y", false);
++    s.grid1MinY = extent(gridPoints(1), "y", false);
++    s.grid0MaxX = extent(gridPoints(0), "x", true);
++    s.grid1MaxX = extent(gridPoints(1), "x", true);
++    s.fillColorIndexJoin = grs.map(function (g) { return str(g.fillColorIndex); }).join(",");
++    s.fillIndexOfGrid0 = gridAt(0) ? num(gridAt(0).fillColorIndex, -1) : -1;
++    s.fillIndexOfGrid1 = gridAt(1) ? num(gridAt(1).fillColorIndex, -1) : -1;
++    s.fillOfGrid0 = gridAt(0) ? str(cols[num(gridAt(0).fillColorIndex, -1)]) : "";
++    s.fillOfGrid1 = gridAt(1) ? str(cols[num(gridAt(1).fillColorIndex, -1)]) : "";
++    s.zIndexJoin = grs.map(function (g) { return str(num(g.zIndex, -1)); }).join(",");
++    s.modeJoin = grs.map(function (g) { return str(g.mode || ""); }).join(",");
++    s.pulseOnGrid0 = !!(gridAt(0) && gridAt(0).svgEl && gridAt(0).svgEl.classList && gridAt(0).svgEl.classList.contains("pulse"));
++    s.pulseOnGrid1 = !!(gridAt(1) && gridAt(1).svgEl && gridAt(1).svgEl.classList && gridAt(1).svgEl.classList.contains("pulse"));
++    s.pulseCount = grs.filter(function (g) {
++      return !!(g.svgEl && g.svgEl.classList && g.svgEl.classList.contains("pulse"));
++    }).length;
++
++    // rendered DOM faces (cross-layer: state -> SVG attribute)
++    var polys = polygons();
++    s.domPolygonCount = polys.length;
++    s.domPolygonFill0 = polys[0] ? str(polys[0].getAttribute("fill")) : "";
++    s.domPolygonFill1 = polys[1] ? str(polys[1].getAttribute("fill")) : "";
++    s.domPolygonPoints0 = polys[0] ? str(polys[0].getAttribute("points")).replace(/\s+/g, " ").trim() : "";
++    s.domPolygon0Pulse = !!(polys[0] && polys[0].classList && polys[0].classList.contains("pulse"));
++    s.domPolygon1Pulse = !!(polys[1] && polys[1].classList && polys[1].classList.contains("pulse"));
++    s.domPulseCount = polys.filter(function (el) { return el.classList && el.classList.contains("pulse"); }).length;
++    s.domPointGroupCount = pointGroups().length;
++    s.domUiPolygonCount = uiPolygons().length;
++    s.domUiSelectedCount = uiPolygons().filter(function (el) { return str(el.getAttribute("stroke-width")) === "2"; }).length;
++    s.domCanvasPresent = !!canvasEl();
++    s.domSvgImagePresent = !!imageEl();
++    s.domSvgPointsPresent = !!pointsEl();
++
++    // history / undo
++    s.histLen = hist.length;
++    s.histLenGe1 = hist.length >= 1;
++    s.histLenGe2 = hist.length >= 2;
++
++    // palette
++    s.paletteLen = cols.length;
++    s.paletteJoin = cols.map(str).join("|");
++    for (var ci = 0; ci < 8; ci++) s["paletteAt" + ci] = (ci < cols.length) ? str(cols[ci]) : "";
++    var sw = swatches();
++    s.swatchCount = sw.length;
++    s.swatchColorAttrJoin = sw.map(function (el) { return str(el.getAttribute("color")); }).join("|");
++    s.swatchColorAttr2 = sw[2] ? str(sw[2].getAttribute("color")) : "";
++    s.colorWrapperCount = colorWrappers().length;
++    s.selectedColorIndex = num(rd("selectedColorIndex", -1), -1);
++    s.selectedColorWrapperCount = qa(".colors .color-wrapper.selected").length;
++
++    // tools / mode
++    s.selectedTool = str(rd("selectedTool", ""));
++    s.canvasToolAttr = canvasEl() ? str(canvasEl().getAttribute("tool")) : "";
++    var tsel = q(".tools .tool.selected");
++    s.toolSelectedName = tsel ? str(tsel.getAttribute("name")) : "";
++    s.toolCount = toolEls().length;
++    s.extrudeMode = str(settings.extrudeMode || "");
++    var exSel = q(".extrude.selected");
++    s.extrudeSelectedType = exSel ? str(exSel.getAttribute("type")) : "";
++
++    // pointer / interaction state
++    s.mouseX = num(mouse.x, -1);
++    s.mouseY = num(mouse.y, -1);
++    s.mousePressed = !!mouse.pressed;
++    s.mousePressedAnywhere = !!mouse.pressedAnywhere;
++    s.mouseDragging = !!mouse.dragging;
++    s.shiftPressed = !!mouse.shiftPressed;
++    s.snapshotTakenTrue = rd("snapshotTaken", null) === true;
++    s.clonedGridPresent = !!(cloned && cloned.grid);
++    s.clonedGridMode = (cloned && cloned.grid) ? str(cloned.grid.mode || "") : "";
++    s.previousScale = num(rd("previousScale", -999), -999);
++    s.previousRotation = num(rd("previousRotation", -999), -999);
++    var scEl = sliderEl("scale"), roEl = sliderEl("rotate");
++    s.scaleSliderValue = scEl ? num(Number(scEl.value), -999) : -999;
++    s.rotateSliderValue = roEl ? num(Number(roEl.value), -999) : -999;
++    s.frameCount = num(rd("frameCount", -1), -1);
++
++    // persistence / residue (read only)
++    var lsLen = -1, lsPicture = "ERR", ssLen = -1, cookie = "ERR";
++    try { lsLen = window.localStorage.length; } catch (e) { lsLen = -1; }
++    try { lsPicture = str(window.localStorage.getItem("picture") || ""); } catch (e) { lsPicture = "ERR"; }
++    try { ssLen = window.sessionStorage.length; } catch (e) { ssLen = -1; }
++    try { cookie = str(document.cookie || ""); } catch (e) { cookie = "ERR"; }
++    s.lsLen = lsLen;
++    s.lsPicture = lsPicture;
++    s.lsPictureLen = (lsPicture === "ERR") ? -1 : lsPicture.length;
++    s.lsHasColors = (function () {
++      try { var o = JSON.parse(lsPicture); return !!(o && o.colors && o.colors.length); } catch (e) { return false; }
++    })();
++    s.lsGridCount = (function () {
++      try { var o = JSON.parse(lsPicture); return (o && o.grids && o.grids.length) ? o.grids.length : -1; } catch (e) { return -1; }
++    })();
++    s.ssLen = ssLen;
++    s.cookieLen = (cookie === "ERR") ? -1 : cookie.length;
++    s.locHash = str(location.hash || "");
++    s.locSearch = str(location.search || "");
++    s.locPathname = str(location.pathname || "");
++
++    // global residue: __-prefixed own window keys that were not there at markGlobals()
++    s.residueNewCount = (function () {
++      try {
++        var now = Object.keys(window).filter(function (k) { return k.indexOf("__") === 0; });
++        var n = 0;
++        for (var i = 0; i < now.length; i++) if (baselineGlobals.indexOf(now[i]) < 0) n++;
++        return n;
++      } catch (e) { return -1; }
++    })();
++
++    // offline proof: no cross-origin subresource was ever fetched
++    s.extResourceCount = (function () {
++      try {
++        var rs = performance.getEntriesByType("resource");
++        var n = 0;
++        for (var i = 0; i < rs.length; i++) {
++          try { if (new URL(rs[i].name).origin !== location.origin) n++; } catch (e) { /* ignore */ }
++        }
++        return n;
++      } catch (e) { return -1; }
++    })();
++    s.resourceCount = (function () {
++      try { return performance.getEntriesByType("resource").length; } catch (e) { return -1; }
++    })();
++
++    s.frozen = frozen;
++    s.baselineGlobals = baselineGlobals;
++    return s;
++  }
++
++  function snap(tag) {
++    var s = snapshot();
++    var copy = {};
++    for (var k in s) { if (k !== "frozen" && k !== "baselineGlobals") copy[k] = s[k]; }
++    frozen[str(tag)] = copy;
++    return "ok:" + str(tag);
++  }
++
++  // ---- SETUP-ONLY command surface -------------------------------------------
++  var X = {};
++
++  X.ready = function (ms) {
++    var budget = num(ms, 15000);
++    var t0 = Date.now();
++    return new Promise(function (resolve) {
++      (function poll() {
++        var okBoot = false;
++        try { okBoot = !!(canvasEl() && num(rd("frameCount", 0), 0) >= 1 && rd("points", null) !== null && rd("grids", null) !== null); } catch (e) { okBoot = false; }
++        if (okBoot) { resolve(true); return; }
++        if (Date.now() - t0 > budget) { resolve(false); return; }
++        setTimeout(poll, 50);
++      })();
++    });
++  };
++
++  X.markGlobals = function () {
++    try { baselineGlobals = Object.keys(window).filter(function (k) { return k.indexOf("__") === 0; }); } catch (e) { baselineGlobals = []; }
++    return "ok:" + baselineGlobals.length;
++  };
++  X.resetFrozen = function () { frozen = {}; return "ok"; };
++  X.resetHistory = function () {
++    var h = rd("pictureHistory", null);
++    if (h && h.length !== undefined) { h.length = 0; return "ok"; }
++    return "ERR:no-pictureHistory";
++  };
++  X.resetMouse = function () {
++    var m = rd("mouse", null);
++    if (!m) return "ERR:no-mouse";
++    m.pressed = false; m.pressedAnywhere = false; m.dragging = false; m.shiftPressed = false;
++    var cg = rd("clonedGrid", null);
++    if (cg) cg.grid = false;
++    callGlobal("frameLoop", []);
++    return "ok";
++  };
++  // one call that puts the page into a known, boot-equivalent state for a checkpoint
++  X.reset = function () { X.markGlobals(); X.resetFrozen(); X.resetHistory(); return "ok"; };
++
++  X.clearStorage = function () {
++    try { window.localStorage.clear(); } catch (e) { /* ignore */ }
++    try { window.sessionStorage.clear(); } catch (e) { /* ignore */ }
++    return "ok";
++  };
++
++  X.loadFixture = function (name, a, b) {
++    var f = FIXTURES[str(name)];
++    if (!f) return "ERR:unknown-fixture:" + str(name);
++    var pic2 = f(a, b);
++    var r = callGlobal("loadPicture", [pic2]);
++    if (r !== true) return "ERR:loadPicture:" + str(r);
++    return "ok:" + str(name);
++  };
++  X.loadPictureRaw = function (obj) { return str(callGlobal("loadPicture", [obj])); };
++  X.frame = function () { return str(callGlobal("frameLoop", [])); };
++  X.nudge = function () {
++    var m = rd("mouse", { x: 0, y: 0 }) || { x: 0, y: 0 };
++    return send(window, mev("mousemove", num(m.x, 0), num(m.y, 0)));
++  };
++
++  // pointer: the editor listens for mousemove/mouseup on window and for mousedown on
++  // the canvas wrapper (bubbling to window), so dispatch exactly there.
++  X.moveTo = function (x, y) { return send(window, mev("mousemove", num(x, 0), num(y, 0))); };
++  // point hover state is computed from the PREVIOUS pointer position, so a hover needs
++  // two moves: the first parks the pointer, the second evaluates against it.
++  X.aimAt = function (x, y) {
++    var r1 = X.moveTo(x, y);
++    var r2 = X.moveTo(x, y);
++    return (r1 === "ok" && r2 === "ok") ? "ok" : str(r1) + "/" + str(r2);
++  };
++  X.downAt = function (x, y) {
++    var el = canvasEl();
++    return send(el, mev("mousedown", num(x, 0), num(y, 0)));
++  };
++  X.up = function () { return send(window, mev("mouseup", num(rd("mouse", {}).x, 0), num(rd("mouse", {}).y, 0))); };
++  X.upAt = function (x, y) { return send(window, mev("mouseup", num(x, 0), num(y, 0))); };
++  X.clickAt = function (x, y) {
++    var a = X.aimAt(x, y), d = X.downAt(x, y), u = X.up();
++    return (a === "ok" && d === "ok" && u === "ok") ? "ok" : a + "/" + d + "/" + u;
++  };
++  // drag in `steps` equal moves from the current pointer position
++  X.dragBy = function (dx, dy, steps) {
++    var m = rd("mouse", { x: 0, y: 0 }) || { x: 0, y: 0 };
++    var n = Math.max(1, num(steps, 1));
++    var x = num(m.x, 0), y = num(m.y, 0);
++    for (var i = 1; i <= n; i++) {
++      var r = X.moveTo(Math.round(x + (num(dx, 0) * i) / n), Math.round(y + (num(dy, 0) * i) / n));
++      if (r !== "ok") return r;
++    }
++    return "ok";
++  };
++  X.dragTo = function (x, y) {
++    var m = rd("mouse", { x: 0, y: 0 }) || { x: 0, y: 0 };
++    return X.dragBy(num(x, 0) - num(m.x, 0), num(y, 0) - num(m.y, 0), 1);
++  };
++
++  X.keyDown = function (code) { return send(window, keyEv("keydown", num(code, 0))); };
++  X.keyUp = function (code) { return send(window, keyEv("keyup", num(code, 0))); };
++
++  // real clicks on real controls
++  X.btn = function (which) {
++    var el = btnEl(str(which));
++    if (!el) return "ERR:no-button:" + str(which);
++    return send(el, mev("click", 0, 0));
++  };
++  X.tool = function (name) {
++    var els = toolEls();
++    for (var i = 0; i < els.length; i++) {
++      if (str(els[i].getAttribute("name")) === str(name)) return send(els[i], mev("click", 0, 0));
++    }
++    return "ERR:no-tool:" + str(name);
++  };
++  X.extrudeMode = function (mode) {
++    var el = btnEl(mode === "line" ? "extrudeLine" : "extrudePoint");
++    if (!el) return "ERR:no-extrude-button";
++    return send(el, mev("click", 0, 0));
++  };
++  X.swatch = function (i) {
++    var els = swatches();
++    if (!els[num(i, -1)]) return "ERR:no-swatch:" + str(i);
++    return send(els[num(i, -1)], mev("click", 0, 0));
++  };
++  X.addColorAt = function (i) {
++    var w = colorWrappers()[num(i, -1)];
++    if (!w) return "ERR:no-color-wrapper:" + str(i);
++    var el = w.querySelector(".add");
++    return el ? send(el, mev("click", 0, 0)) : "ERR:no-add-control";
++  };
++  X.deleteColorAt = function (i) {
++    var w = colorWrappers()[num(i, -1)];
++    if (!w) return "ERR:no-color-wrapper:" + str(i);
++    var el = w.querySelector(".delete");
++    return el ? send(el, mev("click", 0, 0)) : "ERR:no-delete-control";
++  };
++  X.setColorAt = function (i, hex) {
++    var inp = pickerInputs()[num(i, -1)];
++    if (!inp) return "ERR:no-colorpicker:" + str(i);
++    try { inp.value = str(hex); } catch (e) { return "ERR:value:" + String((e && e.message) || e); }
++    return send(inp, new Event("change", { bubbles: true }));
++  };
++  X.hoverPicker = function (i) {
++    var w = pickers()[num(i, -1)];
++    if (!w) return "ERR:no-picker-wrapper:" + str(i);
++    return send(w, mev("mouseover", 0, 0));
++  };
++  X.unhoverPicker = function (i) {
++    var w = pickers()[num(i, -1)];
++    if (!w) return "ERR:no-picker-wrapper:" + str(i);
++    return send(w, mev("mouseout", 0, 0));
++  };
++
++  // sliders: mousedown on the input (the app pushes a history snapshot there, and the
++  // event bubbles to window so the app's "pressed anywhere" flag is set), then a real
++  // `input` event for the value change, then the app's own `change` reset, then a window
++  // mouseup so the pointer state returns to rest exactly as it would for a user.
++  X.sliderDown = function (which) {
++    var el = sliderEl(str(which));
++    if (!el) return "ERR:no-slider:" + str(which);
++    return send(el, mev("mousedown", 0, 0));
++  };
++  X.sliderSet = function (which, value) {
++    var el = sliderEl(str(which));
++    if (!el) return "ERR:no-slider:" + str(which);
++    try { el.value = String(num(value, 0)); } catch (e) { return "ERR:value:" + String((e && e.message) || e); }
++    return send(el, new Event("input", { bubbles: true }));
++  };
++  X.sliderChange = function (which) {
++    var el = sliderEl(str(which));
++    if (!el) return "ERR:no-slider:" + str(which);
++    return send(el, new Event("change", { bubbles: true }));
++  };
++  // one full gesture: press, move to `value`, release (the app resets the slider itself)
++  X.sliderGesture = function (which, value, withChange) {
++    var d = X.sliderDown(which);
++    var s = X.sliderSet(which, value);
++    var c = (withChange === false) ? "ok" : X.sliderChange(which);
++    var u = X.up();
++    return (d === "ok" && s === "ok" && c === "ok" && u === "ok") ? "ok" : d + "/" + s + "/" + c + "/" + u;
++  };
++  // press + release without moving: the history snapshot without any geometry change
++  X.pressSlider = function (which) {
++    var d = X.sliderDown(which);
++    var u = X.up();
++    return (d === "ok" && u === "ok") ? "ok" : d + "/" + u;
++  };
++
++  X.snap = snap;
++  X.snapshot = snapshot;
++  X.fixtureNames = function () { return Object.keys(FIXTURES).join(","); };
++
++  try {
++    window.__PPQ__ = snapshot;
++    window.__PPX__ = X;
++  } catch (e) { /* the harness will report the missing bridge */ }
++})();

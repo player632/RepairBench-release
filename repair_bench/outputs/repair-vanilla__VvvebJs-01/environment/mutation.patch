@@ -1,0 +1,122 @@
+diff --git a/editor.html b/editor.html
+index 0c0dae7..ace9fc6 100644
+--- a/editor.html
++++ b/editor.html
+@@ -2863,7 +2863,6 @@ Unzip the latest ckeditor release zip from https://github.com/ckeditor/ckeditor4
+ 
+ 	Vvveb.Gui.init();
+ 	Vvveb.FileManager.init();
+-	Vvveb.SectionList.init();
+ 	Vvveb.StyleList.init();
+ 	Vvveb.TreeList.init();
+ 	Vvveb.Breadcrumb.init();
+diff --git a/libs/builder/builder.js b/libs/builder/builder.js
+index 6703d4a..8ebc095 100644
+--- a/libs/builder/builder.js
++++ b/libs/builder/builder.js
+@@ -1124,7 +1124,6 @@ Vvveb.Builder = {
+ 		document.getElementById("select-box").style.display = "none";
+ 		
+ 		self.initCallback = callback;
+-		if (Vvveb.Builder.iframe.src != url) Vvveb.Builder.iframe.src = url;
+ 	},
+ 	
+ /* iframe */
+@@ -1226,8 +1225,9 @@ Vvveb.Builder = {
+ 			}
+ 		};		
+ 		
+-		Vvveb.Builder.frameBody.addEventListener("vvveb.undo.add", setSaveButtonState);		
+-		Vvveb.Builder.frameBody.addEventListener("vvveb.undo.restore", setSaveButtonState);		
++		window.addEventListener("vvveb.undo.add", setSaveButtonState);		
++		window.addEventListener("vvveb.undo.restore", setSaveButtonState);		
++		Vvveb.Builder._initBox();
+     },	
+     
+     _getElementType: function(el) {
+@@ -2746,7 +2746,6 @@ Vvveb.Gui = {
+ 	},
+ 	
+ 	preview : function () {
+-		(Vvveb.Builder.isPreview == true)?Vvveb.Builder.isPreview = false:Vvveb.Builder.isPreview = true;
+ 		document.getElementById("iframe-layer").classList.toggle("d-none");
+ 		document.getElementById("vvveb-builder").classList.toggle("preview");
+ 	},
+@@ -4014,16 +4013,7 @@ Vvveb.FileManager = {
+ 			}
+ 		});
+ 		
+-		this.tree.addEventListener("click", function (e) {
+-			let element = event.target.closest("li[data-page] label");
+-			if (element) {
+-				let page = element.parentNode.dataset.page;
+-				if (page) Vvveb.FileManager.loadPage(page, allowedComponents);
+-				e.preventDefault();
+-				return false;			
+-			}
+-		});
+-		
++
+ 		this.tree.addEventListener("click", function (e) {
+ 			let element = event.target.closest("li[data-component] label");
+ 			if (element) {
+@@ -4285,7 +4275,6 @@ Vvveb.FileManager = {
+ 				function () { 
+ 					if (loadComponents) { Vvveb.FileManager.loadComponents(allowedComponents); }
+ 					Vvveb.SectionList.loadSections(allowedComponents); 
+-					Vvveb.TreeList.loadComponents(); 
+ 					Vvveb.StyleManager.init(); 
+ 				});
+ 		}
+diff --git a/libs/builder/components-bootstrap5.js b/libs/builder/components-bootstrap5.js
+index cd9135e..f8a825e 100644
+--- a/libs/builder/components-bootstrap5.js
++++ b/libs/builder/components-bootstrap5.js
+@@ -63,7 +63,7 @@ Vvveb.Components.extend("_base", "html/container", {
+     }],
+ });
+ 
+-Vvveb.Components.extend("html/link", "html/btn", {
++Vvveb.Components.extend("_base", "html/btn", {
+     classes: ["btn"],
+     nodes: null,
+     name: "Button",
+diff --git a/libs/builder/inputs.js b/libs/builder/inputs.js
+index ac5a184..632f76e 100644
+--- a/libs/builder/inputs.js
++++ b/libs/builder/inputs.js
+@@ -113,7 +113,6 @@ let CheckboxInput = { ...Input, ...{
+ 	
+ 	onCheck: function(event, node, input) {
+ 		input.value = this.checked;
+-		return input.onChange.call(this, event, node, input);
+ 	},
+ 
+ 	setValue: function(value) {
+diff --git a/libs/builder/plugin-codemirror.js b/libs/builder/plugin-codemirror.js
+index 3b26716..7ff8f42 100644
+--- a/libs/builder/plugin-codemirror.js
++++ b/libs/builder/plugin-codemirror.js
+@@ -50,8 +50,6 @@ Vvveb.CodeEditor = {
+ 			Vvveb.Builder.frameBody.addEventListener("vvveb.undo.add", () => Vvveb.CodeEditor.setValue());
+ 			Vvveb.Builder.frameBody.addEventListener("vvveb.undo.restore", () => Vvveb.CodeEditor.setValue());
+ 			
+-			//load code when a new url is loaded
+-			Vvveb.Builder.documentFrame.addEventListener("load", () => Vvveb.CodeEditor.setValue());
+ 			window.addEventListener("vvveb.Builder.selectNode", (e) => Vvveb.CodeEditor.setSelection(e));
+ 		}
+ 		
+diff --git a/libs/builder/undo.js b/libs/builder/undo.js
+index 0e0927c..3090651 100644
+--- a/libs/builder/undo.js
++++ b/libs/builder/undo.js
+@@ -64,7 +64,8 @@ Vvveb.Undo = {
+ 			this.mutations.push(mutation);
+ 			this.undoIndex++;
+ 		*/
+-		this.mutations.splice(++this.undoIndex, this.mutations.length - this.undoIndex, mutation);
++		this.mutations.push(mutation);
++		this.undoIndex++;
+ 		const event = new CustomEvent("vvveb.undo.add", {detail: mutation});
+ 		Vvveb.Builder.frameBody.dispatchEvent(event);
+ 	 },

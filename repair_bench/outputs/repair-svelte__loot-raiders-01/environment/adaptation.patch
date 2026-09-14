@@ -1,0 +1,293 @@
+diff --git a/package.json b/package.json
+index d03014c..6237915 100644
+--- a/package.json
++++ b/package.json
+@@ -21,6 +21,7 @@
+ 	"devDependencies": {
+ 		"@eslint/compat": "^1.4.0",
+ 		"@eslint/js": "^9.39.1",
++		"@sveltejs/adapter-static": "^3.0.10",
+ 		"@sveltejs/adapter-vercel": "^6.2.0",
+ 		"@sveltejs/kit": "^2.49.1",
+ 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+diff --git a/src/app.html b/src/app.html
+index c8b93d0..afa0cf0 100644
+--- a/src/app.html
++++ b/src/app.html
+@@ -10,13 +10,6 @@
+ 		<link rel="manifest" href="/manifest.webmanifest" />
+ 		<meta name="theme-color" content="#0b0c15" />
+ 
+-		<link rel="preconnect" href="https://fonts.googleapis.com" />
+-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+-		<link
+-			href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@700;800&display=swap"
+-			rel="stylesheet"
+-		/>
+-
+ 		<link rel="icon" href="/icon-192.png" />
+ 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+ 		<meta name="apple-mobile-web-app-capable" content="yes" />
+diff --git a/src/lib/components/leaderboard/leaderboard-modal.svelte b/src/lib/components/leaderboard/leaderboard-modal.svelte
+index 2596813..9e66ccd 100644
+--- a/src/lib/components/leaderboard/leaderboard-modal.svelte
++++ b/src/lib/components/leaderboard/leaderboard-modal.svelte
+@@ -1,7 +1,7 @@
+ <script lang="ts">
+ 	import { fade, scale } from 'svelte/transition';
+ 	import { getGameContext } from '$lib/store/game.svelte';
+-	import { getLeaderboard } from '$lib/leaderboard/leaderboard.remote';
++	import { getLeaderboard } from '$lib/leaderboard/leaderboard-local';
+ 	import { formatTime } from '$lib/utils';
+ 	import Cross from '$lib/ui-icon/cross.svelte';
+ 	import Trophy from '$lib/ui-icon/trophy.svelte';
+diff --git a/src/lib/components/menu/game-over-stats.svelte b/src/lib/components/menu/game-over-stats.svelte
+index d628bee..dde60f1 100644
+--- a/src/lib/components/menu/game-over-stats.svelte
++++ b/src/lib/components/menu/game-over-stats.svelte
+@@ -14,7 +14,7 @@
+ 		NICK_MAX,
+ 		NICK_MIN
+ 	} from '$lib/leaderboard/schema';
+-	import { submitScore } from '$lib/leaderboard/leaderboard.remote';
++	import { submitScore } from '$lib/leaderboard/leaderboard-local';
+ 	import type { ItemRarity } from '$lib/types';
+ 	import Restart from '$lib/ui-icon/restart.svelte';
+ 	import Leaderboard from '$lib/ui-icon/leaderboard.svelte';
+diff --git a/src/lib/components/menu/menu-desktop.svelte b/src/lib/components/menu/menu-desktop.svelte
+index da03050..675f423 100644
+--- a/src/lib/components/menu/menu-desktop.svelte
++++ b/src/lib/components/menu/menu-desktop.svelte
+@@ -1,7 +1,7 @@
+ <script lang="ts">
+ 	import { getGameContext } from '$lib/store/game.svelte';
+ 	import { toggleFullscreen, enterFullscreen, isTouchDevice } from '$lib/fullscreen';
+-	import { getMyRank } from '$lib/leaderboard/leaderboard.remote';
++	import { getMyRank } from '$lib/leaderboard/leaderboard-local';
+ 	import AudioSettings from './audio-settings.svelte';
+ 	import Play from '$lib/ui-icon/play.svelte';
+ 	import Restart from '$lib/ui-icon/restart.svelte';
+diff --git a/src/lib/components/menu/menu-mobile.svelte b/src/lib/components/menu/menu-mobile.svelte
+index 70b862d..5fe635c 100644
+--- a/src/lib/components/menu/menu-mobile.svelte
++++ b/src/lib/components/menu/menu-mobile.svelte
+@@ -2,7 +2,7 @@
+ 	import { fly } from 'svelte/transition';
+ 	import { getGameContext } from '$lib/store/game.svelte';
+ 	import { toggleFullscreen, enterFullscreen, isTouchDevice } from '$lib/fullscreen';
+-	import { getMyRank } from '$lib/leaderboard/leaderboard.remote';
++	import { getMyRank } from '$lib/leaderboard/leaderboard-local';
+ 	import { formatTime } from '$lib/utils';
+ 	import { STAGES } from '$lib/config/stages';
+ 	import Play from '$lib/ui-icon/play.svelte';
+diff --git a/src/lib/leaderboard/leaderboard-local.ts b/src/lib/leaderboard/leaderboard-local.ts
+new file mode 100644
+index 0000000..66704eb
+--- /dev/null
++++ b/src/lib/leaderboard/leaderboard-local.ts
+@@ -0,0 +1,121 @@
++// Offline adaptation: replaces the SvelteKit remote functions (Upstash Redis backend) with a
++// deterministic local board so the game runs with zero network. The exported API keeps the
++// shape the components consume (`query.current`, `query.refresh()`, async submitScore).
++import { browser } from '$app/environment';
++import { LEADERBOARD_TOP_N } from './schema';
++import type { LeaderboardEntry, LeaderboardResponse, SubmitResponse } from './schema';
++
++const STORE_KEY = 'lr:local-board:v1';
++const LOCAL_PLAYER_ID = 'local-player';
++
++interface StoredRow {
++	playerId: string;
++	nickname: string;
++	extract: number;
++	time: number;
++	createdAt: number;
++}
++
++const SEED_ROWS: StoredRow[] = [
++	{ playerId: 'bot-wraithe', nickname: 'Wraithe', extract: 96200, time: 208, createdAt: 1750000007000 },
++	{ playerId: 'bot-kestrel', nickname: 'Kestrel', extract: 81400, time: 195, createdAt: 1750000006000 },
++	{ playerId: 'bot-marrow', nickname: 'Marrow', extract: 66900, time: 187, createdAt: 1750000005000 },
++	{ playerId: 'bot-sable', nickname: 'Sable', extract: 55250, time: 176, createdAt: 1750000004000 },
++	{ playerId: 'bot-vex', nickname: 'Vex', extract: 43800, time: 169, createdAt: 1750000003000 },
++	{ playerId: 'bot-rook', nickname: 'Rook', extract: 30150, time: 158, createdAt: 1750000002000 },
++	{ playerId: 'bot-nyx', nickname: 'Nyx', extract: 18700, time: 140, createdAt: 1750000001000 },
++	{ playerId: 'bot-ash', nickname: 'Ash', extract: 7300, time: 122, createdAt: 1750000000000 }
++];
++
++function loadLocalRows(): StoredRow[] {
++	try {
++		const raw = window.localStorage.getItem(STORE_KEY);
++		if (!raw) return [];
++		const parsed = JSON.parse(raw);
++		return Array.isArray(parsed) ? parsed : [];
++	} catch {
++		return [];
++	}
++}
++
++function saveLocalRows(rows: StoredRow[]): void {
++	try {
++		window.localStorage.setItem(STORE_KEY, JSON.stringify(rows));
++	} catch {
++		// storage unavailable — the in-memory board still works for the session
++	}
++}
++
++function boardEntries(): LeaderboardEntry[] {
++	const merged = [...SEED_ROWS, ...loadLocalRows()];
++	merged.sort((a, b) => b.extract - a.extract || a.createdAt - b.createdAt);
++	return merged.slice(0, LEADERBOARD_TOP_N);
++}
++
++function rankOf(entries: LeaderboardEntry[], playerId: string): number | null {
++	const index = entries.findIndex((e) => e.playerId === playerId);
++	return index === -1 ? null : index + 1;
++}
++
++function readBoard(): LeaderboardResponse {
++	const entries = boardEntries();
++	return {
++		entries,
++		myPlayerId: LOCAL_PLAYER_ID,
++		myRank: rankOf(entries, LOCAL_PLAYER_ID)
++	};
++}
++
++interface LocalQuery<T> {
++	current: T | undefined;
++	refresh: () => void;
++}
++
++export function getLeaderboard(): LocalQuery<LeaderboardResponse> {
++	const query: LocalQuery<LeaderboardResponse> = {
++		current: undefined,
++		refresh() {
++			if (browser) this.current = readBoard();
++		}
++	};
++	if (browser) query.current = readBoard();
++	return query;
++}
++
++export function getMyRank(): LocalQuery<number | null> {
++	const query: LocalQuery<number | null> = {
++		current: undefined,
++		refresh() {
++			if (browser) this.current = readBoard().myRank;
++		}
++	};
++	if (browser) query.current = readBoard().myRank;
++	return query;
++}
++
++export async function submitScore(input: {
++	nickname: string;
++	extract: number;
++	time: number;
++}): Promise<SubmitResponse> {
++	if (!browser) return { improved: false, rank: null };
++
++	const rows = loadLocalRows();
++	const existing = rows.find((r) => r.playerId === LOCAL_PLAYER_ID);
++	const improved = !existing || input.extract > existing.extract;
++
++	if (improved) {
++		const row: StoredRow = {
++			playerId: LOCAL_PLAYER_ID,
++			nickname: input.nickname,
++			extract: input.extract,
++			time: input.time,
++			createdAt: Date.now()
++		};
++		const next = rows.filter((r) => r.playerId !== LOCAL_PLAYER_ID);
++		next.push(row);
++		saveLocalRows(next);
++	}
++
++	return { improved, rank: rankOf(boardEntries(), LOCAL_PLAYER_ID) };
++}
+diff --git a/src/lib/leaderboard/leaderboard.remote.ts b/src/lib/leaderboard/leaderboard.remote.ts
+deleted file mode 100644
+index 254c5ea..0000000
+--- a/src/lib/leaderboard/leaderboard.remote.ts
++++ /dev/null
+@@ -1,47 +0,0 @@
+-import { command, getRequestEvent, query } from '$app/server';
+-import { error } from '@sveltejs/kit';
+-import * as db from '$lib/server/leaderboard-db';
+-import { rateLimit } from '$lib/server/rate-limit';
+-import { submitSchema } from '$lib/server/leaderboard-validation';
+-import type { LeaderboardResponse, SubmitResponse } from '$lib/leaderboard/schema';
+-
+-const SUBMIT_WINDOW_SEC = 60;
+-const SUBMIT_MAX_PER_PLAYER = 10;
+-const SUBMIT_MAX_PER_IP = 30;
+-
+-export const getLeaderboard = query(async (): Promise<LeaderboardResponse> => {
+-	const { locals } = getRequestEvent();
+-	const [entries, myRank] = await Promise.all([
+-		db.getTopEntries(),
+-		db.getPlayerRank(locals.playerId)
+-	]);
+-	return { entries, myPlayerId: locals.playerId, myRank };
+-});
+-
+-export const getMyRank = query(async (): Promise<number | null> => {
+-	const { locals } = getRequestEvent();
+-	return db.getPlayerRank(locals.playerId);
+-});
+-
+-export const submitScore = command(
+-	submitSchema,
+-	async ({ nickname, extract, time }): Promise<SubmitResponse> => {
+-		const event = getRequestEvent();
+-		const { playerId } = event.locals;
+-		const ip = event.getClientAddress();
+-
+-		const [playerOk, ipOk] = await Promise.all([
+-			rateLimit(`rl:submit:pid:${playerId}`, SUBMIT_MAX_PER_PLAYER, SUBMIT_WINDOW_SEC),
+-			rateLimit(`rl:submit:ip:${ip}`, SUBMIT_MAX_PER_IP, SUBMIT_WINDOW_SEC)
+-		]);
+-		if (!playerOk || !ipOk) {
+-			error(429, 'Too many submissions. Please wait a moment and try again.');
+-		}
+-
+-		const { improved } = await db.submitScore(playerId, nickname, extract, time);
+-		const rank = await db.getPlayerRank(playerId);
+-		void getLeaderboard().refresh();
+-
+-		return { improved, rank };
+-	}
+-);
+diff --git a/src/routes/+layout.ts b/src/routes/+layout.ts
+index fa9a18e..a3d1578 100644
+--- a/src/routes/+layout.ts
++++ b/src/routes/+layout.ts
+@@ -1,6 +1 @@
+-import { dev } from '$app/environment';
+-import { injectAnalytics } from '@vercel/analytics/sveltekit';
+-import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+-
+-injectAnalytics({ mode: dev ? 'development' : 'production' });
+-injectSpeedInsights();
++export const ssr = false;
+diff --git a/svelte.config.js b/svelte.config.js
+index 1a786aa..ada5bc5 100644
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,4 +1,4 @@
+-import adapter from '@sveltejs/adapter-vercel';
++import adapter from '@sveltejs/adapter-static';
+ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+ 
+ /** @type {import('@sveltejs/kit').Config} */
+@@ -8,7 +8,7 @@ const config = {
+ 	preprocess: vitePreprocess(),
+ 
+ 	kit: {
+-		adapter: adapter(),
++		adapter: adapter({ fallback: 'index.html', strict: false }),
+ 		experimental: { remoteFunctions: true }
+ 	}
+ };

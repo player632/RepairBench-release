@@ -1,0 +1,156 @@
+diff --git a/src/js/net/minecraft/client/GameSettings.js b/src/js/net/minecraft/client/GameSettings.js
+index 15845c0..76df4a3 100644
+--- a/src/js/net/minecraft/client/GameSettings.js
++++ b/src/js/net/minecraft/client/GameSettings.js
+@@ -27,7 +27,7 @@ export default class GameSettings {
+             for (let i = 0; i < ca.length; i++) {
+                 let c = ca[i];
+                 while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+-                if (c.indexOf(nameEQ) > 0) {
++                if (c.indexOf(nameEQ) === 0) {
+                     let value = c.substring(nameEQ.length, c.length);
+                     if (value.match(/^[0-9]+$/)) {
+                         value = parseInt(value);
+diff --git a/src/js/net/minecraft/client/Minecraft.js b/src/js/net/minecraft/client/Minecraft.js
+index 84ad35c..930731a 100644
+--- a/src/js/net/minecraft/client/Minecraft.js
++++ b/src/js/net/minecraft/client/Minecraft.js
+@@ -337,7 +337,7 @@ export default class Minecraft {
+         // Select slot
+         for (let i = 1; i <= 9; i++) {
+             if (button === 'Digit' + i) {
+-                this.player.inventory.selectedSlotIndex = i;
++                this.player.inventory.selectedSlotIndex = i - 1;
+             }
+         }
+ 
+@@ -356,6 +356,7 @@ export default class Minecraft {
+         // Toggle debug overlay
+         if (button === "F3") {
+             this.settings.debugOverlay = !this.settings.debugOverlay;
++            this.settings.save();
+         }
+ 
+         // Open inventory
+diff --git a/src/js/net/minecraft/client/command/CommandHandler.js b/src/js/net/minecraft/client/command/CommandHandler.js
+index 7852cc1..c328896 100644
+--- a/src/js/net/minecraft/client/command/CommandHandler.js
++++ b/src/js/net/minecraft/client/command/CommandHandler.js
+@@ -15,7 +15,7 @@ export default class CommandHandler {
+ 
+     handleMessage(message) {
+         let args = message.split(" ");
+-        let command = args[0];
++        let command = args[0].toLowerCase();
+         this.handleCommand(command, args.slice(1));
+     }
+ 
+diff --git a/src/js/net/minecraft/client/command/command/TeleportCommand.js b/src/js/net/minecraft/client/command/command/TeleportCommand.js
+index 9c9f22f..2258331 100644
+--- a/src/js/net/minecraft/client/command/command/TeleportCommand.js
++++ b/src/js/net/minecraft/client/command/command/TeleportCommand.js
+@@ -19,7 +19,7 @@ export default class TeleportCommand extends Command {
+             return false;
+         }
+ 
+-        minecraft.player.setPosition(x, z, y);
++        minecraft.player.setPosition(x, y, z);
+         minecraft.addMessageToChat("Teleported to " + x + " " + y + " " + z);
+ 
+         return true;
+diff --git a/src/js/net/minecraft/client/command/command/TimeCommand.js b/src/js/net/minecraft/client/command/command/TimeCommand.js
+index fdf1248..4599bb6 100644
+--- a/src/js/net/minecraft/client/command/command/TimeCommand.js
++++ b/src/js/net/minecraft/client/command/command/TimeCommand.js
+@@ -28,7 +28,7 @@ export default class TimeCommand extends Command {
+                 if (value === "day") {
+                     value = 1000;
+                 } else if (value === "night") {
+-                    value = 12000;
++                    value = 13000;
+                 } else {
+                     return false;
+                 }
+diff --git a/src/js/net/minecraft/client/gui/overlay/ChatOverlay.js b/src/js/net/minecraft/client/gui/overlay/ChatOverlay.js
+index b7d2436..8625384 100644
+--- a/src/js/net/minecraft/client/gui/overlay/ChatOverlay.js
++++ b/src/js/net/minecraft/client/gui/overlay/ChatOverlay.js
+@@ -54,7 +54,7 @@ export default class ChatOverlay extends Gui {
+ 
+     addMessage(message) {
+         for (let line of this.minecraft.fontRenderer.listFormattedStringToWidth(message, this.chatWidth)) {
+-            this.messages.push(new ChatLine(line));
++            this.messages.splice(0, 0, new ChatLine(line));
+         }
+         this.dirty = true;
+     }
+diff --git a/src/js/net/minecraft/client/gui/screens/GuiChat.js b/src/js/net/minecraft/client/gui/screens/GuiChat.js
+index ddf51b8..d71c2c9 100644
+--- a/src/js/net/minecraft/client/gui/screens/GuiChat.js
++++ b/src/js/net/minecraft/client/gui/screens/GuiChat.js
+@@ -49,12 +49,12 @@ export default class GuiChat extends GuiScreen {
+ 
+             // Add message to sent history
+             this.minecraft.ingameOverlay.chatOverlay.addMessageToSentHistory(message);
+-            this.minecraft.addMessageToChat(message);
++            this.minecraft.playerController.sendChatMessage(message);
+             return;
+         }
+ 
+         if (key === "ArrowUp" || key === "ArrowDown") {
+-            let up = key === "ArrowDown";
++            let up = key === "ArrowUp";
+             let history = this.minecraft.ingameOverlay.chatOverlay.sentHistory;
+ 
+             if (up) {
+diff --git a/src/js/net/minecraft/client/gui/screens/GuiMainMenu.js b/src/js/net/minecraft/client/gui/screens/GuiMainMenu.js
+index 5d671c4..cf2336a 100644
+--- a/src/js/net/minecraft/client/gui/screens/GuiMainMenu.js
++++ b/src/js/net/minecraft/client/gui/screens/GuiMainMenu.js
+@@ -14,7 +14,7 @@ export default class GuiMainMenu extends GuiScreen {
+         super();
+ 
+         this.panoramaTimer = 0;
+-        this.splashText = "Minecraft written in Javascript!";
++        this.splashText = "Minecraft written in JavaScript!";
+     }
+ 
+     init() {
+diff --git a/src/js/net/minecraft/client/gui/screens/GuiOptions.js b/src/js/net/minecraft/client/gui/screens/GuiOptions.js
+index 09faaba..9e747aa 100644
+--- a/src/js/net/minecraft/client/gui/screens/GuiOptions.js
++++ b/src/js/net/minecraft/client/gui/screens/GuiOptions.js
+@@ -29,7 +29,7 @@ export default class GuiOptions extends GuiScreen {
+             settings.fov = value;
+         }));
+         this.buttonList.push(new GuiSliderButton("Render Distance", settings.viewDistance, 2, 16, this.width / 2 - 100, y + 24 * 3, 200, 20, value => {
+-            settings.fov = value;
++            settings.viewDistance = value;
+         }));
+         this.buttonList.push(new GuiButton("Controls...", this.width / 2 - 100, y + 24 * 4, 200, 20, () => {
+             this.minecraft.displayScreen(new GuiControls(this));
+diff --git a/src/js/net/minecraft/client/gui/widgets/GuiKeyButton.js b/src/js/net/minecraft/client/gui/widgets/GuiKeyButton.js
+index d693a4a..b4a34a4 100644
+--- a/src/js/net/minecraft/client/gui/widgets/GuiKeyButton.js
++++ b/src/js/net/minecraft/client/gui/widgets/GuiKeyButton.js
+@@ -17,6 +17,7 @@ export default class GuiKeyButton extends GuiButton {
+     keyTyped(key) {
+         if (this.listening) {
+             this.string = this.name + ": " + key;
++            this.listening = false;
+             this.key = key;
+             this.callback();
+         }
+diff --git a/src/js/net/minecraft/client/inventory/inventory/InventoryPlayer.js b/src/js/net/minecraft/client/inventory/inventory/InventoryPlayer.js
+index 92f879b..663f9d9 100644
+--- a/src/js/net/minecraft/client/inventory/inventory/InventoryPlayer.js
++++ b/src/js/net/minecraft/client/inventory/inventory/InventoryPlayer.js
+@@ -26,7 +26,7 @@ export default class InventoryPlayer extends Inventory {
+         if (this.selectedSlotIndex + offset < 0) {
+             this.selectedSlotIndex = 9 + (this.selectedSlotIndex + offset);
+         } else {
+-            this.selectedSlotIndex = (this.selectedSlotIndex + offset) % 8;
++            this.selectedSlotIndex = (this.selectedSlotIndex + offset) % 9;
+         }
+     }
+ 

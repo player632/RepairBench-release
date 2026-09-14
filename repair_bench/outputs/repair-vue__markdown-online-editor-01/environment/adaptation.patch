@@ -1,0 +1,196 @@
+diff --git a/commands/vendor-offline-assets.js b/commands/vendor-offline-assets.js
+new file mode 100644
+index 0000000..c8cc730
+--- /dev/null
++++ b/commands/vendor-offline-assets.js
+@@ -0,0 +1,87 @@
++/** @format
++ * OFFLINE ADAPTATION (RepairBench) - prebuild/prestart asset vendoring.
++ *
++ * This REPLACES the two identical inline `node -e "...cpSync(...)"` one-liners that used to sit
++ * in package.json's "prestart" and "prebuild" scripts, and EXTENDS them. The original behaviour is
++ * preserved byte-for-byte (html-to-docx.browser.js is still copied from the installed
++ * @turbodocx/html-to-docx into public/vendor/, which is what src/pages/ExportDocx.vue:48 loads at
++ * runtime from /vendor/html-to-docx.browser.js); the same repository idiom - a small script under
++ * commands/ run by an npm pre-hook, sources taken from the already-installed node_modules - now
++ * also vendors the four Vditor assets that block editor start-up.
++ *
++ * WHY THIS IS MANDATORY AND NOT OPTIONAL: vditor@3.11.2 defaults its `cdn` option to
++ * https://unpkg.com/vditor@3.11.2 (node_modules/vditor/src/ts/constants.ts:51) and its constructor
++ * loads the i18n bundle with addScript(...).then(() => this.init(id, mergedOptions))
++ * (node_modules/vditor/src/index.ts:90-94), then loads lute.min.js the same way inside init()
++ * (node_modules/vditor/src/index.ts:521-525). Both initUI() and the caller's options.after() hook
++ * live INSIDE those network callbacks. Offline the promises never settle, so Main.vue's
++ * `after: () => { this.editorReady = true; ... }` (src/pages/Main.vue:150-158) never runs,
++ * isLoading stays true forever and the editor is a permanent spinner. That is a start-up-fatal
++ * ENVIRONMENT defect, so the assets are vendored locally and the two Vditor option objects are
++ * re-pointed at cdn: '/vditor' (public/ is copied verbatim into dist/ by vue-cli, so
++ * public/vditor/dist/... is served at /vditor/dist/...).
++ *
++ * Vendored (blocking / start-up critical):
++ *   dist/js/lute/lute.min.js        4,000,699 B  addScript(...).then() - BLOCKS init()
++ *   dist/js/i18n/zh_CN.js               2,564 B  addScript(...).then() - BLOCKS the constructor
++ *   dist/js/icons/ant.js               42,983 B  addScriptSync - toolbar SVG sprite
++ *   dist/css/content-theme/*.css       ~11 KB    addStyle (non-blocking, keeps the preview styled)
++ *
++ * Deliberately NOT vendored (all lazy, all non-blocking, none reachable from any checkpoint in
++ * this task; disclosed as environment degradation in instruction.md):
++ *   dist/js/highlight.js/**  (code-block themes + hljs runtime)
++ *   dist/js/katex/**         ($$..$$ math)
++ *   dist/js/mermaid/**  dist/js/echarts/**  (diagram / chart code fences)
++ *   dist/images/emoji/**     (the ':' emoji hint popover)
++ */
++const { cpSync, mkdirSync, existsSync, readdirSync } = require('fs')
++const path = require('path')
++
++const ROOT = path.resolve(__dirname, '..')
++const src = (...p) => path.join(ROOT, 'node_modules', ...p)
++const dst = (...p) => path.join(ROOT, 'public', ...p)
++
++let copied = 0
++let missing = 0
++
++function copyFile(from, to) {
++  if (!existsSync(from)) {
++    console.error('[vendor-offline-assets] MISSING source ' + from)
++    missing += 1
++    return
++  }
++  mkdirSync(path.dirname(to), { recursive: true })
++  cpSync(from, to)
++  copied += 1
++}
++
++function copyTree(from, to) {
++  if (!existsSync(from)) {
++    console.error('[vendor-offline-assets] MISSING source tree ' + from)
++    missing += 1
++    return
++  }
++  mkdirSync(to, { recursive: true })
++  for (const entry of readdirSync(from, { withFileTypes: true })) {
++    if (entry.isDirectory()) copyTree(path.join(from, entry.name), path.join(to, entry.name))
++    else copyFile(path.join(from, entry.name), path.join(to, entry.name))
++  }
++}
++
++// --- original behaviour, preserved: html-to-docx for the Word export page ---
++copyFile(
++  src('@turbodocx', 'html-to-docx', 'dist', 'html-to-docx.browser.js'),
++  dst('vendor', 'html-to-docx.browser.js')
++)
++
++// --- Vditor start-up assets, re-pointed at by cdn: '/vditor' ---
++copyFile(src('vditor', 'dist', 'js', 'lute', 'lute.min.js'), dst('vditor', 'dist', 'js', 'lute', 'lute.min.js'))
++copyFile(src('vditor', 'dist', 'js', 'i18n', 'zh_CN.js'), dst('vditor', 'dist', 'js', 'i18n', 'zh_CN.js'))
++copyFile(src('vditor', 'dist', 'js', 'icons', 'ant.js'), dst('vditor', 'dist', 'js', 'icons', 'ant.js'))
++copyTree(src('vditor', 'dist', 'css', 'content-theme'), dst('vditor', 'dist', 'css', 'content-theme'))
++
++console.log('[vendor-offline-assets] copied ' + copied + ' file(s), missing ' + missing)
++if (missing > 0) {
++  console.error('[vendor-offline-assets] FATAL: node_modules is incomplete, the editor cannot start offline')
++  process.exit(1)
++}
+diff --git a/package.json b/package.json
+index b616657..df667cd 100644
+--- a/package.json
++++ b/package.json
+@@ -6,9 +6,9 @@
+   "description": "Arya，是一款基于 Vue、Vditor，为未来而构建的在线 Markdown 编辑器；轻量且强大：内置粘贴 HTML 自动转换为 Markdown，支持 PPT 预览，以及绘制流程图、甘特图、时序图、任务列表、五线谱，可导出携带样式的图片、PDF、微信公众号特制的 HTML 等。",
+   "scripts": {
+     "start": "yarn serve",
+-    "prestart": "node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('public/vendor',{recursive:true});cpSync('node_modules/@turbodocx/html-to-docx/dist/html-to-docx.browser.js','public/vendor/html-to-docx.browser.js')\"",
++    "prestart": "node ./commands/vendor-offline-assets.js",
+     "serve": "vue-cli-service serve --open",
+-    "prebuild": "node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('public/vendor',{recursive:true});cpSync('node_modules/@turbodocx/html-to-docx/dist/html-to-docx.browser.js','public/vendor/html-to-docx.browser.js')\"",
++    "prebuild": "node ./commands/vendor-offline-assets.js",
+     "build": "vue-cli-service build",
+     "watcher": "onchange \"src/**/**/*.{js,css,scss,vue}\" -- prettier --write {{changed}}",
+     "prettier": "prettier --write \"src/**/**/*.{js,css,scss,vue}\"",
+diff --git a/public/index.html b/public/index.html
+index 3965032..8dff5c0 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -39,14 +39,18 @@
+   <meta property="og:image" content="https://markdown.lovejade.cn/mockup.png" />
+   <link rel="canonical" href="/" />
+ 
+-  <link rel="preconnect" href="https://fonts.googleapis.com" />
+-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+-  <link
+-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap"
+-    rel="stylesheet"
+-  />
+-  <!-- Google tag (gtag.js) -->
+-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-TMZBTKHJQM"></script>
++  <!-- OFFLINE ADAPTATION (RepairBench). Two remote origins used to be referenced here and
++       both are gone. Neither removal is a defect and neither is part of the repair task.
++       1. fonts.googleapis.com / fonts.gstatic.com - the Inter + Newsreader webfont <link>
++          (written across four source lines) and its two preconnect hints are DELETED. Offline
++          they are a non-blocking stylesheet failure: every font stack in
++          src/assets/styles/variables.less already ends in a generic family, so the chrome falls
++          back to the local system sans/serif. No route, no behaviour and no checkpoint in this
++          task depends on the webfonts.
++       2. www.googletagmanager.com/gtag/js?id=G-TMZBTKHJQM - the async analytics tag is DELETED.
++          The inline dataLayer/gtag shim immediately below is KEPT VERBATIM, so window.gtag still
++          exists and src/helper/analytics.js trackEvent() still pushes into dataLayer exactly as
++          before; only the outbound beacon is gone. -->
+   <script>
+     window.dataLayer = window.dataLayer || []
+     function gtag() {
+diff --git a/src/components/PreviewVditor.vue b/src/components/PreviewVditor.vue
+index eeba09c..6a2275b 100644
+--- a/src/components/PreviewVditor.vue
++++ b/src/components/PreviewVditor.vue
+@@ -41,6 +41,11 @@ export default {
+   methods: {
+     initVditor() {
+       const options = {
++        // OFFLINE ADAPTATION (RepairBench): same reason and same local copy as src/pages/Main.vue -
++        // vditor's i18n and lute bundles are fetched inside addScript(...).then(...) from its
++        // default unpkg cdn, so without this the preview pane on every /export/* page and on
++        // /about-arya stays an empty spinner offline. See commands/vendor-offline-assets.js.
++        cdn: '/vditor',
+         width: '61.8%',
+         mode: 'sv',
+         preview: {
+diff --git a/src/pages/Main.vue b/src/pages/Main.vue
+index 3b56277..a0a1d83 100644
+--- a/src/pages/Main.vue
++++ b/src/pages/Main.vue
+@@ -118,6 +118,15 @@ export default {
+       const that = this
+       const initialContent = getDocContent(this.activeDocId) || defaultText
+       const options = {
++        // OFFLINE ADAPTATION (RepairBench): vditor's default cdn is
++        // https://unpkg.com/vditor@3.11.2 and BOTH the i18n bundle (vditor/src/index.ts:90-94) and
++        // lute.min.js (vditor/src/index.ts:521-525) are fetched with addScript(...).then(...), with
++        // initUI() and this component's own after() hook living inside those callbacks. Offline the
++        // editor never initialises. commands/vendor-offline-assets.js (run by prebuild/prestart)
++        // copies the four blocking assets out of the already-installed node_modules/vditor into
++        // public/vditor/dist/, and this option re-points the loader at that local copy. Same
++        // version, byte-identical files, no behavioural change.
++        cdn: '/vditor',
+         width: '100%',
+         height: '0',
+         tab: '\t',
+diff --git a/vue.config.js b/vue.config.js
+index c2a9cda..af7f4cb 100644
+--- a/vue.config.js
++++ b/vue.config.js
+@@ -137,6 +137,15 @@ module.exports = {
+     workboxOptions: {
+       // swSrc is required in InjectManifest mode.
+       swSrc: 'public/service-worker.js',
++      // OFFLINE ADAPTATION (RepairBench): the built service worker used to open with
++      //   importScripts("/precache-manifest.<hash>.js",
++      //     "https://storage.googleapis.com/workbox-cdn/releases/3.6.3/workbox-sw.js")
++      // - that second URL was this app's last runtime external reference. This hand-written
++      // service worker never calls a single workbox.* API, so the CDN runtime is dead weight.
++      // 'disabled' is workbox-webpack-plugin's own supported value for exactly this case and is
++      // null-guarded in its inject-manifest, so the local precache-manifest import stays and no
++      // outbound request is made at registration time.
++      importWorkboxFrom: 'disabled',
+       // ...other Workbox options...
+     },
+   },

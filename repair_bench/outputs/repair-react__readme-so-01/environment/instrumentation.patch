@@ -1,0 +1,810 @@
+diff --git a/__tests__/editor.test.js b/__tests__/editor.test.js
+deleted file mode 100644
+index 8bf66bf..0000000
+--- a/__tests__/editor.test.js
++++ /dev/null
+@@ -1,31 +0,0 @@
+-import { render, screen, cleanup } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import Editor from '../pages/editor'
+-
+-describe('editor page', () => {
+-  afterEach(cleanup)
+-
+-  it('should render', () => {
+-    const { container } = render(<Editor />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should show DownloadModal component if showModal is true', () => {
+-    global.URL.createObjectURL = jest.fn()
+-    render(<Editor />)
+-
+-    userEvent.click(screen.getByLabelText('Download Markdown'))
+-    expect(screen.getByText('🎉')).toBeInTheDocument()
+-  })
+-
+-  it('should add section', () => {
+-    render(<Editor />)
+-
+-    userEvent.click(screen.getByText(/FAQ/))
+-    // selected sections
+-    expect(screen.getByText('FAQ', { selector: 'p' })).toBeInTheDocument()
+-    // sections to be selected
+-    expect(screen.queryByText('FAQ', { selector: 'span' })).toBeNull()
+-  })
+-})
+diff --git a/components/ColumnHeader.js b/components/ColumnHeader.js
+index 159f7fa..837d764 100644
+--- a/components/ColumnHeader.js
++++ b/components/ColumnHeader.js
+@@ -9,10 +9,11 @@ const Heading = ({ children, className = '' }) => {
+   )
+ }
+ 
+-const Tab = ({ children, isActive, className = '', onClick = () => null }) => {
++const Tab = ({ children, isActive, className = '', onClick = () => null, ...rest }) => {
+   return (
+     <button
+       onClick={onClick}
++      {...rest}
+       type="button"
+       className={`border-transparent whitespace-nowrap px-1 border-b-2 font-medium text-sm focus:outline-none 
+     ${isActive ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-700'} ${className}`}
+diff --git a/components/CustomSection.js b/components/CustomSection.js
+index d629dbf..1d666b3 100644
+--- a/components/CustomSection.js
++++ b/components/CustomSection.js
+@@ -101,6 +101,7 @@ const CustomSection = ({
+                         className="shadow-sm p-2 focus:outline-none focus:ring-2 focus:ring-emerald-400 block w-full sm:text-sm border border-gray-300 rounded-md"
+                         placeholder="Section Title"
+                         aria-label="Section title"
++                        data-testid="rs-custom-title"
+                       />
+                     </div>
+                   </div>
+@@ -110,6 +111,7 @@ const CustomSection = ({
+                     type="button"
+                     className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-emerald-500 text-base font-medium text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400 sm:col-start-2 sm:text-sm disabled:opacity-50"
+                     disabled={!title}
++                    data-testid="rs-custom-add"
+                     onClick={addCustomSection}
+                   >
+                     Add Section
+@@ -117,6 +119,7 @@ const CustomSection = ({
+                   <button
+                     type="button"
+                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400 sm:mt-0 sm:col-start-1 sm:text-sm"
++                    data-testid="rs-custom-cancel"
+                     onClick={() => setShowModal(false)}
+                   >
+                     Cancel
+@@ -132,6 +135,7 @@ const CustomSection = ({
+         <button
+           className="flex items-center justify-center w-full h-full py-2 pl-3 pr-6 bg-white font-bold rounded-md shadow cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400 transition-colors"
+           type="button"
++          data-testid="rs-custom-open"
+           onClick={() => setShowModal(true)}
+         >
+           <svg
+diff --git a/components/DownloadModal.js b/components/DownloadModal.js
+index 3d59251..9420fd5 100644
+--- a/components/DownloadModal.js
++++ b/components/DownloadModal.js
+@@ -39,7 +39,7 @@ export const DownloadModal = ({ showModal, setShowModal }) => {
+             leaveFrom="opacity-100 translate-y-0 sm:scale-100"
+             leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+           >
+-            <DialogPanel className="inline-block px-4 pt-5 pb-4 overflow-hidden text-left align-bottom bg-white rounded-lg shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6">
++            <DialogPanel className="inline-block px-4 pt-5 pb-4 overflow-hidden text-left align-bottom bg-white rounded-lg shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6" data-testid="rs-modal">
+               <div>
+                 <p className="text-center text-7xl">🎉</p>
+                 <div className="mt-3 text-center sm:mt-5">
+diff --git a/components/EditPreviewContainer.js b/components/EditPreviewContainer.js
+index 0d911a1..e17438a 100644
+--- a/components/EditPreviewContainer.js
++++ b/components/EditPreviewContainer.js
+@@ -27,7 +27,7 @@ const EditPreviewContainer = ({
+       {isMobile ? <Tabs selectedTab={selectedTab} setSelectedTab={setSelectedTab} /> : null}
+ 
+       {showEditorColumn ? (
+-        <div className="w-full md:w-1/2 px-3 full-screen">
++        <div className="w-full md:w-1/2 px-3 full-screen" data-testid="rs-editor-pane">
+           {!isMobile ? <ColumnHeader.Heading>Editor</ColumnHeader.Heading> : null}
+           <EditorColumn
+             focusedSectionSlug={focusedSectionSlug}
+@@ -39,13 +39,14 @@ const EditPreviewContainer = ({
+       ) : null}
+ 
+       {showPreviewColumn ? (
+-        <div className="px-3 flex-1">
++        <div className="px-3 flex-1" data-testid="rs-preview-pane">
+           {!isMobile ? (
+             <div className="border-b border-gray-200">
+               <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                 <ColumnHeader.Tab
+                   isActive={selectedTab === TAB.PREVIEW}
+                   className="pb-3"
++                  data-testid="rs-preview-tab"
+                   onClick={() => setSelectedTab(TAB.PREVIEW)}
+                 >
+                   Preview
+@@ -53,6 +54,7 @@ const EditPreviewContainer = ({
+                 <ColumnHeader.Tab
+                   isActive={selectedTab === TAB.RAW}
+                   className="pb-3"
++                  data-testid="rs-raw-tab"
+                   onClick={() => setSelectedTab(TAB.RAW)}
+                 >
+                   Raw
+diff --git a/components/EditorColumn.js b/components/EditorColumn.js
+index e02ef53..901bb18 100644
+--- a/components/EditorColumn.js
++++ b/components/EditorColumn.js
+@@ -30,7 +30,7 @@ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, them
+ 
+   if (focusedSectionSlug === 'noEdit') {
+     return (
+-      <p className="text-sm text-emerald-500 max-w-[28rem] text-center mx-auto mt-10">
++      <p className="text-sm text-emerald-500 max-w-[28rem] text-center mx-auto mt-10" data-testid="rs-noedit-hint">
+         Select a section from the left sidebar to edit the contents
+       </p>
+     )
+@@ -39,6 +39,7 @@ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, them
+   return (
+     <textarea
+       aria-label="Markdown Editor"
++      data-testid="rs-editor-textarea"
+       onChange={(e) => onEdit(e.target.value)}
+       value={markdown}
+       className="full-screen rounded-sm border border-gray-500 w-full p-6 resize-none"
+diff --git a/components/Nav.js b/components/Nav.js
+index c07c9c1..ac77601 100644
+--- a/components/Nav.js
++++ b/components/Nav.js
+@@ -60,6 +60,7 @@ export const Nav = ({
+         <button
+           type="button"
+           aria-label="Download Markdown"
++          data-testid="rs-download"
+           className="flex flex-row relative items-center mr-4 md:mr-0 px-4 py-2 text-sm font-bold tracking-wide text-white border border-transparent rounded-md shadow-sm bg-emerald-500 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-emerald-500"
+           onClick={downloadMarkdownFile}
+         >
+diff --git a/components/RawPreview.js b/components/RawPreview.js
+index 8f54f92..6e3547e 100644
+--- a/components/RawPreview.js
++++ b/components/RawPreview.js
+@@ -32,6 +32,7 @@ export default function RawPreview({ text }) {
+       <button
+         className="absolute top-0 right-7 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400"
+         type="button"
++        data-testid="rs-raw-copy"
+         aria-label={copySuccess ? 'Copied' : 'Copy to clipboard'}
+         onClick={copyToClipBoard}
+       >
+@@ -70,6 +71,7 @@ export default function RawPreview({ text }) {
+       <textarea
+         ref={textAreaRef}
+         readOnly
++        data-testid="rs-raw-text"
+         className="h-full w-full resize-none bg-white focus:outline-none"
+         value={text}
+       ></textarea>
+diff --git a/components/SectionsColumn.js b/components/SectionsColumn.js
+index 949b401..8376c3d 100644
+--- a/components/SectionsColumn.js
++++ b/components/SectionsColumn.js
+@@ -193,13 +193,14 @@ export const SectionsColumn = ({
+   }, [searchFilter])
+ 
+   return (
+-    <div className="sections w-full md:w-64 lg:w-80">
++    <div className="sections w-full md:w-64 lg:w-80" data-testid="rs-sections-column">
+       <h3 className="px-1 text-sm font-medium border-b-2 border-transparent text-emerald-500 whitespace-nowrap focus:outline-none">
+         Sections
+         {
+           <button
+             className="focus:outline-none focus:ring-2 focus:ring-emerald-400 float-right hover:text-emerald-600 transition-colors"
+             type="button"
++            data-testid="rs-reset-all"
+             onClick={resetSelectedSections}
+           >
+             <span className="pl-2 float-right">Reset</span>
+@@ -213,7 +214,7 @@ export const SectionsColumn = ({
+             Click on a section below to edit the contents
+           </h4>
+         )}
+-        <ul className="mb-12 space-y-3">
++        <ul className="mb-12 space-y-3" data-testid="rs-selected-list">
+           <DndContext
+             sensors={sensors}
+             collisionDetection={closestCenter}
+@@ -254,7 +255,7 @@ export const SectionsColumn = ({
+           setAddAction={setAddAction}
+           setTemplates={setTemplates}
+         />
+-        <ul className="mb-12 space-y-3">
++        <ul className="mb-12 space-y-3" data-testid="rs-available-list">
+           {availableSlugs.map((s) => {
+             if (s === undefined) {
+               return (
+@@ -270,6 +271,7 @@ export const SectionsColumn = ({
+                     <button
+                       className="flex items-center w-full h-full py-2 pl-3 pr-6 bg-white rounded-md shadow cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400 transition-colors"
+                       type="button"
++                      data-testid={`rs-add-${s}`}
+                       onClick={(e) => onAddSection(e, s)}
+                     >
+                       <span>{template.name}</span>
+diff --git a/components/SortableItem.js b/components/SortableItem.js
+index fe1e1f8..6d72971 100644
+--- a/components/SortableItem.js
++++ b/components/SortableItem.js
+@@ -37,6 +37,7 @@ export const SortableItem = memo(function SortableItem(props) {
+   return (
+     <li
+       ref={setNodeRef}
++      data-testid={`rs-item-${props.id}`}
+       style={style}
+       {...attributes}
+       onClick={onClickSection}
+@@ -48,6 +49,7 @@ export const SortableItem = memo(function SortableItem(props) {
+       <button
+         type="button"
+         className="p-2 -m-1 mr-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400"
++        data-testid={`rs-handle-${props.id}`}
+         {...listeners}
+       >
+         <img className="w-5 h-5" src="drag.svg" alt="Drag to reorder" />
+diff --git a/components/__tests__/CustomSection.test.js b/components/__tests__/CustomSection.test.js
+deleted file mode 100644
+index 55666ab..0000000
+--- a/components/__tests__/CustomSection.test.js
++++ /dev/null
+@@ -1,111 +0,0 @@
+-import { render, screen, waitFor } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import CustomSection from '../CustomSection'
+-
+-jest.mock('../../hooks/useLocalStorage', () => () => ({
+-  saveBackup: jest.fn(),
+-}))
+-
+-describe('<CustomSection />', () => {
+-  const defaultProps = {
+-    setTemplates: jest.fn((fn) => fn([])),
+-    setSelectedSectionSlugs: jest.fn((fn) => fn([])),
+-    setFocusedSectionSlug: jest.fn(),
+-    setpageRefreshed: jest.fn(),
+-    setAddAction: jest.fn(),
+-  }
+-
+-  beforeEach(() => {
+-    jest.clearAllMocks()
+-    localStorage.clear()
+-  })
+-
+-  it('should render the Custom Section button', () => {
+-    render(<CustomSection {...defaultProps} />)
+-    expect(screen.getByText('Custom Section')).toBeInTheDocument()
+-  })
+-
+-  it('should open the modal when the button is clicked', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-
+-    await screen.findByText('New Custom Section')
+-    expect(screen.getByPlaceholderText('Section Title')).toBeInTheDocument()
+-    expect(screen.getByText('Add Section')).toBeInTheDocument()
+-    expect(screen.getByText('Cancel')).toBeInTheDocument()
+-  })
+-
+-  it('should disable Add Section button when title is empty', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-
+-    await screen.findByText('Add Section')
+-    expect(screen.getByText('Add Section')).toBeDisabled()
+-  })
+-
+-  it('should enable Add Section button when title is entered', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-
+-    await screen.findByPlaceholderText('Section Title')
+-    userEvent.type(screen.getByPlaceholderText('Section Title'), 'My Section')
+-
+-    expect(screen.getByText('Add Section')).toBeEnabled()
+-  })
+-
+-  it('should add a custom section and close the modal', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-
+-    await screen.findByPlaceholderText('Section Title')
+-    userEvent.type(screen.getByPlaceholderText('Section Title'), 'My Section')
+-    userEvent.click(screen.getByText('Add Section'))
+-
+-    expect(defaultProps.setSelectedSectionSlugs).toHaveBeenCalled()
+-    expect(defaultProps.setFocusedSectionSlug).toHaveBeenCalledWith('custom-my-section')
+-    expect(defaultProps.setpageRefreshed).toHaveBeenCalledWith(false)
+-    expect(defaultProps.setAddAction).toHaveBeenCalledWith(true)
+-
+-    await waitFor(() => {
+-      expect(screen.queryByText('New Custom Section')).not.toBeInTheDocument()
+-    })
+-  })
+-
+-  it('should close the modal when Cancel is clicked', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-    await screen.findByText('New Custom Section')
+-
+-    userEvent.click(screen.getByText('Cancel'))
+-
+-    await waitFor(() => {
+-      expect(screen.queryByText('New Custom Section')).not.toBeInTheDocument()
+-    })
+-  })
+-
+-  it('should submit the form when Enter key is pressed', async () => {
+-    render(<CustomSection {...defaultProps} />)
+-
+-    userEvent.click(screen.getByText('Custom Section'))
+-
+-    await screen.findByPlaceholderText('Section Title')
+-    const input = screen.getByPlaceholderText('Section Title')
+-
+-    userEvent.type(input, 'My Section{enter}')
+-
+-    expect(defaultProps.setSelectedSectionSlugs).toHaveBeenCalled()
+-    expect(defaultProps.setFocusedSectionSlug).toHaveBeenCalledWith('custom-my-section')
+-    expect(defaultProps.setpageRefreshed).toHaveBeenCalledWith(false)
+-    expect(defaultProps.setAddAction).toHaveBeenCalledWith(true)
+-
+-    await waitFor(() => {
+-      expect(screen.queryByText('New Custom Section')).not.toBeInTheDocument()
+-    })
+-  })
+-})
+diff --git a/components/__tests__/DownloadModal.test.js b/components/__tests__/DownloadModal.test.js
+deleted file mode 100644
+index ccaa521..0000000
+--- a/components/__tests__/DownloadModal.test.js
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import { DownloadModal } from '../DownloadModal'
+-
+-describe('<DownloadModal />', () => {
+-  it('should render', () => {
+-    const { container } = render(<DownloadModal showModal={true} setShowModal={() => {}} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should render modal content when showModal is true', () => {
+-    render(<DownloadModal showModal={true} setShowModal={() => {}} />)
+-
+-    expect(screen.getByText('Readme Generated!')).toBeInTheDocument()
+-  })
+-
+-  it('should call setShowModal(false) when closing the dialog', () => {
+-    const setShowModalStub = jest.fn()
+-
+-    render(<DownloadModal showModal={true} setShowModal={setShowModalStub} />)
+-
+-    userEvent.click(screen.getByText('Readme Generated!'))
+-    // Dialog onClose is triggered by clicking backdrop or pressing Escape
+-    // The headlessui Dialog handles this internally
+-  })
+-})
+diff --git a/components/__tests__/EditorColumn.test.js b/components/__tests__/EditorColumn.test.js
+deleted file mode 100644
+index 6257973..0000000
+--- a/components/__tests__/EditorColumn.test.js
++++ /dev/null
+@@ -1,45 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-import { EditorColumn } from '../EditorColumn'
+-
+-import { en_EN } from '../../data/section-templates-en_EN'
+-
+-jest.mock('@monaco-editor/react', () => {
+-  function Editor({ value, onChange }) {
+-    return <input aria-label="Markdown Editor" value={value} onChange={() => onChange('test')} />
+-  }
+-  Editor.default = Editor
+-  return { __esModule: true, default: Editor }
+-})
+-
+-describe('<EditorColumn />', () => {
+-  it('should render', () => {
+-    const { container } = render(<EditorColumn templates={en_EN} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should show <Editor /> if focusedSectionSlug is truthy', async () => {
+-    render(<EditorColumn templates={en_EN} focusedSectionSlug={'title-and-description'} />)
+-    const editor = await screen.findByLabelText('Markdown Editor')
+-    expect(editor.value).toEqual(
+-      "# Project TitleA brief description of what this project does and who it's for"
+-    )
+-  })
+-
+-  it('should set markdown when editing', async () => {
+-    const setTemplatesHandler = jest.fn()
+-    render(
+-      <EditorColumn
+-        templates={en_EN}
+-        focusedSectionSlug={'title-and-description'}
+-        setTemplates={setTemplatesHandler}
+-      />
+-    )
+-
+-    const editor = await screen.findByLabelText('Markdown Editor')
+-    userEvent.type(editor, 'test')
+-
+-    expect(setTemplatesHandler).toHaveBeenCalledTimes(4)
+-    expect(editor).toHaveValue('test')
+-  })
+-})
+diff --git a/components/__tests__/EditorPreviewContainer.test.js b/components/__tests__/EditorPreviewContainer.test.js
+deleted file mode 100644
+index 876ba1a..0000000
+--- a/components/__tests__/EditorPreviewContainer.test.js
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import EditorPreviewColumn from '../EditPreviewContainer'
+-import userEvent from '@testing-library/user-event'
+-
+-import { en_EN } from '../../data/section-templates-en_EN'
+-
+-describe('<EditorPreviewColumn />', () => {
+-  beforeEach(() => {
+-    jest.useFakeTimers()
+-  })
+-
+-  it('should render', () => {
+-    const { container } = render(<EditorPreviewColumn templates={en_EN} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should toggle preview/raw buttons', () => {
+-    render(
+-      <EditorPreviewColumn
+-        templates={en_EN}
+-        selectedSectionSlugs={['title-and-description']}
+-        getTemplate={(slug) => en_EN.find((t) => t.slug === slug)}
+-      />
+-    )
+-
+-    userEvent.click(screen.getByText(/Preview/))
+-    expect(screen.getByText(/Preview/)).toHaveClass('text-emerald-500')
+-
+-    userEvent.click(screen.getByText(/Raw/))
+-    expect(screen.getByText(/Raw/)).toHaveClass('text-emerald-500')
+-  })
+-})
+diff --git a/components/__tests__/Nav.test.js b/components/__tests__/Nav.test.js
+deleted file mode 100644
+index da6d992..0000000
+--- a/components/__tests__/Nav.test.js
++++ /dev/null
+@@ -1,38 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import { Nav } from '../Nav'
+-import { en_EN } from '../../data/section-templates-en_EN'
+-
+-describe('<Nav />', () => {
+-  it('should render', () => {
+-    const { container } = render(
+-      <Nav
+-        selectedSectionSlugs={['title-and-description']}
+-        getTemplate={(slug) => en_EN.find((t) => t.slug === slug)}
+-      />
+-    )
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should download markdown file when clicking on download button', () => {
+-    const setShowModalStub = jest.fn()
+-    global.URL.createObjectURL = jest.fn()
+-    const blobSpy = jest.spyOn(global, 'Blob').mockImplementationOnce(() => ({
+-      size: 80,
+-    }))
+-
+-    render(
+-      <Nav
+-        setShowModal={setShowModalStub}
+-        selectedSectionSlugs={['title-and-description']}
+-        getTemplate={(slug) => en_EN.find((t) => t.slug === slug)}
+-      />
+-    )
+-
+-    userEvent.click(screen.getByLabelText('Download Markdown'))
+-    expect(blobSpy).toHaveBeenCalled()
+-    expect(global.URL.createObjectURL).toHaveBeenCalledWith({ size: 80 })
+-    expect(setShowModalStub).toHaveBeenCalledWith(true)
+-  })
+-})
+diff --git a/components/__tests__/PreviewColumn.test.js b/components/__tests__/PreviewColumn.test.js
+deleted file mode 100644
+index 539ca86..0000000
+--- a/components/__tests__/PreviewColumn.test.js
++++ /dev/null
+@@ -1,17 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-
+-import { PreviewColumn } from '../PreviewColumn'
+-import { en_EN } from '../../data/section-templates-en_EN'
+-
+-describe('<PreviewColumn />', () => {
+-  it('should render', () => {
+-    const { container } = render(
+-      <PreviewColumn
+-        selectedSectionSlugs={['title-and-description']}
+-        getTemplate={(slug) => en_EN.find((t) => t.slug === slug)}
+-      />
+-    )
+-
+-    expect(container).toBeInTheDocument()
+-  })
+-})
+diff --git a/components/__tests__/RawPreview.test.js b/components/__tests__/RawPreview.test.js
+deleted file mode 100644
+index a24196c..0000000
+--- a/components/__tests__/RawPreview.test.js
++++ /dev/null
+@@ -1,41 +0,0 @@
+-import { render, screen, act } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import RawPreview from '../RawPreview'
+-
+-describe('<RawPreview />', () => {
+-  beforeAll(() => {
+-    jest.useFakeTimers()
+-  })
+-
+-  afterAll(() => {
+-    jest.useRealTimers()
+-  })
+-
+-  it('should render', () => {
+-    const { container } = render(<RawPreview text="test" />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should copy and setCopy when clicking on copy button', async () => {
+-    // Mock the clipboard API
+-    const writeText = jest.fn().mockResolvedValue(undefined)
+-    Object.assign(navigator, {
+-      clipboard: { writeText },
+-    })
+-
+-    render(<RawPreview text="test" />)
+-
+-    await act(async () => {
+-      userEvent.click(screen.getByLabelText('Copy to clipboard'))
+-    })
+-
+-    expect(writeText).toHaveBeenCalledWith('test')
+-    expect(screen.getByLabelText('Copied')).toBeInTheDocument()
+-
+-    act(() => {
+-      jest.advanceTimersByTime(3000)
+-    })
+-    expect(screen.getByLabelText('Copy to clipboard')).toBeInTheDocument()
+-  })
+-})
+diff --git a/components/__tests__/SectionFilter.test.js b/components/__tests__/SectionFilter.test.js
+deleted file mode 100644
+index ec782a2..0000000
+--- a/components/__tests__/SectionFilter.test.js
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import SectionFilter from '../SectionFilter'
+-
+-describe('<SectionFilter />', () => {
+-  const props = {
+-    searchFilter: '',
+-    setSearchFilter: jest.fn(),
+-  }
+-
+-  it('should render', () => {
+-    const { container } = render(<SectionFilter {...props} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should call the callBack function with updated filter query', () => {
+-    render(<SectionFilter {...props} />)
+-
+-    const input = screen.getByTestId('slugs-filter')
+-    expect(input).toBeInTheDocument()
+-    expect(input).toHaveAttribute('type', 'text')
+-    expect(input).toHaveAttribute('placeholder', 'Search for a section')
+-
+-    userEvent.type(input, 'app')
+-
+-    expect(props.setSearchFilter).toHaveBeenCalledTimes(3)
+-    expect(props.setSearchFilter).toHaveBeenNthCalledWith(1, 'a')
+-    expect(props.setSearchFilter).toHaveBeenNthCalledWith(2, 'p')
+-    expect(props.setSearchFilter).toHaveBeenNthCalledWith(3, 'p')
+-  })
+-})
+diff --git a/components/__tests__/SectionsColumn.test.js b/components/__tests__/SectionsColumn.test.js
+deleted file mode 100644
+index 34006d3..0000000
+--- a/components/__tests__/SectionsColumn.test.js
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import { render, screen, waitForElementToBeRemoved } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import { SectionsColumn } from '../SectionsColumn'
+-
+-import { en_EN } from '../../data/section-templates-en_EN'
+-
+-describe('<SectionsColumn />', () => {
+-  const props = {
+-    selectedSectionSlugs: ['title-and-description'],
+-    setSelectedSectionSlugs: () => ['title-and-description', 'api'],
+-    sectionSlugs: ['api', 'appendix'],
+-    setSectionSlugs: () => ['api', 'appendix'].filter((s) => s !== 'api'),
+-    focusedSectionSlug: 'title-and-description',
+-    setFocusedSectionSlug: jest.fn(),
+-    getTemplate: (slug) => en_EN.find((t) => t.slug === slug),
+-  }
+-
+-  it('should render', () => {
+-    const { container } = render(<SectionsColumn {...props} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should remove a selected section', () => {
+-    render(<SectionsColumn {...props} />)
+-    const trashIcon = screen.getByAltText('Delete section')
+-
+-    expect(trashIcon).toBeInTheDocument()
+-    userEvent.click(trashIcon)
+-    waitForElementToBeRemoved(trashIcon)
+-  })
+-})
+diff --git a/components/__tests__/SortableItem.test.js b/components/__tests__/SortableItem.test.js
+deleted file mode 100644
+index 839a8e6..0000000
+--- a/components/__tests__/SortableItem.test.js
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import userEvent from '@testing-library/user-event'
+-
+-import { SortableItem } from '../SortableItem'
+-
+-describe('<SortableItem />', () => {
+-  const props = {
+-    setFocusedSectionSlug: jest.fn(),
+-    focusedSectionSlug: 'title-and-description',
+-    id: 'title-and-description',
+-    onDeleteSection: jest.fn(),
+-    section: { slug: 'title-and-description', name: 'title', markdown: 'Title and description' },
+-  }
+-
+-  it('should render', () => {
+-    const { container } = render(<SortableItem {...props} />)
+-    expect(container).toBeInTheDocument()
+-  })
+-
+-  it('should set focused section slug when clicking', () => {
+-    render(<SortableItem {...props} />)
+-    userEvent.click(screen.getByText(/title/))
+-
+-    expect(props.setFocusedSectionSlug).toHaveBeenCalledWith('title-and-description')
+-  })
+-
+-  it('should set focused section slug on keyup', () => {
+-    render(<SortableItem {...props} />)
+-    userEvent.type(screen.getByText(/title/), '{enter}')
+-
+-    expect(props.setFocusedSectionSlug).toHaveBeenCalledWith('title-and-description')
+-  })
+-
+-  it('should call onDeleteSection when section is deleted', () => {
+-    render(<SortableItem {...props} />)
+-    userEvent.click(screen.getByLabelText('Delete section'))
+-
+-    expect(props.onDeleteSection).toHaveBeenCalledWith(expect.any(Object), 'title-and-description')
+-  })
+-})
+diff --git a/components/__tests__/Tabs.test.js b/components/__tests__/Tabs.test.js
+deleted file mode 100644
+index faf59e1..0000000
+--- a/components/__tests__/Tabs.test.js
++++ /dev/null
+@@ -1,18 +0,0 @@
+-import { render } from '@testing-library/react'
+-import Tabs from '../Tabs'
+-import { en_EN } from '../../data/section-templates-en_EN'
+-import { TAB } from '../../utils/constants'
+-
+-describe('<Tabs />', () => {
+-  it('should render', () => {
+-    const { container } = render(
+-      <Tabs
+-        selectedTab={TAB.EDITOR}
+-        focusedSectionSlug={'title-and-description'}
+-        selectedSectionSlugs={['title-and-description']}
+-        getTemplate={(slug) => en_EN.find((t) => t.slug === slug)}
+-      />
+-    )
+-    expect(container).toBeInTheDocument()
+-  })
+-})
+diff --git a/jest.config.js b/jest.config.js
+deleted file mode 100644
+index 1c3ad11..0000000
+--- a/jest.config.js
++++ /dev/null
+@@ -1,14 +0,0 @@
+-module.exports = {
+-  testEnvironment: 'jsdom',
+-  resetModules: true,
+-  restoreMocks: true,
+-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+-  testPathIgnorePatterns: ['<rootDir>/*.js', '<rootDir>/.next/', '<rootDir>/node_modules/'],
+-  collectCoverage: true,
+-  collectCoverageFrom: ['<rootDir>/components/*', '<rootDir>/pages/editor.js'],
+-  coveragePathIgnorePatterns: ['<rootDir>/.next/*'],
+-  transformIgnorePatterns: ['/node_modules/.+\\.css$'],
+-  transform: {
+-    '^.+\\.[jt]sx?$': ['babel-jest', { presets: ['next/babel'] }],
+-  },
+-}
+diff --git a/jest.setup.js b/jest.setup.js
+deleted file mode 100644
+index c44951a..0000000
+--- a/jest.setup.js
++++ /dev/null
+@@ -1 +0,0 @@
+-import '@testing-library/jest-dom'
+diff --git a/package.json b/package.json
+index 881b1fa..fe08d64 100644
+--- a/package.json
++++ b/package.json
+@@ -6,8 +6,6 @@
+     "dev": "next dev",
+     "build": "next build",
+     "start": "next start",
+-    "test": "jest",
+-    "test:watch": "jest --watchAll",
+     "lint": "next lint && prettier --check .",
+     "format": "prettier --write . && git add -A ."
+   },
+diff --git a/pages/index.js b/pages/index.js
+index 5e6cddb..4ea7492 100644
+--- a/pages/index.js
++++ b/pages/index.js
+@@ -66,6 +66,7 @@ const Home = () => {
+                 <Link
+                   href="/editor"
+                   className="inline-flex items-center px-8 py-3 font-medium text-xl bg-emerald-500 hover:bg-emerald-400 border border-transparent rounded-lg text-white shadow"
++                  data-testid="rs-get-started"
+                 >
+                   Get Started
+                 </Link>

@@ -1,0 +1,205 @@
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 0505503..9c87541 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -4,8 +4,8 @@
+ 
+ <!-- =========================================================================================== -->
+ 
+-<div class="help">?</div>
+-<div class="help-text">
++<div class="help" data-testid="help-trigger">?</div>
++<div class="help-text" data-testid="help-body">
+   <ul>
+     <li>
+       No text formatting should be added.
+@@ -21,6 +21,7 @@
+ <select
+   (change)="changeCategory($event.target.value)"
+   class="select-category"
++  data-testid="group-select"
+   [ngClass]="{ 'input-changed': selectedPage !== 'none' }"
+ >
+   <option selected value="none" [selected]="selectedPage === 'none'">All website text</option>
+@@ -30,6 +31,7 @@
+ <select
+   (change)="changeView($event.target.value)"
+   class="select-view"
++  data-testid="view-select"
+   [ngClass]="{ 'input-changed': viewType !== 'everything' }"
+ >
+   <option value="everything" [selected]="viewType === 'everything'">Showing everything</option>
+@@ -37,7 +39,7 @@
+   <option value="modified" [selected]="viewType === 'modified'">Showing modified</option>
+ </select>
+ 
+-  <button class="button-hide-column" (click)="toggleHideColumn()">
++  <button class="button-hide-column" data-testid="column-toggle" (click)="toggleHideColumn()">
+     {{
+       hideSourceLanguage ?
+           'Show ' + languageNames[SOURCE_LANGUAGE]
+@@ -52,6 +54,7 @@
+   #scroll
+   id="scrollDiv"
+   class="scrolling-block"
++  data-testid="scroll-pane"
+   [enableUnequalChildrenSizes]="true"
+   [items]="mainObject | mySelectionPipe : selectedPage
+                       | mySearchPipe : filterText : true
+@@ -65,6 +68,7 @@
+     [item]="item"
+     [hideSourceLanguage]="hideSourceLanguage"
+     [rtlLanguage]="login.language === 'ar'"
++    [attr.data-testid]="'row-' + item.category + '-' + item.name"
+     class="full-row"
+   ></app-row-component>
+ 
+@@ -81,6 +85,7 @@
+     <input
+       [(ngModel)]="filterText"
+       (keyup.esc)="filterText = ''"
++      data-testid="search-source"
+       [ngClass]="{ 'input-changed': filterText !== ''}"
+       type="text"
+       placeholder="Search {{ languageNames['en'] }}"
+@@ -92,6 +97,7 @@
+       [(ngModel)]="filterText2"
+       (keyup.esc)="filterText2 = ''"
+       class="search-translation"
++      data-testid="search-target"
+       [ngClass]="{ 'input-changed': filterText2 !== '' }"
+       type="text"
+       placeholder="Search {{ languageNames[login.language] }}"
+@@ -102,6 +108,7 @@
+     <button
+       (click)="reviewNow()"
+       class="button-review"
++      data-testid="review-action"
+       type="button"
+     >
+       REVIEW
+@@ -111,6 +118,7 @@
+       *ngIf="reviewedOnce"
+       (click)="saveEverything()"
+       class="button-save"
++      data-testid="save-action"
+       [disabled]=savingInProgress
+       type="button"
+     >
+@@ -121,21 +129,21 @@
+ 
+ </div>
+ 
+-<div class="saved-successfully" *ngIf="saveSuccessShowing">
++<div class="saved-successfully" data-testid="save-banner" *ngIf="saveSuccessShowing">
+   SAVED SUCCESSFULLY
+ </div>
+ 
+ <!-- =========================================================================================== -->
+ 
+-<div class="loading" *ngIf="loading">
++<div class="loading" data-testid="loading-veil" *ngIf="loading">
+   LOADING ...
+ </div>
+ 
+ <!-- =========================================================================================== -->
+ 
+-<div class="overlay" *ngIf="!isLoggedIn">
++<div class="overlay" data-testid="login-overlay" *ngIf="!isLoggedIn">
+ 
+-  <div class="login" [ngClass]="{ 'login-error': loginError }">
++  <div class="login" data-testid="login-panel" [ngClass]="{ 'login-error': loginError }">
+ 
+     <img src="assets/logo.svg">
+ 
+@@ -147,6 +155,7 @@
+     <input
+       type="text"
+       placeholder="Name"
++      data-testid="login-name"
+       [(ngModel)]="login.name"
+       (keyup.enter)=tryLogin()
+       [disabled]="waitingForServer"
+@@ -158,6 +167,7 @@
+     </span>
+     <input
+       class="input-password"
++      data-testid="login-pass"
+       type="password"
+       placeholder="Password"
+       [(ngModel)]="login.pass"
+@@ -169,7 +179,7 @@
+     <span class="label language">
+       Language to edit:
+     </span>
+-    <select (change)="changeLanguage($event.target.value)">
++    <select data-testid="login-language" (change)="changeLanguage($event.target.value)">
+       <option selected="true" disabled="disabled">choose</option>
+       <option
+         *ngFor="let lang of languageList"
+@@ -182,6 +192,7 @@
+     <button
+       (click)=tryLogin()
+       class="button-login"
++      data-testid="login-submit"
+       [disabled]="!login.name || !login.pass || !login.language || waitingForServer"
+     >
+       LOGIN
+diff --git a/src/app/row/row.component.html b/src/app/row/row.component.html
+index 118529c..7ac66c3 100644
+--- a/src/app/row/row.component.html
++++ b/src/app/row/row.component.html
+@@ -1,8 +1,8 @@
+-<div *ngIf="item.showCategory" class="category">
++<div *ngIf="item.showCategory" class="category" data-testid="cell-group-label">
+   {{ item.category }}
+ </div>
+ 
+-<div class="name">
++<div class="name" data-testid="cell-key">
+   {{ item.name }}
+ </div>
+ 
+@@ -11,8 +11,9 @@
+   <div
+     *ngIf="!hideSourceLanguage"
+     class="text-box"
++    data-testid="cell-source"
+   >
+-    <span class="original-text">
++    <span class="original-text" data-testid="cell-source-text">
+       {{ item.text }}
+     </span>
+   </div>
+@@ -20,12 +21,14 @@
+   <div
+     #editor1
+     class="translation"
++    data-testid="cell-reference"
+   ></div>
+ 
+   <div
+     #editor2
+     (keyup)="findDiff()"
+     class="editor"
++    data-testid="cell-editor"
+     [ngClass]="{ changed: isModified }"
+   ></div>
+ 
+diff --git a/src/app/row/row.component.ts b/src/app/row/row.component.ts
+index 932e99a..5c61395 100644
+--- a/src/app/row/row.component.ts
++++ b/src/app/row/row.component.ts
+@@ -59,6 +59,12 @@ export class RowComponent implements AfterViewInit {
+       this.editorNode2.nativeElement.classList.add('rtl-lang');
+     }
+ 
++    const probeNode1 = this.editorNode1.nativeElement.querySelector('.ql-editor');
++    const probeNode2 = this.editorNode2.nativeElement.querySelector('.ql-editor');
++
++    if (probeNode1) { probeNode1.setAttribute('data-testid', 'cell-reference-input'); }
++    if (probeNode2) { probeNode2.setAttribute('data-testid', 'cell-editor-input'); }
++
+     const newOps: any = {
+       ops: [{
+         insert: this.item.translation

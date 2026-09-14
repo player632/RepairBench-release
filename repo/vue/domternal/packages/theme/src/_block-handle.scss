@@ -1,0 +1,234 @@
+// =============================================================================
+// Block Handle
+// Left-gutter handle (⋮⋮ drag + + insert) rendered on hover over each
+// top-level block when BlockHandle extension is enabled.
+// =============================================================================
+
+// When the extension mounts it adds `dm-editor--has-block-handle` to the
+// editor wrapper. Two things happen:
+//
+// 1) ProseMirror reserves gutter space with `padding-left` so text does
+//    not flow under the handle.
+// 2) The editor opens its horizontal overflow so a handle positioned
+//    with a negative `left` (e.g. Notion mode's centered column) can
+//    render in the page margin rather than eating into the content.
+//
+// Gutter token is 3rem (48px; the `var()` fallback below stays 4rem for
+// hosts without the theme variables). The handle cluster is 40px wide
+// (two flush 20px buttons, Notion-style) and sits 4px inside the
+// editor's left edge (`left: 0.25rem`), so it ends 44px in and leaves
+// 4px of breathing room before text; Notion hugs its controls to the
+// text the same way. Blocks inside an `anchorContainers` container
+// (experimental) get an inline `left` from JS instead, anchored to the
+// container's edge; the token still positions every gutter
+// (non-anchored) show.
+.dm-editor--has-block-handle {
+  overflow: visible;
+
+  .ProseMirror {
+    padding-left: var(--dm-block-handle-gutter, 4rem);
+  }
+}
+
+// Selected-node visual indicator: the base theme's `outline: 2px solid`
+// (see `_prosemirror.scss`) paints OUTSIDE the block's border-box and
+// bleeds over anything adjacent - including the `.notion-page` right
+// border in the Notion demo, making it look like the border is missing.
+// When BlockHandle is active, suppress the outline and replace it with a
+// subtle `::before` halo that sits BEHIND the block content (`z-index: -1`)
+// and therefore never overlaps surrounding chrome.
+.dm-editor--has-block-handle .ProseMirror-selectednode,
+.dm-editor--has-block-handle .ProseMirror-selectednoderange {
+  position: relative;
+  outline: none;
+
+  // Bleed drawn as a spread shadow, not a negative `inset`: an inset joins the
+  // halo to the nearest scroll container's overflow, which gave any block
+  // filling one (a code block, a Pro column) a scrollbar for the whole drag.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: var(--dm-block-selected-halo, rgba(112, 207, 248, 0.25));
+    box-shadow: 0 0 0 0.25rem var(--dm-block-selected-halo, rgba(112, 207, 248, 0.25));
+    border-radius: 0.25rem;
+    pointer-events: none;
+    z-index: -1;
+  }
+}
+
+// `_prosemirror.scss` draws a sharp 2px accent border on selected list
+// items via `li.ProseMirror-selectednode::after`. With BlockHandle the
+// translucent halo above is the canonical selection visual, so suppress
+// the list-item-specific border to avoid a doubled frame.
+.dm-editor--has-block-handle li.ProseMirror-selectednode::after {
+  display: none;
+}
+
+.dm-block-handle {
+  position: absolute;
+  // Pin static position to parent top so the hidden box doesn't
+  // inflate parent scrollHeight. JS sets `top` inline on show.
+  top: 0;
+  // Resolved against `.dm-editor`, so a layout whose column is narrower than
+  // the editor must derive this from the column (see `_notion-mode.scss`) or
+  // the handle stays pinned to the editor's edge. A negative value needs the
+  // `overflow: visible` set above. Default `0.25rem` keeps the 40px cluster
+  // inside the `--dm-block-handle-gutter` reservation, 4px before the text.
+  left: var(--dm-block-handle-left, 0.25rem);
+  display: flex;
+  align-items: center;
+  // Buttons sit flush, Notion-style; the visual spacing between glyphs
+  // comes from the buttons' own inner padding (16px icon in 20px button).
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  // Soft fade in/out so the handle eases on/off a block instead of
+  // popping. Position stays instant (no transform) so it never lags the
+  // cursor between rows, and boundingBox reads in tests stay stable.
+  transition: opacity 0.15s ease, visibility 0.15s;
+  z-index: var(--dm-z-handle, 25);
+
+  &[data-show] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  // Individual buttons (⋮⋮ drag, + insert)
+  &-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--dm-muted, #6b7280);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background-color 0.1s, color 0.1s;
+    // Defensive: stop text selection / touch pan from hijacking the
+    // pointer during mousedown-to-drag. Not strictly required on
+    // Chrome/Firefox but avoids edge cases on Safari + touch devices.
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+
+    &:hover {
+      background: var(--dm-button-hover-bg, rgba(0, 0, 0, 0.04));
+      color: var(--dm-editor-text, inherit);
+    }
+
+    &:focus-visible {
+      // INSET ring (-1px): block handle buttons sit in the gutter; an outset
+      // ring would extend into adjacent content / next sibling block.
+      outline: 2px solid var(--dm-accent, #2563eb);
+      outline-offset: -1px;
+    }
+
+    svg {
+      width: 1rem;
+      height: 1rem;
+      pointer-events: none;
+    }
+  }
+
+  // Drag handle - grab cursor + slight nudge active state
+  &-drag {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  // Insert (+) button - subtle accent on hover
+  &-plus {
+    &:hover {
+      color: var(--dm-accent, #2563eb);
+    }
+  }
+}
+
+// =============================================================================
+// Drop indicator
+// Custom horizontal drop line drawn during drag-from-handle. Positioned
+// absolutely inside `.dm-editor` (which is `position: relative`) by JS,
+// only made visible via the `data-show` attribute. Spans the resolved
+// drop-target block's width so the user sees exactly which block (and
+// which side) the drop will land at - including the difference between
+// "into the list" and "as a sibling block" outcomes when dragging in
+// the gap between a list and the next block.
+// =============================================================================
+.dm-block-drop-indicator {
+  position: absolute;
+  height: 2px;
+  background: var(--dm-accent, #2563eb);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 5;
+  // Hidden by default; JS adds `data-show` to reveal.
+  display: none;
+  // Slight glow so the line reads on top of any background colour.
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+  // Nudge the line a few pixels DOWN from the upper block's bottom edge so
+  // it visually sits in the gap between blocks rather than glued to the
+  // block above. Visual-only (transform doesn't shift layout) so the
+  // computed `top` from JS still reflects the true anchor - the indicator
+  // and the actual drop position stay in sync.
+  transform: translateY(3px);
+  // Smooth glide when the indicator moves between targets or flips
+  // between sibling and nested mode mid-drag. Only position properties
+  // animate; the categorical style swap (filled bar ↔ dashed border)
+  // intentionally stays instant to keep the mode boundary readable.
+  // Short duration so the line never feels laggy on fast drags.
+  transition: left 80ms ease-out, width 80ms ease-out, top 80ms ease-out, transform 80ms ease-out;
+
+  &[data-show] {
+    display: block;
+  }
+
+  // Nested-mode visual: dashed line indented to the children-zone start
+  // of the target list item. Communicates "this drop becomes a nested
+  // child appended at the end" rather than "a sibling between blocks".
+  // JS positions `top` at the rect's BOTTOM edge and `left` indented by
+  // 24px (mirrors `--dm-block-children-indent`), so the dashed line
+  // visually sits where a child block would render inside the item.
+  &[data-mode='nested'] {
+    height: 0;
+    background: transparent;
+    border-radius: 0;
+    border-top: 2px dashed var(--dm-accent, #2563eb);
+    box-shadow: none;
+    // Lift slightly so the line sits INSIDE the listItem's bottom edge
+    // rather than in the gap below - cancels the global +3px nudge and
+    // pulls the line 2px above rect.bottom.
+    transform: translateY(-2px);
+  }
+}
+
+// Hide the native dropcursor during a handle drag so it doesn't double up
+// with `.dm-block-drop-indicator`. `prosemirror-dropcursor` emits one of
+// two classes depending on the drop target ('-block' between blocks,
+// '-inline' within inline content); both must be hidden.
+.dm-block-handle-dragging .prosemirror-dropcursor-block,
+.dm-block-handle-dragging .prosemirror-dropcursor-inline {
+  display: none;
+}
+
+// Forced-colors / Windows High Contrast strips background colors, which
+// is all the drop indicator is made of; repaint it with the OS highlight
+// palette (same pattern as `_toc.scss`) so drags keep a visible target.
+@media (forced-colors: active) {
+  .dm-block-drop-indicator {
+    background: Highlight;
+    box-shadow: none;
+
+    &[data-mode='nested'] {
+      background: transparent;
+      border-top-color: Highlight;
+    }
+  }
+}

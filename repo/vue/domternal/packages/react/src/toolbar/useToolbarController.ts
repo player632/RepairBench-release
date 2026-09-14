@@ -1,0 +1,228 @@
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  ToolbarController,
+  positionFloatingOnce,
+} from '@domternal/core';
+import type {
+  Editor,
+  ToolbarButton,
+  ToolbarDropdown,
+  ToolbarControllerEditor,
+  ToolbarGroup,
+  ToolbarLayoutEntry,
+} from '@domternal/core';
+
+export interface UseToolbarControllerResult {
+  controller: RefObject<ToolbarController | null>;
+  groups: ToolbarGroup[];
+  focusedIndex: number;
+  openDropdown: string | null;
+  activeVersion: number;
+  toolbarRef: RefObject<HTMLDivElement | null>;
+  isActive: (name: string) => boolean;
+  isDisabled: (name: string) => boolean;
+  isDropdownActive: (dropdown: ToolbarDropdown) => boolean;
+  getAriaExpanded: (item: ToolbarButton) => string | null;
+  getFlatIndex: (name: string) => number;
+  handleDropdownToggle: (dropdown: ToolbarDropdown) => void;
+  closeDropdown: () => void;
+  syncState: () => void;
+}
+
+export function useToolbarController(
+  editor: Editor | null,
+  layout?: ToolbarLayoutEntry[],
+): UseToolbarControllerResult {
+  const [groups, setGroups] = useState<ToolbarGroup[]>([]);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [activeVersion, setActiveVersion] = useState(0);
+
+  const controllerRef = useRef<ToolbarController | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const cleanupFloatingRef = useRef<(() => void) | null>(null);
+  const clickOutsideRef = useRef<((e: Event) => void) | null>(null);
+  const escapeKeydownRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+  const dismissOverlayRef = useRef<(() => void) | null>(null);
+  const editorElRef = useRef<HTMLElement | null>(null);
+
+  const syncStateRafRef = useRef(0);
+  const syncState = useCallback((): void => {
+    // Defer state update to next animation frame so it doesn't interrupt
+    // the current event cycle (e.g. mousedown → click on toolbar buttons).
+    // Without this, a no-op transaction between mousedown and click causes
+    // React to re-render and replace DOM nodes, swallowing the click event.
+    cancelAnimationFrame(syncStateRafRef.current);
+    syncStateRafRef.current = requestAnimationFrame(() => {
+      const controller = controllerRef.current;
+      if (!controller) return;
+
+      const controllerGroups = controller.groups;
+      setGroups(prev => prev.length !== controllerGroups.length ? controllerGroups : prev);
+      setFocusedIndex(controller.focusedIndex);
+      setOpenDropdown(controller.openDropdown);
+      setActiveVersion(v => v + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+
+    const controller = new ToolbarController(
+      editor as unknown as ToolbarControllerEditor,
+      syncState,
+      layout,
+    );
+    controller.subscribe();
+    controllerRef.current = controller;
+    syncState();
+
+    // Click outside to close dropdown
+    const clickOutside = (e: Event): void => {
+      if (controller.openDropdown && toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
+        cleanupFloatingRef.current?.();
+        cleanupFloatingRef.current = null;
+        controller.closeDropdown();
+        syncState();
+      }
+    };
+    clickOutsideRef.current = clickOutside;
+    document.addEventListener('mousedown', clickOutside);
+
+    // Escape from anywhere: opening a dropdown with the mouse leaves focus
+    // outside the toolbar, so its own keydown handler never sees the key.
+    const escapeKeydown = (e: KeyboardEvent): void => {
+      if (!controller.openDropdown) return;
+      if (e.key !== 'Escape') return;
+      // Focus inside the toolbar belongs to the host handler, which also
+      // restores focus. Not defaultPrevented: ProseMirror prevents Escape
+      // first whenever the caret is in the editor.
+      if (toolbarRef.current?.contains(document.activeElement)) return;
+
+      cleanupFloatingRef.current?.();
+      cleanupFloatingRef.current = null;
+      controller.closeDropdown();
+      syncState();
+      // Focus stays put: pulling it out of the editor mid-typing would be
+      // more disruptive than closing the panel in place.
+      e.preventDefault();
+    };
+    escapeKeydownRef.current = escapeKeydown;
+    document.addEventListener('keydown', escapeKeydown);
+
+    // Dismiss overlays (e.g. table handle clicks)
+    const editorEl = editor.view.dom.closest<HTMLElement>('.dm-editor');
+    editorElRef.current = editorEl;
+    if (editorEl) {
+      const dismiss = (): void => {
+        if (controller.openDropdown) {
+          cleanupFloatingRef.current?.();
+          cleanupFloatingRef.current = null;
+          controller.closeDropdown();
+          syncState();
+        }
+      };
+      dismissOverlayRef.current = dismiss;
+      editorEl.addEventListener('dm:dismiss-overlays', dismiss);
+    }
+
+    return () => {
+      cancelAnimationFrame(syncStateRafRef.current);
+      cleanupFloatingRef.current?.();
+      cleanupFloatingRef.current = null;
+
+      if (clickOutsideRef.current) {
+        document.removeEventListener('mousedown', clickOutsideRef.current);
+        clickOutsideRef.current = null;
+      }
+
+      if (escapeKeydownRef.current) {
+        document.removeEventListener('keydown', escapeKeydownRef.current);
+        escapeKeydownRef.current = null;
+      }
+
+      if (dismissOverlayRef.current && editorElRef.current) {
+        editorElRef.current.removeEventListener('dm:dismiss-overlays', dismissOverlayRef.current);
+        dismissOverlayRef.current = null;
+        editorElRef.current = null;
+      }
+
+      controller.destroy();
+      controllerRef.current = null;
+    };
+  }, [editor, layout, syncState]);
+
+  const isActive = useCallback((name: string): boolean => {
+    // activeVersion used in component render to subscribe to changes
+    return controllerRef.current?.activeMap.get(name) ?? false;
+  }, []);
+
+  const isDisabled = useCallback((name: string): boolean => {
+    return controllerRef.current?.disabledMap.get(name) ?? false;
+  }, []);
+
+  const isDropdownActive = useCallback((dropdown: ToolbarDropdown): boolean => {
+    if (dropdown.layout === 'grid') return false;
+    if (dropdown.dynamicLabel) return false;
+    const controller = controllerRef.current;
+    if (!controller) return false;
+    return dropdown.items.some((item: ToolbarButton) => controller.activeMap.get(item.name) ?? false);
+  }, []);
+
+  const getAriaExpanded = useCallback((item: ToolbarButton): string | null => {
+    if (!item.emitEvent) return null;
+    return controllerRef.current?.expandedMap.get(item.name) ? 'true' : null;
+  }, []);
+
+  const getFlatIndex = useCallback((name: string): number => {
+    return controllerRef.current?.getFlatIndex(name) ?? -1;
+  }, []);
+
+  const handleDropdownToggle = useCallback((dropdown: ToolbarDropdown): void => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+
+    cleanupFloatingRef.current?.();
+    cleanupFloatingRef.current = null;
+    controller.toggleDropdown(dropdown.name);
+    syncState();
+
+    if (controller.openDropdown) {
+      requestAnimationFrame(() => {
+        const trigger = toolbarRef.current?.querySelector<HTMLElement>('[aria-expanded="true"]');
+        const panel = trigger?.parentElement?.querySelector<HTMLElement>('.dm-toolbar-dropdown-panel');
+        if (trigger && panel) {
+          const placement = dropdown.layout === 'grid' ? 'bottom' : 'bottom-start';
+          cleanupFloatingRef.current = positionFloatingOnce(trigger, panel, {
+            placement,
+            offsetValue: 4,
+          });
+        }
+      });
+    }
+  }, [syncState]);
+
+  const closeDropdown = useCallback((): void => {
+    cleanupFloatingRef.current?.();
+    cleanupFloatingRef.current = null;
+    controllerRef.current?.closeDropdown();
+    syncState();
+  }, [syncState]);
+
+  return {
+    controller: controllerRef,
+    groups,
+    focusedIndex,
+    openDropdown,
+    activeVersion,
+    toolbarRef,
+    isActive,
+    isDisabled,
+    isDropdownActive,
+    getAriaExpanded,
+    getFlatIndex,
+    handleDropdownToggle,
+    closeDropdown,
+    syncState,
+  };
+}

@@ -1,0 +1,905 @@
+import { fireEvent, renderHook } from "@testing-library/react";
+import { defaultAiQuickActionPrompt } from "../lib/ai-actions";
+import { useApplicationShortcuts, useNativeMenuHandlers, useSettingsWindowShortcut } from "./useNativeBindings";
+
+describe("useNativeMenuHandlers", () => {
+  const baseOptions = {
+    importLocalFiles: vi.fn(),
+    importLocalImages: vi.fn(),
+    insertMarkdownImage: vi.fn(),
+    insertMarkdownLink: vi.fn(),
+    insertMarkdownSnippet: vi.fn(),
+    insertMarkdownTable: vi.fn(),
+    openDocument: vi.fn(),
+    openFolder: vi.fn(),
+    runEditorShortcut: vi.fn(),
+    saveDocument: vi.fn(),
+    saveDocumentAs: vi.fn()
+  };
+
+  it("routes the insert table menu command to the editor table insertion", () => {
+    const insertMarkdownLink = vi.fn();
+    const insertMarkdownImage = vi.fn();
+    const insertMarkdownSnippet = vi.fn();
+    const insertMarkdownTable = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        importLocalFiles: vi.fn(),
+        importLocalImages: vi.fn(),
+        insertMarkdownImage,
+        insertMarkdownLink,
+        insertMarkdownSnippet,
+        insertMarkdownTable,
+        openDocument: vi.fn(),
+        openFolder: vi.fn(),
+        runEditorShortcut: vi.fn(),
+        saveDocument: vi.fn(),
+        saveDocumentAs: vi.fn()
+      })
+    );
+
+    result.current.insertTable?.();
+
+    expect(insertMarkdownTable).toHaveBeenCalledTimes(1);
+    expect(insertMarkdownImage).not.toHaveBeenCalled();
+    expect(insertMarkdownLink).not.toHaveBeenCalled();
+    expect(insertMarkdownSnippet).not.toHaveBeenCalled();
+  });
+
+  it("routes the insert image menu command to the editor image insertion", () => {
+    const importLocalFiles = vi.fn();
+    const insertMarkdownImage = vi.fn();
+    const insertMarkdownSnippet = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        importLocalFiles,
+        insertMarkdownImage,
+        insertMarkdownSnippet
+      })
+    );
+
+    result.current.insertImage?.();
+
+    expect(insertMarkdownImage).toHaveBeenCalledTimes(1);
+    expect(importLocalFiles).not.toHaveBeenCalled();
+    expect(insertMarkdownSnippet).not.toHaveBeenCalled();
+  });
+
+  it("routes the import local images menu command separately from file import", () => {
+    const importLocalFiles = vi.fn();
+    const importLocalImages = vi.fn();
+    const insertMarkdownImage = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        importLocalFiles,
+        importLocalImages,
+        insertMarkdownImage
+      })
+    );
+
+    result.current.importLocalImages?.();
+
+    expect(importLocalImages).toHaveBeenCalledTimes(1);
+    expect(importLocalFiles).not.toHaveBeenCalled();
+    expect(insertMarkdownImage).not.toHaveBeenCalled();
+  });
+
+  it("routes the import local files menu command separately from image import", () => {
+    const importLocalFiles = vi.fn();
+    const importLocalImages = vi.fn();
+    const insertMarkdownImage = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        importLocalFiles,
+        importLocalImages,
+        insertMarkdownImage
+      })
+    );
+
+    result.current.importLocalFiles?.();
+
+    expect(importLocalFiles).toHaveBeenCalledTimes(1);
+    expect(importLocalImages).not.toHaveBeenCalled();
+    expect(insertMarkdownImage).not.toHaveBeenCalled();
+  });
+
+  it("routes the insert link menu command to the editor link insertion", () => {
+    const insertMarkdownLink = vi.fn();
+    const insertMarkdownSnippet = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        insertMarkdownLink,
+        insertMarkdownSnippet
+      })
+    );
+
+    result.current.insertLink?.();
+
+    expect(insertMarkdownLink).toHaveBeenCalledTimes(1);
+    expect(insertMarkdownSnippet).not.toHaveBeenCalled();
+  });
+
+  it("routes native AI context menu commands to localized inline AI actions", () => {
+    const runAiQuickAction = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        language: "zh-CN",
+        runAiQuickAction
+      })
+    );
+
+    result.current.aiPolish?.();
+    result.current.aiContinueWriting?.();
+    result.current.aiTranslate?.();
+
+    expect(runAiQuickAction).toHaveBeenNthCalledWith(
+      1,
+      "polish",
+      defaultAiQuickActionPrompt("polish", "Simplified Chinese")
+    );
+    expect(runAiQuickAction).toHaveBeenNthCalledWith(
+      2,
+      "continue",
+      defaultAiQuickActionPrompt("continue", "Simplified Chinese")
+    );
+    expect(runAiQuickAction).toHaveBeenNthCalledWith(
+      3,
+      "translate",
+      defaultAiQuickActionPrompt("translate", "Simplified Chinese")
+    );
+  });
+
+  it("routes native formatting commands through custom markdown shortcuts", () => {
+    const runEditorShortcut = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        markdownShortcuts: {
+          bold: "Mod+Alt+B"
+        },
+        runEditorShortcut
+      })
+    );
+
+    result.current.formatBold?.();
+
+    expect(runEditorShortcut).toHaveBeenCalledWith("b", {
+      altKey: true,
+      code: undefined,
+      modKey: true,
+      shiftKey: false
+    });
+  });
+
+  it("routes the native plain text paste command", () => {
+    const pastePlainText = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        pastePlainText
+      })
+    );
+
+    result.current.pastePlainText?.();
+
+    expect(pastePlainText).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes native formatting commands through Alt-only custom shortcuts", () => {
+    const runEditorShortcut = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        markdownShortcuts: {
+          heading1: "Alt+1"
+        },
+        runEditorShortcut
+      })
+    );
+
+    result.current.formatHeading1?.();
+
+    expect(runEditorShortcut).toHaveBeenCalledWith("1", {
+      altKey: true,
+      code: "Digit1",
+      modKey: false,
+      shiftKey: false
+    });
+  });
+
+  it("routes shifted digit formatting commands through physical key data", () => {
+    const runEditorShortcut = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        runEditorShortcut
+      })
+    );
+
+    result.current.formatBulletList?.();
+
+    expect(runEditorShortcut).toHaveBeenCalledWith("*", {
+      altKey: false,
+      code: "Digit8",
+      modKey: true,
+      shiftKey: true
+    });
+  });
+
+  it("routes native edit history commands through editor shortcuts", () => {
+    const runEditorShortcut = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        runEditorShortcut
+      })
+    );
+
+    result.current.editUndo?.();
+    result.current.editRedo?.();
+
+    expect(runEditorShortcut).toHaveBeenNthCalledWith(1, "z");
+    expect(runEditorShortcut).toHaveBeenNthCalledWith(2, "z", {
+      shiftKey: true
+    });
+  });
+
+  it("keeps native edit history commands inside a focused text input", () => {
+    const runEditorShortcut = vi.fn();
+    const execCommand = vi.fn().mockReturnValue(true);
+    const input = document.createElement("input");
+    const originalExecCommand = document.execCommand;
+    input.type = "text";
+    document.body.append(input);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand
+    });
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        runEditorShortcut
+      })
+    );
+
+    input.focus();
+
+    result.current.editUndo?.();
+    result.current.editRedo?.();
+
+    expect(execCommand).toHaveBeenNthCalledWith(1, "undo");
+    expect(execCommand).toHaveBeenNthCalledWith(2, "redo");
+    expect(runEditorShortcut).not.toHaveBeenCalled();
+
+    input.remove();
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: originalExecCommand
+    });
+  });
+
+  it("routes the native all-folds command through the configured editor shortcut", () => {
+    const runEditorShortcut = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleAllFolds: "Mod+Shift+Alt+F"
+        },
+        runEditorShortcut
+      })
+    );
+
+    result.current.toggleAllFolds?.();
+
+    expect(runEditorShortcut).toHaveBeenCalledWith("F", {
+      altKey: true,
+      modKey: true,
+      shiftKey: true
+    });
+  });
+
+  it("routes native application commands to app toggles", () => {
+    const closeDocument = vi.fn();
+    const checkForUpdates = vi.fn();
+    const toggleAiAgent = vi.fn();
+    const toggleAiCommand = vi.fn();
+    const toggleDocumentHistory = vi.fn();
+    const toggleFullscreen = vi.fn();
+    const toggleMarkdownFiles = vi.fn();
+    const toggleReadOnlyMode = vi.fn();
+    const toggleSourceMode = vi.fn();
+    const syncNow = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        checkForUpdates,
+        closeDocument,
+        syncNow,
+        toggleAiAgent,
+        toggleAiCommand,
+        toggleDocumentHistory,
+        toggleFullscreen,
+        toggleMarkdownFiles,
+        toggleReadOnlyMode,
+        toggleSourceMode
+      })
+    );
+
+    result.current.closeDocument?.();
+    result.current.checkForUpdates?.();
+    result.current.toggleFullscreen?.();
+    result.current.toggleMarkdownFiles?.();
+    result.current.toggleDocumentHistory?.();
+    result.current.toggleAiAgent?.();
+    result.current.toggleAiCommand?.();
+    result.current.toggleSourceMode?.();
+    result.current.toggleReadOnlyMode?.();
+    result.current.syncNow?.();
+
+    expect(closeDocument).toHaveBeenCalledTimes(1);
+    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(toggleFullscreen).toHaveBeenCalledTimes(1);
+    expect(toggleMarkdownFiles).toHaveBeenCalledTimes(1);
+    expect(toggleDocumentHistory).toHaveBeenCalledTimes(1);
+    expect(toggleAiAgent).toHaveBeenCalledTimes(1);
+    expect(toggleAiCommand).toHaveBeenCalledTimes(1);
+    expect(toggleReadOnlyMode).toHaveBeenCalledTimes(1);
+    expect(toggleSourceMode).toHaveBeenCalledTimes(1);
+    expect(syncNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the native open folder menu command to the folder opener", () => {
+    const openFolder = vi.fn();
+    const { result } = renderHook(() =>
+      useNativeMenuHandlers({
+        ...baseOptions,
+        openFolder
+      })
+    );
+
+    result.current.openFolder?.();
+
+    expect(openFolder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useApplicationShortcuts", () => {
+  const baseOptions = {
+    openDocument: vi.fn(),
+    openFolder: vi.fn(),
+    saveDocument: vi.fn(),
+    saveDocumentAs: vi.fn()
+  };
+
+  it("opens settings from the default settings shortcut", () => {
+    const openSettings = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openSettings
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      code: "Comma",
+      ctrlKey: true,
+      key: ","
+    });
+
+    expect(handled).toBe(false);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a blank editor window from Ctrl+N on Windows", () => {
+    const openBlankEditorWindow = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openBlankEditorWindow,
+        platform: "windows"
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      ctrlKey: true,
+      key: "n"
+    });
+
+    expect(handled).toBe(false);
+    expect(openBlankEditorWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not treat Control+Meta as the platform modifier for static shortcuts", () => {
+    const openSettings = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openSettings
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      code: "Comma",
+      ctrlKey: true,
+      key: ",",
+      metaKey: true
+    });
+
+    expect(handled).toBe(true);
+    expect(openSettings).not.toHaveBeenCalled();
+  });
+
+  it("routes configurable app shortcuts to panel toggles", () => {
+    const toggleAiAgent = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleAiAgent: "Mod+Alt+A"
+        },
+        toggleAiAgent
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "a",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(toggleAiAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes plain text paste from the application capture layer", () => {
+    const pastePlainText = vi.fn(() => true);
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        pastePlainText
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      shiftKey: true
+    });
+    fireEvent.keyDown(window, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      repeat: true,
+      shiftKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(pastePlainText).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves plain text paste shortcuts to focused non-editor inputs", () => {
+    const pastePlainText = vi.fn(() => true);
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        pastePlainText
+      })
+    );
+
+    const handled = fireEvent.keyDown(input, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      shiftKey: true
+    });
+
+    expect(handled).toBe(true);
+    expect(pastePlainText).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("routes Alt-only configurable app shortcuts without accepting Mod+Alt", () => {
+    const toggleAiAgent = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleAiAgent: "Alt+1"
+        },
+        toggleAiAgent
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      altKey: true,
+      code: "Digit1",
+      key: "¡"
+    });
+    fireEvent.keyDown(window, {
+      altKey: true,
+      code: "Digit1",
+      key: "¡",
+      metaKey: true
+    });
+
+    expect(toggleAiAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs manual sync from the default shortcut", () => {
+    const syncNow = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        syncNow
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      code: "KeyR",
+      key: "r",
+      altKey: true,
+      metaKey: true,
+      shiftKey: false
+    });
+
+    expect(handled).toBe(false);
+    expect(syncNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the configurable document history shortcut", () => {
+    const toggleDocumentHistory = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleDocumentHistory: "Mod+Alt+H"
+        },
+        toggleDocumentHistory
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "h",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(toggleDocumentHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the default document history shortcut", () => {
+    const toggleDocumentHistory = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        toggleDocumentHistory
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "h",
+      metaKey: true,
+      shiftKey: true
+    });
+
+    expect(toggleDocumentHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the configurable inline AI command shortcut", () => {
+    const toggleAiCommand = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleAiCommand: "Mod+Alt+U"
+        },
+        toggleAiCommand
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "u",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(toggleAiCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the default source mode shortcut", () => {
+    const toggleSourceMode = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        toggleSourceMode
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(toggleSourceMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the configurable read-only mode shortcut", () => {
+    const toggleReadOnlyMode = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleReadOnlyMode: "Mod+Alt+Y"
+        },
+        toggleReadOnlyMode
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "y",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(toggleReadOnlyMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the configurable typewriter mode shortcut", () => {
+    const toggleTypewriterMode = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleTypewriterMode: "Mod+Alt+G"
+        },
+        toggleTypewriterMode
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      altKey: true,
+      code: "KeyG",
+      key: "©",
+      metaKey: true,
+    });
+
+    expect(toggleTypewriterMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the configurable Vim mode shortcut", () => {
+    const toggleVimMode = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        markdownShortcuts: {
+          toggleVimMode: "Mod+Shift+Alt+I"
+        },
+        toggleVimMode
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      altKey: true,
+      code: "KeyI",
+      key: "I",
+      metaKey: true,
+      shiftKey: true
+    });
+
+    expect(toggleVimMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores repeated keydown events for configurable shortcuts", () => {
+    const toggleTypewriterMode = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        toggleTypewriterMode
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "Y",
+      metaKey: true,
+      repeat: true,
+      shiftKey: true
+    });
+
+    expect(toggleTypewriterMode).not.toHaveBeenCalled();
+  });
+
+  it("closes the current document from the default close shortcut", () => {
+    const closeDocument = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        closeDocument
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      metaKey: true
+    });
+
+    expect(closeDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("intercepts the default document search shortcut", () => {
+    const openDocumentSearch = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openDocumentSearch
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      key: "f",
+      metaKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(openDocumentSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("intercepts the workspace search shortcut", () => {
+    const openWorkspaceSearch = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openWorkspaceSearch
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      key: "f",
+      metaKey: true,
+      shiftKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(openWorkspaceSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens quick open from Mod+P instead of exporting PDF", () => {
+    const exportPdf = vi.fn();
+    const openQuickOpen = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        exportPdf,
+        openQuickOpen
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      key: "p",
+      metaKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(openQuickOpen).toHaveBeenCalledTimes(1);
+    expect(exportPdf).not.toHaveBeenCalled();
+  });
+
+  it("exports PDF from Mod+Alt+P", () => {
+    const exportPdf = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        exportPdf
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      altKey: true,
+      key: "p",
+      metaKey: true
+    });
+
+    expect(exportPdf).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens replace from the document search shortcut with Alt", () => {
+    const openDocumentReplace = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openDocumentReplace
+      })
+    );
+
+    fireEvent.keyDown(window, {
+      key: "f",
+      altKey: true,
+      metaKey: true
+    });
+
+    expect(openDocumentReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens replace when macOS reports Cmd+Option+F as the option-modified key", () => {
+    const openDocumentReplace = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openDocumentReplace
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      altKey: true,
+      code: "KeyF",
+      key: "ƒ",
+      metaKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(openDocumentReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens replace from the native Windows Ctrl+H document replace shortcut", () => {
+    const openDocumentReplace = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openDocumentReplace,
+        platform: "windows"
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      key: "h",
+      ctrlKey: true
+    });
+
+    expect(handled).toBe(false);
+    expect(openDocumentReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not intercept Ctrl+H on macOS", () => {
+    const openDocumentReplace = vi.fn();
+    renderHook(() =>
+      useApplicationShortcuts({
+        ...baseOptions,
+        openDocumentReplace,
+        platform: "macos"
+      })
+    );
+
+    const handled = fireEvent.keyDown(window, {
+      ctrlKey: true,
+      key: "h"
+    });
+
+    expect(handled).toBe(true);
+    expect(openDocumentReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSettingsWindowShortcut", () => {
+  it("runs the settings toggle from the default settings shortcut", () => {
+    const openSettings = vi.fn();
+    renderHook(() => useSettingsWindowShortcut(openSettings));
+
+    const handled = fireEvent.keyDown(window, {
+      code: "Comma",
+      ctrlKey: true,
+      key: ","
+    });
+
+    expect(handled).toBe(false);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+});

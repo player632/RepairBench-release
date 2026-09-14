@@ -1,0 +1,170 @@
+<template>
+    <demo-page title="Tabbar 标签栏" desc="用于展示应用底部导航栏，支持自定义颜色、中间按钮和徽标。" :apis="'tabbar'">
+        <template #default>
+            <view>
+                <view class="u-demo">
+                    <view class="u-config-wrap">
+                        <view class="u-config-title u-border-bottom"> 参数配置 </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">状态</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="showChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">凸起按钮</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="minButtonChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">文字</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="textShowChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">图标</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="iconShowChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">背景色</view>
+                            <u-subsection :list="['#ffffff', '#1f1f1d']" @change="bgColorChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">顶部边框</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="borderTopChange"></u-subsection>
+                        </view>
+                        <view class="u-config-item">
+                            <view class="u-item-title">提示角标</view>
+                            <u-subsection :list="['显示', '隐藏']" @change="badgeChange"></u-subsection>
+                        </view>
+                    </view>
+                </view>
+                <u-tabbar
+                    v-model="current"
+                    :show="show"
+                    :bg-color="bgColor"
+                    :border-top="borderTop"
+                    :list="list"
+                    :mid-button="midButton"
+                    :inactive-color="inactiveColor"
+                    :activeColor="activeColor"
+                ></u-tabbar>
+            </view>
+        </template>
+    </demo-page>
+</template>
+
+<script lang="ts" setup>
+import type { TabbarItem } from '@/uni_modules/uview-pro/types/global';
+import { $u } from 'uview-pro';
+import { ref } from 'vue';
+
+const current = ref(0);
+const show = ref(true);
+const bgColor = ref('#ffffff');
+const borderTop = ref(true);
+const originList: TabbarItem[] = [
+    {
+        iconPath: 'home',
+        selectedIconPath: 'home-fill',
+        text: '首页',
+        count: 2,
+        isDot: true,
+        customIcon: false
+    },
+    {
+        iconPath: 'photo',
+        selectedIconPath: 'photo-fill',
+        text: '放映厅',
+        customIcon: false
+    },
+    {
+        iconPath: '/static/uview/example/min_button.png',
+        selectedIconPath: '/static/uview/example/min_button_select.png',
+        text: '发布',
+        midButton: true,
+        customIcon: false
+    },
+    {
+        iconPath: 'play-right',
+        selectedIconPath: 'play-right-fill',
+        text: '直播',
+        customIcon: false
+    },
+    {
+        iconPath: 'account',
+        selectedIconPath: 'account-fill',
+        text: '我的',
+        count: 23,
+        isDot: false,
+        customIcon: false
+    }
+];
+const list = ref<TabbarItem[]>($u.deepClone(originList));
+const midButton = ref(true);
+const inactiveColor = ref('#909399');
+const activeColor = ref('#5098FF');
+
+function textShowChange(index: number) {
+    if (index === 1) {
+        list.value.forEach(item => {
+            item.text = '';
+            item.iconSize = 50;
+        });
+        midButton.value = false;
+    } else {
+        list.value = $u.deepClone(originList);
+        midButton.value = true;
+    }
+}
+
+function iconShowChange(index: number) {
+    if (index === 1) {
+        list.value.forEach(item => {
+            item.iconPath = '';
+            item.selectedIconPath = '';
+            item.textSize = 36;
+        });
+        midButton.value = false;
+    } else {
+        list.value = $u.deepClone(originList);
+        midButton.value = true;
+    }
+}
+
+function showChange(index: number) {
+    show.value = !index;
+}
+
+function bgColorChange(index: number) {
+    if (index === 0) {
+        activeColor.value = '#5098FF';
+        inactiveColor.value = '#909399';
+    }
+    if (index === 1) {
+        activeColor.value = '#D0D0D0';
+        inactiveColor.value = '#5A5A5A';
+    }
+    bgColor.value = ['#ffffff', '#1f1f1d'][index];
+}
+
+function borderTopChange(index: number) {
+    borderTop.value = !index;
+}
+
+function badgeChange(index: number) {
+    if (index === 1) {
+        list.value[0].count = 0;
+        list.value[4].count = 0;
+    } else {
+        list.value[0].count = 2;
+        list.value[4].count = 23;
+    }
+}
+
+function minButtonChange(index: number) {
+    midButton.value = !index;
+}
+</script>
+
+<style scoped lang="scss">
+.u-demo-area {
+    margin: 0 -40rpx;
+}
+</style>

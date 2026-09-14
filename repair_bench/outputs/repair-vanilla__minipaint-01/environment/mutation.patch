@@ -1,0 +1,228 @@
+diff --git a/src/js/actions/delete-layer.js b/src/js/actions/delete-layer.js
+index 20fd6cd..3113a52 100644
+--- a/src/js/actions/delete-layer.js
++++ b/src/js/actions/delete-layer.js
+@@ -61,7 +61,7 @@ export class Delete_layer_action extends Base_action {
+ 		}
+ 
+ 		// Remove layer from list
+-		this.deleted_layer = config.layers.splice(this.delete_index, 1)[0];
++		this.deleted_layer = config.layers[this.delete_index];
+ 
+ 		// Estimate memory
+ 		if (this.deleted_layer.link && this.deleted_layer.link.src && typeof this.deleted_layer.link.src === 'string') {
+diff --git a/src/js/actions/select-layer.js b/src/js/actions/select-layer.js
+index f1252be..d941b3b 100644
+--- a/src/js/actions/select-layer.js
++++ b/src/js/actions/select-layer.js
+@@ -33,7 +33,6 @@ export class Select_layer_action extends Base_action {
+ 		await this.reset_selection_action.do();
+ 
+ 		app.Layers.render();
+-		app.GUI.GUI_layers.render_layers();
+ 	}
+ 
+ 	async undo() {
+diff --git a/src/js/core/base-state.js b/src/js/core/base-state.js
+index b9852f8..8c3123b 100644
+--- a/src/js/core/base-state.js
++++ b/src/js/core/base-state.js
+@@ -49,11 +49,6 @@ class Base_state_class {
+ 				this.undo();
+ 				event.preventDefault();
+ 			}
+-			if (key == "y" && (event.ctrlKey == true || event.metaKey)) {
+-				// Redo
+-				this.redo();
+-				event.preventDefault();
+-			}
+ 		}, false);
+ 	}
+ 
+diff --git a/src/js/core/gui/gui-colors.js b/src/js/core/gui/gui-colors.js
+index 8a174eb..7a0b48f 100644
+--- a/src/js/core/gui/gui-colors.js
++++ b/src/js/core/gui/gui-colors.js
+@@ -309,7 +309,7 @@ class GUI_colors_class {
+ 				this.buttons.toggleColorChannels.attr('aria-pressed', 'true' === this.buttons.toggleColorChannels.attr('aria-pressed') ? 'false' : 'true');
+ 				const isPressed = this.buttons.toggleColorChannels.attr('aria-pressed') === 'true';
+ 				if (isPressed) {
+-					this.sections.channelsPlaceholder.parentNode.insertBefore(this.sections.channels[0], this.sections.channelsPlaceholder.nextSibling);
++					this.sections.channelsPlaceholder.parentNode.insertBefore(this.sections.channels[0].cloneNode(true), this.sections.channelsPlaceholder.nextSibling);
+ 					this.sections.channelsPlaceholder.parentNode.removeChild(this.sections.channelsPlaceholder);
+ 				} else {
+ 					this.sections.channels[0].parentNode.insertBefore(this.sections.channelsPlaceholder, this.sections.channels[0].nextSibling);
+diff --git a/src/js/core/gui/gui-details.js b/src/js/core/gui/gui-details.js
+index c46c1de..84b424a 100644
+--- a/src/js/core/gui/gui-details.js
++++ b/src/js/core/gui/gui-details.js
+@@ -226,7 +226,7 @@ class GUI_details_class {
+ 					var value = parseInt(this.value);
+ 				}
+ 				var layer = _this.Base_layers.get_layer(e.target.dataset.layer);
+-				layer[key] = focus_value;
++				layer[key] = value;
+ 				if (focus_value !== value) {
+ 					app.State.do_action(
+ 						new app.Actions.Bundle_action('change_layer_details', 'Change Layer Details', [
+diff --git a/src/js/core/gui/gui-information.js b/src/js/core/gui/gui-information.js
+index 0d86065..a27fe89 100644
+--- a/src/js/core/gui/gui-information.js
++++ b/src/js/core/gui/gui-information.js
+@@ -77,7 +77,7 @@ class GUI_information_class {
+ 	}
+ 
+ 	show_size(force) {
+-		if(force == undefined && this.last_width == config.WIDTH && this.last_height == config.HEIGHT) {
++		if(this.last_width == config.WIDTH && this.last_height == config.HEIGHT) {
+ 			return;
+ 		}
+ 
+diff --git a/src/js/core/gui/gui-layers.js b/src/js/core/gui/gui-layers.js
+index 70f40fe..e19e1ce 100644
+--- a/src/js/core/gui/gui-layers.js
++++ b/src/js/core/gui/gui-layers.js
+@@ -59,10 +59,6 @@ class GUI_layers_class {
+ 					new app.Actions.Insert_layer_action()
+ 				);
+ 			}
+-			else if (target.id == 'layer_duplicate') {
+-				//duplicate
+-				_this.Layer_duplicate.duplicate();
+-			}
+ 			else if (target.id == 'layer_raster') {
+ 				//raster
+ 				_this.Layer_raster.raster();
+@@ -70,7 +66,7 @@ class GUI_layers_class {
+ 			else if (target.id == 'layer_up') {
+ 				//move layer up
+ 				app.State.do_action(
+-					new app.Actions.Reorder_layer_action(config.layer.id, 1)
++					new app.Actions.Reorder_layer_action(config.layer.id, -1)
+ 				);
+ 			}
+ 			else if (target.id == 'layer_down') {
+diff --git a/src/js/core/gui/gui-menu.js b/src/js/core/gui/gui-menu.js
+index a96380b..c6a5a3c 100644
+--- a/src/js/core/gui/gui-menu.js
++++ b/src/js/core/gui/gui-menu.js
+@@ -111,7 +111,6 @@ class GUI_menu_class {
+ 
+ 		// Clicked outside of menu; close dropdowns.
+ 		if (target && !this.menuContainer.contains(target)) {
+-			this.close_child_dropdowns(0);
+ 		}
+ 	}
+ 
+diff --git a/src/js/core/gui/gui-preview.js b/src/js/core/gui/gui-preview.js
+index eb0828e..51803d6 100644
+--- a/src/js/core/gui/gui-preview.js
++++ b/src/js/core/gui/gui-preview.js
+@@ -81,17 +81,6 @@ class GUI_preview_class {
+ 		document.addEventListener('touchend', function (e) {
+ 			_this.mouse_pressed = false;
+ 		}, false);
+-		document.getElementById('zoom_range').addEventListener('input', function (e) {
+-			_this.set_center_zoom();
+-			_this.zoom(this.value);
+-		}, false);
+-		document.getElementById('zoom_range').addEventListener('change', function (e) {
+-			//IE11
+-			if (this.value != config.ZOOM * 100) {
+-				_this.set_center_zoom();
+-				_this.zoom(this.value);
+-			}
+-		}, false);
+ 		document.getElementById('zoom_less').addEventListener('click', function (e) {
+ 			_this.set_center_zoom();
+ 			_this.zoom(-1);
+diff --git a/src/js/libs/popup.js b/src/js/libs/popup.js
+index 6a23790..4f54be5 100644
+--- a/src/js/libs/popup.js
++++ b/src/js/libs/popup.js
+@@ -144,8 +144,7 @@ class Dialog_class {
+ 			this.el.parentNode.removeChild(this.el);
+ 		}
+ 		this.parameters = [];
+-		this.active = false;
+-		this.preview = false;
++				this.preview = false;
+ 		this.preview_padding = 0;
+ 		this.onload = false;
+ 		this.onchange = false;
+@@ -627,7 +626,7 @@ class Dialog_class {
+ 			if (event.target.hasAttribute('data-prevent-submission')) {
+ 				event.preventDefault();
+ 			} else {
+-				this.save();
++				this.hide(false);
+ 			}
+ 		}
+ 	}
+diff --git a/src/js/libs/zoomView.js b/src/js/libs/zoomView.js
+index 10c9f4c..58fc22f 100644
+--- a/src/js/libs/zoomView.js
++++ b/src/js/libs/zoomView.js
+@@ -105,8 +105,8 @@ const zoomView = (() => {
+ 			}
+ 			xx = from_x - m[4];
+ 			yy = from_y - m[5];
+-			pointW.x = xx * im[0] + yy * im[2];
+-			pointW.y = xx * im[1] + yy * im[3];
++			pointW.x = xx * m[0] + yy * m[2];
++			pointW.y = xx * m[1] + yy * m[3];
+ 			return pointW;
+ 		},
+ 		toScreen(from, point = {}){  // convert world coords to screen coords
+diff --git a/src/js/modules/image/resize.js b/src/js/modules/image/resize.js
+index 61a5f61..b1d5b91 100644
+--- a/src/js/modules/image/resize.js
++++ b/src/js/modules/image/resize.js
+@@ -287,14 +287,6 @@ class Image_resize_class {
+ 		var width_100 = parseInt(params.width_percent);
+ 		var height_100 = parseInt(params.height_percent);
+ 
+-		//convert units
+-		if (isNaN(width) == false){
+-			width = this.Helper.get_internal_unit(width, units, resolution);
+-		}
+-		if (isNaN(height) == false){
+-			height = this.Helper.get_internal_unit(height, units, resolution);
+-		}
+-
+ 		//if dimension with percent provided
+ 		if (isNaN(width) && isNaN(height)) {
+ 			if (isNaN(width_100) == false) {
+diff --git a/src/js/tools/animation.js b/src/js/tools/animation.js
+index de7d588..576ae6e 100644
+--- a/src/js/tools/animation.js
++++ b/src/js/tools/animation.js
+@@ -56,7 +56,6 @@ class Animation_class extends Base_tools_class {
+ 			alertify.error('Can not animate 1 layer.');
+ 			return;
+ 		}
+-		this.stop();
+ 
+ 		if (params.play == true) {
+ 			this.start(params.delay);
+@@ -81,9 +80,7 @@ class Animation_class extends Base_tools_class {
+ 		if (delay < 0)
+ 			delay = 50;
+ 
+-		this.intervalID = window.setInterval(function () {
+-			_this.play(_this);
+-		}, delay);
++		this.intervalID = window.setInterval(_this.play, delay);
+ 	}
+ 
+ 	stop() {
+@@ -106,9 +103,6 @@ class Animation_class extends Base_tools_class {
+ 		if (config.layers[this.index + 1] != undefined) {
+ 			this.index++;
+ 		}
+-		else {
+-			this.index = 0;
+-		}
+ 	}
+ 
+ }

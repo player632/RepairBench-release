@@ -1,0 +1,161 @@
+diff --git a/ai.js b/ai.js
+index 6fae444..66905e8 100644
+--- a/ai.js
++++ b/ai.js
+@@ -77,7 +77,7 @@ function AITest(p) {
+ 			if (s.owner === p.index && s.groupNumber >= 3) {
+ 				max = s.group.length;
+ 				allGroupOwned = true;
+-				leastHouseNumber = 6; // No property will ever have 6 houses.
++				leastHouseNumber = -1; // No property will ever have 6 houses.
+ 
+ 				for (var j = max - 1; j >= 0; j--) {
+ 					if (square[s.group[j]].owner !== p.index) {
+@@ -85,7 +85,7 @@ function AITest(p) {
+ 						break;
+ 					}
+ 
+-					if (square[s.group[j]].house < leastHouseNumber) {
++					if (square[s.group[j]].house > leastHouseNumber) {
+ 						leastHouseProperty = square[s.group[j]];
+ 						leastHouseNumber = leastHouseProperty.house;
+ 					}
+@@ -165,7 +165,7 @@ function AITest(p) {
+ 		console.log("postBail");
+ 
+ 		// p.jailroll === 2 on third turn in jail.
+-		if ((p.communityChestJailCard || p.chanceJailCard) && p.jailroll === 2) {
++		if ((p.communityChestJailCard || p.chanceJailCard) && p.jailroll === 3) {
+ 			return true;
+ 		} else {
+ 			return false;
+@@ -176,7 +176,7 @@ function AITest(p) {
+ 	// Return: void: don't return anything, just call the functions mortgage()/sellhouse()
+ 	this.payDebt = function() {
+ 		console.log("payDebt");
+-		for (var i = 39; i >= 0; i--) {
++		for (var i = 0; i <= 39; i++) {
+ 			s = square[i];
+ 
+ 			if (s.owner === p.index && !s.mortgage && s.house === 0) {
+diff --git a/classicedition.js b/classicedition.js
+index d77b233..8b5dc6a 100644
+--- a/classicedition.js
++++ b/classicedition.js
+@@ -47,7 +47,7 @@ function corrections() {
+ }
+ 
+ function utiltext() {
+-	return '&nbsp;&nbsp;&nbsp;&nbsp;If one "Utility" is owned rent is 4 times amount shown on dice.<br /><br />&nbsp;&nbsp;&nbsp;&nbsp;If both "Utilitys" are owned rent is 10 times amount shown on dice.';
++	return '&nbsp;&nbsp;&nbsp;&nbsp;If one "Utility" is owned rent is 10 times amount shown on dice.<br /><br />&nbsp;&nbsp;&nbsp;&nbsp;If both "Utilitys" are owned rent is 4 times amount shown on dice.';
+ }
+ 
+ function transtext() {
+@@ -114,7 +114,7 @@ square[39] = new Square("Boardwalk", "$400", "#0000FF", 400, 10, 50, 200, 600, 1
+ var communityChestCards = [];
+ var chanceCards = [];
+ 
+-communityChestCards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(p) { p.communityChestJailCard = true; updateOwned();});
++communityChestCards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(p) { p.chanceJailCard = true; updateOwned();});
+ communityChestCards[1] = new Card("You have won second prize in a beauty contest. Collect $10.", function() { addamount(10, 'Community Chest');});
+ communityChestCards[2] = new Card("From sale of stock, you get $50.", function() { addamount(50, 'Community Chest');});
+ communityChestCards[3] = new Card("Life insurance matures. Collect $100.", function() { addamount(100, 'Community Chest');});
+@@ -135,7 +135,7 @@ communityChestCards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass
+ chanceCards[0] = new Card("GET OUT OF JAIL FREE. This card may be kept until needed or traded.", function(p) { p.chanceJailCard=true; updateOwned();});
+ chanceCards[1] = new Card("Make General Repairs on All Your Property. For each house pay $25. For each hotel $100.", function() { streetrepairs(25, 100);});
+ chanceCards[2] = new Card("Speeding fine $15.", function() { subtractamount(15, 'Chance');});
+-chanceCards[3] = new Card("You have been elected chairman of the board. Pay each player $50.", function() { payeachplayer(50, 'Chance');});
++chanceCards[3] = new Card("You have been elected chairman of the board. Pay each player $50.", function() { collectfromeachplayer(50, 'Chance');});
+ chanceCards[4] = new Card("Go back three spaces.", function() { gobackthreespaces();});
+ chanceCards[5] = new Card("ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.", function() { advanceToNearestUtility();});
+ chanceCards[6] = new Card("Bank pays you dividend of $50.", function() { addamount(50, 'Chance');});
+diff --git a/monopoly.js b/monopoly.js
+index 147fe49..b7c7f94 100644
+--- a/monopoly.js
++++ b/monopoly.js
+@@ -87,7 +87,7 @@ function Game() {
+ 
+ 		var s = square[index];
+ 
+-		if (s.price === 0 || s.owner !== 0) {
++		if (s.price === 0) {
+ 			return game.auction();
+ 		}
+ 
+@@ -1517,14 +1517,6 @@ function updateOwned() {
+ 		HTML += "</table>";
+ 	}
+ 
+-	document.getElementById("owned").innerHTML = HTML;
+-
+-	// Select previously selected property.
+-	if (checkedproperty > -1 && document.getElementById("propertycheckbox" + checkedproperty)) {
+-		document.getElementById("propertycheckbox" + checkedproperty).checked = true;
+-	} else if (firstproperty > -1) {
+-		document.getElementById("propertycheckbox" + firstproperty).checked = true;
+-	}
+ 	$(".property-cell-row").click(function() {
+ 		var row = this;
+ 
+@@ -1542,6 +1534,14 @@ function updateOwned() {
+ 
+ 		updateOption();
+ 	});
++	document.getElementById("owned").innerHTML = HTML;
++
++	// Select previously selected property.
++	if (checkedproperty > -1 && document.getElementById("propertycheckbox" + checkedproperty)) {
++		document.getElementById("propertycheckbox" + checkedproperty).checked = true;
++	} else if (firstproperty > -1) {
++		document.getElementById("propertycheckbox" + firstproperty).checked = true;
++	}
+ 	updateOption();
+ }
+ 
+@@ -1661,7 +1661,7 @@ function updateOption() {
+ 			}
+ 
+ 			// Force even building
+-			if (sq.house > minhouse) {
++			if (sq.house < minhouse) {
+ 				buyhousebutton.disabled = true;
+ 
+ 				if (sq.house == 1) {
+@@ -1672,7 +1672,7 @@ function updateOption() {
+ 					buyhousebutton.title = "Before you can buy a house, the other properties of this color-group must all have " + sq.house + " houses.";
+ 				}
+ 			}
+-			if (sq.house < maxhouse) {
++			if (sq.house > maxhouse) {
+ 				sellhousebutton.disabled = true;
+ 
+ 				if (sq.house == 1) {
+@@ -2362,7 +2362,7 @@ function land(increasedRent) {
+ 				rent = s.baserent;
+ 			} else {
+ 				if (s.house === 0) {
+-					rent = s.baserent * 2;
++					rent = s.baserent;
+ 				} else {
+ 					rent = s["rent" + s.house];
+ 				}
+@@ -2410,6 +2410,10 @@ function land(increasedRent) {
+ 		popup(p.AI.alertList, chanceCommunityChest);
+ 		p.AI.alertList = "";
+ 	} else {
++		if (p.position === 7 || p.position === 22 || p.position === 36) {
++			chanceAction(chanceCards.deck[chanceCards.index]);
++		}
++
+ 		chanceCommunityChest();
+ 	}
+ }
+@@ -2442,7 +2446,7 @@ function roll() {
+ 	if (die1 == die2 && !p.jail) {
+ 		updateDice(die1, die2);
+ 
+-		if (doublecount < 3) {
++		if (doublecount <= 3) {
+ 			document.getElementById("nextbutton").value = "Roll again";
+ 			document.getElementById("nextbutton").title = "You threw doubles. Roll again.";
+ 

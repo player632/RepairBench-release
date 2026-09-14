@@ -1,0 +1,149 @@
+diff --git a/src/components/Board.svelte b/src/components/Board.svelte
+index e1d2fe675d4e9e72d3c6035abc70e263b60d5e09..64dd05d34df08059e9440710ce34c02e0b90c08b 100644
+--- a/src/components/Board.svelte
++++ b/src/components/Board.svelte
+@@ -124,7 +124,7 @@
+ 										testId={'tile-' + r + '-' + t}
+ 										current={r === $currentRow && t === $currentTile}
+ 										inCurrentRow={!$gameFinished && r === $currentRow}
+-										showHint={!$gameFinished && (t === $currentTile || $showAllHints)}
++										showHint={!$gameFinished && (t === $currentTile && $showAllHints)}
+ 									>
+ 										{#if !idle && !$guesses[0] && r === ROWS - 1}
+ 											<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+diff --git a/src/components/EndButtons.svelte b/src/components/EndButtons.svelte
+index 424f8949cd4bb9898fe9e63bf4baf30bb7bbbe80..8ac9f14171f3589b30550cff216af58b915d41dd 100644
+--- a/src/components/EndButtons.svelte
++++ b/src/components/EndButtons.svelte
+@@ -141,7 +141,7 @@
+ 						</div>
+ 					{/if}
+ 				{:else}
+-					<button class="play-button" on:click={() => playRandom(getRandomWord())} data-testid="play-again-btn">
++					<button class="play-button" on:click={playDaily} data-testid="play-again-btn">
+ 						{$t('main.results.play_random')}
+ 					</button>
+ 				{/if}
+diff --git a/src/components/Keyboard.svelte b/src/components/Keyboard.svelte
+index 79b38ff2e9436b3a1607b6db6f59f53c7c2a7358..9e41ebb1d00ca2d14d4a1bee1baf1f1659c1941c 100644
+--- a/src/components/Keyboard.svelte
++++ b/src/components/Keyboard.svelte
+@@ -29,7 +29,7 @@
+ 		if (alphabet.includes(key) || key === ' ') typeLetter(key.trim())
+ 	}
+ 
+-	$: keyboard = keyboardLayoutOptions.find((o) => o.value === $keyboardLayout)!
++	const keyboard = keyboardLayoutOptions.find((o) => o.value === $keyboardLayout)!
+ </script>
+ 
+ <svelte:window on:keydown={handleKeydown} />
+@@ -38,7 +38,7 @@
+ 	{#each keyboard.layout as keyRow, r}
+ 		<div class="key-row" data-testid={'key-row-' + r}>
+ 			{#if r === keyboard.wideKeysRow}
+-				{#if $swapEnterBackspace}
++				{#if swapEnterBackspace}
+ 					<button on:click={() => undoLetter()} class="wide" data-testid="key-backspace"
+ 						><svg
+ 							viewBox="0 0 21 11"
+@@ -63,7 +63,7 @@
+ 					class:invalid={!$validLetters.has(key)}>{key}</button
+ 				>
+ 			{/each}
+-			{#if r === keyboard.wideKeysRow}{#if $swapEnterBackspace}
++			{#if r === keyboard.wideKeysRow}{#if swapEnterBackspace}
+ 					<button on:click={submitRow} class="wide" data-testid="key-enter">{$t('main.keyboard.enter')}</button>
+ 				{:else}
+ 					<button on:click={() => undoLetter()} class="wide" data-testid="key-backspace">
+diff --git a/src/components/Options.svelte b/src/components/Options.svelte
+index fc883d79436357127dd31c3abef831328f862614..9ac585b54fef6ff92b777be5ae639cbbeecb4d37 100644
+--- a/src/components/Options.svelte
++++ b/src/components/Options.svelte
+@@ -32,7 +32,7 @@
+ 	}
+ 
+ 	function validateHardMode() {
+-		if (!get(store.gameFinished) && get(store.guesses).length > 0) {
++		if (!get(store.gameFinished) && get(store.guesses).length === 0) {
+ 			toast.pop()
+ 			toast.push(get(t)('main.options.hard_mode_error'), {
+ 				theme: { '--toastBackground': 'var(--error-color)' },
+@@ -151,7 +151,7 @@
+ 				{$t('main.options.tile_sharpness')}
+ 				<input
+ 					type="range"
+-					bind:value={$tileSharpness}
++					value={$tileSharpness}
+ 					data-testid="sharpness-slider"
+ 					min="0"
+ 					max="2"
+diff --git a/src/components/Toggle.svelte b/src/components/Toggle.svelte
+index a50c8d0de65eb201a2972e4d1a7b573c6489ffcb..6c9861718d4aff977fc929d29ce81a473986e093 100644
+--- a/src/components/Toggle.svelte
++++ b/src/components/Toggle.svelte
+@@ -10,8 +10,6 @@
+ 
+ 	let checked: boolean
+ 
+-	store.subscribe((value) => (checked = !!value))
+-
+ 	const onClick: MouseEventHandler<HTMLButtonElement> = () => {
+ 		if (!validate || validate()) {
+ 			store.set(!checked)
+diff --git a/src/lib/board.ts b/src/lib/board.ts
+index 75af47f3f049d5df0612ea445f6046946dc489a7..8b8736598fbd56e85a4ceda6f51010a5c971e5c8 100644
+--- a/src/lib/board.ts
++++ b/src/lib/board.ts
+@@ -96,7 +96,7 @@ export function undoLetter(moveCaratBack = true) {
+ 	if (get(store.gameFinished)) return
+ 	store.boardContent.update((content) => {
+ 		let tile = content[get(store.currentRow)][get(store.currentTile)]
+-		if (moveCaratBack && get(store.currentTile) > 0 && !tile?.letter) {
++		if (moveCaratBack && get(store.currentTile) > 1 && !tile?.letter) {
+ 			store.currentTile.update((ct) => ct - 1)
+ 			tile = content[get(store.currentRow)][get(store.currentTile)]
+ 		}
+@@ -190,7 +190,7 @@ export async function submitRow() {
+ 				store.showEndView.set(true)
+ 				if (won) store.landscapeForceColor.set(true)
+ 			},
+-			6 * 150 + 250
++			6 * 15000 + 250
+ 		)
+ 		finishGame(won)
+ 	} else {
+diff --git a/src/lib/game.ts b/src/lib/game.ts
+index c2294619c1c49b38aeabdd46123180852f2b1a3a..931283d9f4373c40e3dba0e9914719990b4691bf 100644
+--- a/src/lib/game.ts
++++ b/src/lib/game.ts
+@@ -95,7 +95,7 @@ export function getValidLetters(
+ 		for (let i = 0; i < row; i++) {
+ 			const prevTile = boardContent[i][tile]
+ 			if (prevTile.distance === 0 && letter !== prevTile.letter) valid.delete(letter)
+-			if (prevTile.distance < 0 && letter <= prevTile.letter) valid.delete(letter)
++			if (prevTile.distance < 0 && letter >= prevTile.letter) valid.delete(letter)
+ 			if (prevTile.distance > 0 && letter >= prevTile.letter) valid.delete(letter)
+ 		}
+ 	})
+@@ -157,7 +157,7 @@ export function decodeWord(hash: string): false | string {
+ 	if (!hash) return false
+ 	let word = ''
+ 	for (let i = 0; i < WORD_LENGTH; i++) {
+-		word += alphabet[(parseInt(hash, 36) & (0b11111 << (i * 5))) >> (i * 5)]
++		word += alphabet[(parseInt(hash, 10) & (0b11111 << (i * 5))) >> (i * 5)]
+ 	}
+ 	return word.length === 5 && word
+ }
+diff --git a/src/store/game-state.ts b/src/store/game-state.ts
+index 13f61b6b1d044ce69bb601c2b37302e8a80d0b2b..d1460fcbb412fdfc98d404c108f70d2fc10d5e11 100644
+--- a/src/store/game-state.ts
++++ b/src/store/game-state.ts
+@@ -51,7 +51,7 @@ export const guesses: Readable<string[]> = derived(
+ )
+ 
+ export function updateGuesses(fn: Updater<string[]>): void {
+-	;(get(gameMode) === 'daily' ? guessesDaily : guessesRandom).update(fn)
++	;guessesRandom.update(fn)
+ }
+ 
+ export const guessTimesDaily: Writable<number[]> = persisted('wp-guessTimesDaily', [])

@@ -1,0 +1,89 @@
+# @domternal/extension-details
+
+[![Version](https://img.shields.io/npm/v/@domternal/extension-details.svg)](https://www.npmjs.com/package/@domternal/extension-details)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/domternal/domternal/blob/main/LICENSE)
+
+Collapsible accordion blocks for the [Domternal](https://domternal.dev) editor,
+built on semantic `<details>` / `<summary>` HTML. Each block has a clickable
+summary header and an expandable content area that holds any block-level content
+(paragraphs, lists, code blocks, tables, and more). The toggle is an accessible
+disclosure (`aria-expanded` / `aria-controls`), and open state can optionally be
+persisted into the document so the serialized JSON/HTML reflects user choices.
+
+## Links
+
+<u>[Website](https://domternal.dev)</u> &nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp; <u>[Documentation](https://domternal.dev/v1/nodes/details)</u> &nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp; <u>[Live examples](https://domternal.dev/examples)</u>
+
+## Install
+
+```bash
+pnpm add @domternal/extension-details
+```
+
+`@domternal/core` and `@domternal/pm` are peer dependencies.
+
+## Usage
+
+The `Details` extension automatically pulls in its child nodes (`DetailsSummary`
+and `DetailsContent`), so adding `Details` to your extension list is enough.
+
+```ts
+import { Editor, Document, Text, Paragraph } from '@domternal/core';
+import { Details } from '@domternal/extension-details';
+import '@domternal/theme';
+
+const editor = new Editor({
+  extensions: [
+    Document,
+    Text,
+    Paragraph,
+    Details.configure({ persist: true }),
+  ],
+  content:
+    '<details><summary>Click to expand</summary><div data-details-content><p>Hidden content here.</p></div></details>',
+});
+
+// Wrap the current selection in a collapsible block, then open it
+editor.chain().focus().setDetails().openDetails().run();
+```
+
+## Commands
+
+- `setDetails()` - wrap the selected block(s) in a new details accordion
+- `unsetDetails()` - unwrap the surrounding details back into plain blocks
+- `toggleDetails()` - wrap if outside a details, unwrap if inside one
+- `openDetails()` / `closeDetails()` - expand or collapse the current details (requires `persist: true`)
+- `setDetailsOpen(open: boolean)` - set the open state explicitly (requires `persist: true`)
+
+`openDetails()`, `closeDetails()`, and `setDetailsOpen()` only change a saved
+attribute, so they no-op unless `persist: true` is set.
+
+Adding `Details` also registers a toolbar button and a slash-menu entry
+("Toggle block") that run `toggleDetails`.
+
+## Options
+
+`Details.configure({ ... })` accepts:
+
+- `persist` (default `false`) - when `true`, the `open` attribute is saved and
+  restored so the open/closed state lives in the document. In a read-only
+  editor the toggle still expands and collapses so the content can be read, but
+  nothing is written back
+- `openClassName` (default `'is-open'`) - CSS class applied while a block is
+  open. The theme's rules target the default, so change it only alongside
+  matching CSS of your own
+- `HTMLAttributes` - extra attributes for the rendered element
+
+`DetailsSummary` and `DetailsContent` are exported too, each taking a single
+`HTMLAttributes` option, for the rare case where a child node needs configuring.
+
+## Keyboard shortcuts
+
+- `Backspace` at the start of the summary unwraps the block
+- `Enter` in the summary opens a collapsed block and puts the cursor in its
+  content; in an open block it starts a new block at the top of the content
+- `ArrowRight` at the end of the summary, or `ArrowDown` anywhere in it, places
+  a gap cursor after a collapsed block. Both need the `Gapcursor` extension
+  from `@domternal/core` and fall through to the default handling without it
+- `Enter` on the last block of the content, when that block is empty, removes
+  it and creates a block after the accordion, so a second `Enter` escapes

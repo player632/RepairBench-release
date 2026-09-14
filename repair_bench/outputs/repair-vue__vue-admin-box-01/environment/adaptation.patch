@@ -1,0 +1,66 @@
+diff --git a/index.html b/index.html
+index 2055446..86a5e72 100644
+--- a/index.html
++++ b/index.html
+@@ -3,7 +3,14 @@
+   <head>
+     <meta charset="UTF-8" />
+     <link rel="icon" href="/favicon.ico" />
+-    <link rel="stylesheet" href="//at.alicdn.com/t/font_2570680_gkyjimtz1d.css">
++    <!-- RepairBench adaptation A1: the upstream iconfont stylesheet at
++         third-party CDN iconfont stylesheet is a runtime external
++         request issued by the built page (that origin host is quoted on the
++         deleted line only, never on an added one, so a static host sweep of
++         the adapted tree reports zero external origins). Removed so the served
++         tree is offline-clean. Only the decorative .sfont glyphs degrade (they
++         render as empty boxes); layout, routing, store and every behaviour
++         the task asserts on are unaffected. -->
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <title></title>
+   </head>
+diff --git a/src/utils/system/statistics.ts b/src/utils/system/statistics.ts
+index c718940..0de51eb 100644
+--- a/src/utils/system/statistics.ts
++++ b/src/utils/system/statistics.ts
+@@ -1,15 +1,11 @@
+ // 百度统计代码，需自行更换
++// RepairBench adaptation A2: src/main.ts calls baidu() in every non-development
++// build, and the body deleted by this hunk injected the Baidu Tongji loader
++// script into <head> at boot (that tracker host is quoted on the deleted lines
++// only, never on an added one, so a static host sweep of the adapted tree
++// reports zero external origins). It is a third-party analytics request, so
++// the injection is disabled and baidu() becomes a no-op. Nothing else reads
++// its return value or the _hmt global, so this is behaviour-neutral offline.
+ export function baidu() {
+-  const script = document.createElement('script')
+-  script.type = 'text/javascript'
+-  script.text = `
+-    var _hmt = _hmt || [];
+-    (function() {
+-      var hm = document.createElement("script");
+-      hm.src = "https://hm.baidu.com/hm.js?bd78bc908e66174e7dde385bf37cb4c1";
+-      var s = document.getElementsByTagName("script")[0]; 
+-      s.parentNode.insertBefore(hm, s);
+-    })();
+-  `
+-  document.getElementsByTagName('head')[0].appendChild(script)
++  return
+ }
+\ No newline at end of file
+diff --git a/src/views/main/pages/baidu/index.vue b/src/views/main/pages/baidu/index.vue
+index 7cdf2b3..67d4cb9 100644
+--- a/src/views/main/pages/baidu/index.vue
++++ b/src/views/main/pages/baidu/index.vue
+@@ -1,5 +1,11 @@
+ <template>
+-  <iframe src="//blog.51weblove.com" frameborder="0" class="full-iframe"></iframe>
++  <!-- RepairBench adaptation A3: the upstream page embeds the external site
++       the author's own blog in a full-size iframe (that host is quoted on the
++       deleted line only, never on an added one). It is a runtime external
++       document load, replaced by a local placeholder of the same size. This
++       route (/pages/blog and /pages/jump) is declared checkpoint-forbidden in
++       instruction.md, so no assertion depends on the embedded content. -->
++  <div class="full-iframe rb-local-placeholder">外部站点嵌入已在离线环境中停用</div>
+ </template>
+ 
+ <script lang="ts">

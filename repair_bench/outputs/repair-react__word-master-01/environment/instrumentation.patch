@@ -1,0 +1,335 @@
+diff --git a/src/App.test.js b/src/App.test.js
+deleted file mode 100644
+index 876e544..0000000
+--- a/src/App.test.js
++++ /dev/null
+@@ -1,8 +0,0 @@
+-import { render, screen } from '@testing-library/react'
+-import App from './App'
+-
+-test('renders the WORD MASTER title', () => {
+-  render(<App />)
+-  const title = screen.getByText(/WORD MASTER/i)
+-  expect(title).toBeInTheDocument()
+-})
+diff --git a/src/App.tsx b/src/App.tsx
+index 4aa6291..57da471 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -367,20 +367,40 @@ function App() {
+   }
+ 
+   return (
+-    <div>
++    <div
++      data-testid="app-shell"
++      data-game-state={gameState}
++      data-current-row={currentRow}
++      data-current-col={currentCol}
++      data-difficulty={difficultyLevel}
++      data-dark-mode={darkMode ? 'true' : 'false'}
++      data-invalid-word={submittedInvalidWord ? 'true' : 'false'}
++      data-current-streak={currentStreak}
++      data-longest-streak={longestStreak}
++      data-guesses-in-streak={guessesInStreak}
++      data-first-time={firstTime ? 'true' : 'false'}
++    >
+       <div className={`flex flex-col justify-between h-fill bg-background dark:bg-background-dark`}>
+-        <header className="flex items-center py-2 px-3 text-primary dark:text-primary-dark">
++        <header
++          data-testid="app-header"
++          className="flex items-center py-2 px-3 text-primary dark:text-primary-dark"
++        >
+           <button
++            data-testid="header-settings-button"
+             type="button"
+             onClick={() => setSettingsModalIsOpen(true)}
+             className="p-1 rounded-full"
+           >
+             <Settings />
+           </button>
+-          <h1 className="flex-1 text-center text-xl xxs:text-2xl sm:text-4xl tracking-wide font-bold font-righteous">
++          <h1
++            data-testid="header-title"
++            className="flex-1 text-center text-xl xxs:text-2xl sm:text-4xl tracking-wide font-bold font-righteous"
++          >
+             WORD MASTER
+           </h1>
+           <button
++            data-testid="header-info-button"
+             type="button"
+             onClick={() => setInfoModalIsOpen(true)}
+             className="p-1 rounded-full"
+@@ -390,11 +410,17 @@ function App() {
+         </header>
+         <div className="flex items-center flex-col py-3 flex-1 justify-center relative">
+           <div className="relative">
+-            <div className="grid grid-cols-5 grid-flow-row gap-4">
++            <div data-testid="board-grid" className="grid grid-cols-5 grid-flow-row gap-4">
+               {board.map((row: string[], rowNumber: number) =>
+                 row.map((letter: string, colNumber: number) => (
+                   <span
+                     key={colNumber}
++                    data-testid={`board-cell-${rowNumber}-${colNumber}`}
++                    data-row={rowNumber}
++                    data-col={colNumber}
++                    data-letter={letter}
++                    data-status={cellStatuses[rowNumber][colNumber]}
++                    data-active={rowNumber === currentRow ? 'true' : 'false'}
+                     className={`${getCellStyles(
+                       rowNumber,
+                       colNumber,
+@@ -407,12 +433,15 @@ function App() {
+               )}
+             </div>
+             <div
++              data-testid="board-play-again-zone"
++              data-zone-hidden={gameState === state.playing ? 'true' : 'false'}
+               className={`absolute -bottom-24 left-1/2 transform -translate-x-1/2 ${
+                 gameState === state.playing ? 'hidden' : ''
+               }`}
+             >
+               <div className={darkMode ? 'dark' : ''}>
+                 <button
++                  data-testid="board-play-again-button"
+                   autoFocus
+                   type="button"
+                   className="rounded-lg z-10 px-6 py-2 text-lg nm-flat-background dark:nm-flat-background-dark hover:nm-inset-background dark:hover:nm-inset-background-dark text-primary dark:text-primary-dark"
+@@ -453,7 +482,11 @@ function App() {
+           setDifficultyLevel={setDifficultyLevel}
+           levelInstructions={getDifficultyLevelInstructions()}
+         />
+-        <div className={`h-auto relative ${gameState === state.playing ? '' : 'invisible'}`}>
++        <div
++          data-testid="keyboard-zone"
++          data-zone-invisible={gameState === state.playing ? 'false' : 'true'}
++          className={`h-auto relative ${gameState === state.playing ? '' : 'invisible'}`}
++        >
+           <Keyboard
+             letterStatuses={letterStatuses}
+             addLetter={addLetter}
+diff --git a/src/components/EndGameModal.tsx b/src/components/EndGameModal.tsx
+index ebcc286..e4f3333 100644
+--- a/src/components/EndGameModal.tsx
++++ b/src/components/EndGameModal.tsx
+@@ -67,6 +67,7 @@ export const EndGameModal = ({
+     return (
+       <div className={darkMode ? 'dark' : ''}>
+         <button
++          data-testid="endgame-play-again"
+           autoFocus
+           type="button"
+           className="rounded-lg px-6 py-2 mt-8 text-lg nm-flat-background dark:nm-flat-background-dark hover:nm-inset-background dark:hover:nm-inset-background-dark text-primary dark:text-primary-dark"
+@@ -84,9 +85,17 @@ export const EndGameModal = ({
+       style={styles}
+       contentLabel="Game End Modal"
+     >
+-      <div className={darkMode ? 'dark' : ''}>
++      <div
++        data-testid="endgame-modal"
++        data-endgame-state={gameState}
++        data-endgame-current-streak={currentStreak}
++        data-endgame-longest-streak={longestStreak}
++        data-endgame-avg={avgGuessesPerGame}
++        className={darkMode ? 'dark' : ''}
++      >
+         <div className="h-full flex flex-col items-center justify-center max-w-[300px] mx-auto text-primary dark:text-primary-dark">
+           <button
++            data-testid="endgame-close"
+             className="absolute top-4 right-4 rounded-full nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark p-1 w-6 h-6 sm:p-2 sm:h-8 sm:w-8 hover:nm-inset-background dark:hover:nm-inset-background-dark"
+             onClick={handleClose}
+           >
+@@ -94,11 +103,12 @@ export const EndGameModal = ({
+           </button>
+           {gameState === state.won && (
+             <>
+-              <h1 className=" text-3xl">Congrats! 🎉</h1>
++              <h1 data-testid="endgame-won-title" className=" text-3xl">Congrats! 🎉</h1>
+               <dl className="mt-5 grid grid-cols-1 gap-5">
+                 <div className="rounded-lg p-4 flex-grow relative nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark">
+                   <dt className="text-sm font-medium truncate">Current Streak</dt>
+                   <dd
++                    data-testid="endgame-won-current-streak"
+                     className={`mt-1 text-3xl font-semibold ${currentStreakClass(currentStreak)}`}
+                   >
+                     {currentStreak}
+@@ -112,6 +122,7 @@ export const EndGameModal = ({
+                   <div className="rounded-lg p-4 flex-grow relative nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark">
+                     <dt className="text-sm font-medium truncate">Avg. guesses in streak</dt>
+                     <dd
++                      data-testid="endgame-won-avg"
+                       className={`mt-1 text-3xl font-semibold ${avgGuessesClass(
+                         avgGuessesPerGame
+                       )}`}
+@@ -126,24 +137,26 @@ export const EndGameModal = ({
+ 
+                 <div className="rounded-lg p-4 flex-grow relative nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark">
+                   <dt className="text-sm font-medium truncate">Longest streak</dt>
+-                  <dd className="mt-1 text-3xl font-semibold">{longestStreak}</dd>
++                  <dd data-testid="endgame-won-longest" className="mt-1 text-3xl font-semibold">{longestStreak}</dd>
+                 </div>
+               </dl>
+             </>
+           )}
+           {gameState === state.lost && (
+             <>
+-              <img src={Fail} alt="success" height="auto" width="80%" />
++              <img data-testid="endgame-lost-image" src={Fail} alt="success" height="auto" width="80%" />
+               <div className="text-primary dark:text-primary-dark text-4xl text-center">
+-                <p>Oops!</p>
++                <p data-testid="endgame-lost-heading">Oops!</p>
+                 <p className="mt-3 text-2xl">
+-                  The word was <strong>{answer}</strong>
++                  The word was <strong data-testid="endgame-lost-answer">{answer}</strong>
+                 </p>
+                 <p className="mt-6 text-base">
+-                  Current streak: <strong>{currentStreak}</strong> {currentStreak > 4 && '🔥'}
++                  Current streak:{' '}
++                  <strong data-testid="endgame-lost-current-streak">{currentStreak}</strong>{' '}
++                  {currentStreak > 4 && '🔥'}
+                 </p>
+                 <p className="text-base">
+-                  Longest streak: <strong>{longestStreak}</strong>
++                  Longest streak: <strong data-testid="endgame-lost-longest-streak">{longestStreak}</strong>
+                 </p>
+               </div>
+             </>
+diff --git a/src/components/InfoModal.tsx b/src/components/InfoModal.tsx
+index 7bb6104..e3f2088 100644
+--- a/src/components/InfoModal.tsx
++++ b/src/components/InfoModal.tsx
+@@ -13,8 +13,9 @@ type Props = {
+ 
+ export const InfoModal = ({ isOpen, handleClose, darkMode, styles }: Props) => (
+   <Modal isOpen={isOpen} onRequestClose={handleClose} style={styles} contentLabel="Game Info Modal">
+-    <div className={`h-full ${darkMode ? 'dark' : ''}`}>
++    <div data-testid="info-modal" className={`h-full ${darkMode ? 'dark' : ''}`}>
+       <button
++        data-testid="info-close"
+         className="absolute top-4 right-4 rounded-full nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark p-1 w-6 h-6 sm:p-2 sm:h-8 sm:w-8 hover:nm-inset-background dark:hover:nm-inset-background-dark"
+         onClick={handleClose}
+       >
+@@ -22,7 +23,7 @@ export const InfoModal = ({ isOpen, handleClose, darkMode, styles }: Props) => (
+       </button>
+       <div className="h-full flex flex-col items-center justify-center max-w-[390px] mx-auto pt-9 text-primary dark:text-primary-dark">
+         <div className="flex-1 w-full sm:text-base text-sm">
+-          <h1 className="text-center sm:text-3xl text-2xl">How to play</h1>
++          <h1 data-testid="info-title" className="text-center sm:text-3xl text-2xl">How to play</h1>
+           <ul className="list-disc pl-5 block sm:text-base text-sm">
+             <li className="mt-6 mb-2">You have 6 guesses to guess the correct word.</li>
+             <li className="mb-2">You can guess any valid word.</li>
+@@ -53,6 +54,7 @@ export const InfoModal = ({ isOpen, handleClose, darkMode, styles }: Props) => (
+         <div className="flex justify-center sm:text-base text-sm">
+           <span>This project is open source on</span>
+           <a
++            data-testid="info-repo-link"
+             className="ml-[6px] rounded-full h-5 w-5 sm:h-6 sm:w-6"
+             href="https://github.com/octokatherine/word-master"
+             target="_blank"
+diff --git a/src/components/Keyboard.tsx b/src/components/Keyboard.tsx
+index 98dcc53..b2df07f 100644
+--- a/src/components/Keyboard.tsx
++++ b/src/components/Keyboard.tsx
+@@ -66,11 +66,20 @@ const Keyboard = ({
+   }, [handleKeyDown])
+ 
+   return (
+-    <div className="w-full flex flex-col items-center mb-3 select-none h-auto justify-end">
++    <div
++      data-testid="keyboard-root"
++      data-game-disabled={gameDisabled ? 'true' : 'false'}
++      className="w-full flex flex-col items-center mb-3 select-none h-auto justify-end"
++    >
+       {keyboardLetters.map((row, idx) => (
+-        <div key={idx} className="w-full flex justify-center my-[5px]">
++        <div
++          key={idx}
++          data-testid={`keyboard-row-${idx}`}
++          className="w-full flex justify-center my-[5px]"
++        >
+           {idx === keyboardLetters.length - 1 && (
+             <button
++              data-testid="keyboard-enter"
+               onClick={onEnterPress}
+               className="h-10 xxs:h-14 w-12 px-1 text-xs font-medium mx-[3.5px] rounded nm-flat-background-sm dark:nm-flat-background-dark-sm text-primary dark:text-primary-dark"
+             >
+@@ -79,6 +88,9 @@ const Keyboard = ({
+           )}
+           {row.map((letter) => (
+             <button
++              data-testid={`keyboard-key-${letter}`}
++              data-letter={letter}
++              data-key-status={letterStatuses[letter] || 'unguessed'}
+               onClick={() => onKeyButtonPress(letter)}
+               key={letter}
+               className="h-10 xxs:h-14 w-[2rem] sm:w-10 mx-[3.5px] text-sm font-medium rounded-[4px] nm-flat-background-sm dark:nm-flat-background-dark-sm"
+@@ -94,6 +106,7 @@ const Keyboard = ({
+           ))}
+           {idx === keyboardLetters.length - 1 && (
+             <button
++              data-testid="keyboard-delete"
+               onClick={onDeletePress}
+               className="h-10 xxs:h-14 w-12 flex items-center justify-center nm-flat-background-sm dark:nm-flat-background-dark-sm text-primary dark:text-primary-dark mx-[3.5px] text-sm  rounded"
+             >
+diff --git a/src/components/SettingsModal.tsx b/src/components/SettingsModal.tsx
+index 10478dd..80225bb 100644
+--- a/src/components/SettingsModal.tsx
++++ b/src/components/SettingsModal.tsx
+@@ -34,13 +34,14 @@ export const SettingsModal = ({
+       style={styles}
+       contentLabel="Settings Modal"
+     >
+-      <div className={`h-full ${darkMode ? 'dark' : ''}`}>
++      <div data-testid="settings-modal" className={`h-full ${darkMode ? 'dark' : ''}`}>
+         <div
+           className={`h-full flex flex-col items-center justify-center max-w-[390px] mx-auto pt-9 text-primary dark:text-primary-dark `}
+         >
+-          <h1 className="text-center mb-4 sm:text-3xl text-2xl">Settings</h1>
++          <h1 data-testid="settings-title" className="text-center mb-4 sm:text-3xl text-2xl">Settings</h1>
+           <div className="flex-1 w-full border-b border-slate-400 mb-4">
+             <button
++              data-testid="settings-close"
+               className="absolute top-4 right-4 rounded-full nm-flat-background dark:nm-flat-background-dark text-primary dark:text-primary-dark p-1 w-6 h-6 sm:p-2 sm:h-8 sm:w-8 hover:nm-inset-background dark:hover:nm-inset-background-dark"
+               onClick={handleClose}
+             >
+@@ -90,10 +91,10 @@ export const SettingsModal = ({
+                 ))}
+               </div>
+             </RadioGroup>
+-            <p className="text-center w-10/12 mx-auto font-medium">{levelInstructions}</p>
++            <p data-testid="settings-instructions" className="text-center w-10/12 mx-auto font-medium">{levelInstructions}</p>
+           </div>
+           <div className="flex flex-col items-center">
+-            <div className="mb-4">
++            <div data-testid="settings-support-text" className="mb-4">
+               If you're enjoying this game, you can show your support by{' '}
+               <a
+                 href="https://www.buymeacoffee.com/katherinecodes"
+@@ -112,6 +113,7 @@ export const SettingsModal = ({
+                 sentence above it are unchanged; only the remote bitmap is
+                 replaced by an equivalent same-origin text badge. */}
+             <a
++              data-testid="settings-support-button"
+               href="https://www.buymeacoffee.com/katherinecodes"
+               target="_blank"
+               rel="noreferrer"
+diff --git a/src/setupTests.js b/src/setupTests.js
+deleted file mode 100644
+index c4f116c..0000000
+--- a/src/setupTests.js
++++ /dev/null
+@@ -1,14 +0,0 @@
+-// jest-dom adds custom jest matchers for asserting on DOM nodes.
+-// allows you to do things like:
+-// expect(element).toHaveTextContent(/react/i)
+-// learn more: https://github.com/testing-library/jest-dom
+-import '@testing-library/jest-dom'
+-
+-// Stub window.matchMedia as needed
+-window.matchMedia = window.matchMedia || function () {
+-  return {
+-    matches: false,
+-    addListener: jest.fn(),
+-    removeListener: jest.fn(),
+-  };
+-};

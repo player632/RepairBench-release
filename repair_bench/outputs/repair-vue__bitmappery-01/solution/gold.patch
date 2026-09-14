@@ -1,0 +1,156 @@
+diff --git a/src/components/layer-compositing/layer-compositing.vue b/src/components/layer-compositing/layer-compositing.vue
+index aeb1937..edbfe6b 100644
+--- a/src/components/layer-compositing/layer-compositing.vue
++++ b/src/components/layer-compositing/layer-compositing.vue
+@@ -138,7 +138,7 @@ export default {
+         },
+         opacity: {
+             get(): number {
+-                return this.filters.opacity;
++                return this.filters.opacity * 100;
+             },
+             set( value: number ): void {
+                 const scaledValue = value / 100;
+diff --git a/src/components/layer-panel/layer-panel.vue b/src/components/layer-panel/layer-panel.vue
+index 578597a..b147f0c 100644
+--- a/src/components/layer-panel/layer-panel.vue
++++ b/src/components/layer-panel/layer-panel.vue
+@@ -267,7 +267,7 @@ export default {
+                     ...layer,
+                     index: this.hasTimeline ? this.layers.indexOf( layer ): index,
+                     maskSelected: layer.mask ? layer.mask === this.activeLayerMask : false,
+-                }));
++                })).reverse();
+             },
+             set( value: Layer[] ): void {
+                 // before updating the model state, we reverse the layers again
+diff --git a/src/components/menus/header-menu/header-menu.vue b/src/components/menus/header-menu/header-menu.vue
+index 39ea97a..0e87fb2 100644
+--- a/src/components/menus/header-menu/header-menu.vue
++++ b/src/components/menus/header-menu/header-menu.vue
+@@ -472,7 +472,7 @@ export default {
+             },
+             async set( value: boolean ): Promise<void> {
+                 this.setSnapAlign( value );
+-                this.setPreferences({ snapAlign: !value });
++                this.setPreferences({ snapAlign: value });
+                 await this.storePreferences();
+             }
+         },
+diff --git a/src/definitions/editor-properties.ts b/src/definitions/editor-properties.ts
+index fd62e6e..226f517 100644
+--- a/src/definitions/editor-properties.ts
++++ b/src/definitions/editor-properties.ts
+@@ -39,7 +39,7 @@ export const MAX_MEGAPIXEL  = MAX_IMAGE_SIZE * MAX_IMAGE_SIZE;
+ const MIN_IMAGE_SIZE = 80;
+ 
+ export const isPixelArt = ( size: Size ): boolean => {
+-    return size.width <= MAX_PIXEL_ART_SIZE || size.height <= MAX_PIXEL_ART_SIZE;
++    return size.width <= MAX_PIXEL_ART_SIZE && size.height <= MAX_PIXEL_ART_SIZE;
+ };
+ 
+ export const canExportAsAnimation = ( size: Size ): boolean => {
+diff --git a/src/definitions/tool-types.ts b/src/definitions/tool-types.ts
+index 538c82d..c071ff5 100644
+--- a/src/definitions/tool-types.ts
++++ b/src/definitions/tool-types.ts
+@@ -55,7 +55,7 @@ export const SELECTION_TOOLS = [ ToolTypes.SELECTION, ToolTypes.LASSO, ToolTypes
+ 
+ export const canDraw = ( activeDocument: Document, activeLayer: Layer, activeLayerMask?: HTMLCanvasElement ): boolean => {
+     return activeDocument &&
+-    (( !!activeLayer?.mask && activeLayer.mask === activeLayerMask ) && activeLayer?.type === LayerTypes.LAYER_GRAPHIC );
++    (( !!activeLayer?.mask && activeLayer.mask === activeLayerMask ) || activeLayer?.type === LayerTypes.LAYER_GRAPHIC );
+ };
+ 
+ export const canDragMask = ( activeLayer?: Layer, activeLayerMask?: HTMLCanvasElement ): boolean => {
+diff --git a/src/math/unit-math.ts b/src/math/unit-math.ts
+index 31e886d..4c510ca 100644
+--- a/src/math/unit-math.ts
++++ b/src/math/unit-math.ts
+@@ -33,7 +33,7 @@ export const pixelsToInch   = ( pixels: number, dpi = 72 ): number => pixels / d
+ export const pixelsToCm     = ( pixels: number, dpi = 72 ): number => pixelsToInch( pixels, dpi ) * CM_PER_INCH
+ export const pixelsToMm     = ( pixels: number, dpi = 72 ): number => pixelsToInch( pixels, dpi ) * MM_PER_INCH;
+ export const inchesToPixels = ( inches: number, dpi = 72 ): number => inches * dpi;
+-export const cmToPixels     = ( cms: number, dpi = 72 ): number => inchesToPixels( cms * CM_PER_INCH, dpi );
++export const cmToPixels     = ( cms: number, dpi = 72 ): number => inchesToPixels( cms / CM_PER_INCH, dpi );
+ export const mmToPixels     = ( mms: number, dpi = 72 ): number => inchesToPixels( mms / MM_PER_INCH, dpi );
+ 
+ // convenience method to scale given value and its expected maxValue against
+diff --git a/src/model/actions/canvas-zoom.ts b/src/model/actions/canvas-zoom.ts
+index 3a8abce..4bce0fd 100644
+--- a/src/model/actions/canvas-zoom.ts
++++ b/src/model/actions/canvas-zoom.ts
+@@ -28,7 +28,7 @@ const ZOOM_INCREMENT = 1 / 10;
+ 
+ export const zoomIn = ( store: Store<BitMapperyState> ): void => {
+     store.commit( "setToolOptionValue",
+-        { tool: ToolTypes.ZOOM, option: "level", value: Math.max( MAX_ZOOM, store.getters.zoomOptions.level + ( MAX_ZOOM * ZOOM_INCREMENT ))
++        { tool: ToolTypes.ZOOM, option: "level", value: Math.min( MAX_ZOOM, store.getters.zoomOptions.level + ( MAX_ZOOM * ZOOM_INCREMENT ))
+     });
+ };
+ 
+diff --git a/src/model/factories/history-state-factory.ts b/src/model/factories/history-state-factory.ts
+index 6454e4e..0b8f7cf 100644
+--- a/src/model/factories/history-state-factory.ts
++++ b/src/model/factories/history-state-factory.ts
+@@ -78,7 +78,7 @@ export const enqueueState = ( key: string, undoRedoState: Omit<UndoRedoState, "i
+     // there is an existing queue for a different property
+     // process it immediately
+     if ( hasQueue() ) {
+-        flushQueue();
++        processQueue();
+     }
+     const stateToSet = undoRedoState as UndoRedoState;
+     stateToSet.id = stateToSet.id ?? store?.getters.activeDocument?.id;
+diff --git a/src/services/keyboard-service.ts b/src/services/keyboard-service.ts
+index 1e0ed76..e66d695 100644
+--- a/src/services/keyboard-service.ts
++++ b/src/services/keyboard-service.ts
+@@ -469,7 +469,7 @@ function handleKeyDown( event: KeyboardEvent ): void {
+             break;
+ 
+         case 221: // ]
+-            if ( !BRUSH_TOOL_TYPES.includes( getters.activeTool )) {
++            if ( BRUSH_TOOL_TYPES.includes( getters.activeTool )) {
+                 commit( "setToolOptionValue", {
+                     tool: getters.activeTool, option: "size", value: Math.min( MAX_BRUSH_SIZE, getters.activeToolOptions.size + 5 )
+                 });
+diff --git a/src/store/index.ts b/src/store/index.ts
+index 5233dda..a152da6 100644
+--- a/src/store/index.ts
++++ b/src/store/index.ts
+@@ -178,7 +178,7 @@ export default {
+         closeModal( state: BitMapperyState ): void {
+             state.blindActive = false;
+             state.modal = null;
+-            KeyboardService.setSuspended( true );
++            KeyboardService.setSuspended( false );
+         },
+         /**
+          * shows a notification containing given title and message.
+diff --git a/src/store/modules/document-module.ts b/src/store/modules/document-module.ts
+index 86d730d..e7ec5a7 100644
+--- a/src/store/modules/document-module.ts
++++ b/src/store/modules/document-module.ts
+@@ -171,7 +171,7 @@ const DocumentModule: Module<DocumentState, any> = {
+             flushThumbnailForLayer( layer );
+             state.documents[ state.activeIndex ].layers.splice( index, 1 );
+             if ( state.activeLayerIndex === index ) {
+-                state.activeLayerIndex = index;
++                state.activeLayerIndex = Math.max( 0, index - 1 );
+             }
+         },
+         replaceLayers( state: DocumentState, layers: Layer[] ): void {
+diff --git a/src/utils/layer-util.ts b/src/utils/layer-util.ts
+index c59d4ae..4fa15b9 100644
+--- a/src/utils/layer-util.ts
++++ b/src/utils/layer-util.ts
+@@ -108,7 +108,7 @@ export const cropLayerContent = async ( layer: Layer, cropRectangle: Rectangle )
+ export const cloneLayer = ( layerToClone: Layer, keepOrgName = false ): Layer => {
+     return LayerFactory.create({
+         ...cloneDeep( layerToClone ),
+-        name: keepOrgName ? `${layerToClone.name} #2` : layerToClone.name,
++        name: keepOrgName ? layerToClone.name : `${layerToClone.name} #2`,
+         source: cloneCanvas( layerToClone.source ),
+         mask: layerToClone.mask ? cloneCanvas( layerToClone.mask ) : null
+     });

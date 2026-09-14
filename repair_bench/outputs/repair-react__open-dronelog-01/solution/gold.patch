@@ -1,0 +1,135 @@
+diff --git a/src/components/dashboard/Overview.tsx b/src/components/dashboard/Overview.tsx
+index b92bd35..3621db3 100644
+--- a/src/components/dashboard/Overview.tsx
++++ b/src/components/dashboard/Overview.tsx
+@@ -1250,7 +1250,7 @@ function DroneFlightTimeList({
+       return aName.localeCompare(bName);
+     }
+     // progress = by duration descending (default)
+-    return a.totalDurationSecs - b.totalDurationSecs;
++    return b.totalDurationSecs - a.totalDurationSecs;
+   });
+ 
+   const handleStartRename = (serial: string, fallbackName: string) => {
+@@ -1309,7 +1309,7 @@ function DroneFlightTimeList({
+         {sortedDrones.map((drone) => {
+           const fallbackName = drone.aircraftName || drone.droneModel;
+           const displayName = drone.droneSerial ? getDroneDisplayName(drone.droneSerial, fallbackName) : fallbackName;
+-          const hasDuplicate = (displayNameCounts.get(displayName) || 0) > 2;
++          const hasDuplicate = (displayNameCounts.get(displayName) || 0) > 1;
+           const isEditing = drone.droneSerial && editingSerial === drone.droneSerial;
+           const progressPercent = (drone.totalDurationSecs / maxDuration) * 100;
+           const decomm = isDecommissioned(drone.displayLabel);
+@@ -1865,7 +1865,7 @@ function BatteryHealthList({
+   const sortedBatteries = [...batteries].sort((a, b) => {
+     const aDecom = isDecommissioned(getBatteryDisplayName(a.batterySerial));
+     const bDecom = isDecommissioned(getBatteryDisplayName(b.batterySerial));
+-    if (aDecom !== bDecom) return aDecom ? -1 : 1;
++    if (aDecom !== bDecom) return aDecom ? 1 : -1;
+     if (sortMode === 'name') {
+       const aName = getBatteryDisplayName(a.batterySerial);
+       const bName = getBatteryDisplayName(b.batterySerial);
+diff --git a/src/lib/batteryPairs.ts b/src/lib/batteryPairs.ts
+index bab5179..af987eb 100644
+--- a/src/lib/batteryPairs.ts
++++ b/src/lib/batteryPairs.ts
+@@ -18,7 +18,7 @@ function parsePairToken(raw: string): [string, string] | null {
+   const [left, right, ...rest] = raw.split(':').map((p) => normalizeSerial(p));
+   if (rest.length > 0) return null;
+   if (!isSerialLike(left) || !isSerialLike(right)) return null;
+-  if (!left || !right) return null;
++  if (!left || !right || left === right) return null;
+   return [left, right];
+ }
+ 
+@@ -128,7 +128,7 @@ export function getPairedBatteryDisplayName(
+   getBatteryDisplayName: (serial: string) => string,
+ ): string {
+   const members = getBatteryGroupMembers(serial, index);
+-  if (members.length <= 2) {
++  if (members.length <= 1) {
+     return getBatteryDisplayName(normalizeSerial(serial));
+   }
+   return members.map((member) => getBatteryDisplayName(member)).join(' + ');
+diff --git a/src/lib/utils.ts b/src/lib/utils.ts
+index 7cc39f5..ca0a529 100644
+--- a/src/lib/utils.ts
++++ b/src/lib/utils.ts
+@@ -23,7 +23,7 @@ export const DEFAULT_UNIT_PREFS: UnitPreferences = {
+ export function normalizeSpeedUnit(value: unknown): SpeedUnit {
+   if (value === 'kmh' || value === 'mph' || value === 'ms' || value === 'fts') return value;
+   // Backward compatibility for older stored preferences.
+-  if (value === 'imperial') return 'kmh';
++  if (value === 'imperial') return 'mph';
+   return 'kmh';
+ }
+ 
+@@ -61,7 +61,7 @@ export function formatDuration(seconds: number | null): string {
+   const mins = Math.floor((seconds % 3600) / 60);
+   const secs = Math.floor(seconds % 60);
+ 
+-  if (hours > 1) {
++  if (hours > 0) {
+     return `${hours}h ${mins}m ${secs}s`;
+   }
+   return `${mins}m ${secs}s`;
+@@ -75,14 +75,14 @@ export function formatDistance(
+ ): string {
+   if (meters === null || meters === undefined) return '--';
+ 
+-  if (meters >= 1000) {
+-    return `${fmtNum(meters / 1000, 2, locale)} km`;
+-  }
+-
+   if (unitSystem === 'imperial') {
+     const miles = meters / 1609.344;
+     return `${fmtNum(miles, 2, locale)} mi`;
+   }
++
++  if (meters >= 1000) {
++    return `${fmtNum(meters / 1000, 2, locale)} km`;
++  }
+   return `${fmtNum(meters, 0, locale)} m`;
+ }
+ 
+diff --git a/src/stores/flightStore.ts b/src/stores/flightStore.ts
+index 570df27..10aa865 100644
+--- a/src/stores/flightStore.ts
++++ b/src/stores/flightStore.ts
+@@ -237,6 +237,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
+     if (typeof localStorage === 'undefined') return 'DD/MM/YYYY';
+     const stored = localStorage.getItem('dateLocale') || 'en-GB';
+     const migrated = LEGACY_DATE_LOCALE_MAP[stored] || stored;
++    if (migrated !== stored) localStorage.setItem('dateLocale', migrated);
+     return migrated;
+   })(),
+   appLanguage:
+@@ -269,7 +270,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
+     if (legacy) {
+       const migrated: UnitPreferences = {
+         distance: legacy,
+-        speed: legacy === 'imperial' ? 'ms' : 'kmh',
++        speed: legacy === 'imperial' ? 'mph' : 'kmh',
+         altitude: legacy,
+         temperature: legacy,
+       };
+@@ -314,7 +315,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
+   })(),
+   hideSerialNumbers:
+     typeof localStorage !== 'undefined'
+-      ? localStorage.getItem('hideSerialNumbers') === '1'
++      ? localStorage.getItem('hideSerialNumbers') === 'true'
+       : false,
+ 
+   // Telemetry chart color overrides
+@@ -1034,8 +1035,8 @@ export const useFlightStore = create<FlightState>((set, get) => ({
+       const response = await api.getEquipmentNames();
+ 
+       // Merge server data with local state (server wins for conflicts)
+-      const batteryNameMap = { ...response.battery_names, ...get().batteryNameMap };
+-      const droneNameMap = { ...response.aircraft_names, ...get().droneNameMap };
++      const batteryNameMap = { ...response.battery_names };
++      const droneNameMap = { ...response.aircraft_names };
+ 
+       // Update state
+       set({ batteryNameMap, droneNameMap });

@@ -1,0 +1,96 @@
+// =============================================================================
+// Notion Mode Opt-in stylistic preset: borderless surface, centered narrow
+// column, generous reading rhythm, BlockHandle in the surrounding gutter.
+
+.dm-editor.dm-notion-mode {
+  // Drop the default chrome - Notion pages have no card outline.
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+
+  // The measure. Read twice: as the column's width, and halved in the handle
+  // offset below, so overriding it moves both.
+  --dm-notion-column-width: 44rem;
+
+  // How tall an empty page is. A Notion page owns the window, so the default is
+  // a share of the window: a document one line long still offers a page's worth
+  // of surface to click into.
+  --dm-notion-min-height: 60vh;
+
+  // Do NOT cap the frame here. A docked sidebar makes room by sliding the
+  // column, and only within the frame; capped to the column's own width there
+  // is no whitespace to slide into and the sidebar lands on the prose.
+  max-width: none;
+  margin: 0 auto;
+
+  // Zero padding is a precondition of the handle offset, not tidiness: it
+  // assumes the text starts at the column's left edge.
+  --dm-editor-line-height: 1.7;
+  --dm-editor-padding: 0;
+
+  // Walk in to the centred column's edge, then back off the 40px cluster plus
+  // the 4px gap `BlockHandle` uses for container-anchored blocks, so both
+  // paths agree. The shift term follows a panel that slides the column.
+  --dm-block-handle-gutter: 0;
+  --dm-block-handle-left: calc(
+    max(50% - var(--dm-notion-column-width) * 0.5, 0px) - 2.75rem +
+      var(--dm-panel-column-shift, 0px)
+  );
+
+  .ProseMirror {
+    // `border-box` because `.ProseMirror` has no box-sizing of its own, so
+    // padding would otherwise widen the box past the measure.
+    box-sizing: border-box;
+    max-width: var(--dm-notion-column-width);
+    margin-inline: auto;
+
+    min-height: var(--dm-notion-min-height, 60vh);
+    outline: none;
+
+    // Tighter heading rhythm than the default content stylesheet.
+    // Sizes inherit classic (browser defaults / `_content.scss`) so the
+    // mode toggle shifts layout, not text scale.
+    h1 {
+      font-weight: 700;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+    h2 {
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    h3 {
+      font-weight: 600;
+      margin-top: 1.25rem;
+      margin-bottom: 0.375rem;
+    }
+    p {
+      margin: 0.25rem 0;
+    }
+
+    // Paragraphs inside table cells stay flush; otherwise the higher
+    // specificity of the rule above adds 4px top/bottom and visibly puffs
+    // up cells compared to classic mode.
+    td > p,
+    th > p {
+      margin: 0;
+    }
+
+    // Notion-mode only: adjacent top-level lists of any type chunk together at
+    // the within-item gap (~4px) instead of the 0.75em container gap.
+    > :is(ul, ol) + :is(ul, ol) {
+      margin-top: 0.25em;
+    }
+    > :is(ul, ol):has(+ :is(ul, ol)) {
+      margin-bottom: 0.25em;
+    }
+  }
+
+  // Slash-command placeholders wrap in narrow table cells; the cell is the editable unit.
+  .ProseMirror td .is-empty::before,
+  .ProseMirror th .is-empty::before {
+    content: none;
+  }
+}

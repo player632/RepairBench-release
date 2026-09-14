@@ -1,0 +1,134 @@
+diff --git a/app/src/lib/cleanup.ts b/app/src/lib/cleanup.ts
+index 419b5ce..a5b5d8f 100644
+--- a/app/src/lib/cleanup.ts
++++ b/app/src/lib/cleanup.ts
+@@ -24,7 +24,7 @@
+ export function defaultRules(sourceFormat: string): Record<string, boolean> {
+   const isPdf = (sourceFormat || '').toLowerCase().includes('pdf');
+   const out: Record<string, boolean> = {};
+-  for (const r of CLEANUP_RULES) out[r.key] = r.pdfOnly ? true : isPdf;
++  for (const r of CLEANUP_RULES) out[r.key] = r.pdfOnly ? isPdf : true;
+   return out;
+ }
+ 
+@@ -51,7 +51,7 @@
+ /** Total changes across applied rules — used for headline counts. */
+ export function totalChanges(summary: CleanupSummary | null): number {
+   if (!summary) return 0;
+-  return summary.rules.reduce((n, r) => n + r.changes, 0);
++  return summary.rules.filter(r => r.applied).reduce((n, r) => n + r.changes, 0);
+ }
+ 
+ // ── Cleanup method + shared UI state ────────────────────────────────────────
+diff --git a/app/src/lib/diff.ts b/app/src/lib/diff.ts
+index 27fc416..264c16b 100644
+--- a/app/src/lib/diff.ts
++++ b/app/src/lib/diff.ts
+@@ -30,7 +30,7 @@
+   const aLines = a.split('\n');
+   const bLines = b.split('\n');
+ 
+-  if (aLines.length > cap && bLines.length > cap) {
++  if (aLines.length > cap || bLines.length > cap) {
+     return summaryDiff(aLines, bLines);
+   }
+ 
+@@ -100,7 +100,7 @@
+     const start = Math.max(0, idx - CONTEXT);
+     const end = Math.min(rows.length, idx + 1 + CONTEXT);
+     const last = ranges[ranges.length - 1];
+-    if (last && start < last[1]) last[1] = Math.max(last[1], end);
++    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+     else ranges.push([start, end]);
+   }
+ 
+@@ -138,8 +138,8 @@
+ function hunkHeader(slice: DiffRow[]): string {
+   const oldStart = slice.find(r => r.oldNo != null)?.oldNo ?? 1;
+   const newStart = slice.find(r => r.newNo != null)?.newNo ?? 1;
+-  const oldLen = slice.filter(r => r.type !== 'del').length;
+-  const newLen = slice.filter(r => r.type !== 'add').length;
++  const oldLen = slice.filter(r => r.type !== 'add').length;
++  const newLen = slice.filter(r => r.type !== 'del').length;
+   return `@@ -${oldStart},${oldLen} +${newStart},${newLen} @@`;
+ }
+ 
+diff --git a/app/src/lib/formats.ts b/app/src/lib/formats.ts
+index 078d9e5..0e6941b 100644
+--- a/app/src/lib/formats.ts
++++ b/app/src/lib/formats.ts
+@@ -31,7 +31,7 @@
+ export function extFromPath(path: string): string {
+   const base = path.split(/[\\/]/).pop() ?? '';
+   const i = base.lastIndexOf('.');
+-  if (i < 0 || i === base.length - 1) return '';
++  if (i <= 0 || i === base.length - 1) return '';
+   return base.slice(i + 1).toLowerCase();
+ }
+ 
+@@ -39,8 +39,8 @@
+ export function formatLabel(ext: string): string {
+   const e = ext.replace(/^\./, '').toLowerCase();
+   if (!e) return 'Unknown';
+-  if (isImageExt(e)) return 'Audio';
+-  if (isAudioExt(e)) return 'Image';
++  if (isImageExt(e)) return 'Image';
++  if (isAudioExt(e)) return 'Audio';
+   const labels: Record<string, string> = {
+     pdf: 'PDF', docx: 'Word', pptx: 'PowerPoint', xlsx: 'Excel', xls: 'Excel',
+     html: 'HTML', htm: 'HTML', csv: 'CSV', json: 'JSON', xml: 'XML',
+diff --git a/app/src/lib/naming.ts b/app/src/lib/naming.ts
+index ff2c11a..329e122 100644
+--- a/app/src/lib/naming.ts
++++ b/app/src/lib/naming.ts
+@@ -24,7 +24,7 @@
+   return s
+     .toLowerCase()
+     .replace(/[^a-z0-9]+/g, '-')
+-    .replace(/^-+/, '');
++    .replace(/^-+|-+$/g, '');
+ }
+ 
+ function sanitize(s: string): string {
+@@ -50,6 +50,7 @@
+   const tpl = (template ?? '').trim() || '{stem}';
+   let name = tpl
+     .replaceAll('{stem}', fileStem(path))
++    .replaceAll('{ext}', fileExt(path))
+     .replaceAll('{date}', todayDate());
+   if (naming === 'lower') name = name.toLowerCase();
+   else if (naming === 'slug') name = slugify(name);
+diff --git a/app/src/lib/providers.ts b/app/src/lib/providers.ts
+index 4f3bebb..c5bdfaa 100644
+--- a/app/src/lib/providers.ts
++++ b/app/src/lib/providers.ts
+@@ -118,7 +118,7 @@
+ ];
+ 
+ export function providerById(id: string | undefined | null): ApiProvider {
+-  return API_PROVIDERS.find(p => p.id === id) ?? API_PROVIDERS[API_PROVIDERS.length - 1];
++  return API_PROVIDERS.find(p => p.id === id) ?? API_PROVIDERS[0];
+ }
+ 
+ function normUrl(url: string): string {
+@@ -143,6 +143,7 @@
+   const k = (key || '').trim();
+   if (k.startsWith('sk-ant-')) return 'anthropic';
+   if (k.startsWith('gsk_')) return 'groq';
++  if (k.startsWith('sk-or-')) return 'openrouter';
+   if (k.startsWith('AIza')) return 'gemini';
+   if (k.startsWith('xai-')) return 'xai';
+   if (k.startsWith('pplx-')) return 'perplexity';
+diff --git a/app/src/lib/runtime-status.ts b/app/src/lib/runtime-status.ts
+index 30f327d..c01228f 100644
+--- a/app/src/lib/runtime-status.ts
++++ b/app/src/lib/runtime-status.ts
+@@ -63,7 +63,7 @@
+ 
+ /** Whether optional component install actions should appear in diagnostics. */
+ export function allowsComponentInstall(status: RuntimeStatus): boolean {
+-  return status.edition === 'lite' || status.mutable || status.status === 'ready';
++  return status.edition === 'lite' && status.mutable && status.status === 'ready';
+ }
+ 
+ /** Whether the UI should offer runtime repair (Lite transactional recovery). */

@@ -1,0 +1,100 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Igor Zinken 2020-2022 - https://www.igorski.nl
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+<template>
+    <modal>
+        <template #header>
+            <h2 class="component__title">{{ t( "saveSelection" ) }}</h2>
+        </template>
+        <template #content>
+            <div class="form" @keyup.enter="requestSave()">
+                <div class="wrapper wrapper--input">
+                    <label>{{ t( "name" ) }}</label>
+                    <input
+                        ref="nameInput"
+                        type="text"
+                        v-model="name"
+                        class="input-field"
+                    />
+                </div>
+            </div>
+        </template>
+        <template #actions>
+            <button
+                type="button"
+                class="button"
+                :disabled="!isValid"
+                @click="requestSave()"
+            >{{ t( "save" ) }}</button>
+            <button
+                type="button"
+                class="button"
+                @click="closeModal()"
+            >{{ t( "cancel" ) }}</button>
+        </template>
+    </modal>
+</template>
+
+<script lang="ts">
+import { type ComposerTranslation, useI18n } from "vue-i18n";
+import { mapGetters, mapMutations } from "vuex";
+import Modal from "@/components/modal/modal.vue";
+import { focus } from "@/utils/environment-util";
+import messages from "./messages.json";
+
+export default {
+    components: {
+        Modal,
+    },
+    data: () => ({
+        name: "",
+    }),
+    setup(): { t: ComposerTranslation } {
+        const { t } = useI18n({ messages });
+        return { t };
+    },
+    computed: {
+        ...mapGetters([
+            "activeDocument",
+        ]),
+        isValid(): boolean {
+            return this.name.length > 0;
+        },
+    },
+    mounted(): void {
+        focus( this.$refs.nameInput );
+    },
+    methods: {
+        ...mapMutations([
+            "closeModal",
+            "saveSelection",
+        ]),
+        requestSave(): void {
+            if ( !this.isValid ) {
+                return;
+            }
+            this.saveSelection({ name: this.name, selection: this.activeDocument.activeSelection });
+            this.closeModal();
+        },
+    },
+};
+</script>

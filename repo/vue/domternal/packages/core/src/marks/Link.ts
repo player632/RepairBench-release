@@ -1,0 +1,389 @@
+/**
+ * Hyperlink mark with `href` and `target` attributes.
+ */
+import { Plugin, PluginKey, TextSelection } from '@domternal/pm/state';
+import { Mark } from '../Mark.js';
+import type { CommandSpec } from '../types/Commands.js';
+import { isValidUrl } from '../helpers/isValidUrl.js';
+import { getMarkRange } from '../helpers/getMarkRange.js';
+import { linkClickPlugin } from './helpers/linkClickPlugin.js';
+import { linkPastePlugin } from './helpers/linkPastePlugin.js';
+import { autolinkPlugin } from './helpers/autolinkPlugin.js';
+import { linkExitPlugin } from './helpers/linkExitPlugin.js';
+import type { Editor } from '../Editor.js';
+import type { ToolbarItem } from '../types/Toolbar.js';
+
+export interface LinkOptions {
+  /**
+   * HTML attributes to add to the rendered element
+   */
+  HTMLAttributes: Record<string, unknown>;
+  /**
+   * List of allowed URL protocols
+   * @default ['http:', 'https:', 'mailto:', 'tel:']
+   */
+  protocols: string[];
+  /**
+   * When to open links on click
+   * - true: Open on click (when editable)
+   * - false: Never open
+   * - 'whenNotEditable': Only open when editor is read-only
+   * @default true
+   */
+  openOnClick: boolean | 'whenNotEditable';
+  /**
+   * Whether to add rel="noopener noreferrer" to links
+   * @default true
+   */
+  addRelNoopener: boolean;
+  /**
+   * Auto-convert typed URLs to links
+   * @default true
+   */
+  autolink: boolean;
+  /**
+   * Convert pasted URLs to links (wraps selection or inserts as link)
+   * @default true
+   */
+  linkOnPaste: boolean;
+  /**
+   * Default protocol for bare URLs (e.g., 'example.com' → 'https://example.com')
+   * @default 'https'
+   */
+  defaultProtocol: string;
+  /**
+   * Custom validation for autolink
+   * Return false to prevent auto-linking specific URLs
+   */
+  shouldAutoLink?: (url: string) => boolean;
+  /**
+   * Select the full link text range when clicking a link
+   * @default false
+   */
+  enableClickSelection: boolean;
+}
+
+/**
+ * Attributes for the Link mark
+ */
+export interface LinkAttributes {
+  href: string;
+  target?: string | null;
+  rel?: string | null;
+  title?: string | null;
+  class?: string | null;
+}
+
+/**
+ * Link mark for hyperlinks
+ */
+export const Link = Mark.create<LinkOptions>({
+  name: 'link',
+
+  // Links are semantic data, not visual formatting.
+  // They survive `unsetAllMarks` (clear formatting).
+  // Override with: Link.configure({ isFormatting: true })
+  isFormatting: false,
+
+  // Links have lower priority than other marks
+  priority: 1000,
+
+  // When autolink is enabled, the mark is inclusive so that typing at
+  // the end of a link naturally extends it (e.g. adding path segments
+  // to an autolinked URL). When autolink is off, links are set manually
+  // and should not extend on typing.
+  inclusive() {
+    return this.options.autolink;
+  },
+
+  addOptions(): LinkOptions {
+    return {
+      HTMLAttributes: {},
+      protocols: ['http:', 'https:', 'mailto:', 'tel:'],
+      openOnClick: true,
+      addRelNoopener: true,
+      autolink: true,
+      linkOnPaste: true,
+      defaultProtocol: 'https',
+      enableClickSelection: false,
+    };
+  },
+
+  addAttributes() {
+    return {
+      href: {
+        default: null,
+      },
+      target: {
+        default: null,
+      },
+      rel: {
+        default: null,
+      },
+      title: {
+        default: null,
+      },
+      class: {
+        default: null,
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'a[href]',
+        getAttrs: (node) => {
+          if (typeof node === 'string') return false;
+          const href = node.getAttribute('href');
+
+          // Validate URL
+          if (!href || !isValidUrl(href, { protocols: this.options.protocols })) {
+            return false;
+          }
+
+          return {
+            href,
+            target: node.getAttribute('target'),
+            rel: node.getAttribute('rel'),
+            title: node.getAttribute('title'),
+            class: node.getAttribute('class'),
+          };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const attrs = { ...this.options.HTMLAttributes, ...HTMLAttributes };
+
+    // Validate href before rendering
+    if (
+      typeof attrs['href'] === 'string' &&
+      !isValidUrl(attrs['href'], { protocols: this.options.protocols })
+    ) {
+      // Remove the href if invalid, keeping other attributes
+      const { href: _, ...rest } = attrs;
+      return ['a', rest, 0];
+    }
+
+    // Add rel="noopener noreferrer" for external links
+    if (
+      this.options.addRelNoopener &&
+      attrs['target'] === '_blank' &&
+      !attrs['rel']
+    ) {
+      attrs['rel'] = 'noopener noreferrer';
+    }
+
+    return ['a', attrs, 0];
+  },
+
+  addCommands() {
+    return {
+      setLink:
+        (attributes: LinkAttributes) =>
+        ({ commands }) => {
+          if (!isValidUrl(attributes.href, { protocols: this.options.protocols })) {
+            return false;
+          }
+          return commands.setMark('link', attributes);
+        },
+      unsetLink:
+        () =>
+        ({ tr, state, dispatch }) => {
+          const markType = state.schema.marks['link'];
+          if (!markType) return false;
+
+          const { empty, ranges } = tr.selection;
+
+          if (empty) {
+            // Extend to full link range around cursor
+            const $pos = tr.doc.resolve(tr.selection.from);
+            const range = getMarkRange($pos, markType);
+            if (!range) return false;
+            if (!dispatch) return true;
+            tr.removeMark(range.from, range.to, markType);
+          } else {
+            // Check that at least one text node in the selection is in a context that allows links.
+            // This correctly handles CellSelection (multiple ranges) and code blocks (marks: '').
+            const ctx = { hasApplicableText: false };
+            for (const range of ranges) {
+              tr.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, _pos, parent) => {
+                if (node.isText && parent?.type.allowsMarkType(markType)
+                  && !node.marks.some((m) => m.type.excludes(markType) && m.type !== markType)) {
+                  ctx.hasApplicableText = true;
+                }
+              });
+            }
+            if (!ctx.hasApplicableText) return false;
+            if (!dispatch) return true;
+            // Iterate over selection ranges (handles CellSelection with multiple ranges)
+            for (const range of ranges) {
+              tr.removeMark(range.$from.pos, range.$to.pos, markType);
+            }
+          }
+
+          dispatch(tr);
+          return true;
+        },
+      toggleLink:
+        (attributes: LinkAttributes) =>
+        ({ tr, state, dispatch }) => {
+          if (!isValidUrl(attributes.href, { protocols: this.options.protocols })) {
+            return false;
+          }
+
+          const markType = state.schema.marks['link'];
+          if (!markType) return false;
+
+          const { empty, ranges } = tr.selection;
+
+          if (empty) {
+            // Extend to full link range around cursor
+            const $pos = tr.doc.resolve(tr.selection.from);
+            const range = getMarkRange($pos, markType);
+
+            if (range && tr.doc.rangeHasMark(range.from, range.to, markType)) {
+              // Has link - remove it from the full range
+              if (!dispatch) return true;
+              tr.removeMark(range.from, range.to, markType);
+            } else {
+              // No link - toggle stored mark for cursor
+              if (!dispatch) return true;
+              const cursorMarks = tr.storedMarks ?? state.storedMarks ?? $pos.marks();
+              if (markType.isInSet(cursorMarks)) {
+                tr.removeStoredMark(markType);
+              } else {
+                tr.addStoredMark(markType.create(attributes));
+              }
+            }
+          } else {
+            if (!dispatch) return true;
+            // Iterate over selection ranges (handles CellSelection with multiple ranges)
+            const hasMark = ranges.every(range =>
+              tr.doc.rangeHasMark(range.$from.pos, range.$to.pos, markType),
+            );
+            for (const range of ranges) {
+              if (hasMark) {
+                tr.removeMark(range.$from.pos, range.$to.pos, markType);
+              } else {
+                tr.addMark(range.$from.pos, range.$to.pos, markType.create(attributes));
+              }
+            }
+          }
+
+          dispatch(tr);
+          return true;
+        },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      'Mod-k': () => {
+        (this.editor as unknown as Editor).emit('linkEdit', {});
+        return true;
+      },
+    };
+  },
+
+  addToolbarItems(): ToolbarItem[] {
+    return [
+      {
+        type: 'button',
+        name: 'link',
+        command: 'unsetLink',
+        emitEvent: 'linkEdit',
+        isActive: 'link',
+        icon: 'link',
+        label: 'Link',
+        shortcut: 'Mod-K',
+        group: 'format',
+        priority: 120,
+      },
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    const markType = this.markType;
+    if (!markType) return [];
+
+    const plugins = [];
+
+    // Click plugin - always added (handles link opening on click)
+    // 'whenNotEditable' → true: browser handles read-only links natively
+    plugins.push(
+      linkClickPlugin({
+        type: markType,
+        openOnClick: this.options.openOnClick === 'whenNotEditable'
+          ? true
+          : this.options.openOnClick,
+        enableClickSelection: this.options.enableClickSelection,
+      })
+    );
+
+    // Paste plugin - wraps selection or inserts URL as link
+    if (this.options.linkOnPaste) {
+      plugins.push(
+        linkPastePlugin({
+          type: markType,
+          protocols: this.options.protocols,
+        })
+      );
+    }
+
+    // Exit plugin - ArrowRight at end of link exits the mark
+    plugins.push(linkExitPlugin({ type: markType }));
+
+    // keepOnSplit: strip link from storedMarks after a block split so that
+    // pressing Enter at the end of a link does not carry it to the new line.
+    plugins.push(
+      new Plugin({
+        key: new PluginKey('linkKeepOnSplit'),
+        appendTransaction(transactions, _oldState, newState) {
+          const docChanged = transactions.some((tr) => tr.docChanged);
+          if (!docChanged) return null;
+
+          const { selection } = newState;
+          if (!(selection instanceof TextSelection) || !selection.empty) return null;
+
+          const $cursor = selection.$cursor;
+          if ($cursor?.parentOffset !== 0) return null;
+
+          const stored = newState.storedMarks;
+          if (!stored) return null;
+
+          const hasLink = stored.some((m) => m.type === markType);
+          if (!hasLink) return null;
+
+          return newState.tr.setStoredMarks(stored.filter((m) => m.type !== markType));
+        },
+      })
+    );
+
+    // Autolink plugin - converts typed URLs to links
+    if (this.options.autolink) {
+      plugins.push(
+        autolinkPlugin({
+          type: markType,
+          protocols: this.options.protocols,
+          defaultProtocol: this.options.defaultProtocol,
+          ...(this.options.shouldAutoLink && {
+            shouldAutoLink: this.options.shouldAutoLink,
+          }),
+        })
+      );
+    }
+
+    return plugins;
+  },
+});
+
+declare module '@domternal/core' {
+  interface RawCommands {
+    setLink: CommandSpec<[attributes: LinkAttributes]>;
+    unsetLink: CommandSpec;
+    toggleLink: CommandSpec<[attributes: LinkAttributes]>;
+  }
+}

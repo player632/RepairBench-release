@@ -1,0 +1,168 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 9fa8e43..df40134 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -115,7 +115,7 @@ function App() {
+           if (a.attrs.zIndex < 0) {
+             return b.attrs.updatedAt - a.attrs.updatedAt;
+           }
+-          return b.attrs.updatedAt - a.attrs.updatedAt;
++          return a.attrs.updatedAt - b.attrs.updatedAt;
+         }
+         return a.attrs.zIndex - b.attrs.zIndex;
+       }),
+diff --git a/src/hook/useDragAndDrop.ts b/src/hook/useDragAndDrop.ts
+index 5bfc5b2..2d97450 100644
+--- a/src/hook/useDragAndDrop.ts
++++ b/src/hook/useDragAndDrop.ts
+@@ -209,7 +209,7 @@ const useDragAndDrop = (
+         return insertFrame(e, data);
+       case TRIGGER.INSERT.IMAGE:
+         return insertImage(e, data);
+-      case "INSERT TEXT":
++      case TRIGGER.INSERT.TEXT:
+         return insertText(e, data);
+       case TRIGGER.INSERT.SHAPE:
+         return insertShape(e, data);
+diff --git a/src/hook/useHotkeyFunc.ts b/src/hook/useHotkeyFunc.ts
+index 359b20d..bf2e94e 100644
+--- a/src/hook/useHotkeyFunc.ts
++++ b/src/hook/useHotkeyFunc.ts
+@@ -175,7 +175,7 @@ const useHotkeyFunc = () => {
+       y: (pointer.y - stageRef.y()) / oldScale,
+     };
+ 
+-    const newScale = zoomDirection > 0 ? oldScale / scaleBy : oldScale * scaleBy;
++    const newScale = zoomDirection > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+ 
+     stageRef.scale({ x: newScale, y: newScale });
+     setValue(STAGE_SCALE, { x: newScale, y: newScale });
+diff --git a/src/hook/useLocalStorage.ts b/src/hook/useLocalStorage.ts
+index e8c2fd0..4b2a053 100644
+--- a/src/hook/useLocalStorage.ts
++++ b/src/hook/useLocalStorage.ts
+@@ -5,7 +5,7 @@ const useLocalStorage = () => {
+       : null;
+ 
+   const setValue = (key: string, value: any[] | { [key: string]: any }) => {
+-    return;
++    window.localStorage.setItem(key, JSON.stringify(value));
+   };
+ 
+   return {
+diff --git a/src/hook/useTab.ts b/src/hook/useTab.ts
+index 106ca8f..b347748 100644
+--- a/src/hook/useTab.ts
++++ b/src/hook/useTab.ts
+@@ -24,12 +24,12 @@ const useTab = (
+     clearSelection();
+ 
+     changeStageData(prevFileId!, currentActiveFileId!);
+-    setTabList((prev) => {
+-      prev.forEach((file) => {
+-        file.active = currentActiveFileId === file.id;
+-      });
+-      return prev;
+-    });
++    setTabList((prev) =>
++      prev.map((file) => ({
++        id: file.id,
++        active: currentActiveFileId === file.id,
++      })),
++    );
+     setValue(TAB_ID, { id: currentActiveFileId });
+     clearHistory();
+   };
+diff --git a/src/hook/useTool.ts b/src/hook/useTool.ts
+index dd3e42e..0fb7a16 100644
+--- a/src/hook/useTool.ts
++++ b/src/hook/useTool.ts
+@@ -55,9 +55,9 @@ const useTool = (
+       case "flip-vertically":
+         return hotkeyFunc.flipVertically(selectedItems);
+       case "layer-up":
+-        return hotkeyFunc.layerDown(selectedItems);
+-      case "layer-down":
+         return hotkeyFunc.layerUp(selectedItems);
++      case "layer-down":
++        return hotkeyFunc.layerDown(selectedItems);
+       case "zoom-in":
+         return hotkeyFunc.zoom(stage, 1);
+       case "zoom-out":
+diff --git a/src/hook/useWorkHistory.ts b/src/hook/useWorkHistory.ts
+index 6098a0a..14d6125 100644
+--- a/src/hook/useWorkHistory.ts
++++ b/src/hook/useWorkHistory.ts
+@@ -14,7 +14,7 @@ const useWorkHistory = (
+   const goToPast = useCallback(() => {
+     if (past.length > 0 && current) {
+       const newFuture = [...current];
+-      const newStageData = [...past[0]];
++      const newStageData = [...past[past.length - 1]];
+       setPast((prev) => [...prev.slice(0, past.length - 1)]);
+       setFuture((prev) => [...prev, newFuture]);
+       setCurrent(newStageData);
+diff --git a/src/redux/currentStageData.ts b/src/redux/currentStageData.ts
+index e3f7b85..afa8dbb 100644
+--- a/src/redux/currentStageData.ts
++++ b/src/redux/currentStageData.ts
+@@ -51,7 +51,7 @@ export const stageDataSlice = createSlice({
+     },
+     removeItem(state, action) {
+       if (Array.isArray(action.payload)) {
+-        stageDataEntity.removeOne(state, (action.payload as any).id);
++        stageDataEntity.removeMany(state, action.payload);
+         return;
+       }
+       stageDataEntity.removeOne(state, action.payload.id);
+diff --git a/src/settingBar/widgetList/ShapeWidget.tsx b/src/settingBar/widgetList/ShapeWidget.tsx
+index 38f2ced..1c5129b 100644
+--- a/src/settingBar/widgetList/ShapeWidget.tsx
++++ b/src/settingBar/widgetList/ShapeWidget.tsx
+@@ -38,7 +38,7 @@ const ShapeThumbnail: React.FC<{
+     <Drag
+       dragType="copyMove"
+       dragSrc={{
+-        trigger: TRIGGER.INSERT.ICON,
++        trigger: TRIGGER.INSERT.SHAPE,
+         ...data,
+       }}>
+       <i
+diff --git a/src/view/index.tsx b/src/view/index.tsx
+index 7bbaa90..858ab7e 100644
+--- a/src/view/index.tsx
++++ b/src/view/index.tsx
+@@ -310,7 +310,7 @@ export const getItemsInBoundary = (stage: Konva.Stage, targetItem: Konva.Node) =
+       const itemBoundary = item.getClientRect({ relativeTo: stage.getLayer() });
+       return (
+         boundary.x <= itemBoundary.x
+-        && boundary.y >= itemBoundary.y
++        && boundary.y <= itemBoundary.y
+         && boundary.x + boundary.width >= itemBoundary.x + itemBoundary.width
+         && boundary.y + boundary.height >= itemBoundary.y + itemBoundary.height
+       );
+diff --git a/src/view/object/icon/index.tsx b/src/view/object/icon/index.tsx
+index b6e0efd..1778775 100644
+--- a/src/view/object/icon/index.tsx
++++ b/src/view/object/icon/index.tsx
+@@ -49,7 +49,7 @@ const IconItem: React.FC<IconItemProps> = ({ data, e, onSelect }) => {
+     Konva.Image.fromURL(
+       `/assets/icon/bootstrap/${attrs.icon}`,
+       (image: Konva.Image) => {
+-        return;
++        setImageSrc(image.image()!);
+       }
+     );
+   }, []);
+diff --git a/src/view/object/text/index.tsx b/src/view/object/text/index.tsx
+index 525ed86..de133de 100644
+--- a/src/view/object/text/index.tsx
++++ b/src/view/object/text/index.tsx
+@@ -159,6 +159,7 @@ const TextItem: React.FC<TextItemProps> = ({ data, e, transformer, onSelect }) =
+       // hide on enter
+       // but don't hide on shift + enter
+       if (e.keyCode === 13 && !e.shiftKey) {
++        textRef!.current!.text(textarea.value);
+         removeTextarea();
+       }
+       // on esc do not set value back to node

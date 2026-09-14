@@ -1,0 +1,142 @@
+diff --git a/src/components/CurrencyCard.vue b/src/components/CurrencyCard.vue
+index ca2cfb5..aad6726 100644
+--- a/src/components/CurrencyCard.vue
++++ b/src/components/CurrencyCard.vue
+@@ -19,7 +19,7 @@
+                 <div data-testid="cc-vol"><span class="text-secondary">Vol:</span> <span class="text-dark">{{ ticker.vol }}</span></div>
+             </div>
+             <div class="dd-container" :class="[{'show': showDropDown}]" v-click-outside="closeDropDown">
+-                    <span role="button" class="menu-btn" data-testid="menu-btn" @click.stop="onDropDown">
++                    <span role="button" class="menu-btn" data-testid="menu-btn" @click.stop="closeDropDown">
+                         <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                     </span>
+                 <div class="dd-menu" data-testid="dd-menu" v-if="showDropDown">
+diff --git a/src/components/Sparkline.vue b/src/components/Sparkline.vue
+index 38550fb..c81b8db 100644
+--- a/src/components/Sparkline.vue
++++ b/src/components/Sparkline.vue
+@@ -65,26 +65,6 @@
+         pt: []
+       };
+     },
+-    watch: {
+-      cdata: {
+-        immediate: true,
+-        handler: function (value) {
+-          this.prev = null;
+-          const l = this.lineData.length;
+-          if(l === 0) {
+-            this.lineData = new Array(1).fill(0);
+-          }
+-          else {
+-            if(l === 1 && this.lineData[0] === 0) { this.lineData.pop() }
+-            this.lineData.push(value);
+-            if(l > this.limit-1) {
+-              this.lineData.shift()
+-            }
+-          }
+-          this.getDataPoints()
+-        }
+-      }
+-    },
+     methods: {
+       getMinMax(data) {
+         return data.reduce((result, obj) => {
+diff --git a/src/directives/click-ouside.js b/src/directives/click-ouside.js
+index fbec7aa..f56ad9e 100644
+--- a/src/directives/click-ouside.js
++++ b/src/directives/click-ouside.js
+@@ -7,9 +7,9 @@ export default {
+         vnode.context[binding.expression](event);
+       }
+     };
+-    document.body.addEventListener("click", el.clickOutsideEvent);
++    el.addEventListener("click", el.clickOutsideEvent);
+   },
+   unbind: function(el) {
+-    document.body.removeEventListener("click", el.clickOutsideEvent);
++    el.removeEventListener("click", el.clickOutsideEvent);
+   }
+ };
+diff --git a/src/layout/LayoutPage.vue b/src/layout/LayoutPage.vue
+index 0617255..e7a6a00 100644
+--- a/src/layout/LayoutPage.vue
++++ b/src/layout/LayoutPage.vue
+@@ -8,7 +8,7 @@
+         </header>
+         <div class="page-container">
+             <transition name="fade" mode="out-in">
+-                <keep-alive include="dashboard">
++                <keep-alive include="dashboard,info-view">
+                     <router-view/>
+                 </keep-alive>
+             </transition>
+@@ -23,13 +23,5 @@
+         currentPage: 'dashboard'
+       }
+     },
+-    watch: {
+-      '$route': {
+-        deep: true,
+-        handler: function (page) {
+-          this.currentPage = page.name;
+-        }
+-      }
+-    }
+   }
+ </script>
+\ No newline at end of file
+diff --git a/src/router.js b/src/router.js
+index e2e757a..062bf77 100644
+--- a/src/router.js
++++ b/src/router.js
+@@ -15,8 +15,7 @@ const router = new Router({
+     {
+       path: '/view/:symbol',
+       name: 'infoview',
+-      component: () => import('./views/InfoView.vue'),
+-      props: true
++      component: () => import('./views/InfoView.vue')
+     }
+   ]
+ })
+diff --git a/src/store.js b/src/store.js
+index b103d5e..6ced2ce 100644
+--- a/src/store.js
++++ b/src/store.js
+@@ -25,11 +25,11 @@ export default new Vuex.Store({
+     },
+     UPDATE_TICKER: (state, payload) => {
+       const tick = state.tickers[payload.symbol]
+-      payload.pchg = tick ? (payload.price > tick.price? 1 : -1 ) : 1
++      payload.pchg = tick ? (payload.price > tick.price? -1 : 1 ) : 1
+       Vue.set(state.tickers, payload.symbol, payload)
+     },
+     ADD_COIN_PAIR: (state, payload) => {
+-      if(!state.tickers[payload.symbol]) {
++      if(state.tickers[payload.symbol]) {
+         state.currencies.push(payload);
+         localStorage.setItem('vue-crypto-currencies-new', JSON.stringify(state.currencies))
+       }
+@@ -38,7 +38,7 @@ export default new Vuex.Store({
+     },
+     REMOVE_COIN_PAIR: (state, symbol) => {
+       Vue.delete(state.tickers, symbol)
+-      state.currencies.splice(state.currencies.findIndex(s => s.symbol === symbol), 1);
++      state.currencies.splice(state.currencies.findIndex(s => s.symbol === symbol));
+       localStorage.setItem('vue-crypto-currencies-new', JSON.stringify(state.currencies))
+     }
+   }
+diff --git a/src/views/Dashboard.vue b/src/views/Dashboard.vue
+index 5c6ead8..ae875b8 100644
+--- a/src/views/Dashboard.vue
++++ b/src/views/Dashboard.vue
+@@ -5,7 +5,7 @@
+                       placeholder="Select Token"></v-select>
+             <span class="slash">/</span>
+             <v-select id="quote" data-testid="quote-select" :data-value="quote" :options="quoteOptions" :searchable="false" :clearable="false" v-model="quote"
+-                      @input="resetBase" style="width: 100px"></v-select>
++                      style="width: 100px"></v-select>
+             <button class="add-btn" data-testid="add-btn" @click="addCoinPair"><i class="fa fa-plus fa-lg" aria-hidden="true"></i></button>
+         </div>
+         <CryptoBoard></CryptoBoard>

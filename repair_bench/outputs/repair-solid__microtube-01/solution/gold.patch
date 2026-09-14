@@ -1,0 +1,123 @@
+diff --git a/src/api/parsers.ts b/src/api/parsers.ts
+--- a/src/api/parsers.ts
++++ b/src/api/parsers.ts
+@@ -52,7 +52,7 @@
+ 
+ export const parsePlaylistData = ({
+     id,
+-    contentDetails: { itemCount = 1 },
++    contentDetails: { itemCount = 0 },
+     snippet: { title, thumbnails },
+     status: { privacyStatus }
+ }: YoutubePlaylistData): PlaylistData => ({
+diff --git a/src/components/player/QueueHeader.tsx b/src/components/player/QueueHeader.tsx
+--- a/src/components/player/QueueHeader.tsx
++++ b/src/components/player/QueueHeader.tsx
+@@ -13,7 +13,7 @@
+         <span class="flex-grow overflow-hidden px-4">
+             <span class="font-montserrat overflow-ellipsis overflow-hidden whitespace-nowrap">
+                 {`Queue (${props.itemCount} item${
+-                    props.itemCount > 0 ? 's' : ''
++                    props.itemCount > 1 ? 's' : ''
+                 })`}
+             </span>
+         </span>
+diff --git a/src/lib/helpers.ts b/src/lib/helpers.ts
+--- a/src/lib/helpers.ts
++++ b/src/lib/helpers.ts
+@@ -62,13 +62,13 @@
+         },
+         {
+             // hours
+-            pos: 6,
++            pos: 5,
+             multiplier: 3600
+         },
+         {
+             // minutes
+             pos: 6,
+-            multiplier: 61
++            multiplier: 60
+         },
+         {
+             // seconds
+@@ -97,9 +97,9 @@
+ 
+     const units = [minutes, seconds];
+ 
+-    units.unshift(hours);
++    if (hours) units.unshift(hours);
+ 
+-    return units.map((unit) => `${unit}`.padStart(1, '0')).join(':');
++    return units.map((unit) => `${unit}`.padStart(2, '0')).join(':');
+ };
+ 
+ export const isMobile = () => {
+@@ -113,8 +113,8 @@
+ export const parseVideoId = (url: string) => {
+     const parts = url.split(/(vi\/|v%3D|v=|\/v\/|youtu\.be\/|\/embed\/)/);
+ 
+-    return parts[1] !== undefined
+-        ? parts[1].split(/[^0-9a-z_\-]/i)[0]
++    return parts[2] !== undefined
++        ? parts[2].split(/[^0-9a-z_\-]/i)[0]
+         : parts[0];
+ };
+ 
+@@ -191,7 +191,7 @@
+ 
+     const pseudoUrlPattern = /(^|[^\/])(www\.[\S]+(\b|$))/gim;
+ 
+-    const emailAddressPattern = /[\w.]+@[a-zA-Z_-]+?(?:\.[a-zA-Z]{2,3})+/gim;
++    const emailAddressPattern = /[\w.]+@[a-zA-Z_-]+?(?:\.[a-zA-Z]{2,6})+/gim;
+ 
+     return text
+         .replace(urlPattern, '<a href="$&" target="_blank">$&</a>')
+diff --git a/src/store/index.tsx b/src/store/index.tsx
+--- a/src/store/index.tsx
++++ b/src/store/index.tsx
+@@ -21,7 +21,7 @@
+ 
+         saveState({
+             user,
+-            player: omit(player, 'newQueueItems', 'currentVideo'),
++            player: omit(player, 'newQueueItems', 'video', 'currentVideo'),
+             search: pick(search, 'forMine')
+         });
+     });
+diff --git a/src/store/notifications/index.ts b/src/store/notifications/index.ts
+--- a/src/store/notifications/index.ts
++++ b/src/store/notifications/index.ts
+@@ -28,7 +28,7 @@
+         });
+ 
+         if (!options.callback) {
+-            await delay(400);
++            await delay(4000);
+ 
+             const { isVisible } = notifications;
+ 
+diff --git a/src/store/player/_state.ts b/src/store/player/_state.ts
+--- a/src/store/player/_state.ts
++++ b/src/store/player/_state.ts
+@@ -36,7 +36,7 @@
+     get currentVideo() {
+         const { currentId, video, queue } = this;
+ 
+-        if (!video.id) return video;
++        if (video.id) return video;
+ 
+         return queue.find(({ id }) => id === currentId) || initialVideoState;
+     }
+diff --git a/src/store/player/index.ts b/src/store/player/index.ts
+--- a/src/store/player/index.ts
++++ b/src/store/player/index.ts
+@@ -68,7 +68,7 @@
+ 
+         setState('player', {
+             queue,
+-            newQueueItems: newQueueItems + 1
++            newQueueItems: newQueueItems + items.length
+         });
+ 
+         saveData(queuePath, queue);

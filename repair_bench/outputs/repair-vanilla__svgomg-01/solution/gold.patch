@@ -1,0 +1,154 @@
+diff --git a/src/js/page/main-controller.js b/src/js/page/main-controller.js
+index 5937e6a..d234fb0 100644
+--- a/src/js/page/main-controller.js
++++ b/src/js/page/main-controller.js
+@@ -139,6 +139,8 @@ export default class MainController {
+       event.preventDefault();
+       this._mainMenuUi.showFilePicker();
+     }
++
++    if (event.key === 'Escape') this._mainMenuUi.hide();
+   }
+ 
+   _onGlobalPaste(event) {
+@@ -218,7 +220,7 @@ export default class MainController {
+     });
+     const answer = await toast.answer;
+ 
+-    if (answer === 'dismiss') {
++    if (answer === 'undo') {
+       this._settingsUi.setSettings(oldSettings);
+       this._onSettingsChange();
+     }
+@@ -254,7 +256,7 @@ export default class MainController {
+   }
+ 
+   async _loadSettings() {
+-    const settings = await storage.get('setting');
++    const settings = await storage.get('settings');
+     if (settings) this._settingsUi.setSettings(settings);
+     this._mirrorSettings(this._settingsUi.getSettings());
+   }
+diff --git a/src/js/page/ui/code-output.js b/src/js/page/ui/code-output.js
+index 6bf08eb..e8825fc 100644
+--- a/src/js/page/ui/code-output.js
++++ b/src/js/page/ui/code-output.js
+@@ -15,7 +15,7 @@ export default class CodeOutput {
+   }
+ 
+   async setSvg({ text }) {
+-    this._codeEl.innerHTML += await prism.highlight(text);
++    this._codeEl.innerHTML = await prism.highlight(text);
+   }
+ 
+   reset() {
+diff --git a/src/js/page/ui/download-button.js b/src/js/page/ui/download-button.js
+index 27a0643..22718e8 100644
+--- a/src/js/page/ui/download-button.js
++++ b/src/js/page/ui/download-button.js
+@@ -32,5 +32,6 @@ export default class DownloadButton extends FloatingActionButton {
+   }
+ 
+   done() {
++    this._spinner.hide();
+   }
+ }
+diff --git a/src/js/page/ui/main-menu.js b/src/js/page/ui/main-menu.js
+index 4226904..140df9a 100644
+--- a/src/js/page/ui/main-menu.js
++++ b/src/js/page/ui/main-menu.js
+@@ -11,7 +11,7 @@ import { updateStateProbe } from '../state-probe.js';
+ export default class MainMenu {
+   constructor() {
+     this.emitter = createNanoEvents();
+-    this.allowHide = true;
++    this.allowHide = false;
+     this._spinner = new Spinner('menu-spinner');
+ 
+     updateStateProbe({ 'menu-open': 1 });
+@@ -42,7 +42,9 @@ export default class MainMenu {
+       this._loadFileInput.addEventListener('change', () =>
+         this._onFileInputChange(),
+       );
+-      this._pasteInput.addEventListener('input', this._onTextInputChange);
++      this._pasteInput.addEventListener('input', () =>
++        this._onTextInputChange(),
++      );
+     });
+   }
+ 
+diff --git a/src/js/page/ui/material-slider.js b/src/js/page/ui/material-slider.js
+index 76565bd..2e78cbf 100644
+--- a/src/js/page/ui/material-slider.js
++++ b/src/js/page/ui/material-slider.js
+@@ -35,6 +35,7 @@ export default class MaterialSlider {
+   // eslint-disable-next-line accessor-pairs
+   set value(newValue) {
+     this._range.value = newValue;
++    this._update();
+   }
+ 
+   _onRangeTouchStart() {
+diff --git a/src/js/page/ui/output.js b/src/js/page/ui/output.js
+index f8998ab..e7d5a69 100644
+--- a/src/js/page/ui/output.js
++++ b/src/js/page/ui/output.js
+@@ -36,6 +36,8 @@ export default class Output {
+       const toAdd = this._types[this._activeType].container;
+       this.container.append(toAdd);
+ 
++      if (this._svgFile) await this.update(this._svgFile);
++
+       if (noAnimate) {
+         toAdd.classList.add('active');
+         if (toRemove) toRemove.classList.remove('active');
+diff --git a/src/js/page/ui/results-container.js b/src/js/page/ui/results-container.js
+index 50f5752..3aa7f83 100644
+--- a/src/js/page/ui/results-container.js
++++ b/src/js/page/ui/results-container.js
+@@ -18,9 +18,9 @@ export default class ResultsContainer {
+ 
+   _positionResults() {
+     if (this._query.matches) {
+-      this._mobileContainer.append(this._results.container);
+-    } else {
+       this._container.append(this._results.container);
++    } else {
++      this._mobileContainer.append(this._results.container);
+     }
+   }
+ }
+diff --git a/src/js/page/ui/settings.js b/src/js/page/ui/settings.js
+index 517befb..cac3d1a 100644
+--- a/src/js/page/ui/settings.js
++++ b/src/js/page/ui/settings.js
+@@ -71,7 +71,7 @@ export default class Settings {
+       if (inputEl.type === 'checkbox') {
+         inputEl.checked = inputEl.hasAttribute('checked');
+       } else if (inputEl.type === 'range') {
+-        inputEl.value = inputEl.getAttribute('value');
++        this._sliderMap.get(inputEl).value = inputEl.getAttribute('value');
+       }
+     }
+ 
+@@ -121,6 +121,7 @@ export default class Settings {
+     }
+ 
+     for (const inputEl of this._pluginInputs) {
++      fingerprint.push(Number(inputEl.checked));
+       output.plugins[inputEl.name] = inputEl.checked;
+     }
+ 
+diff --git a/src/js/svgo-worker/index.js b/src/js/svgo-worker/index.js
+index dbd0b3f..55e240d 100644
+--- a/src/js/svgo-worker/index.js
++++ b/src/js/svgo-worker/index.js
+@@ -35,7 +35,7 @@ const createDimensionsExtractor = () => {
+ 
+ function compress(svgInput, settings) {
+   // setup plugin list
+-  const floatPrecision = Number(settings.floatPrecision) || 3;
++  const floatPrecision = Number(settings.floatPrecision);
+   const transformPrecision = Number(settings.transformPrecision);
+   const plugins = [];
+ 

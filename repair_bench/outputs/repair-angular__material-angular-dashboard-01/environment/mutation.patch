@@ -1,0 +1,180 @@
+diff --git a/src/app/app-routing.module.ts b/src/app/app-routing.module.ts
+index 5d5bedf..a0e641e 100644
+--- a/src/app/app-routing.module.ts
++++ b/src/app/app-routing.module.ts
+@@ -16,7 +16,7 @@ import { FormsComponent } from './pages/forms';
+   imports: [
+     RouterModule.forRoot(
+       [
+-        { path: '', redirectTo: 'app/dashboard', pathMatch: 'full' },
++        { path: '', component: Dashboard2Component, pathMatch: 'full' },
+         { path: 'app', component: CommonLayoutComponent, children: [
+           { path: 'dashboard', component: DashboardComponent, pathMatch: 'full' },
+           { path: 'dashboard-custom', component: Dashboard2Component, pathMatch: 'full' },
+diff --git a/src/app/components/notification-menu/notification-menu.service.ts b/src/app/components/notification-menu/notification-menu.service.ts
+index cb7e0bf..60fd61a 100644
+--- a/src/app/components/notification-menu/notification-menu.service.ts
++++ b/src/app/components/notification-menu/notification-menu.service.ts
+@@ -9,11 +9,6 @@ export class NotificationMenuService {
+         time: 'just now',
+         icon: 'plus_one',
+         color: 'primary',
+-      }, {
+-        text: 'Database error',
+-        time: '1 min',
+-        icon: 'error_outline',
+-        color: 'secondary',
+       }, {
+         text: 'The Death Star is built!',
+         time: '2 hours',
+diff --git a/src/app/pages/dashboard/line-chart/line-chart.component.ts b/src/app/pages/dashboard/line-chart/line-chart.component.ts
+index ba54b28..e0b3393 100644
+--- a/src/app/pages/dashboard/line-chart/line-chart.component.ts
++++ b/src/app/pages/dashboard/line-chart/line-chart.component.ts
+@@ -20,8 +20,8 @@ export class LineChartComponent extends BaseLineChartComponent {
+   ) {
+     super(el);
+ 
+-    this.xAxis = 'TIME';
+-    this.yAxis = 'REVENUE';
++    this.xAxis = 'REVENUE';
++    this.yAxis = 'TIME';
+     this.maxX = 14;
+ 
+     this.afterConfigure();
+diff --git a/src/app/pages/dashboard/todo-list/todo-list.component.ts b/src/app/pages/dashboard/todo-list/todo-list.component.ts
+index cdc2427..0eb8e5f 100644
+--- a/src/app/pages/dashboard/todo-list/todo-list.component.ts
++++ b/src/app/pages/dashboard/todo-list/todo-list.component.ts
+@@ -67,7 +67,7 @@ export class TodoListComponent implements AfterViewInit, OnDestroy {
+ 
+   public addItem(): void {
+     if (this.createdItem.title) {
+-      this.items.push({ ...this.createdItem });
++      this.items = [{ ...this.createdItem }, ...this.items];
+     }
+     this.createdItem = null;
+   }
+diff --git a/src/app/pages/ui/tables/tables.service.ts b/src/app/pages/ui/tables/tables.service.ts
+index 679e3dc..afbd106 100644
+--- a/src/app/pages/ui/tables/tables.service.ts
++++ b/src/app/pages/ui/tables/tables.service.ts
+@@ -417,10 +417,10 @@ export class TablesService {
+   public sorting(array, order, value) {
+     const compareFunction = (a, b) => {
+       if (a[value] > b[value]) {
+-        return 1 * order;
++        return -1 * order;
+       }
+       if (a[value] < b[value]) {
+-        return -1 * order;
++        return 1 * order;
+       }
+       return 0;
+     };
+diff --git a/src/app/services/auth/auth.service.ts b/src/app/services/auth/auth.service.ts
+index 33e7981..cf190fe 100644
+--- a/src/app/services/auth/auth.service.ts
++++ b/src/app/services/auth/auth.service.ts
+@@ -41,7 +41,7 @@ export class AuthService {
+   public logout() {
+     return this.http.get(`${this.url}/logout`)
+       .pipe(map((data) => {
+-        localStorage.clear();
++        localStorage.removeItem(tokenName);
+         this.user = null;
+         this.isLogged$.next(false);
+         return of(false);
+diff --git a/src/app/services/auth/fakebackend.interceptor.ts b/src/app/services/auth/fakebackend.interceptor.ts
+index 6e74ea1..2c1e3bb 100644
+--- a/src/app/services/auth/fakebackend.interceptor.ts
++++ b/src/app/services/auth/fakebackend.interceptor.ts
+@@ -56,7 +56,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
+       return next.handle(request);
+     }))
+       .pipe(materialize())
+-      .pipe(delay(500))
++      .pipe(delay(3000))
+       .pipe(dematerialize());
+   }
+ 
+diff --git a/src/theme/components/pagination/pagination.component.ts b/src/theme/components/pagination/pagination.component.ts
+index dc0b6ba..d22cf20 100644
+--- a/src/theme/components/pagination/pagination.component.ts
++++ b/src/theme/components/pagination/pagination.component.ts
+@@ -14,7 +14,7 @@ export class PaginationComponent {
+   public inputNumPage: number;
+ 
+   public onChangePage(direction: number) {
+-    this.currentPage = Math.min(Math.max(this.currentPage + direction, 1), this.numPage);
++    this.currentPage = this.currentPage + direction;
+     this.changePage.emit(this.currentPage);
+   }
+ 
+diff --git a/src/theme/components/sidebar/submenu-item.component.ts b/src/theme/components/sidebar/submenu-item.component.ts
+index d5cb2ee..772270e 100644
+--- a/src/theme/components/sidebar/submenu-item.component.ts
++++ b/src/theme/components/sidebar/submenu-item.component.ts
+@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
+   selector: 'base-submenu-item',
+   styleUrls: ['./sidebar.component.scss'],
+   template: `
+-    <a class="mdl-navigation__link" [class.mdl-navigation__link--current]="shown" (click)="shown = !shown">
++    <a class="mdl-navigation__link" [class.mdl-navigation__link--current]="shown" (click)="onToggle()">
+     <i *ngIf="data.icon" class="material-icons">{{ data.icon }}</i>{{ data.name }}<i class="material-icons">keyboard_arrow_down</i>
+     </a>
+     <div class="mdl-navigation">
+@@ -31,6 +31,10 @@ export class SubmenuItemComponent implements OnInit {
+     this.shown = this.hasCurrent(this.data.children);
+   }
+ 
++  public onToggle() {
++    this.shown = this.hasCurrent(this.data.children);
++  }
++
+   private hasCurrent(list) {
+     return list.some(item => (item.link && item.link === this.router.url) || (item.children && this.hasCurrent(item.children)));
+   }
+diff --git a/src/theme/components/switch/switch.component.ts b/src/theme/components/switch/switch.component.ts
+index 5ea256d..eef99f7 100644
+--- a/src/theme/components/switch/switch.component.ts
++++ b/src/theme/components/switch/switch.component.ts
+@@ -12,6 +12,6 @@ import { ToggleComponent } from 'theme/components/toggle/toggle.component';
+ })
+ export class SwitchComponent extends ToggleComponent {
+   @HostBinding('class') private get className() {
+-    return `mdl-switch mdl-js-switch mdl-js-ripple-effect switch--colored-${this.color}`;
++    return `mdl-switch mdl-js-ripple-effect switch--colored-${this.color}`;
+   }
+ }
+diff --git a/src/theme/components/toggle/toggle.component.ts b/src/theme/components/toggle/toggle.component.ts
+index e952cd3..f6faf15 100644
+--- a/src/theme/components/toggle/toggle.component.ts
++++ b/src/theme/components/toggle/toggle.component.ts
+@@ -8,7 +8,12 @@ export abstract class ToggleComponent {
+ 
+   public isChecked = false;
+ 
+-  @HostBinding('for') @Input() public innerID = `base-toggle-${ToggleComponent.idCounter += 1}`;
++  @HostBinding('for') @Input() public innerID = `base-toggle-${ToggleComponent.nextId()}`;
++
++  private static nextId(): number {
++    const current = ToggleComponent.idCounter;
++    return current;
++  }
+ 
+   @Input() protected color;
+ 
+diff --git a/src/theme/directives/tooltip/tooltip.component.ts b/src/theme/directives/tooltip/tooltip.component.ts
+index 78515c4..2bfec49 100644
+--- a/src/theme/directives/tooltip/tooltip.component.ts
++++ b/src/theme/directives/tooltip/tooltip.component.ts
+@@ -8,7 +8,7 @@ import { Component, HostBinding, Input } from '@angular/core';
+ export class TooltipComponent {
+   @HostBinding('innerHTML') @Input() public content;
+   @HostBinding('attr.for') @Input() public targetId;
+-  @Input() public position = 'bottom';
++  @Input() public position = 'top';
+   @HostBinding('class.mdl-tooltip--large') @Input() public large = false;
+ 
+   @HostBinding('class') private get className() {

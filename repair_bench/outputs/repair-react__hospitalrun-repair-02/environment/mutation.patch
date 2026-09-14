@@ -1,0 +1,165 @@
+diff --git a/src/incidents/list/ViewIncidentsTable.tsx b/src/incidents/list/ViewIncidentsTable.tsx
+index 318166b..5efdfeb 100644
+--- a/src/incidents/list/ViewIncidentsTable.tsx
++++ b/src/incidents/list/ViewIncidentsTable.tsx
+@@ -1,7 +1,6 @@
+ import { Spinner, Table, Dropdown } from '@hospitalrun/components'
+ import format from 'date-fns/format'
+ import React from 'react'
+-import { useHistory } from 'react-router'
+ 
+ import useTranslator from '../../shared/hooks/useTranslator'
+ import { DownloadLink, getCSV } from '../../shared/util/DataHelpers'
+@@ -37,7 +36,6 @@ export function populateExportData(dataToPopulate: any, theData: any) {
+ function ViewIncidentsTable(props: Props) {
+   const { searchRequest } = props
+   const { t } = useTranslator()
+-  const history = useHistory()
+   const { data, isLoading } = useIncidents(searchRequest)
+ 
+   if (data === undefined || isLoading) {
+@@ -119,7 +117,7 @@ function ViewIncidentsTable(props: Props) {
+         actions={[
+           {
+             label: t('actions.view'),
+-            action: (row) => history.push(`incidents/${row.id}`),
++            action: () => {},
+           },
+         ]}
+       />
+diff --git a/src/incidents/view/ViewIncidentDetails.tsx b/src/incidents/view/ViewIncidentDetails.tsx
+index 492fa42..0d3cf02 100644
+--- a/src/incidents/view/ViewIncidentDetails.tsx
++++ b/src/incidents/view/ViewIncidentDetails.tsx
+@@ -31,7 +31,7 @@ function ViewIncidentDetails(props: Props) {
+ 
+   const onResolve = async () => {
+     await mutate(data)
+-    history.push('/incidents')
++    history.goBack()
+   }
+ 
+   const getButtons = () => {
+diff --git a/src/labs/ViewLab.tsx b/src/labs/ViewLab.tsx
+index 271ca46..93f4ebe 100644
+--- a/src/labs/ViewLab.tsx
++++ b/src/labs/ViewLab.tsx
+@@ -109,7 +109,7 @@ const ViewLab = () => {
+         setNewNoteText('')
+       }
+ 
+-      const updatedLab = await updateLab(newLab)
++      const updatedLab = newLab
+       history.push(`/labs/${updatedLab?.id}`)
+       Toast(
+         'success',
+diff --git a/src/labs/hooks/useCompleteLab.ts b/src/labs/hooks/useCompleteLab.ts
+index bfb2d8c..2ed9d38 100644
+--- a/src/labs/hooks/useCompleteLab.ts
++++ b/src/labs/hooks/useCompleteLab.ts
+@@ -23,8 +23,7 @@ function completeLab(lab: Lab): Promise<Lab> {
+ 
+ export default function useCompleteLab() {
+   return useMutation(completeLab, {
+-    onSuccess: async (data) => {
+-      queryCache.setQueryData(['lab', data.id], data)
++    onSuccess: async () => {
+       await queryCache.invalidateQueries('labs')
+     },
+     throwOnError: true,
+diff --git a/src/patients/edit/EditPatient.tsx b/src/patients/edit/EditPatient.tsx
+index 23c5b83..21e543c 100644
+--- a/src/patients/edit/EditPatient.tsx
++++ b/src/patients/edit/EditPatient.tsx
+@@ -42,8 +42,8 @@ const EditPatient = () => {
+   useAddBreadcrumbs(breadcrumbs, true)
+ 
+   useEffect(() => {
+-    setPatient(givenPatient || ({} as Patient))
+-  }, [givenPatient])
++    setPatient({} as Patient)
++  }, [])
+ 
+   const onCancel = () => {
+     history.push(`/patients/${patient.id}`)
+@@ -63,7 +63,11 @@ const EditPatient = () => {
+   }
+ 
+   const onPatientChange = (newPatient: Partial<Patient>) => {
+-    setPatient(newPatient as Patient)
++    setPatient({
++      ...newPatient,
++      givenName: patient.givenName,
++      familyName: patient.familyName,
++    } as Patient)
+   }
+ 
+   if (status === 'loading') {
+diff --git a/src/patients/patient-slice.ts b/src/patients/patient-slice.ts
+index 0524556..204ab58 100644
+--- a/src/patients/patient-slice.ts
++++ b/src/patients/patient-slice.ts
+@@ -7,7 +7,7 @@ import Patient from '../shared/model/Patient'
+ import { AppThunk } from '../shared/store'
+ import { uuid } from '../shared/util/uuid'
+ import { cleanupPatient } from './util/set-patient-helper'
+-import validatePatient from './util/validate-patient'
++import validatePatient, { PatientValidationError } from './util/validate-patient'
+ 
+ interface PatientState {
+   status: 'loading' | 'error' | 'completed'
+@@ -138,7 +138,7 @@ export const updatePatient = (
+   dispatch(updatePatientStart())
+ 
+   const cleanPatient = cleanupPatient(patient)
+-  const updateError = validatePatient(cleanPatient)
++  const updateError = validatePatient(cleanPatient) || new PatientValidationError()
+ 
+   if (!updateError) {
+     const updatedPatient = await PatientRepository.saveOrUpdate(cleanPatient)
+diff --git a/src/patients/search/PatientSearchInput.tsx b/src/patients/search/PatientSearchInput.tsx
+index f6bd323..5737350 100644
+--- a/src/patients/search/PatientSearchInput.tsx
++++ b/src/patients/search/PatientSearchInput.tsx
+@@ -14,7 +14,7 @@ const PatientSearchInput = (props: Props) => {
+   const { t } = useTranslator()
+ 
+   const [searchText, setSearchText] = useState<string>('')
+-  const debouncedSearchText = useDebounce(searchText, 500)
++  const debouncedSearchText = useDebounce(searchText, 0)
+ 
+   useEffect(() => {
+     onChange({
+diff --git a/src/scheduling/appointments/new/NewAppointment.tsx b/src/scheduling/appointments/new/NewAppointment.tsx
+index 0b1db9d..d5f224d 100644
+--- a/src/scheduling/appointments/new/NewAppointment.tsx
++++ b/src/scheduling/appointments/new/NewAppointment.tsx
+@@ -79,15 +79,7 @@ const NewAppointment = () => {
+       }
+     }
+     setSaved(false)
+-  }, [
+-    saved,
+-    newAppointmentMutateError,
+-    isErrorNewAppointment,
+-    newAppointmentMutate,
+-    newAppointment,
+-    t,
+-    history,
+-  ])
++  }, [])
+ 
+   if (isLoadingNewAppointment) {
+     return <Spinner color="blue" loading size={[10, 25]} type="ScaleLoader" />
+diff --git a/src/shared/components/input/LanguageSelector.tsx b/src/shared/components/input/LanguageSelector.tsx
+index ae29000..bf0f2e5 100644
+--- a/src/shared/components/input/LanguageSelector.tsx
++++ b/src/shared/components/input/LanguageSelector.tsx
+@@ -17,7 +17,6 @@ const LanguageSelector = () => {
+   languageOptions = sortBy(languageOptions, (o) => o.label)
+ 
+   const onChange = (value: string) => {
+-    i18n.changeLanguage(value)
+     setSelected(value)
+   }
+ 

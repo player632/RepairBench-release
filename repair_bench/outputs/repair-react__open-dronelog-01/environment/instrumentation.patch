@@ -1,0 +1,584 @@
+diff --git a/src/main.tsx b/src/main.tsx
+index 540868e..5e3d684 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,4 +1,5 @@
+ import './rbBackend';
++import { installRbErrorTap, publishRbProbe } from './rbProbe';
+ import React from 'react';
+ import ReactDOM from 'react-dom/client';
+ import { isWebMode } from '@/lib/api';
+@@ -7,6 +8,10 @@ import './index.css';
+ import './styles/mobile.css';
+ import './i18n';
+ 
++// RepairBench instrumentation: tap window errors BEFORE the first render so a boot-time crash
++// is recorded instead of being swallowed by the seed's own AppErrorBoundary.
++installRbErrorTap();
++
+ // Attach Tauri console logger only in Tauri mode
+ if (!isWebMode()) {
+   import('@tauri-apps/plugin-log')
+@@ -21,3 +26,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
+     <App />
+   </React.StrictMode>
+ );
++
++// RepairBench instrumentation: publish the read-only probe object exactly once.
++publishRbProbe();
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+index 0000000..caa2b54
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,550 @@
++// RepairBench instrumentation: a strictly READ-ONLY probe published once as `window.__rb`.
++//
++// Contract (same discipline as every other RepairBench probe face):
++//   * published exactly once, after the first render is scheduled (see src/main.tsx);
++//   * every member is a pure read of the DOM / storage / harness record that the application
++//     itself already produced - the probe never writes application state, never dispatches an
++//     event, never touches storage, never mutates the DOM and never changes what is rendered;
++//   * every member is fail-closed: on any error it returns an inert sentinel ('' / -1 / false)
++//     instead of throwing, so a probe bug can never be mistaken for an application behaviour;
++//   * every member returns a SCALAR (string / number / boolean) because
++//     evaluation/dsl_runner.mjs compares js_eval results with a loose == against `expected`,
++//     and an object or array expectation would compare false forever.
++//
++// It exists so the verifier can read scalars off the existing render path instead of scraping
++// Tailwind utility class strings, which this seed regenerates on every build.
++
++import { rbBackendRecord } from './rbBackend';
++
++const norm = (v: unknown): string => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
++
++const q = (sel: string): Element | null => {
++  try {
++    return document.querySelector(sel);
++  } catch {
++    return null;
++  }
++};
++
++const qa = (sel: string): Element[] => {
++  try {
++    return Array.from(document.querySelectorAll(sel));
++  } catch {
++    return [];
++  }
++};
++
++const textOf = (el: Element | null): string => norm((el as HTMLElement | null)?.textContent ?? '');
++
++/** The stat cards Overview renders: `<div class="stat-card"><span>value</span><span>label</span></div>`.
++ *  The value span is always the FIRST span child and the label span the second (Overview.tsx:608-614),
++ *  and the label is the translated string, so it is addressed by text rather than by position. */
++function statCard(label: string): string {
++  const want = norm(label);
++  for (const card of qa('.stat-card')) {
++    const spans = Array.from(card.querySelectorAll('span'));
++    if (spans.length < 2) continue;
++    if (norm(spans[spans.length - 1].textContent) === want) return norm(spans[0].textContent);
++  }
++  return '';
++}
++
++/** Heading element whose normalized text is exactly `heading`. */
++function headingEl(heading: string): HTMLElement | null {
++  const want = norm(heading);
++  if (!want) return null;
++  for (const h of qa('h1,h2,h3,h4,h5,h6')) if (norm(h.textContent) === want) return h as HTMLElement;
++  return null;
++}
++
++/** Resolve the PANEL a section heading belongs to, without depending on any Tailwind utility or
++ *  on the seed's optional `.card` wrapper (DroneFlightTimeList has one at Overview.tsx:1296,
++ *  BatteryHealthList at :2047 does NOT - it returns a bare `<div class="space-y-4">`).
++ *  Rule: walk up from the heading and take the FIRST ancestor whose own normalized text is at
++ *  least MIN_PANEL chars long, i.e. the first ancestor that holds the panel BODY rather than just
++ *  the header strip. Deterministic, layout-independent, and capped at MAX_UP levels so a missing
++ *  panel degrades to a small scope instead of swallowing the whole document. */
++const MIN_PANEL = 40;
++const MAX_UP = 6;
++function cardOf(heading: string): HTMLElement | null {
++  const h = headingEl(heading);
++  if (!h) return null;
++  let box: HTMLElement | null = h.parentElement;
++  let up = 0;
++  while (box && box.parentElement && up < MAX_UP) {
++    if (norm(box.textContent).length >= MIN_PANEL) return box;
++    box = box.parentElement;
++    up += 1;
++  }
++  return box;
++}
++
++/** How many levels up the panel scope was found (-1 = heading not present). Recorded by the census
++ *  so a mis-scoped panel is visible instead of silently returning a plausible-looking string. */
++function cardDepth(heading: string): number {
++  const h = headingEl(heading);
++  if (!h) return -1;
++  const card = cardOf(heading);
++  if (!card) return -1;
++  let box: HTMLElement | null = h.parentElement;
++  let up = 0;
++  while (box && up <= MAX_UP) { if (box === card) return up; box = box.parentElement; up += 1; }
++  return -1;
++}
++
++/** Row elements of a list panel: the seed gives every Drone Flight Time / Battery Health row a
++ *  `<div ... title="Name (SERIAL)">` carrying the UNMASKED identity (Overview.tsx:1362 / :2112),
++ *  which is a stable, seed-authored handle that survives class regeneration. Restricted to DIVs so
++ *  the per-row rename `<button title="Rename drone">` (:1378 / :2122) is never counted as a row -
++ *  and so a suppressed row title (hideSerialNumbers) really does drop the row out of the count. */
++function rowEls(heading: string): HTMLElement[] {
++  const card = cardOf(heading);
++  if (!card) return [];
++  return Array.from(card.querySelectorAll('div[title]')) as HTMLElement[];
++}
++
++function rowByTitle(heading: string, needle: string): HTMLElement | null {
++  const n = norm(needle);
++  if (!n) return null;
++  for (const el of rowEls(heading)) if (norm(el.getAttribute('title')).indexOf(n) >= 0) return el;
++  return null;
++}
++
++function statPairs(): string {
++  const out: string[] = [];
++  for (const card of qa('.stat-card')) {
++    const spans = Array.from(card.querySelectorAll('span'));
++    if (spans.length < 2) continue;
++    out.push(norm(spans[spans.length - 1].textContent) + '=' + norm(spans[0].textContent));
++  }
++  return out.join('|');
++}
++
++/** A flight row in the sidebar list carries `data-flight-id` in the seed's own markup
++ *  (FlightList.tsx:1429 uses it for auto-scroll), so it is a stable, seed-authored handle. */
++function flightRow(id: number | string): HTMLElement | null {
++  const el = q(`[data-flight-id="${String(id)}"]`);
++  return el as HTMLElement | null;
++}
++
++function flightIds(): string[] {
++  return qa('[data-flight-id]').map((el) => String(el.getAttribute('data-flight-id') ?? ''));
++}
++
++const errTap: { errors: string[]; rejections: string[] } = { errors: [], rejections: [] };
++
++/** Attached at module scope (before the first render) so a boot-time crash is recorded rather
++ *  than silently swallowed by the seed's own AppErrorBoundary. */
++export function installRbErrorTap(): void {
++  if (typeof window === 'undefined') return;
++  window.addEventListener('error', (e) => {
++    if (errTap.errors.length < 40) errTap.errors.push(norm(e.message || (e.error && e.error.message) || 'error'));
++  });
++  window.addEventListener('unhandledrejection', (e) => {
++    const r = (e as PromiseRejectionEvent).reason;
++    if (errTap.rejections.length < 40) errTap.rejections.push(norm((r && (r.message || r.toString)) || 'rejection'));
++  });
++}
++
++export interface RbProbe {
++  version: number;
++  boot: {
++    rootKids: () => number;
++    ready: () => boolean;
++    overlay: () => boolean;
++    errorBoundary: () => boolean;
++    bodyLen: () => number;
++  };
++  loc: { path: () => string; search: () => string; href: () => string };
++  dom: {
++    count: (sel: string) => number;
++    text: (sel: string) => string;
++    texts: (sel: string, limit: number) => string;
++    attr: (sel: string, name: string) => string;
++    attrs: (sel: string, name: string, limit: number) => string;
++    bodySlice: (start: number, len: number) => string;
++    hasText: (needle: string) => boolean;
++    pos: (needle: string) => number;
++    needleCount: (needle: string) => number;
++    before: (a: string, b: string) => boolean;
++  };
++  sections: {
++    headings: () => string;
++    found: (heading: string) => boolean;
++    text: (heading: string, maxLen: number) => string;
++    len: (heading: string) => number;
++    has: (heading: string, needle: string) => boolean;
++    pos: (heading: string, needle: string) => number;
++    before: (heading: string, a: string, b: string) => boolean;
++    depth: (heading: string) => number;
++    rowCount: (heading: string) => number;
++    titles: (heading: string, limit: number) => string;
++    titleAt: (heading: string, idx: number) => string;
++    titleIndexOf: (heading: string, needle: string) => number;
++    rowsText: (heading: string, limit: number) => string;
++    rowTextAt: (heading: string, idx: number) => string;
++    rowTextByTitle: (heading: string, needle: string) => string;
++    sortValue: (heading: string) => string;
++  };
++  cards: { stat: (label: string) => string; pairs: () => string; count: () => number };
++  flights: {
++    count: () => number;
++    order: () => string;
++    name: (id: number) => string;
++    subtitle: (id: number) => string;
++    title: (id: number) => string;
++    rowText: (id: number) => string;
++    rowHtmlLen: (id: number) => number;
++  };
++  lists: { rowsUnder: (sel: string, limit: number) => string };
++  store: {
++    localKeys: () => string;
++    local: (key: string) => string;
++    sessionKeys: () => string;
++    session: (key: string) => string;
++  };
++  backend: {
++    commands: () => string;
++    callCount: () => number;
++    unknown: () => string;
++    writePaths: () => string;
++    writeCount: () => number;
++    writeText: (pathSubstr: string) => string;
++    writeBytes: (pathSubstr: string) => number;
++    netHosts: () => string;
++    netCount: () => number;
++    passthrough: () => number;
++  };
++  errors: { count: () => number; first: () => string; rejections: () => number; firstRejection: () => string };
++  globals: { rbKeys: () => string };
++}
++
++const probe: RbProbe = {
++  version: 1,
++  boot: {
++    rootKids: () => {
++      try {
++        const r = document.getElementById('root');
++        return r ? r.children.length : -1;
++      } catch {
++        return -1;
++      }
++    },
++    ready: () => {
++      try {
++        const r = document.getElementById('root');
++        if (!r || r.children.length === 0) return false;
++        return qa('[data-flight-id]').length > 0 || qa('.stat-card').length > 0;
++      } catch {
++        return false;
++      }
++    },
++    overlay: () => {
++      try {
++        // InitializationOverlay is `fixed inset-0 z-[9999]`; it is the auth/migration wall.
++        return qa('div.fixed.inset-0').some((el) => (el.className || '').indexOf('z-[9999]') >= 0);
++      } catch {
++        return false;
++      }
++    },
++    errorBoundary: () => {
++      try {
++        return q('#error-report-pre') !== null;
++      } catch {
++        return false;
++      }
++    },
++    bodyLen: () => {
++      try {
++        return (document.body.textContent || '').length;
++      } catch {
++        return -1;
++      }
++    },
++  },
++  loc: {
++    path: () => {
++      try {
++        return location.pathname;
++      } catch {
++        return '';
++      }
++    },
++    search: () => {
++      try {
++        return location.search;
++      } catch {
++        return '';
++      }
++    },
++    href: () => {
++      try {
++        return location.href;
++      } catch {
++        return '';
++      }
++    },
++  },
++  dom: {
++    count: (sel) => qa(sel).length,
++    text: (sel) => textOf(q(sel)),
++    texts: (sel, limit) =>
++      qa(sel)
++        .slice(0, Number(limit) || 0)
++        .map((el) => textOf(el))
++        .join('|'),
++    attr: (sel, name) => {
++      const el = q(sel);
++      if (!el) return '';
++      const v = el.getAttribute(name);
++      return v == null ? '' : String(v);
++    },
++    attrs: (sel, name, limit) =>
++      qa(sel)
++        .slice(0, Number(limit) || 0)
++        .map((el) => norm(el.getAttribute(name) ?? ''))
++        .join('|'),
++    bodySlice: (start, len) => {
++      try {
++        const t = norm(document.body.innerText || document.body.textContent || '');
++        const s = Math.max(0, Number(start) || 0);
++        const n = Math.max(0, Number(len) || 0);
++        return t.slice(s, s + n);
++      } catch {
++        return '';
++      }
++    },
++    hasText: (needle) => {
++      try {
++        return norm(document.body.textContent || '').indexOf(norm(needle)) >= 0;
++      } catch {
++        return false;
++      }
++    },
++    pos: (needle) => {
++      try {
++        return norm(document.body.textContent || '').indexOf(norm(needle));
++      } catch {
++        return -1;
++      }
++    },
++    needleCount: (needle) => {
++      try {
++        const n = norm(needle);
++        if (!n) return 0;
++        const hay = norm(document.body.textContent || '');
++        let c = 0;
++        let i = hay.indexOf(n);
++        while (i >= 0 && c < 999) { c += 1; i = hay.indexOf(n, i + n.length); }
++        return c;
++      } catch {
++        return -1;
++      }
++    },
++    /** Order relation as a SCALAR boolean: both needles must be present AND a must come first.
++     *  Fail-closed (false) when either is missing, so a vanished section can never read as
++     *  "correctly ordered". */
++    before: (a, b) => {
++      try {
++        const hay = norm(document.body.textContent || '');
++        const ia = hay.indexOf(norm(a));
++        const ib = hay.indexOf(norm(b));
++        if (ia < 0 || ib < 0) return false;
++        return ia < ib;
++      } catch {
++        return false;
++      }
++    },
++  },
++  sections: {
++    headings: () => qa('h1,h2,h3,h4,h5,h6').map((h) => norm(h.textContent)).filter((t) => t).join('|'),
++    found: (heading) => cardOf(heading) !== null,
++    text: (heading, maxLen) => {
++      const card = cardOf(heading);
++      if (!card) return '';
++      const n = Math.max(0, Number(maxLen) || 0);
++      return norm(card.textContent).slice(0, n);
++    },
++    len: (heading) => {
++      const card = cardOf(heading);
++      return card ? norm(card.textContent).length : -1;
++    },
++    has: (heading, needle) => {
++      const card = cardOf(heading);
++      if (!card) return false;
++      const nd = norm(needle);
++      return nd ? norm(card.textContent).indexOf(nd) >= 0 : false;
++    },
++    pos: (heading, needle) => {
++      const card = cardOf(heading);
++      if (!card) return -1;
++      return norm(card.textContent).indexOf(norm(needle));
++    },
++    before: (heading, a, b) => {
++      const card = cardOf(heading);
++      if (!card) return false;
++      const t = norm(card.textContent);
++      const ia = t.indexOf(norm(a));
++      const ib = t.indexOf(norm(b));
++      if (ia < 0 || ib < 0) return false;
++      return ia < ib;
++    },
++    depth: (heading) => cardDepth(heading),
++    rowCount: (heading) => rowEls(heading).length,
++    titles: (heading, limit) =>
++      rowEls(heading).slice(0, Math.max(0, Number(limit) || 0)).map((el) => norm(el.getAttribute('title'))).join('|'),
++    titleAt: (heading, idx) => {
++      const rows = rowEls(heading);
++      const i = Number(idx) || 0;
++      return i >= 0 && i < rows.length ? norm(rows[i].getAttribute('title')) : '';
++    },
++    titleIndexOf: (heading, needle) => {
++      const n = norm(needle);
++      if (!n) return -1;
++      const rows = rowEls(heading);
++      for (let i = 0; i < rows.length; i += 1) if (norm(rows[i].getAttribute('title')).indexOf(n) >= 0) return i;
++      return -1;
++    },
++    rowsText: (heading, limit) =>
++      rowEls(heading).slice(0, Math.max(0, Number(limit) || 0)).map((el) => norm(el.textContent)).join('|'),
++    rowTextByTitle: (heading, needle) => {
++      const el = rowByTitle(heading, needle);
++      return el ? norm(el.textContent) : '';
++    },
++    rowTextAt: (heading, idx) => {
++      const rows = rowEls(heading);
++      const i = Number(idx) || 0;
++      return i >= 0 && i < rows.length ? norm(rows[i].textContent) : '';
++    },
++    sortValue: (heading) => {
++      const card = cardOf(heading);
++      if (!card) return '';
++      const sel = card.querySelector('select');
++      return sel ? String((sel as HTMLSelectElement).value) : '';
++    },
++  },
++  cards: {
++    stat: (label) => statCard(label),
++    pairs: () => statPairs(),
++    count: () => qa('.stat-card').length,
++  },
++  flights: {
++    count: () => qa('[data-flight-id]').length,
++    order: () => flightIds().join(','),
++    name: (id) => {
++      const row = flightRow(id);
++      if (!row) return '';
++      return textOf(row.querySelector('p.text-sm'));
++    },
++    subtitle: (id) => {
++      const row = flightRow(id);
++      if (!row) return '';
++      return textOf(row.querySelector('p.text-xs'));
++    },
++    title: (id) => {
++      const row = flightRow(id);
++      if (!row) return '';
++      const p = row.querySelector('p.text-sm');
++      const v = p ? p.getAttribute('title') : null;
++      return v == null ? '' : norm(v).replace(/\s*\n\s*/g, ' // ');
++    },
++    rowText: (id) => textOf(flightRow(id)),
++    rowHtmlLen: (id) => {
++      const row = flightRow(id);
++      return row ? row.innerHTML.length : -1;
++    },
++  },
++  lists: {
++    rowsUnder: (sel, limit) => {
++      const root = q(sel);
++      if (!root) return '';
++      const out: string[] = [];
++      for (const el of Array.from(root.querySelectorAll('li, tr, [class*="flex items-center"]')).slice(0, Number(limit) || 0)) {
++        const t = textOf(el);
++        if (t) out.push(t);
++      }
++      return out.join('|');
++    },
++  },
++  store: {
++    localKeys: () => {
++      try {
++        return Object.keys(localStorage).sort().join(',');
++      } catch {
++        return '';
++      }
++    },
++    local: (key) => {
++      try {
++        const v = localStorage.getItem(String(key));
++        return v == null ? '' : String(v);
++      } catch {
++        return '';
++      }
++    },
++    sessionKeys: () => {
++      try {
++        return Object.keys(sessionStorage).sort().join(',');
++      } catch {
++        return '';
++      }
++    },
++    session: (key) => {
++      try {
++        const v = sessionStorage.getItem(String(key));
++        return v == null ? '' : String(v);
++      } catch {
++        return '';
++      }
++    },
++  },
++  backend: {
++    commands: () => rbBackendRecord.ipc.map((c) => c.cmd).join(','),
++    callCount: () => rbBackendRecord.ipc.length,
++    unknown: () => rbBackendRecord.unknownCommands.join(','),
++    writePaths: () => rbBackendRecord.writes.map((w) => w.path).join(','),
++    writeCount: () => rbBackendRecord.writes.length,
++    writeText: (pathSubstr) => {
++      const needle = String(pathSubstr);
++      const hit = rbBackendRecord.writes.filter((w) => w.path.indexOf(needle) >= 0);
++      return hit.length ? hit[hit.length - 1].text : '';
++    },
++    writeBytes: (pathSubstr) => {
++      const needle = String(pathSubstr);
++      const hit = rbBackendRecord.writes.filter((w) => w.path.indexOf(needle) >= 0);
++      return hit.length ? hit[hit.length - 1].bytes : -1;
++    },
++    netHosts: () => {
++      const seen: string[] = [];
++      for (const n of rbBackendRecord.net) if (!seen.includes(n.host)) seen.push(n.host);
++      return seen.sort().join(',');
++    },
++    netCount: () => rbBackendRecord.net.length,
++    passthrough: () => rbBackendRecord.passthrough,
++  },
++  errors: {
++    count: () => errTap.errors.length,
++    first: () => (errTap.errors.length ? errTap.errors[0] : ''),
++    rejections: () => errTap.rejections.length,
++    firstRejection: () => (errTap.rejections.length ? errTap.rejections[0] : ''),
++  },
++  globals: {
++    rbKeys: () => {
++      try {
++        return Object.keys(window)
++          .filter((k) => k.indexOf('__rb') === 0)
++          .sort()
++          .join(',');
++      } catch {
++        return '';
++      }
++    },
++  },
++};
++
++export function publishRbProbe(): void {
++  if (typeof window === 'undefined') return;
++  const w = window as unknown as Record<string, unknown>;
++  if (w.__rb) return;
++  w.__rb = probe;
++}

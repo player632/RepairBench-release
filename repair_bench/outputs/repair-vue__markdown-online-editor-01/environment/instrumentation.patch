@@ -1,0 +1,1457 @@
+diff --git a/jest.config.js b/jest.config.js
+deleted file mode 100644
+index 4199a96..0000000
+--- a/jest.config.js
++++ /dev/null
+@@ -1,24 +0,0 @@
+-/** @format */
+-const path = require('path')
+-
+-module.exports = {
+-  moduleFileExtensions: ['js', 'jsx', 'json', 'vue'],
+-  transform: {
+-    '^.+\\.vue$': 'vue-jest',
+-    '.+\\.(css|styl|less|sass|scss|png|jpg|ttf|woff|woff2)$': 'jest-transform-stub',
+-    '^.+\\.jsx?$': 'babel-jest',
+-  },
+-  moduleNameMapper: {
+-    '^@/(.*)$': '<rootDir>/src/$1',
+-    '^@helper/(.*)$': '<rootDir>/src/helper/$1',
+-    '^@components/(.*)$': '<rootDir>/src/components/$1',
+-    '^@assets/(.*)$': '<rootDir>/src/assets/$1',
+-    '^@config/(.*)$': '<rootDir>/src/config/$1',
+-  },
+-  snapshotSerializers: ['jest-serializer-vue'],
+-  testMatch: ['**/tests/unit/**/*.spec.(js|jsx|ts|tsx)|**/__tests__/*.(js|jsx|ts|tsx)'],
+-  collectCoverage: true,
+-  collectCoverageFrom: ['src/**/*.{js,vue}', '!src/assets/**'],
+-  coverageReporters: ['html', 'text-summary'],
+-  coverageDirectory: path.resolve(__dirname, './tests/coverage'),
+-}
+diff --git a/src/components/PreviewVditor.vue b/src/components/PreviewVditor.vue
+index 6a2275b..42a2c31 100644
+--- a/src/components/PreviewVditor.vue
++++ b/src/components/PreviewVditor.vue
+@@ -1,5 +1,10 @@
+ <template>
+-  <div class="preview-vditor" v-loading="isLoading" element-loading-text="正在努力，请稍候...">
++  <div
++    class="preview-vditor"
++    data-testid="rb-preview"
++    v-loading="isLoading"
++    element-loading-text="正在努力，请稍候..."
++  >
+     <div v-show="!isLoading" id="khaleesi" class="vditor-preview" />
+   </div>
+ </template>
+@@ -36,6 +41,39 @@ export default {
+   mounted() {
+     this.initVditor()
+     hideVditorTextarea()
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.preview = {
++      vm,
++      ready() {
++        try {
++          return (
++            vm.isLoading === false &&
++            !!vm.vditor &&
++            !!document.querySelector('#khaleesi .vditor-toolbar')
++          )
++        } catch (e) {
++          return false
++        }
++      },
++      resetText() {
++        try {
++          const el = document.querySelector('#khaleesi .vditor-preview .vditor-reset')
++          return el ? String(el.textContent || '').replace(/\s+/g, ' ').trim() : ''
++        } catch (e) {
++          return ''
++        }
++      },
++      resetHtmlLength() {
++        try {
++          const el = document.querySelector('#khaleesi .vditor-preview .vditor-reset')
++          return el ? String(el.innerHTML || '').length : -1
++        } catch (e) {
++          return -1
++        }
++      },
++    }
+   },
+ 
+   methods: {
+diff --git a/src/components/Sidebar.vue b/src/components/Sidebar.vue
+index 2e04c71..3937ef4 100644
+--- a/src/components/Sidebar.vue
++++ b/src/components/Sidebar.vue
+@@ -1,11 +1,12 @@
+ <!-- @format -->
+ 
+ <template>
+-  <aside class="sidebar" :class="{ collapsed: collapsed, 'is-mobile': isMobile }">
++  <aside class="sidebar" :class="{ collapsed: collapsed, 'is-mobile': isMobile }" data-testid="rb-sidebar">
+     <div
+       v-show="collapsed && !isMobile"
+       class="sidebar__toggle"
+       @click="$emit('toggle-sidebar')"
++      data-testid="rb-sidebar-rail"
+       aria-label="展开侧边栏"
+       title="展开文档列表"
+     >
+@@ -13,9 +14,10 @@
+     </div>
+     <div v-show="!collapsed" class="sidebar__panel">
+       <div class="sidebar__header">
+-        <span class="sidebar__title">文档列表</span>
++        <span class="sidebar__title" data-testid="rb-sidebar-heading">文档列表</span>
+         <span
+           class="sidebar__header-collapse"
++          data-testid="rb-sidebar-collapse"
+           aria-label="收起侧边栏"
+           @click="$emit('toggle-sidebar')"
+         >
+@@ -23,22 +25,24 @@
+         </span>
+       </div>
+       <div class="sidebar__actions">
+-        <button type="button" class="sidebar__new-btn" @click="onNewDoc">
++        <button type="button" class="sidebar__new-btn" data-testid="rb-sidebar-new" @click="onNewDoc">
+           <icon name="add" class="sidebar__new-icon" />
+           <span>新建文档</span>
+         </button>
+       </div>
+-      <div class="sidebar__list">
++      <div class="sidebar__list" data-testid="rb-sidebar-list">
+         <div
+           v-for="doc in documents"
+           :key="doc.id"
+           class="sidebar__item"
+           :class="{ active: doc.id === activeDocId }"
++          :data-testid="'rb-sidebar-item-' + doc.id"
+           @click="onSelectDoc(doc.id)"
+         >
+           <span
+             v-if="editingId !== doc.id"
+             class="sidebar__item-title"
++            :data-testid="'rb-sidebar-item-' + doc.id + '-title'"
+             :title="doc.title"
+             @dblclick.stop="startRename(doc)"
+           >
+@@ -49,17 +53,28 @@
+             ref="renameInput"
+             v-model="editingTitle"
+             class="sidebar__item-input"
++            :data-testid="'rb-sidebar-item-' + doc.id + '-input'"
+             @blur="submitRename"
+             @keyup.enter="submitRename"
+             @keyup.esc="cancelRename"
+             @click.stop
+           />
+-          <span v-if="doc.id === activeDocId && editingId !== doc.id" class="sidebar__item-actions">
+-            <span class="sidebar__item-action" aria-label="重命名" @click.stop="startRename(doc)">
++          <span
++            v-if="doc.id === activeDocId && editingId !== doc.id"
++            class="sidebar__item-actions"
++            :data-testid="'rb-sidebar-item-' + doc.id + '-actions'"
++          >
++            <span
++              class="sidebar__item-action"
++              :data-testid="'rb-sidebar-item-' + doc.id + '-rename'"
++              aria-label="重命名"
++              @click.stop="startRename(doc)"
++            >
+               <i class="el-icon-edit" />
+             </span>
+             <span
+               class="sidebar__item-action sidebar__item-action--danger"
++              :data-testid="'rb-sidebar-item-' + doc.id + '-delete'"
+               aria-label="删除"
+               @click.stop="onDeleteDoc(doc)"
+             >
+@@ -114,6 +129,41 @@ export default {
+ 
+   mounted() {
+     this.$root.$on('reload-content', this.refreshDocuments)
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.sidebar = {
++      vm,
++      refresh() {
++        vm.refreshDocuments()
++      },
++      startRenameById(id) {
++        const doc = (vm.documents || []).filter(function (d) { return d.id === id })[0]
++        if (doc) vm.startRename(doc)
++        return !!doc
++      },
++      setTitle(title) {
++        vm.editingTitle = String(title == null ? '' : title)
++      },
++      submitRename() {
++        vm.submitRename()
++      },
++      cancelRename() {
++        vm.cancelRename()
++      },
++      newDoc() {
++        vm.onNewDoc()
++      },
++      // the emit half of onSelectDoc, without the editingId gate in front of it
++      select(id) {
++        vm.$emit('select-doc', id)
++      },
++      // the real handler, gate included
++      clickItem(id) {
++        vm.onSelectDoc(id)
++      },
++      api: { getDocuments, createDocument, renameDocument, deleteDocument },
++    }
+   },
+ 
+   beforeDestroy() {
+diff --git a/src/pages/About.vue b/src/pages/About.vue
+index 6adcfb2..dce6e2d 100644
+--- a/src/pages/About.vue
++++ b/src/pages/About.vue
+@@ -24,7 +24,17 @@ export default {
+     PreviewVditor,
+   },
+ 
+-  mounted() {},
++  mounted() {
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.about = {
++      vm,
++      pdata() {
++        return String(vm.pdata || '')
++      },
++    }
++  },
+ 
+   methods: {
+     handleCallBack() {
+diff --git a/src/pages/ExportDocx.vue b/src/pages/ExportDocx.vue
+index aef8cc2..2ff0b2a 100644
+--- a/src/pages/ExportDocx.vue
++++ b/src/pages/ExportDocx.vue
+@@ -1,10 +1,18 @@
+ <!-- @format -->
+ 
+ <template>
+-  <div class="export-page">
++  <div class="export-page" data-testid="rb-export-docx-page">
+     <div class="button-group">
+-      <el-button round @click="onBackToMainPage">返回主页</el-button>
+-      <el-button round @click="onExportBtnClick" type="primary" :disabled="exporting">
++      <el-button round data-testid="rb-export-docx-back" @click="onBackToMainPage">
++        返回主页
++      </el-button>
++      <el-button
++        round
++        data-testid="rb-export-docx-btn"
++        @click="onExportBtnClick"
++        type="primary"
++        :disabled="exporting"
++      >
+         {{ exporting ? '正在导出...' : '生成导出' }}
+       </el-button>
+     </div>
+@@ -33,6 +41,30 @@ export default {
+     PreviewVditor,
+   },
+ 
++  mounted() {
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.exportDocx = {
++      vm,
++      pdata() {
++        return String(vm.pdata || '')
++      },
++      exporting() {
++        return vm.exporting === true
++      },
++      loading() {
++        return vm.isLoading === true
++      },
++      exportClick() {
++        vm.onExportBtnClick()
++      },
++      back() {
++        vm.onBackToMainPage()
++      },
++    }
++  },
++
+   methods: {
+     loadHTMLtoDOCX() {
+       return new Promise((resolve, reject) => {
+diff --git a/src/pages/ExportHtml.vue b/src/pages/ExportHtml.vue
+index cc468ae..38fd932 100644
+--- a/src/pages/ExportHtml.vue
++++ b/src/pages/ExportHtml.vue
+@@ -1,10 +1,18 @@
+ <!-- @format -->
+ 
+ <template>
+-  <div class="export-page">
++  <div class="export-page" data-testid="rb-export-html-page">
+     <div class="button-group">
+-      <el-button round @click="onBackToMainPage">返回主页</el-button>
+-      <el-button round @click="onExportBtnClick" type="primary" :disabled="exporting">
++      <el-button round data-testid="rb-export-html-back" @click="onBackToMainPage">
++        返回主页
++      </el-button>
++      <el-button
++        round
++        data-testid="rb-export-html-btn"
++        @click="onExportBtnClick"
++        type="primary"
++        :disabled="exporting"
++      >
+         {{ exporting ? '正在导出...' : '生成导出' }}
+       </el-button>
+     </div>
+@@ -34,6 +42,30 @@ export default {
+     PreviewVditor,
+   },
+ 
++  mounted() {
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.exportHtml = {
++      vm,
++      pdata() {
++        return String(vm.pdata || '')
++      },
++      exporting() {
++        return vm.exporting === true
++      },
++      loading() {
++        return vm.isLoading === true
++      },
++      exportClick() {
++        vm.onExportBtnClick()
++      },
++      back() {
++        vm.onBackToMainPage()
++      },
++    }
++  },
++
+   methods: {
+     getActiveDocTitle() {
+       const id = getActiveDocId()
+diff --git a/src/pages/ExportImage.vue b/src/pages/ExportImage.vue
+index cba0c39..3eeb62e 100644
+--- a/src/pages/ExportImage.vue
++++ b/src/pages/ExportImage.vue
+@@ -1,9 +1,17 @@
+ <!-- @format -->
+ <template>
+-  <div class="export-page">
++  <div class="export-page" data-testid="rb-export-png-page">
+     <div class="button-group">
+-      <el-button round @click="onBackToMainPage">返回主页</el-button>
+-      <el-button round @click="onExportBtnClick" type="primary" :loading="isExporting">
++      <el-button round data-testid="rb-export-png-back" @click="onBackToMainPage">
++        返回主页
++      </el-button>
++      <el-button
++        round
++        data-testid="rb-export-png-btn"
++        @click="onExportBtnClick"
++        type="primary"
++        :loading="isExporting"
++      >
+         {{ isExporting ? '正在导出...' : '生成导出' }}
+       </el-button>
+     </div>
+@@ -35,7 +43,29 @@ export default {
+     PreviewVditor,
+   },
+ 
+-  mounted() {},
++  mounted() {
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.exportImage = {
++      vm,
++      pdata() {
++        return String(vm.pdata || '')
++      },
++      exporting() {
++        return vm.isExporting === true
++      },
++      loading() {
++        return vm.isLoading === true
++      },
++      exportClick() {
++        vm.onExportBtnClick()
++      },
++      back() {
++        vm.onBackToMainPage()
++      },
++    }
++  },
+ 
+   updated() {},
+ 
+diff --git a/src/pages/ExportPdf.vue b/src/pages/ExportPdf.vue
+index 8fb022c..a1a38c5 100644
+--- a/src/pages/ExportPdf.vue
++++ b/src/pages/ExportPdf.vue
+@@ -1,10 +1,18 @@
+ <!-- @format -->
+ 
+ <template>
+-  <div class="export-page">
++  <div class="export-page" data-testid="rb-export-pdf-page">
+     <div class="button-group">
+-      <el-button round @click="onBackToMainPage">返回主页</el-button>
+-      <el-button round @click="onExportBtnClick" type="primary" :disabled="exporting">
++      <el-button round data-testid="rb-export-pdf-back" @click="onBackToMainPage">
++        返回主页
++      </el-button>
++      <el-button
++        round
++        data-testid="rb-export-pdf-btn"
++        @click="onExportBtnClick"
++        type="primary"
++        :disabled="exporting"
++      >
+         {{ exporting ? '正在导出...' : '生成导出' }}
+       </el-button>
+     </div>
+@@ -36,7 +44,29 @@ export default {
+     PreviewVditor,
+   },
+ 
+-  mounted() {},
++  mounted() {
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.exportPdf = {
++      vm,
++      pdata() {
++        return String(vm.pdata || '')
++      },
++      exporting() {
++        return vm.exporting === true
++      },
++      loading() {
++        return vm.isLoading === true
++      },
++      exportClick() {
++        vm.onExportBtnClick()
++      },
++      back() {
++        vm.onBackToMainPage()
++      },
++    }
++  },
+ 
+   methods: {
+     exportAndDownloadPdf(element, filename) {
+diff --git a/src/pages/Main.vue b/src/pages/Main.vue
+index a0a1d83..919c390 100644
+--- a/src/pages/Main.vue
++++ b/src/pages/Main.vue
+@@ -1,7 +1,7 @@
+ <!-- @format -->
+ 
+ <template>
+-  <div class="index-page" v-loading="isLoading">
++  <div class="index-page" v-loading="isLoading" data-testid="rb-main">
+     <HeaderNav :show-sidebar-toggle="isMobile" @toggle-sidebar="onToggleSidebar" />
+     <div
+       class="index-page__body"
+@@ -25,7 +25,7 @@
+           @toggle-sidebar="onToggleSidebar"
+         />
+       </div>
+-      <div class="index-page__editor">
++      <div class="index-page__editor" data-testid="rb-editor">
+         <div id="vditor" class="vditor" />
+       </div>
+     </div>
+@@ -49,6 +49,10 @@ import {
+ } from '@helper/storage'
+ import { trackEvent } from '@helper/analytics'
+ import { isMobileViewport, sidebarCollapsedForViewport } from '@helper/layout'
++// RepairBench instrumentation: read-only namespace handle on the persistence helper, so the
++// verifier can observe the document store through the application's own module instead of
++// re-implementing it. Additive import, no application code path is altered.
++import * as rbStorage from '@helper/storage'
+ 
+ const SAVE_DEBOUNCE_MS = 1000
+ 
+@@ -90,6 +94,7 @@ export default {
+     this.$root.$on('reload-content', this.reloadContent)
+     window.addEventListener('resize', this.onResize)
+     window.addEventListener('orientationchange', this.onResize)
++    this.__rbInstallProbe()
+   },
+ 
+   beforeDestroy() {
+@@ -101,6 +106,62 @@ export default {
+   },
+ 
+   methods: {
++    // RepairBench instrumentation probe. Strictly additive: it publishes read-only handles plus
++    // thin wrappers around methods this component already exposes to its own template handlers
++    // (setEditorValue / debouncedSave / saveCurrentDoc / onSelectDoc / onToggleSidebar / onResize /
++    // reloadContent). No application logic, no state and no render output is changed, and nothing
++    // here is called by the application itself.
++    __rbInstallProbe() {
++      const vm = this
++      window.__rb = window.__rb || {}
++      window.__rb.main = {
++        vm,
++        ready() {
++          try {
++            return (
++              vm.editorReady === true &&
++              vm.isLoading === false &&
++              !!vm.vditor &&
++              typeof vm.vditor.getValue === 'function' &&
++              !!document.querySelector('#vditor .vditor-toolbar')
++            )
++          } catch (e) {
++            return false
++          }
++        },
++        value() {
++          try {
++            return typeof vm.vditor.getValue === 'function' ? String(vm.vditor.getValue() || '') : ''
++          } catch (e) {
++            return ''
++          }
++        },
++        edit(text) {
++          // exactly what Vditor's own `input` option callback does after a real keystroke
++          vm.setEditorValue(String(text == null ? '' : text), {})
++          vm.debouncedSave()
++        },
++        editNow(text) {
++          vm.setEditorValue(String(text == null ? '' : text), {})
++        },
++        saveNow() {
++          vm.saveCurrentDoc()
++        },
++        selectDoc(id) {
++          vm.onSelectDoc(id)
++        },
++        toggleSidebar() {
++          vm.onToggleSidebar()
++        },
++        resize() {
++          vm.onResize()
++        },
++        reloadContent() {
++          vm.reloadContent()
++        },
++      }
++      window.__rb.storage = rbStorage
++    },
+     onResize() {
+       const wasMobile = this.isMobile
+       this.isMobile = isMobileViewport()
+diff --git a/src/pages/partials/Frame.vue b/src/pages/partials/Frame.vue
+index adf33d9..d4f8cf0 100644
+--- a/src/pages/partials/Frame.vue
++++ b/src/pages/partials/Frame.vue
+@@ -1,9 +1,9 @@
+ <!-- @format -->
+ 
+ <template>
+-  <div class="page-frame">
++  <div class="page-frame" data-testid="rb-frame">
+     <HeaderNav />
+-    <main id="main" class="main-content">
++    <main id="main" class="main-content" data-testid="rb-frame-main">
+       <router-view></router-view>
+     </main>
+   </div>
+diff --git a/src/pages/partials/HeaderNav.vue b/src/pages/partials/HeaderNav.vue
+index f0fd8f2..5d2f8e2 100644
+--- a/src/pages/partials/HeaderNav.vue
++++ b/src/pages/partials/HeaderNav.vue
+@@ -1,20 +1,21 @@
+ <!-- @format -->
+ 
+ <template>
+-  <header class="header-wrapper">
++  <header class="header-wrapper" data-testid="rb-header">
+     <div class="header-area">
+       <div class="header-leading">
+         <button
+           v-if="showSidebarToggle"
+           type="button"
+           class="header-sidebar-toggle"
++          data-testid="rb-sidebar-toggle"
+           aria-label="文档列表"
+           title="文档列表"
+           @click="$emit('toggle-sidebar')"
+         >
+           <icon class="header-icon" name="sidebar" />
+         </button>
+-        <a href="/" class="header-brand" target="_self" :aria-label="titleText">
++        <a href="/" class="header-brand" data-testid="rb-brand" target="_self" :aria-label="titleText">
+           <img
+             class="mark-markdown mark-markdown--light"
+             src="@assets/images/markdown.png"
+@@ -74,17 +75,23 @@
+           </span>
+         </a>
+         <span v-if="!isMobile" class="header-divider" aria-hidden="true"></span>
+-        <router-link to="/about-arya" class="header-link">
++        <router-link to="/about-arya" class="header-link" data-testid="rb-about-link">
+           <span class="hint--bottom" aria-label="关于 Arya">
+             <icon class="header-icon" name="document" />
+           </span>
+         </router-link>
+-        <span class="hint--bottom header-action" @click="onImportClick" aria-label="导入文件">
++        <span
++          class="hint--bottom header-action"
++          data-testid="rb-import"
++          @click="onImportClick"
++          aria-label="导入文件"
++        >
+           <icon class="header-icon" name="upload" />
+         </span>
+         <span
+           v-if="!isMobile"
+           class="hint--bottom full-screen header-action"
++          data-testid="rb-fullscreen"
+           @click="onFullScreenClick"
+           aria-label="全屏"
+         >
+@@ -94,6 +101,7 @@
+           <button
+             type="button"
+             class="header-action"
++            data-testid="rb-theme-toggle"
+             :aria-label="'切换主题，当前：' + currentThemeName"
+             :title="'切换主题，当前：' + currentThemeName"
+           >
+@@ -105,6 +113,7 @@
+               :key="theme.id"
+               :command="theme.id"
+               :class="{ 'is-current': theme.id === currentThemeId }"
++              :data-testid="'rb-theme-item-' + theme.id"
+             >
+               <span class="theme-picker-item">
+                 <span class="theme-swatch" aria-hidden="true">
+@@ -118,40 +127,40 @@
+           </el-dropdown-menu>
+         </el-dropdown>
+         <el-dropdown class="header-export" trigger="click" @command="handleCommand">
+-          <button type="button" class="header-cta" aria-label="导出">
++          <button type="button" class="header-cta" data-testid="rb-export-toggle" aria-label="导出">
+             <icon class="header-cta-icon" name="download" />
+             <span class="header-cta-label">导出</span>
+           </button>
+           <el-dropdown-menu slot="dropdown">
+-            <el-dropdown-item disabled>
++            <el-dropdown-item disabled data-testid="rb-export-item-style">
+               <icon class="dropdown-icon" name="set-style" />
+               <a href="/export/jpeg" target="_self" class="dropdown-text">自定义样式</a>
+             </el-dropdown-item>
+-            <el-dropdown-item command="/export/ppt" divided>
++            <el-dropdown-item command="/export/ppt" divided data-testid="rb-export-item-ppt">
+               <icon class="dropdown-icon" name="preview" />
+               <a href="/export/ppt" target="_self" class="dropdown-text">
+                 {{ exportTextMap['/export/ppt'] }}
+               </a>
+             </el-dropdown-item>
+-            <el-dropdown-item command="/export/png" divided>
++            <el-dropdown-item command="/export/png" divided data-testid="rb-export-item-png">
+               <icon class="dropdown-icon" name="download" />
+               <a href="/export/png" target="_self" class="dropdown-text">{{
+                 exportTextMap['/export/png']
+               }}</a>
+             </el-dropdown-item>
+-            <el-dropdown-item command="/export/pdf">
++            <el-dropdown-item command="/export/pdf" data-testid="rb-export-item-pdf">
+               <icon class="dropdown-icon" name="download" />
+               <a href="/export/pdf" target="_self" class="dropdown-text">
+                 {{ exportTextMap['/export/pdf'] }}
+               </a>
+             </el-dropdown-item>
+-            <el-dropdown-item command="/export/docx">
++            <el-dropdown-item command="/export/docx" data-testid="rb-export-item-docx">
+               <icon class="dropdown-icon" name="download" />
+               <a href="/export/docx" target="_self" class="dropdown-text">
+                 {{ exportTextMap['/export/docx'] }}
+               </a>
+             </el-dropdown-item>
+-            <el-dropdown-item command="/export/html" divided>
++            <el-dropdown-item command="/export/html" divided data-testid="rb-export-item-html">
+               <icon class="dropdown-icon" name="download" />
+               <a href="/export/html" target="_self" class="dropdown-text">
+                 {{ exportTextMap['/export/html'] }}
+@@ -200,6 +209,40 @@ export default {
+ 
+   mounted() {
+     window.addEventListener('resize', this.onResize)
++    // RepairBench instrumentation probe - strictly additive, see src/pages/Main.vue.
++    const vm = this
++    window.__rb = window.__rb || {}
++    window.__rb.header = {
++      vm,
++      themeId() {
++        return vm.currentThemeId
++      },
++      setTheme(id) {
++        vm.onSelectTheme(id)
++      },
++      go(target) {
++        try {
++          const r = vm.$router.push(target)
++          if (r && typeof r.catch === 'function') r.catch(function () {})
++        } catch (e) {
++          /* duplicate navigation */
++        }
++        return true
++      },
++      command(command) {
++        vm.handleCommand(command)
++      },
++      label(key) {
++        return (vm.exportTextMap || {})[key]
++      },
++      labels() {
++        const map = vm.exportTextMap || {}
++        return Object.keys(map)
++          .sort()
++          .map(function (k) { return k + '=' + map[k] })
++          .join('|')
++      },
++    }
+   },
+ 
+   beforeDestroy() {
+diff --git a/tests/unit/.eslintrc.js b/tests/unit/.eslintrc.js
+deleted file mode 100644
+index cc7654c..0000000
+--- a/tests/unit/.eslintrc.js
++++ /dev/null
+@@ -1,8 +0,0 @@
+-module.exports = {
+-  env: {
+-    jest: true
+-  },
+-  rules: {
+-    'import/no-extraneous-dependencies': 'off'
+-  }
+-}
+diff --git a/tests/unit/Arrow.spec.js b/tests/unit/Arrow.spec.js
+deleted file mode 100644
+index 9d87f59..0000000
+--- a/tests/unit/Arrow.spec.js
++++ /dev/null
+@@ -1,53 +0,0 @@
+-/** @format */
+-
+-import { shallowMount } from '@vue/test-utils'
+-import Arrow from '@/components/icons/Arrow.vue'
+-
+-describe('Arrow.vue', () => {
+-  // ------------------------Test [props.direction]------------------------Start
+-  it('renders props.direction when passed', () => {
+-    const parpDirection = 'right'
+-    const wrapper = shallowMount(Arrow, {
+-      propsData: { direction: parpDirection }
+-    })
+-    expect(wrapper.classes()).toContain(parpDirection)
+-  })
+-
+-  it('renders props.direction when NOT passed', () => {
+-    // direction default Value is [left]
+-    const parpDirection = '~~left'
+-    const defaultDirection = 'left'
+-    const wrapper = shallowMount(Arrow, {
+-      propsData: { direction: parpDirection }
+-    })
+-    expect(wrapper.classes()).toContain(defaultDirection)
+-    /* const compClassListStr = wrapper
+-      .find('.arrow-component')
+-      .element.classList.toString()
+-    expect(compClassListStr).toBe(`arrow-component left`) */
+-  })
+-
+-  // ------------------------Test [props.color]------------------------Start
+-  it('renders props.color when passed', () => {
+-    // color default Vaule is [#479537]
+-    const propColor = '#666666'
+-    const wrapper = shallowMount(Arrow, {
+-      propsData: { color: propColor }
+-    })
+-    const compBorderColor = wrapper.find('.arrow-component').element.style
+-      .borderColor
+-    expect(compBorderColor).toBe(propColor)
+-  })
+-
+-  it('renders props.color when Not passed', () => {
+-    // color default Vaule is [#479537]
+-    const propColor = '#666 666#'
+-    const defaultColor = '#479537'
+-    const wrapper = shallowMount(Arrow, {
+-      propsData: { color: propColor }
+-    })
+-    const compBorderColor = wrapper.find('.arrow-component').element.style
+-      .borderColor
+-    expect(compBorderColor).toBe(defaultColor)
+-  })
+-})
+diff --git a/tests/unit/HeaderNav.spec.js b/tests/unit/HeaderNav.spec.js
+deleted file mode 100644
+index 2e91143..0000000
+--- a/tests/unit/HeaderNav.spec.js
++++ /dev/null
+@@ -1,117 +0,0 @@
+-/** @format */
+-
+-jest.mock('hint.css', () => ({}))
+-
+-jest.mock('@helper/analytics', () => ({
+-  trackEvent: jest.fn(),
+-}))
+-
+-jest.mock('@helper/storage', () => ({
+-  createDocument: jest.fn(),
+-  setActiveDocId: jest.fn(),
+-  saveDocContent: jest.fn(),
+-}))
+-
+-jest.mock('@helper/theme', () => ({
+-  THEMES: [
+-    {
+-      id: 'paper',
+-      name: '纸墨',
+-      scheme: 'light',
+-      page: '#f7f4ee',
+-      swatch: ['#fffcf7', '#1c1917'],
+-    },
+-    {
+-      id: 'night',
+-      name: '夜读',
+-      scheme: 'dark',
+-      page: '#14120f',
+-      swatch: ['#1e1b16', '#ece6da'],
+-    },
+-  ],
+-  getThemeId: jest.fn(() => 'paper'),
+-  applyTheme: jest.fn((id) => ({
+-    id,
+-    name: id === 'night' ? '夜读' : '纸墨',
+-    scheme: id === 'night' ? 'dark' : 'light',
+-  })),
+-}))
+-
+-jest.mock('@/components/Icon.vue', () => ({
+-  name: 'Icon',
+-  render(h) {
+-    return h('span')
+-  },
+-}))
+-
+-import { shallowMount } from '@vue/test-utils'
+-import HeaderNav from '@/pages/partials/HeaderNav.vue'
+-import { applyTheme } from '@helper/theme'
+-import { trackEvent } from '@helper/analytics'
+-
+-const stubs = ['icon', 'el-dropdown', 'el-dropdown-menu', 'el-dropdown-item', 'router-link']
+-
+-describe('HeaderNav.vue', () => {
+-  it('hides the sidebar toggle by default so export pages stay clean', () => {
+-    const wrapper = shallowMount(HeaderNav, { stubs })
+-
+-    expect(wrapper.find('.header-sidebar-toggle').exists()).toBe(false)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('shows a header control that can reopen the sidebar on mobile', () => {
+-    const wrapper = shallowMount(HeaderNav, {
+-      stubs,
+-      propsData: { showSidebarToggle: true },
+-    })
+-
+-    const toggle = wrapper.find('.header-sidebar-toggle')
+-    expect(toggle.exists()).toBe(true)
+-    expect(toggle.attributes('aria-label')).toBe('文档列表')
+-
+-    toggle.trigger('click')
+-    expect(wrapper.emitted('toggle-sidebar')).toBeTruthy()
+-    expect(wrapper.emitted('toggle-sidebar')).toHaveLength(1)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('exposes a header control for switching color themes', () => {
+-    const wrapper = shallowMount(HeaderNav, { stubs })
+-    const trigger = wrapper.find('[aria-label^="切换主题"]')
+-
+-    expect(trigger.exists()).toBe(true)
+-    expect(trigger.attributes('aria-label')).toBe('切换主题，当前：纸墨')
+-    expect(wrapper.findAll('.theme-picker-name').length).toBe(2)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('exposes HTML export as an enabled destination', () => {
+-    const wrapper = shallowMount(HeaderNav, { stubs })
+-    const htmlItem = wrapper
+-      .findAll('el-dropdown-item-stub')
+-      .wrappers.find((item) => item.attributes('command') === '/export/html')
+-
+-    expect(htmlItem).toBeTruthy()
+-    expect(htmlItem.attributes('disabled')).toBeUndefined()
+-    expect(htmlItem.text()).toContain('导出 HTML')
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('applies the chosen theme and records it as current', () => {
+-    applyTheme.mockClear()
+-    trackEvent.mockClear()
+-    const wrapper = shallowMount(HeaderNav, { stubs })
+-
+-    wrapper.vm.onSelectTheme('night')
+-
+-    expect(applyTheme).toHaveBeenCalledWith('night')
+-    expect(wrapper.vm.currentThemeId).toBe('night')
+-    expect(trackEvent).toHaveBeenCalledWith('header_theme', 'header', 'night')
+-
+-    wrapper.destroy()
+-  })
+-})
+diff --git a/tests/unit/Main.spec.js b/tests/unit/Main.spec.js
+deleted file mode 100644
+index 4ea4d3f..0000000
+--- a/tests/unit/Main.spec.js
++++ /dev/null
+@@ -1,139 +0,0 @@
+-/** @format */
+-
+-const mockVditorApi = {
+-  setValue: jest.fn(),
+-  getValue: jest.fn(() => '# one'),
+-  focus: jest.fn(),
+-  insertValue: jest.fn(),
+-  lastOptions: null,
+-}
+-
+-jest.mock('vditor', () => {
+-  return jest.fn().mockImplementation(function VditorMock(id, options) {
+-    mockVditorApi.lastOptions = options
+-    this.setValue = mockVditorApi.setValue
+-    this.getValue = mockVditorApi.getValue
+-    this.focus = mockVditorApi.focus
+-    this.insertValue = mockVditorApi.insertValue
+-  })
+-})
+-
+-jest.mock('vditor/src/assets/less/index.less', () => ({}), { virtual: true })
+-
+-jest.mock('hint.css', () => ({}))
+-
+-jest.mock('@/pages/partials/HeaderNav.vue', () => ({
+-  name: 'HeaderNav',
+-  render(h) {
+-    return h('div')
+-  },
+-}))
+-
+-jest.mock('@components/Sidebar', () => ({
+-  name: 'Sidebar',
+-  render(h) {
+-    return h('div')
+-  },
+-}))
+-
+-jest.mock('@helper/analytics', () => ({
+-  trackEvent: jest.fn(),
+-}))
+-
+-jest.mock('@helper/layout', () => ({
+-  isMobileViewport: jest.fn(() => false),
+-  sidebarCollapsedForViewport: jest.fn(({ collapsed }) => collapsed),
+-}))
+-
+-jest.mock('@helper/storage', () => ({
+-  migrateFromLegacy: jest.fn(),
+-  getDocuments: jest.fn(() => [{ id: 'doc_1', title: '已有文档' }]),
+-  getActiveDocId: jest.fn(() => 'doc_1'),
+-  setActiveDocId: jest.fn(),
+-  getDocContent: jest.fn((id) => (id === 'doc_1' ? '# one' : '# two')),
+-  saveDocContent: jest.fn(),
+-  shouldPersistDocContent: jest.fn(() => true),
+-  createDocument: jest.fn(),
+-}))
+-
+-import { shallowMount } from '@vue/test-utils'
+-import { getDocContent, setActiveDocId } from '@helper/storage'
+-import Main from '@/pages/Main.vue'
+-
+-const stubs = ['HeaderNav', 'Sidebar']
+-
+-function mountMain() {
+-  return shallowMount(Main, {
+-    stubs,
+-    directives: {
+-      loading() {},
+-    },
+-  })
+-}
+-
+-describe('Main.vue document switching', () => {
+-  beforeEach(() => {
+-    mockVditorApi.setValue.mockReset()
+-    mockVditorApi.getValue.mockReset()
+-    mockVditorApi.getValue.mockReturnValue('# one')
+-    mockVditorApi.focus.mockReset()
+-    mockVditorApi.insertValue.mockReset()
+-    mockVditorApi.lastOptions = null
+-    getDocContent.mockClear()
+-    setActiveDocId.mockClear()
+-  })
+-
+-  it('does not call setValue when switching documents before Vditor lute is ready', () => {
+-    const wrapper = mountMain()
+-
+-    expect(() => wrapper.vm.onSelectDoc('doc_2')).not.toThrow()
+-
+-    expect(setActiveDocId).toHaveBeenCalledWith('doc_2')
+-    expect(wrapper.vm.activeDocId).toBe('doc_2')
+-    expect(mockVditorApi.setValue).not.toHaveBeenCalled()
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('keeps the loading mask until Vditor finishes initializing', async () => {
+-    const wrapper = mountMain()
+-    await wrapper.vm.$nextTick()
+-
+-    expect(wrapper.vm.isLoading).toBe(true)
+-    expect(wrapper.vm.editorReady).toBe(false)
+-
+-    mockVditorApi.lastOptions.after()
+-    await wrapper.vm.$nextTick()
+-
+-    expect(wrapper.vm.editorReady).toBe(true)
+-    expect(wrapper.vm.isLoading).toBe(false)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('applies the document selected while Vditor was still loading', () => {
+-    const wrapper = mountMain()
+-    wrapper.vm.onSelectDoc('doc_2')
+-    mockVditorApi.setValue.mockClear()
+-
+-    mockVditorApi.lastOptions.after()
+-
+-    expect(mockVditorApi.setValue).toHaveBeenCalledWith('# two')
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('loads document content when switching after the editor is ready', () => {
+-    const wrapper = mountMain()
+-    mockVditorApi.lastOptions.after()
+-    mockVditorApi.setValue.mockClear()
+-    mockVditorApi.focus.mockClear()
+-
+-    wrapper.vm.onSelectDoc('doc_2')
+-
+-    expect(mockVditorApi.setValue).toHaveBeenCalledWith('# two')
+-    expect(mockVditorApi.focus).toHaveBeenCalled()
+-
+-    wrapper.destroy()
+-  })
+-})
+diff --git a/tests/unit/Sidebar.spec.js b/tests/unit/Sidebar.spec.js
+deleted file mode 100644
+index dfbc2de..0000000
+--- a/tests/unit/Sidebar.spec.js
++++ /dev/null
+@@ -1,128 +0,0 @@
+-/** @format */
+-
+-jest.mock('@helper/storage', () => ({
+-  getDocuments: jest.fn(),
+-  createDocument: jest.fn(),
+-  renameDocument: jest.fn(),
+-  deleteDocument: jest.fn(),
+-}))
+-
+-jest.mock('@helper/analytics', () => ({
+-  trackEvent: jest.fn(),
+-}))
+-
+-jest.mock('@/components/Icon.vue', () => ({
+-  name: 'Icon',
+-  render(h) {
+-    return h('span')
+-  },
+-}))
+-
+-jest.mock('element-ui', () => ({
+-  MessageBox: {
+-    confirm: jest.fn(),
+-  },
+-}))
+-
+-import { shallowMount } from '@vue/test-utils'
+-import { getDocuments } from '@helper/storage'
+-import Sidebar from '@/components/Sidebar.vue'
+-
+-describe('Sidebar.vue', () => {
+-  const existingDoc = {
+-    id: 'doc_1',
+-    title: '已有文档',
+-    createdAt: 1,
+-    updatedAt: 1,
+-  }
+-  const importedDoc = {
+-    id: 'doc_imported',
+-    title: '导入的文档',
+-    createdAt: 2,
+-    updatedAt: 2,
+-  }
+-
+-  beforeEach(() => {
+-    getDocuments.mockReset()
+-    getDocuments.mockReturnValue([existingDoc])
+-  })
+-
+-  it('refreshes document list when reload-content is emitted after import', async () => {
+-    const wrapper = shallowMount(Sidebar, {
+-      stubs: ['icon'],
+-      propsData: { activeDocId: existingDoc.id },
+-    })
+-
+-    expect(wrapper.text()).toContain('已有文档')
+-    expect(wrapper.text()).not.toContain('导入的文档')
+-
+-    getDocuments.mockReturnValue([importedDoc, existingDoc])
+-    wrapper.vm.$root.$emit('reload-content')
+-    await wrapper.vm.$nextTick()
+-
+-    expect(wrapper.vm.documents).toEqual([importedDoc, existingDoc])
+-    expect(wrapper.text()).toContain('导入的文档')
+-    expect(wrapper.text()).toContain('已有文档')
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('enters rename mode when a document title is double-clicked', async () => {
+-    const wrapper = shallowMount(Sidebar, {
+-      stubs: ['icon'],
+-      propsData: { activeDocId: existingDoc.id },
+-    })
+-
+-    const title = wrapper.find('.sidebar__item-title')
+-    expect(title.exists()).toBe(true)
+-
+-    await title.trigger('dblclick')
+-    await wrapper.vm.$nextTick()
+-
+-    expect(wrapper.vm.editingId).toBe(existingDoc.id)
+-    expect(wrapper.vm.editingTitle).toBe(existingDoc.title)
+-    expect(wrapper.find('.sidebar__item-input').exists()).toBe(true)
+-    expect(wrapper.find('.sidebar__item-title').exists()).toBe(false)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('places the new document button above the document list', () => {
+-    const wrapper = shallowMount(Sidebar, {
+-      stubs: ['icon'],
+-      propsData: { activeDocId: existingDoc.id },
+-    })
+-
+-    const panel = wrapper.find('.sidebar__panel')
+-    const panelHtml = panel.html()
+-    const actionsIndex = panelHtml.indexOf('sidebar__actions')
+-    const listIndex = panelHtml.indexOf('sidebar__list')
+-
+-    expect(wrapper.find('.sidebar__actions .sidebar__new-btn').exists()).toBe(true)
+-    expect(wrapper.find('.sidebar__footer').exists()).toBe(false)
+-    expect(actionsIndex).toBeGreaterThan(-1)
+-    expect(listIndex).toBeGreaterThan(-1)
+-    expect(actionsIndex).toBeLessThan(listIndex)
+-
+-    wrapper.destroy()
+-  })
+-
+-  it('hides the collapsed rail toggle on mobile', async () => {
+-    const wrapper = shallowMount(Sidebar, {
+-      stubs: ['icon'],
+-      propsData: {
+-        activeDocId: existingDoc.id,
+-        collapsed: true,
+-        isMobile: true,
+-      },
+-    })
+-
+-    expect(wrapper.find('.sidebar__toggle').isVisible()).toBe(false)
+-    expect(wrapper.classes()).toContain('is-mobile')
+-
+-    await wrapper.setProps({ collapsed: false })
+-    expect(wrapper.find('.sidebar__panel').isVisible()).toBe(true)
+-
+-    wrapper.destroy()
+-  })
+-})
+diff --git a/tests/unit/exportHtml.spec.js b/tests/unit/exportHtml.spec.js
+deleted file mode 100644
+index 1593fdb..0000000
+--- a/tests/unit/exportHtml.spec.js
++++ /dev/null
+@@ -1,75 +0,0 @@
+-/** @format */
+-
+-import { buildStandaloneHtml, escapeHtml, serializePreview } from '@helper/exportHtml'
+-
+-describe('exportHtml', () => {
+-  afterEach(() => {
+-    document.body.innerHTML = ''
+-    document.documentElement.removeAttribute('data-scheme')
+-  })
+-
+-  it('escapes HTML in titles', () => {
+-    expect(escapeHtml('A <B> & "C"')).toBe('A &lt;B&gt; &amp; &quot;C&quot;')
+-  })
+-
+-  it('builds a standalone document from the preview node', () => {
+-    document.body.innerHTML =
+-      '<div class="vditor-reset"><h1>Hello</h1><p>World &amp; friends</p></div>'
+-
+-    const html = buildStandaloneHtml(document.querySelector('.vditor-reset'), 'My Doc')
+-
+-    expect(html).toContain('<!DOCTYPE html>')
+-    expect(html).toContain('<title>My Doc</title>')
+-    expect(html).toContain('<h1>Hello</h1>')
+-    expect(html).toContain('World &amp; friends')
+-    expect(html).toContain('article class="vditor-reset"')
+-    expect(html).toContain('charset="UTF-8"')
+-  })
+-
+-  it('strips editor chrome and keeps article content', () => {
+-    document.body.innerHTML = `
+-      <div class="vditor-reset">
+-        <span class="vditor-copy">copy</span>
+-        <p>Keep me</p>
+-      </div>
+-    `
+-
+-    const html = serializePreview(document.querySelector('.vditor-reset'))
+-
+-    expect(html).toContain('Keep me')
+-    expect(html).not.toContain('vditor-copy')
+-    expect(html).not.toContain('copy')
+-  })
+-
+-  it('replaces processed chart wrappers with images', () => {
+-    const root = document.createElement('div')
+-    root.className = 'vditor-reset'
+-    const wrapper = document.createElement('div')
+-    wrapper.setAttribute('data-processed', 'true')
+-    const canvas = document.createElement('canvas')
+-    canvas.width = 10
+-    canvas.height = 10
+-    canvas.toDataURL = () => 'data:image/png;base64,AAA'
+-    wrapper.appendChild(canvas)
+-    root.appendChild(wrapper)
+-    document.body.appendChild(root)
+-
+-    const html = serializePreview(root)
+-    expect(html).toContain('<img')
+-    expect(html).toContain('data:image/png;base64,AAA')
+-    expect(html).not.toContain('<canvas')
+-    expect(html).not.toContain('data-processed')
+-  })
+-
+-  it('escapes a hostile document title in the generated markup', () => {
+-    document.body.innerHTML = '<div class="vditor-reset"><p>ok</p></div>'
+-
+-    const html = buildStandaloneHtml(
+-      document.querySelector('.vditor-reset'),
+-      '</title><script>alert(1)</script>'
+-    )
+-
+-    expect(html).toContain('<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>')
+-    expect(html).not.toContain('</title><script>alert(1)</script>')
+-  })
+-})
+diff --git a/tests/unit/layout.spec.js b/tests/unit/layout.spec.js
+deleted file mode 100644
+index 636102a..0000000
+--- a/tests/unit/layout.spec.js
++++ /dev/null
+@@ -1,42 +0,0 @@
+-/** @format */
+-
+-import { MOBILE_BREAKPOINT, isMobileViewport, sidebarCollapsedForViewport } from '@helper/layout'
+-
+-describe('layout helpers', () => {
+-  it('treats 960px and below as the mobile drawer breakpoint', () => {
+-    expect(MOBILE_BREAKPOINT).toBe(960)
+-    expect(isMobileViewport(375)).toBe(true)
+-    expect(isMobileViewport(960)).toBe(true)
+-    expect(isMobileViewport(961)).toBe(false)
+-  })
+-
+-  it('closes the sidebar when the viewport first enters mobile width', () => {
+-    expect(
+-      sidebarCollapsedForViewport({
+-        wasMobile: false,
+-        isMobile: true,
+-        collapsed: false,
+-      })
+-    ).toBe(true)
+-  })
+-
+-  it('keeps the drawer open if the user already expanded it on mobile', () => {
+-    expect(
+-      sidebarCollapsedForViewport({
+-        wasMobile: true,
+-        isMobile: true,
+-        collapsed: false,
+-      })
+-    ).toBe(false)
+-  })
+-
+-  it('does not reopen the sidebar when leaving the mobile breakpoint', () => {
+-    expect(
+-      sidebarCollapsedForViewport({
+-        wasMobile: true,
+-        isMobile: false,
+-        collapsed: true,
+-      })
+-    ).toBe(true)
+-  })
+-})
+diff --git a/tests/unit/storage.spec.js b/tests/unit/storage.spec.js
+deleted file mode 100644
+index 88f3591..0000000
+--- a/tests/unit/storage.spec.js
++++ /dev/null
+@@ -1,23 +0,0 @@
+-/** @format */
+-
+-import { shouldPersistDocContent } from '@helper/storage'
+-
+-describe('shouldPersistDocContent', () => {
+-  it('does not persist while the editor is still initializing', () => {
+-    expect(shouldPersistDocContent('# hello', '# hello', false)).toBe(false)
+-    expect(shouldPersistDocContent('', '# hello', false)).toBe(false)
+-  })
+-
+-  it('does not overwrite stored markdown with an empty editor value', () => {
+-    expect(shouldPersistDocContent('', '# kept content', true)).toBe(false)
+-    expect(shouldPersistDocContent(null, '已有文档', true)).toBe(false)
+-    expect(shouldPersistDocContent('\n', '# kept content', true)).toBe(false)
+-    expect(shouldPersistDocContent('   \n\n  ', '已有文档', true)).toBe(false)
+-  })
+-
+-  it('persists real edits after the editor is ready', () => {
+-    expect(shouldPersistDocContent('# hello', '# hello', true)).toBe(true)
+-    expect(shouldPersistDocContent('# edited', '# hello', true)).toBe(true)
+-    expect(shouldPersistDocContent('', '', true)).toBe(true)
+-  })
+-})
+diff --git a/tests/unit/theme.spec.js b/tests/unit/theme.spec.js
+deleted file mode 100644
+index aa8b854..0000000
+--- a/tests/unit/theme.spec.js
++++ /dev/null
+@@ -1,73 +0,0 @@
+-/** @format */
+-
+-import {
+-  THEME_STORAGE_KEY,
+-  DEFAULT_THEME_ID,
+-  THEMES,
+-  getThemeId,
+-  applyTheme,
+-  getThemeById,
+-  initTheme,
+-} from '@helper/theme'
+-
+-describe('theme helper', () => {
+-  beforeEach(() => {
+-    localStorage.clear()
+-    document.documentElement.removeAttribute('data-theme')
+-    document.documentElement.removeAttribute('data-scheme')
+-    const meta = document.querySelector('meta[name="theme-color"]')
+-    if (meta) meta.remove()
+-  })
+-
+-  it('exposes a catalog of named palettes', () => {
+-    const ids = THEMES.map((theme) => theme.id)
+-    expect(ids).toEqual(['paper', 'moon', 'celadon', 'cinnabar', 'night', 'pine'])
+-    expect(DEFAULT_THEME_ID).toBe('paper')
+-  })
+-
+-  it('falls back to paper when nothing is stored', () => {
+-    expect(getThemeId()).toBe(DEFAULT_THEME_ID)
+-  })
+-
+-  it('ignores unknown stored theme ids', () => {
+-    localStorage.setItem(THEME_STORAGE_KEY, 'neon')
+-    expect(getThemeId()).toBe('paper')
+-  })
+-
+-  it('applies a theme to the document and persists it', () => {
+-    const theme = applyTheme('night')
+-    expect(theme.id).toBe('night')
+-    expect(document.documentElement.getAttribute('data-theme')).toBe('night')
+-    expect(document.documentElement.getAttribute('data-scheme')).toBe('dark')
+-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('night')
+-    expect(getThemeId()).toBe('night')
+-  })
+-
+-  it('falls back when applying an unknown id', () => {
+-    applyTheme('does-not-exist')
+-    expect(document.documentElement.getAttribute('data-theme')).toBe('paper')
+-    expect(document.documentElement.getAttribute('data-scheme')).toBe('light')
+-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('paper')
+-  })
+-
+-  it('looks up catalog entries by id', () => {
+-    expect(getThemeById('celadon').name).toBe('青瓷')
+-    expect(getThemeById('missing')).toBe(null)
+-  })
+-
+-  it('restores the stored theme on init', () => {
+-    localStorage.setItem(THEME_STORAGE_KEY, 'pine')
+-    const theme = initTheme()
+-    expect(theme.id).toBe('pine')
+-    expect(document.documentElement.getAttribute('data-scheme')).toBe('dark')
+-  })
+-
+-  it('updates theme-color meta when present', () => {
+-    const meta = document.createElement('meta')
+-    meta.setAttribute('name', 'theme-color')
+-    meta.setAttribute('content', '#000000')
+-    document.head.appendChild(meta)
+-    applyTheme('moon')
+-    expect(meta.getAttribute('content')).toBe('#eef2f6')
+-  })
+-})

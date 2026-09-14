@@ -1,0 +1,152 @@
+diff --git a/src/app/app.config.ts b/src/app/app.config.ts
+index 741451d..770fd26 100644
+--- a/src/app/app.config.ts
++++ b/src/app/app.config.ts
+@@ -1,9 +1,9 @@
+ import { ApplicationConfig } from '@angular/core';
+-import { provideRouter, withComponentInputBinding, withHashLocation } from '@angular/router';
++import { provideRouter, withComponentInputBinding } from '@angular/router';
+ import { provideHttpClient } from '@angular/common/http';
+ 
+ import { routes } from './app.routes';
+ 
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideRouter(routes, withComponentInputBinding(), withHashLocation()), provideHttpClient()],
++  providers: [provideRouter(routes, withComponentInputBinding()), provideHttpClient()],
+ };
+diff --git a/src/app/components/counter/counter.component.html b/src/app/components/counter/counter.component.html
+index 7fa058e..77d49ba 100644
+--- a/src/app/components/counter/counter.component.html
++++ b/src/app/components/counter/counter.component.html
+@@ -2,7 +2,7 @@
+ 
+ <span class="todo-count" data-testid="todo-count">
+   <strong>{{ pendingTodos.length }} </strong>
+-  @if (pendingTodos.length === 0) {
++  @if (pendingTodos.length === 1) {
+     <span>item </span>
+   } @else {
+     items
+diff --git a/src/app/components/footer/footer.component.html b/src/app/components/footer/footer.component.html
+index bdee646..16eda0f 100644
+--- a/src/app/components/footer/footer.component.html
++++ b/src/app/components/footer/footer.component.html
+@@ -1,4 +1,4 @@
+-@let todos = store.visibleTodos();
++@let todos = store.todos();
+ 
+ @if (todos.length > 0) {
+   <footer class="footer" data-testid="app-footer">
+diff --git a/src/app/components/header/header.component.html b/src/app/components/header/header.component.html
+index 56035a5..7d70eff 100644
+--- a/src/app/components/header/header.component.html
++++ b/src/app/components/header/header.component.html
+@@ -6,6 +6,7 @@
+       class="new-todo"
+       data-testid="new-todo"
+       placeholder="Type new todo"
++      autofocus
+       type="text"
+       [formControl]="titleControl"
+       (keyup.enter)="addTodo()"
+diff --git a/src/app/components/header/header.component.ts b/src/app/components/header/header.component.ts
+index 8bb65da..5d0dfce 100644
+--- a/src/app/components/header/header.component.ts
++++ b/src/app/components/header/header.component.ts
+@@ -14,7 +14,7 @@ export class HeaderComponent {
+   titleControl = new FormControl('', { nonNullable: true });
+ 
+   addTodo() {
+-    const title = this.titleControl.value;
++    const title = this.titleControl.value.trim();
+     if (title !== '') {
+       this.store.add(title);
+       this.titleControl.setValue('');
+diff --git a/src/app/components/todo/todo.component.html b/src/app/components/todo/todo.component.html
+index e82927f..56b38ff 100644
+--- a/src/app/components/todo/todo.component.html
++++ b/src/app/components/todo/todo.component.html
+@@ -7,7 +7,7 @@
+   (dblclick)="enableEditingMode()"
+ >
+   <div class="view">
+-    <input (change)="toggle()" class="toggle" data-testid="todo-toggle" type="checkbox" />
++    <input [checked]="todo().completed" (change)="toggle()" class="toggle" data-testid="todo-toggle" type="checkbox" />
+     <label data-testid="todo-label">{{ todo().title }}</label>
+     <button type="button" class="destroy" data-testid="todo-destroy" (click)="remove()"></button>
+   </div>
+diff --git a/src/app/components/todo/todo.component.ts b/src/app/components/todo/todo.component.ts
+index 3c2db89..021e206 100644
+--- a/src/app/components/todo/todo.component.ts
++++ b/src/app/components/todo/todo.component.ts
+@@ -56,7 +56,9 @@ export class TodoComponent {
+ 
+   update() {
+     const title = this.titleControl.value.trim();
+-    this.store.update(this.todo().id, { title });
++    if (title !== '') {
++      this.store.update(this.todo().id, { title });
++    }
+   }
+ 
+   remove() {
+@@ -64,11 +66,13 @@ export class TodoComponent {
+   }
+ 
+   escape() {
++    this.editingMode = !this.editingMode;
+     this.titleControl.setValue(this.todo().title);
+   }
+ 
+   enableEditingMode() {
+     this.editingMode = !this.editingMode;
++    this.cdRef.detectChanges();
+     this.inputElement().nativeElement.focus();
+   }
+ }
+diff --git a/src/app/components/todos/todos.component.html b/src/app/components/todos/todos.component.html
+index 9977723..3b25750 100644
+--- a/src/app/components/todos/todos.component.html
++++ b/src/app/components/todos/todos.component.html
+@@ -2,7 +2,7 @@
+ @if (todos.length > 0) {
+   <section class="main" data-testid="todo-main">
+     <ul class="todo-list" data-testid="todo-list">
+-      @for (todo of todos; track todo.title) {
++      @for (todo of todos; track todo.id) {
+         <app-todo [todo]="todo" />
+       }
+     </ul>
+diff --git a/src/app/components/todos/todos.component.ts b/src/app/components/todos/todos.component.ts
+index 954e3e4..75140bc 100644
+--- a/src/app/components/todos/todos.component.ts
++++ b/src/app/components/todos/todos.component.ts
+@@ -1,6 +1,5 @@
+ import { Component, inject } from '@angular/core';
+ import { ActivatedRoute, ParamMap } from '@angular/router';
+-import { debounceTime } from 'rxjs/operators';
+ import { Filter } from '@models/filter.model';
+ import { TodoComponent } from '@components/todo/todo.component';
+ 
+@@ -16,7 +15,7 @@ export class TodosComponent {
+   private route = inject(ActivatedRoute);
+ 
+   constructor() {
+-    this.route.paramMap.pipe(debounceTime(45000)).subscribe((params: ParamMap) => {
++    this.route.paramMap.subscribe((params: ParamMap) => {
+       const filter = params.get('filter') as Filter;
+       this.store.changeFilter(filter || 'all');
+     });
+diff --git a/src/app/services/todos.store.ts b/src/app/services/todos.store.ts
+index 7876dde..18f7c47 100644
+--- a/src/app/services/todos.store.ts
++++ b/src/app/services/todos.store.ts
+@@ -48,7 +48,7 @@ export const TodosStore = signalStore(
+   withMethods((store) => ({
+     add(title: string): void {
+       const newTodo = {
+-        id: 'id_' + store.todos().length,
++        id: 'id_' + Date.now(),
+         title,
+         completed: false,
+       };

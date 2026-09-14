@@ -1,0 +1,155 @@
+diff --git a/src/components/NotePanel.tsx b/src/components/NotePanel.tsx
+index cd14f4a22..f9db232ff 100644
+--- a/src/components/NotePanel.tsx
++++ b/src/components/NotePanel.tsx
+@@ -354,7 +354,7 @@ export default function NotePanel(props: Props) {
+   const [noteIcon, setNoteIcon] = useState<string>("");
+   const [editor, setEditor] = useState<CodeMirrorEditor>(null);
+   const [editorMode, setEditorMode] = useState<EditorMode>(
+-    EditorMode.Preview,
++    settingsContainer.defaultEditorMode,
+   );
+   const tocElement = useRef<HTMLDivElement>(null);
+   const previewElement = useRef<HTMLDivElement>(null);
+diff --git a/src/components/NotePopover.tsx b/src/components/NotePopover.tsx
+index 5cbfc8644..421aa0d6b 100644
+--- a/src/components/NotePopover.tsx
++++ b/src/components/NotePopover.tsx
+@@ -353,7 +353,8 @@ export default function NotePopover(props: Props) {
+               note.notebookPath,
+               note.filePath,
+               alias,
+-            );
++            )
++            .then((aliases) => setAliases(aliases));
+         }}
+         deleteAlias={(alias) => {
+           crossnoteContainer
+@@ -362,7 +363,8 @@ export default function NotePopover(props: Props) {
+               note.notebookPath,
+               note.filePath,
+               alias,
+-            );
++            )
++            .then((aliases) => setAliases(aliases));
+         }}
+         aliases={aliases}
+       ></NoteAliasPopover>
+diff --git a/src/components/NotebookTreeView.tsx b/src/components/NotebookTreeView.tsx
+index 04811d96e..52f82d3fe 100644
+--- a/src/components/NotebookTreeView.tsx
++++ b/src/components/NotebookTreeView.tsx
+@@ -101,7 +101,7 @@ export default function NotebookTreeView(props: Props) {
+     const favoritedNotes: Notes = {};
+     for (let filePath in notes) {
+       const note = notes[filePath];
+-      if (note.config.pinned) {
++      if (note.config.favorited) {
+         favoritedNotes[note.filePath] = note;
+       }
+     }
+diff --git a/src/components/Notes.tsx b/src/components/Notes.tsx
+index 9e2076bb9..8870f739b 100644
+--- a/src/components/Notes.tsx
++++ b/src/components/Notes.tsx
+@@ -122,7 +122,7 @@ export default function Notes(props: Props) {
+           "i",
+         );
+ 
+-        if (note.markdown.match(regexp) && note.filePath.match(regexp)) {
++        if (note.markdown.match(regexp) || note.filePath.match(regexp)) {
+           if (note.config.pinned) {
+             pinned.push(note);
+           } else {
+@@ -138,7 +138,7 @@ export default function Notes(props: Props) {
+       }
+     });
+ 
+-    const mergedNotes = [...unpinned, ...pinned];
++    const mergedNotes = [...pinned, ...unpinned];
+ 
+     if (mergedNotes.length !== notes.length) {
+       setNotes(mergedNotes);
+@@ -212,7 +212,7 @@ export default function Notes(props: Props) {
+           size={"small"}
+           variant={"outlined"}
+           color={"default"}
+-          label={`${Object.keys(props.notes).length} ${t("profile-card/notes")}`}
++          label={`${Object.keys(notes).length} ${t("profile-card/notes")}`}
+         ></Chip>
+       </Box>
+       <div className={clsx(classes.notesList)} data-testid={"cn-notes-list"}>
+diff --git a/src/components/NotesPanel.tsx b/src/components/NotesPanel.tsx
+index a1fdba6b3..0b5e92818 100644
+--- a/src/components/NotesPanel.tsx
++++ b/src/components/NotesPanel.tsx
+@@ -200,7 +200,7 @@ export default function NotesPanel(props: Props) {
+       }
+       const timeout = setTimeout(() => {
+         setFinalSearchValue(value);
+-      }, 25000);
++      }, 400);
+       setSearchValueInputTimeout(timeout);
+     },
+     [searchValueInputTimeout],
+diff --git a/src/containers/crossnote.ts b/src/containers/crossnote.ts
+index 390d5171c..6e1481aef 100644
+--- a/src/containers/crossnote.ts
++++ b/src/containers/crossnote.ts
+@@ -339,7 +339,7 @@ function useCrossnoteContainer(initialState: InitialState) {
+             count++;
+           }
+         }
+-        if (!foundToday) {
++        if (foundToday) {
+           if (count === 0) {
+             fileName = `${untitled}.md`;
+           } else {
+@@ -745,7 +745,7 @@ function useCrossnoteContainer(initialState: InitialState) {
+ 
+   const saveCurrentLayoutModel = useCallback(() => {
+     if (layoutModel) {
+-      localStorage.setItem("layoutModelState", JSON.stringify(layoutModel.toJson()));
++      localStorage.setItem("layoutModel", JSON.stringify(layoutModel.toJson()));
+     }
+   }, [layoutModel]);
+ 
+diff --git a/src/containers/settings.ts b/src/containers/settings.ts
+index a11eb4ef9..477506c88 100644
+--- a/src/containers/settings.ts
++++ b/src/containers/settings.ts
+@@ -42,7 +42,8 @@ function useSettingsContainer(initialState: InitialState) {
+       if (
+         language === "en-US" ||
+         language === "zh-CN" ||
+-        language === "zh-TW"
++        language === "zh-TW" ||
++        language === "ja-JP"
+       ) {
+         localStorage.setItem("settings/language", language);
+         setLanguage(language);
+@@ -68,7 +69,7 @@ function useSettingsContainer(initialState: InitialState) {
+   }, []);
+ 
+   const _setAuthorName = useCallback((authorName: string) => {
+-    localStorage.setItem("settings/author", authorName);
++    localStorage.setItem("settings/authorName", authorName);
+     setAuthorName(authorName);
+   }, []);
+ 
+diff --git a/src/utilities/note.ts b/src/utilities/note.ts
+index a0faeb827..e73b03a63 100644
+--- a/src/utilities/note.ts
++++ b/src/utilities/note.ts
+@@ -77,7 +77,10 @@ export async function generateSummaryFromMarkdown(
+     const aheadString = markdown
+       .slice(0, markdown.indexOf(titleMatch[0]))
+       .trim();
+-    contentString = markdown.slice(0, markdown.indexOf(titleMatch[0]));
++    contentString = markdown.slice(
++      markdown.indexOf(titleMatch[0]) + titleMatch[0].length,
++      markdown.length,
++    );
+     const coverMatch = aheadString.match(/^!\[.*?\]\(.+?\)/gim);
+     if (coverMatch && coverMatch.length) {
+       images.push(coverMatch[0].match(/\(([^)"]+?)\)/)[1].trim());

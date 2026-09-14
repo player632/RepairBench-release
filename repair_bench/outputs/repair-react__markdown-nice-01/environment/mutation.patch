@@ -1,0 +1,163 @@
+diff --git a/src/App.js b/src/App.js
+index 6fdb6f7..1611a63 100755
+--- a/src/App.js
++++ b/src/App.js
+@@ -210,7 +210,7 @@ class App extends Component {
+   };
+ 
+   handleChange = (editor) => {
+-    if (this.state.focus) {
++    if (!this.state.focus) {
+       const content = editor.getValue();
+       if (content.length > MAX_MD_NUMBER) {
+         message.error(`字符数超过 ${MAX_MD_NUMBER}`);
+diff --git a/src/component/MenuLeft/Pattern/Bold.js b/src/component/MenuLeft/Pattern/Bold.js
+index 195f976..34ea2cb 100644
+--- a/src/component/MenuLeft/Pattern/Bold.js
++++ b/src/component/MenuLeft/Pattern/Bold.js
+@@ -14,9 +14,6 @@ class Bold extends Component {
+     const selection = markdownEditor.getSelection();
+     bold(markdownEditor, selection);
+ 
+-    // 上传后实时更新内容
+-    const content = markdownEditor.getValue();
+-    this.props.content.setContent(content);
+     markdownEditor.focus();
+   };
+ 
+diff --git a/src/component/MenuLeft/Theme.js b/src/component/MenuLeft/Theme.js
+index 336d5be..8479b2b 100644
+--- a/src/component/MenuLeft/Theme.js
++++ b/src/component/MenuLeft/Theme.js
+@@ -16,7 +16,6 @@ class Theme extends React.Component {
+   changeTemplate = (item) => {
+     const index = parseInt(item.key, 10);
+     const {themeId, css} = this.props.content.themeList[index];
+-    this.props.navbar.setTemplateNum(index);
+ 
+     // 更新style编辑器
+     if (themeId === "custom") {
+diff --git a/src/component/Sidebar/PreviewType.js b/src/component/Sidebar/PreviewType.js
+index 1ea4996..acd4049 100644
+--- a/src/component/Sidebar/PreviewType.js
++++ b/src/component/Sidebar/PreviewType.js
+@@ -14,7 +14,7 @@ class PreviewType extends Component {
+   };
+ 
+   render() {
+-    const targetType = this.props.navbar.previewType === "pc" ? "mobile" : "pc";
++    const targetType = "pc";
+ 
+     return (
+       <Tooltip placement="left" mouseEnterDelay={ENTER_DELAY} mouseLeaveDelay={LEAVE_DELAY} title="预览模式">
+diff --git a/src/layout/Footer.js b/src/layout/Footer.js
+index 36e4453..a82b8b6 100644
+--- a/src/layout/Footer.js
++++ b/src/layout/Footer.js
+@@ -42,7 +42,7 @@ class Footer extends Component {
+     }
+     const markdown = toMarkdown(pasteHtml);
+     const {content} = this.props.content;
+-    const convertContent = content.replace(pasteText, markdown);
++    const convertContent = content.replace(markdown, pasteText);
+     this.props.content.setContent(convertContent);
+ 
+     // 设置粘贴检测为 false
+diff --git a/src/store/content.js b/src/store/content.js
+index 48578d5..a7810a8 100644
+--- a/src/store/content.js
++++ b/src/store/content.js
+@@ -26,7 +26,7 @@ class Content {
+   @action
+   setContent = (content) => {
+     this.content = content;
+-    window.localStorage.setItem(CONTENT, content);
++    window.localStorage.getItem(CONTENT);
+   };
+ 
+   @action
+diff --git a/src/store/navbar.js b/src/store/navbar.js
+index 7c036e3..825b031 100644
+--- a/src/store/navbar.js
++++ b/src/store/navbar.js
+@@ -57,9 +57,9 @@ class Navbar {
+     const {id, macId} = CODE_OPTIONS[codeNum];
+     //  Mac 风格代码
+     if (isMacCode) {
+-      replaceStyle(CODE_THEME_ID, TEMPLATE.code[macId]);
+-    } else {
+       replaceStyle(CODE_THEME_ID, TEMPLATE.code[id]);
++    } else {
++      replaceStyle(CODE_THEME_ID, TEMPLATE.code[macId]);
+     }
+   };
+ 
+diff --git a/src/template/basic.js b/src/template/basic.js
+index 9e21219..05caee1 100644
+--- a/src/template/basic.js
++++ b/src/template/basic.js
+@@ -94,7 +94,7 @@ export default `/*默认样式，最佳实践*/
+   list-style-type: decimal;
+ }
+ 
+-#nice li section {
++#nice li .section {
+   margin-top: 5px;
+   margin-bottom: 5px;
+   line-height: 26px;
+diff --git a/src/utils/converter.js b/src/utils/converter.js
+index 7568770..c11df74 100644
+--- a/src/utils/converter.js
++++ b/src/utils/converter.js
+@@ -121,7 +121,7 @@ export const solveHtml = () => {
+   const fontStyle = document.getElementById(FONT_THEME_ID).innerText;
+   let res = "";
+   try {
+-    res = juice.inlineContent(html, basicStyle + markdownStyle + codeStyle + fontStyle, {
++    res = juice.inlineContent(html, basicStyle + markdownStyle + fontStyle, {
+       inlinePseudoElements: true,
+       preserveImportant: true,
+     });
+diff --git a/src/utils/editorKeyEvents.js b/src/utils/editorKeyEvents.js
+index d952472..575c4a8 100644
+--- a/src/utils/editorKeyEvents.js
++++ b/src/utils/editorKeyEvents.js
+@@ -93,7 +93,7 @@ export const formatDoc = (content, store) => {
+ };
+ 
+ export const bold = (editor, selection) => {
+-  editor.replaceSelection(`**${selection}**`);
++  editor.replaceSelection(`~~${selection}~~`);
+   const cursor = editor.getCursor();
+   cursor.ch -= 2;
+   editor.setCursor(cursor);
+diff --git a/src/utils/helper.js b/src/utils/helper.js
+index ad7c836..f3fc86f 100644
+--- a/src/utils/helper.js
++++ b/src/utils/helper.js
+@@ -261,7 +261,7 @@ export const wordCalc = (data) => {
+   if (m === null) return count;
+   for (let i = 0; i < m.length; i++) {
+     if (m[i].charCodeAt(0) >= 0x4e00) {
+-      count += m[i].length;
++      count += 1;
+     } else {
+       count += 1;
+     }
+diff --git a/src/utils/markdown-it-li.js b/src/utils/markdown-it-li.js
+index e679642..1ef7e90 100644
+--- a/src/utils/markdown-it-li.js
++++ b/src/utils/markdown-it-li.js
+@@ -1,10 +1,10 @@
+ function makeRule(md) {
+   return function replaceListItem() {
+     md.renderer.rules.list_item_open = function replaceOpen() {
+-      return "<li><section>";
++      return "<li>";
+     };
+     md.renderer.rules.list_item_close = function replaceClose() {
+-      return "</section></li>";
++      return "</li>";
+     };
+   };
+ }

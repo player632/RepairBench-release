@@ -1,0 +1,454 @@
+/**
+ * Inline Styles Utility
+ *
+ * Applies inline CSS styles to serialized HTML so it renders correctly
+ * when pasted outside the editor (email clients, CMS, Google Docs, etc.).
+ *
+ * Uses hardcoded light-theme defaults (same approach as Google Docs or
+ * Notion). Optionally accepts overrides for custom styling.
+ *
+ * Only structural styles are inlined (borders, padding, margins, fonts).
+ * Colors are NOT inlined - explicit colors (TextColor, Highlight, cell bg)
+ * are already inline from renderHTML, and default text color is browser default.
+ */
+
+// ---------------------------------------------------------------------------
+// Override keys - users can override any of these
+// ---------------------------------------------------------------------------
+
+export interface InlineStyleOverrides {
+  blockquoteBorder?: string;
+  blockquoteColor?: string;
+  tableBorder?: string;
+  tableHeaderBg?: string;
+  codeBg?: string;
+  codeFont?: string;
+  codeBorder?: string;
+  codeBlockBg?: string;
+  codeBlockFont?: string;
+  hrBorder?: string;
+  linkColor?: string;
+  detailsBorder?: string;
+  detailsBg?: string;
+  /**
+   * How to export table column widths from `data-colwidth` attributes.
+   * - `'percent'` (default): convert to percentage widths on first-row cells
+   * - `'pixel'`: convert to pixel widths on first-row cells, table gets fixed width
+   * - `'none'`: leave `data-colwidth` as-is, no width styles applied
+   */
+  tableColumnWidths?: 'percent' | 'pixel' | 'none';
+  /**
+   * Optional callback to syntax-highlight code blocks.
+   * Receives the raw text content and optional language, returns highlighted HTML
+   * with `<span class="hljs-*">` markup (or any spans with inline styles).
+   *
+   * @example
+   * ```ts
+   * import { createLowlight, common } from 'lowlight';
+   * import { toHtml } from 'hast-util-to-html';
+   * const lowlight = createLowlight(common);
+   *
+   * inlineStyles(html, {
+   *   codeHighlighter: (code, language) => {
+   *     if (language && lowlight.registered(language)) {
+   *       return toHtml(lowlight.highlight(language, code));
+   *     }
+   *     return null; // no highlighting
+   *   },
+   * });
+   * ```
+   */
+  codeHighlighter?: (code: string, language: string | null) => string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Syntax highlighting colors (from packages/theme/src/_syntax.scss)
+// GitHub-style light theme - hardcoded for consistent export.
+// ---------------------------------------------------------------------------
+
+const SYNTAX_COLORS: Record<string, string> = {
+  // Keywords, types, doctags
+  'hljs-doctag': '#d73a49',
+  'hljs-keyword': '#d73a49',
+  'hljs-template-tag': '#d73a49',
+  'hljs-template-variable': '#d73a49',
+  'hljs-type': '#d73a49',
+
+  // Function & class names
+  'hljs-title': '#6f42c1',
+
+  // Constants, numbers, operators, attributes
+  'hljs-attr': '#005cc5',
+  'hljs-attribute': '#005cc5',
+  'hljs-literal': '#005cc5',
+  'hljs-meta': '#005cc5',
+  'hljs-number': '#005cc5',
+  'hljs-operator': '#005cc5',
+  'hljs-variable': '#e36209',
+  'hljs-selector-attr': '#005cc5',
+  'hljs-selector-class': '#005cc5',
+  'hljs-selector-id': '#005cc5',
+
+  // Strings & regex
+  'hljs-regexp': '#032f62',
+  'hljs-string': '#032f62',
+
+  // Built-ins & symbols
+  'hljs-built_in': '#e36209',
+  'hljs-symbol': '#e36209',
+
+  // Comments
+  'hljs-comment': '#6a737d',
+  'hljs-code': '#6a737d',
+  'hljs-formula': '#6a737d',
+
+  // HTML/XML tag names, selectors
+  'hljs-name': '#22863a',
+  'hljs-quote': '#22863a',
+  'hljs-selector-tag': '#22863a',
+  'hljs-selector-pseudo': '#22863a',
+
+  // Markup
+  'hljs-section': '#005cc5',
+  'hljs-bullet': '#22863a',
+
+  // Diff
+  'hljs-addition': '#22863a',
+  'hljs-deletion': '#b31d28',
+};
+
+// ---------------------------------------------------------------------------
+// Light-theme defaults (from packages/theme/src/_variables.scss)
+// ---------------------------------------------------------------------------
+
+type StyleDefaults = Required<Omit<InlineStyleOverrides, 'codeHighlighter'>>;
+
+const DEFAULTS: StyleDefaults = {
+  blockquoteBorder: '3px solid #6a6a6a',
+  blockquoteColor: '#6a6a6a',
+  tableBorder: '1px solid #e5e7eb',
+  tableHeaderBg: '#f8f9fa',
+  codeBg: '#f0f0f0',
+  codeFont: '"SF Mono", "Fira Code", Consolas, "Liberation Mono", Menlo, monospace',
+  codeBorder: '1px solid #e5e7eb',
+  codeBlockBg: '#f0f0f0',
+  codeBlockFont: '"SF Mono", "Fira Code", Consolas, "Liberation Mono", Menlo, monospace',
+  hrBorder: '2px solid #e5e7eb',
+  linkColor: '#2563eb',
+  detailsBorder: '1px solid #e5e7eb',
+  detailsBg: '#f8f9fa',
+  tableColumnWidths: 'percent' as const,
+};
+
+// ---------------------------------------------------------------------------
+// Core implementation
+// ---------------------------------------------------------------------------
+
+function resolveOverrides(overrides?: InlineStyleOverrides): StyleDefaults {
+  if (!overrides) return DEFAULTS;
+  return { ...DEFAULTS, ...overrides };
+}
+
+/**
+ * The marker cycle the theme draws and the Pro exporters emit, picked with
+ * `depth % 3`. Declared here as well because pasted HTML carries no stylesheet:
+ * without a type the recipient's own sheet decides, and every browser plateaus
+ * at square from the fourth bullet level down and numbers every ordered level
+ * `1.`, so a pasted copy stopped matching the .docx and the .pdf exactly where
+ * the editor did.
+ */
+const BULLET_MARKERS = ['disc', 'circle', 'square'] as const;
+const ORDERED_MARKERS = ['decimal', 'lower-alpha', 'lower-roman'] as const;
+
+/**
+ * List nesting depth, counted the way the exporters and the editor's own
+ * stylesheet count it: every enclosing list is a level whatever its kind, so a
+ * `<ul>` inside an `<ol>` continues the count instead of restarting it, and a
+ * task list is a level too even though it draws a checkbox rather than a
+ * marker. A table cell restarts the count, because a list inside one begins at
+ * the cell's own content edge.
+ */
+function listMarkerDepth(el: Element, container: HTMLElement): number {
+  let depth = 0;
+  for (
+    let parent = el.parentElement;
+    parent !== null && parent !== container;
+    parent = parent.parentElement
+  ) {
+    const tag = parent.tagName;
+    if (tag === 'TD' || tag === 'TH') break;
+    if (tag === 'UL' || tag === 'OL') depth += 1;
+  }
+  return depth;
+}
+
+/**
+ * Applies inline styles to all elements in a container.
+ * Exported for use in clipboardSerializer (operates on DOM directly).
+ */
+export function applyInlineStyles(container: HTMLElement, overrides?: InlineStyleOverrides): void {
+  const v = resolveOverrides(overrides);
+
+  // Syntax-highlight code blocks if a highlighter is provided
+  if (overrides?.codeHighlighter) {
+    const codeBlocks = Array.from(container.querySelectorAll('pre > code'));
+    for (const code of codeBlocks) {
+      const raw = code.textContent || '';
+      const langClass = Array.from(code.classList).find(c => c.startsWith('language-'));
+      const language = langClass ? langClass.slice('language-'.length) : null;
+      const highlighted = overrides.codeHighlighter(raw, language);
+      if (highlighted !== null) {
+        code.innerHTML = highlighted;
+      }
+    }
+  }
+
+  const elements = Array.from(container.querySelectorAll('blockquote, table, td, th, pre, code, hr, a, img, h1, h2, h3, h4, h5, h6, ul, ol, li, details, summary, div, span'));
+
+  for (const el of elements) {
+    const tag = el.tagName;
+    const existing = el.getAttribute('style') ?? '';
+    let styles = '';
+
+    switch (tag) {
+      case 'BLOCKQUOTE':
+        styles = `border-left: ${v.blockquoteBorder}; color: ${v.blockquoteColor}; margin: 0.75em 0; padding: 0.25em 0 0.25em 1em;`;
+        break;
+
+      case 'TABLE':
+        styles = `border-collapse: collapse; width: 100%; margin: 0.75em 0;`;
+        break;
+
+      case 'TD': {
+        styles = `border: ${v.tableBorder}; padding: 0.5em 0.75em; overflow-wrap: break-word; word-wrap: break-word; box-sizing: border-box;`;
+        const tdTextAlign = el.getAttribute('data-text-align');
+        if (tdTextAlign) styles += ` text-align: ${tdTextAlign};`;
+        const tdVerticalAlign = el.getAttribute('data-vertical-align');
+        if (tdVerticalAlign) styles += ` vertical-align: ${tdVerticalAlign};`;
+        break;
+      }
+
+      case 'TH': {
+        styles = `border: ${v.tableBorder}; padding: 0.5em 0.75em; overflow-wrap: break-word; word-wrap: break-word; box-sizing: border-box; font-weight: 600; background: ${v.tableHeaderBg}; text-align: left;`;
+        const thTextAlign = el.getAttribute('data-text-align');
+        if (thTextAlign) styles += ` text-align: ${thTextAlign};`;
+        const thVerticalAlign = el.getAttribute('data-vertical-align');
+        if (thVerticalAlign) styles += ` vertical-align: ${thVerticalAlign};`;
+        break;
+      }
+
+      case 'PRE':
+        styles = `background: ${v.codeBlockBg}; font-family: ${v.codeBlockFont}; font-size: 0.875em; padding: 1em; border-radius: 0.375rem; overflow-x: auto; margin: 0.75em 0;`;
+        break;
+
+      case 'CODE': {
+        const parent = el.parentElement;
+        if (parent?.tagName === 'PRE') {
+          // Code inside pre - reset inline code styles
+          styles = 'background: none; padding: 0; border: none; border-radius: 0; font-size: inherit;';
+        } else {
+          // Inline code
+          styles = `background: ${v.codeBg}; font-family: ${v.codeFont}; font-size: 0.875em; padding: 0.15em 0.35em; border: ${v.codeBorder}; border-radius: 0.25rem;`;
+        }
+        break;
+      }
+
+      case 'HR':
+        styles = `border: none; border-top: ${v.hrBorder}; margin: 1.5em 0;`;
+        break;
+
+      case 'A':
+        styles = `color: ${v.linkColor}; text-decoration: underline;`;
+        break;
+
+      case 'IMG':
+        styles = 'max-width: 100%; height: auto; display: block; margin: 0.75em 0;';
+        break;
+
+      case 'H1':
+        styles = 'font-size: 2em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+      case 'H2':
+        styles = 'font-size: 1.5em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+      case 'H3':
+        styles = 'font-size: 1.25em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+      case 'H4':
+        styles = 'font-size: 1.1em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+      case 'H5':
+        styles = 'font-size: 1em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+      case 'H6':
+        styles = 'font-size: 0.9em; font-weight: 700; line-height: 1.25; margin: 1.5em 0 0.5em;';
+        break;
+
+      // `type` is not a schema attribute on either list node, so no document
+      // this editor produced carries one.
+      case 'UL':
+        if (el.getAttribute('data-type') === 'taskList') {
+          styles = 'list-style: none; padding-left: 0; margin: 0.75em 0;';
+        } else if (el.hasAttribute('type')) {
+          styles = 'margin: 0.75em 0; padding-left: 1.5em;';
+        } else {
+          const bullet = BULLET_MARKERS[listMarkerDepth(el, container) % 3] ?? 'disc';
+          styles = `margin: 0.75em 0; padding-left: 1.5em; list-style-type: ${bullet};`;
+        }
+        break;
+
+      case 'OL': {
+        if (el.hasAttribute('type')) {
+          styles = 'margin: 0.75em 0; padding-left: 1.5em;';
+          break;
+        }
+        const number = ORDERED_MARKERS[listMarkerDepth(el, container) % 3] ?? 'decimal';
+        styles = `margin: 0.75em 0; padding-left: 1.5em; list-style-type: ${number};`;
+        break;
+      }
+
+      case 'LI':
+        if (el.getAttribute('data-type') === 'taskItem') {
+          styles = 'display: flex; align-items: flex-start; gap: 0.5em; margin: 0.25em 0;';
+          // Checked task item - style the content div
+          if (el.getAttribute('data-checked') === 'true') {
+            const contentDiv = el.querySelector(':scope > div');
+            if (contentDiv) {
+              const contentExisting = contentDiv.getAttribute('style') ?? '';
+              contentDiv.setAttribute(
+                'style',
+                'text-decoration: line-through; opacity: 0.6;' + contentExisting,
+              );
+            }
+          }
+        } else {
+          styles = 'margin: 0.25em 0;';
+        }
+        break;
+
+      case 'DETAILS':
+        styles = `border: ${v.detailsBorder}; border-radius: 0.375rem; margin: 0.75em 0;`;
+        break;
+
+      case 'SUMMARY':
+        styles = `font-weight: 600; padding: 0.5em 0.75em; background: ${v.detailsBg}; border-radius: 0.375rem 0.375rem 0 0; cursor: pointer; list-style: none;`;
+        break;
+
+      case 'DIV':
+        if (el.hasAttribute('data-details-content')) {
+          styles = `padding: 0.5em 0.75em; border-top: ${v.detailsBorder};`;
+        }
+        break;
+
+      case 'SPAN': {
+        if (!el.className) break;
+        // Syntax highlighting - apply inline color for hljs-* classes
+        const classList = el.className.split(' ');
+        for (const cls of classList) {
+          const color = SYNTAX_COLORS[cls];
+          if (color) {
+            styles = `color: ${color};`;
+            break;
+          }
+        }
+        // hljs-section is bold, hljs-emphasis italic, hljs-strong bold
+        if (el.classList.contains('hljs-section') || el.classList.contains('hljs-strong')) {
+          styles += ' font-weight: bold;';
+        }
+        if (el.classList.contains('hljs-emphasis')) {
+          styles += ' font-style: italic;';
+        }
+        // Diff backgrounds
+        if (el.classList.contains('hljs-addition')) {
+          styles += ' background-color: #f0fff4;';
+        }
+        if (el.classList.contains('hljs-deletion')) {
+          styles += ' background-color: #ffeef0;';
+        }
+        break;
+      }
+    }
+
+    // Merge: theme defaults first, then existing inline styles (user-set wins)
+    if (styles) {
+      el.setAttribute('style', styles + ' ' + existing);
+    }
+  }
+
+  // --- Table column widths (second pass) ---
+  if (v.tableColumnWidths !== 'none') {
+    const tables = Array.from(container.querySelectorAll('table'));
+    for (const table of tables) {
+      const firstRow = table.querySelector('tr');
+      if (!firstRow) continue;
+
+      const firstRowCells = Array.from(firstRow.querySelectorAll<HTMLElement>('td, th'));
+      // Collect all column widths from first-row cells (handles colspan via comma-separated values)
+      const widths: number[] = [];
+      let allHaveWidths = true;
+      for (const cell of firstRowCells) {
+        const raw = cell.getAttribute('data-colwidth');
+        if (!raw) { allHaveWidths = false; break; }
+        const parsed = raw.split(',').map(Number);
+        if (parsed.some(n => !n || isNaN(n))) { allHaveWidths = false; break; }
+        widths.push(...parsed);
+      }
+      if (!allHaveWidths || widths.length === 0) continue;
+
+      const sum = widths.reduce((s, w) => s + w, 0);
+
+      // table-layout: fixed ensures the browser respects the exact widths
+      const tableStyle = table.getAttribute('style') ?? '';
+      if (v.tableColumnWidths === 'percent') {
+        table.setAttribute('style', tableStyle + ' table-layout: fixed;');
+        for (const cell of firstRowCells) {
+          const raw = cell.getAttribute('data-colwidth') ?? '';
+          const parsed = raw.split(',').map(Number);
+          const cellPercent = parsed.reduce((s, w) => s + w, 0) / sum * 100;
+          const existing = cell.getAttribute('style') ?? '';
+          cell.setAttribute('style', existing + ` width: ${cellPercent.toFixed(2)}%;`);
+        }
+      } else {
+        // pixel mode
+        table.setAttribute('style', tableStyle.replace(/width:\s*100%/, `width: ${String(sum)}px`) + ' table-layout: fixed;');
+        for (const cell of firstRowCells) {
+          const raw = cell.getAttribute('data-colwidth') ?? '';
+          const parsed = raw.split(',').map(Number);
+          const cellWidth = parsed.reduce((s, w) => s + w, 0);
+          const existing = cell.getAttribute('style') ?? '';
+          cell.setAttribute('style', existing + ` width: ${String(cellWidth)}px;`);
+        }
+      }
+
+      // Keep data-colwidth on cells for round-trip back into the editor
+    }
+  }
+}
+
+/**
+ * Takes an HTML string and returns it with inline CSS styles applied
+ * to all elements, so it renders correctly outside the editor.
+ *
+ * @param html - Serialized HTML string from editor.getHTML()
+ * @param overrides - Optional style overrides for custom theming
+ *
+ * @example
+ * ```ts
+ * // Default light-theme styles
+ * const styled = inlineStyles(editor.getHTML());
+ *
+ * // With custom overrides
+ * const styled = inlineStyles(editor.getHTML(), {
+ *   blockquoteBorder: '5px solid red',
+ *   linkColor: '#ff6600',
+ * });
+ * ```
+ */
+export function inlineStyles(html: string, overrides?: InlineStyleOverrides): string {
+  if (!html) return html;
+
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  applyInlineStyles(div, overrides);
+  return div.innerHTML;
+}

@@ -1,0 +1,131 @@
+diff --git b/src/components/App.js a/src/components/App.js
+index a4d9ab0..81e24ef 100644
+--- b/src/components/App.js
++++ a/src/components/App.js
+@@ -32,6 +32,7 @@ class App extends Component {
+     const newOriginalLevel = Object.assign({}, newLevel);
+     this.setState({
+       level: newLevel,
++      original: newOriginalLevel,
+     });
+   };
+ 
+diff --git b/src/components/Game.js a/src/components/Game.js
+index 940159b..6452605 100644
+--- b/src/components/Game.js
++++ a/src/components/Game.js
+@@ -70,7 +70,7 @@ class Game extends Component {
+ 
+   // End game by pressing CTRL + ALT + F
+   keyDownListener = (key) => {
+-    if (key.ctrlKey && key.code === "KeyF") {
++    if (key.ctrlKey && key.altKey && key.code === "KeyF") {
+       const { original, gridSize, tileSize } = this.props;
+       const solvedTiles = this.generateTiles(original, gridSize, tileSize).map(
+         (tile, index) => {
+@@ -121,7 +121,7 @@ class Game extends Component {
+       return tile.tileId + 1 === tile.number;
+     });
+ 
+-    if (correctedTiles.length >= this.props.gridSize) {
++    if (correctedTiles.length === this.props.gridSize ** 2) {
+       clearInterval(this.timerId);
+       return true;
+     } else {
+@@ -151,6 +151,7 @@ class Game extends Component {
+         newGameState = GAME_PAUSED;
+         newSnackbarText = "The game is currently paused.";
+       } else {
++        this.setTimer();
+         newGameState = GAME_STARTED;
+         newSnackbarText = "Game on!";
+       }
+@@ -164,7 +165,10 @@ class Game extends Component {
+   };
+ 
+   onTileClick = (tile) => {
+-    if (this.state.gameState === GAME_OVER) {
++    if (
++      this.state.gameState === GAME_OVER ||
++      this.state.gameState === GAME_PAUSED
++    ) {
+       return;
+     }
+ 
+@@ -189,7 +193,13 @@ class Game extends Component {
+     if (d.neighbours) {
+       let t = Array.from(this.state.tiles).map((t) => ({ ...t }));
+ 
+-      invert(t, emptyTileIndex, tileIndex, ["top", "left", "tileId"]);
++      invert(t, emptyTileIndex, tileIndex, [
++        "top",
++        "left",
++        "row",
++        "column",
++        "tileId",
++      ]);
+ 
+       const checkGameOver = this.isGameOver(t);
+ 
+diff --git b/src/components/Grid.js a/src/components/Grid.js
+index 99bc220..fbe341c 100644
+--- b/src/components/Grid.js
++++ a/src/components/Grid.js
+@@ -38,7 +38,7 @@ const Grid = (props) => {
+               {...tile}
+               slot={index}
+               key={`tile-${index}`}
+-              correct={tile.tileId === tile.number}
++              correct={tile.tileId + 1 === tile.number}
+               onClick={onTileClick}
+               visible={tile.number < gridSize ** 2}
+             />
+diff --git b/src/components/Tile.tsx a/src/components/Tile.tsx
+index 271e002..311de62 100644
+--- b/src/components/Tile.tsx
++++ a/src/components/Tile.tsx
+@@ -3,7 +3,7 @@ import React from "react";
+ 
+ const useStyles = makeStyles({
+   root: ({ width, height, correct, left, top, visible }: Props) => ({
+-    display: "flex",
++    display: visible ? "flex" : "none",
+     flexDirection: "column",
+     alignItems: "center",
+     justifyContent: "center",
+diff --git b/src/lib/utils.ts a/src/lib/utils.ts
+index faa6c74..b236c58 100644
+--- b/src/lib/utils.ts
++++ a/src/lib/utils.ts
+@@ -65,7 +65,7 @@ export const getTileCoords = (
+   return {
+     column,
+     row,
+-    left: (column + 1) * tileSize,
++    left: column * tileSize,
+     top: row * tileSize,
+     tileId: index,
+   };
+@@ -92,7 +92,7 @@ export const distanceBetween = (
+   const sameColumnDiffRow = sameColumn && diffRow;
+ 
+   return {
+-    neighbours: sameRowDiffColumn || sameColumnDiffRow || (diffRow && diffColumn),
++    neighbours: sameRowDiffColumn || sameColumnDiffRow,
+     distance: {
+       rows: rowDiff,
+       columns: columnDiff,
+diff --git b/src/components/Menu.tsx a/src/components/Menu.tsx
+index 56de998..50f0ec5 100644
+--- b/src/components/Menu.tsx
++++ a/src/components/Menu.tsx
+@@ -90,3 +90,3 @@ const Menu = (props: Props) => {
+           }
+-          disabled={gameState !== GAME_STARTED}
++          disabled={gameState !== GAME_STARTED && gameState !== GAME_PAUSED}
+         >
+@@ -94,3 +94,3 @@ const Menu = (props: Props) => {
+             <Typography component="span" variant="button" data-testid="menu-pause-label">
+-              {gameState === GAME_PAUSED ? "Pause" : "Continue"}
++              {gameState === GAME_PAUSED ? "Continue" : "Pause"}
+             </Typography>

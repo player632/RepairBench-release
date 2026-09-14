@@ -1,0 +1,99 @@
+import { AddActivityTypes, GameState } from '../game/GameState'
+import { activityStarters } from '../game/globals'
+import { setState } from '../game/setState'
+import { ActivityAdapter } from './ActivityState'
+import { ActivityStartResult } from './activityInterfaces'
+import { removeActivityInt } from './functions/removeActivity'
+
+export function startNextActivity(state: GameState): void {
+    if (state.orderedActivities.length < 1) return
+
+    if (state.activityId) {
+        const currentAct = ActivityAdapter.select(state.activities, state.activityId)
+        if (currentAct === undefined) {
+            state.activityId = null
+        } else if (currentAct.max >= state.activityDone) {
+            const actId = state.activityId
+            const start = activityStarters.getEx(currentAct.type)
+            const result = start(state, actId)
+
+            if (result === ActivityStartResult.NotPossible) removeActivityInt(state, actId)
+
+            if (result === ActivityStartResult.Started) return
+        }
+    }
+
+    state.activityDone = 0
+
+    const start = state.lastActivityDone
+    let i = start + 1
+
+    function tryStart(): boolean {
+        const activityId = state.orderedActivities[i]
+        if (!activityId) return false
+
+        const activity = ActivityAdapter.select(state.activities, activityId)
+        if (!activity) return false
+        const start2 = activityStarters.getEx(activity.type)
+        const result = start2(state, activityId)
+
+        if (result === ActivityStartResult.NotPossible) removeActivityInt(state, activityId)
+
+        return result === ActivityStartResult.Started
+    }
+
+    for (i = start + 1; i < state.orderedActivities.length; i++) if (tryStart()) return
+    for (i = 0; i <= start; i++) if (tryStart()) return
+
+    state.activityId = null
+}
+
+export const moveActivityNext = (id: string) =>
+    setState((s) => {
+        const index = s.orderedActivities.indexOf(id)
+        if (index < 0) return
+        if (index >= s.orderedActivities.length - 1) return s
+        const ids = s.orderedActivities
+        const tmp = ids[index + 1]
+        if (!tmp) return
+        ids[index + 1] = id
+        ids[index] = tmp
+    })
+export const moveActivityPrev = (id: string) =>
+    setState((s) => {
+        const index = s.orderedActivities.indexOf(id)
+        if (index < 0) return
+        if (index < 1) return
+        const ids = s.orderedActivities
+        const tmp = ids[index - 1]
+        if (!tmp) return
+        ids[index - 1] = id
+        ids[index] = tmp
+    })
+export const setAutoRemove = (id: string, value: boolean) =>
+    setState((s) => {
+        const act = ActivityAdapter.select(s.activities, id)
+        if (!act) return
+        act.remove = value
+    })
+
+export const setAddActType = (addActType: AddActivityTypes) =>
+    setState((s) => {
+        s.addActType = addActType
+    })
+export const setRemoveOtherActivities = (removeOtherActivities: boolean) =>
+    setState((s) => {
+        s.removeOtherActivities = removeOtherActivities
+    })
+export const setStartActNow = (startActNow: boolean) =>
+    setState((s) => {
+        s.startActNow = startActNow
+    })
+export const setActRepetitions = (actRepetitions: number) =>
+    setState((s) => {
+        s.actRepetitions = actRepetitions
+    })
+export const setActAutoRemove = (actAutoRemove: boolean) =>
+    setState((s) => {
+        s.actAutoRemove = actAutoRemove
+    })

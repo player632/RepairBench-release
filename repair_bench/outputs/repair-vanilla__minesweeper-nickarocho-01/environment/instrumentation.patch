@@ -1,0 +1,713 @@
+diff --git a/index.html b/index.html
+index 977b3dc..20d7425 100644
+--- a/index.html
++++ b/index.html
+@@ -24,6 +24,7 @@
+             <div id="clock"><em>"Shift + Click"</em></strong> to toggle <img src="images/flag.png"></div>
+         </section>
+     <script src="js/cell.js"></script>
++    <script src="js/rb-probe.js"></script>
+     <script src="js/main.js"></script>
+ </body>
+ </html>
+\ No newline at end of file
+diff --git a/js/rb-probe.js b/js/rb-probe.js
+new file mode 100644
+index 0000000..a0b43b2
+--- /dev/null
++++ b/js/rb-probe.js
+@@ -0,0 +1,694 @@
++/**
++ * RepairBench instrumentation probe - read-only measurement surface for the minesweeper-nickarocho
++ * seed. Added by environment/instrumentation.patch together with ONE `<script src="js/rb-probe.js">`
++ * line in index.html, placed after js/cell.js and BEFORE js/main.js so that this file is evaluated
++ * before main.js runs its boot calls `init(); render();` (main.js:235 and :236 - :236 is the last
++ * line and has NO trailing newline, which is why `wc -l` reports 235).
++ *
++ * It touches NO application logic and contains NO copy of any logic under test:
++ *   - it never re-implements Cell, getAdjCells(), calcAdjBombs(), the flood-fill inside
++ *     Cell.reveal() (cell.js:45-50), addBombs(), getWinner(), getBombCount() or render();
++ *   - every model value is read back from the seed's OWN objects (window.board[r][c].bomb /
++ *     .revealed / .flagged / .adjBombs) or produced by the seed's OWN functions (window.getWinner(),
++ *     window.getBombCount(), window.init(), window.render(), window.revealAll(), cell.flag());
++ *   - the only computation done here is AGGREGATION and SERIALISATION of values the seed already
++ *     computed (counting cells, a row-major histogram, joining coordinates into a comparable
++ *     string). No game rule is evaluated a second time.
++ *
++ * Two globals are published, and nothing else:
++ *
++ *   window.__MS__()      a READ-ONLY snapshot, recomputed on EVERY call (it is a function, not a
++ *                        cached object). Per-index reads hang off the same function object as
++ *                        __MS__.cell(r,c) / __MS__.td(r,c) / __MS__.revealed_pairs() and friends,
++ *                        because a 30x30 board has 900 cells and cannot be inlined into one
++ *                        snapshot. LAZY CONTRACT: this script is evaluated before main.js's init(),
++ *                        so window.board does not exist yet at definition time - nothing is captured
++ *                        at script-initialisation time and every accessor resolves window.board,
++ *                        window.size and the DOM at the moment it is called.
++ *   window.__MS_CMD__    a command surface that drives the SEED'S OWN functions and the seed's own
++ *                        event listeners. Every command is addressed BY INDEX ([row, col], or a
++ *                        board size number), never by an object identity or a per-run value, so no
++ *                        run-specific value ever has to appear in a grading assertion. The probe
++ *                        NEVER assigns to seed state directly - it only calls seed functions and
++ *                        dispatches events that the seed's own listeners handle.
++ *
++ * Safety contract (identical to the synced-lyrics / painter / luckysheet probes): every accessor and
++ * every command is try/catch wrapped and returns a sentinel (null, 'ERR' or false) instead of
++ * throwing, and a missing handle yields null rather than an exception. A broken state therefore
++ * surfaces as a FAILED ASSERTION (behaviour evidence) and never as a page crash or a runner error,
++ * which is what keeps the red set honest in the injected state.
++ *
++ * THREE MEASURED SEED LANDMINES shape the read discipline below. None is repaired here - adaptation
++ * neutralises external faces and nondeterminism only, and changes 0 application logic:
++ *
++ *   1. className overwrite. render() assigns `td.className = 'revealed'` (main.js:203 and :207),
++ *      which WHOLESALE REPLACES the class list, so a revealed cell stops matching `.game-cell` and
++ *      `td.game-cell` counts DOWN as a game progresses (measured 256 -> 206 -> ... -> 41 on a 16x16
++ *      board). A FLAGGED cell KEEPS `game-cell`, because render():197-198 only sets innerHTML. So
++ *      every per-cell read below addresses the cell through the seed's own `[data-row][data-col]`
++ *      attributes (which render():192 itself uses) and never through `.game-cell`; the `.game-cell`
++ *      count is still exposed as td_game_cell_count, documented as a BOOT-STATE-ONLY reading.
++ *   2. stale timer handle. On a bomb hit main.js:58 calls `clearInterval(timerId)` WITHOUT setting
++ *      `timerId = null`, unlike init():150-151 which does both. So after death timer_id_kind still
++ *      reads 'number' and means nothing. "Is the clock running" is therefore ONLY assertable through
++ *      the frozen in-page DELTA (timer_mark then timer_delta_since_mark: alive advances, dead stays
++ *      at 0). timer_id_kind is exposed solely as the PRE-FIRST-CLICK signal, where main.js:48
++ *      `if (!timerId) setTimer()` guarantees it is null at boot.
++ *   3. dead also wins. After a bomb hit revealAll() (main.js:57) reveals every cell, so all non-mine
++ *      cells become revealed and getWinner():179-187 returns TRUE (measured hitBomb=true &&
++ *      winner=true). Both `winner` and `winner_fn` faithfully report that; nothing here masks it, and
++ *      no checkpoint may assert "hitBomb implies winner === false".
++ *
++ * The seeded entropy stream that environment/adaptation.patch installs in main.js is deliberately
++ * NOT read, exposed or reset by this probe: a top-level `let` in a CLASSIC script goes into the
++ * global lexical environment and never becomes a window property, so it is unreachable from here by
++ * design, and surfacing or reseeding it would hand the answering agent a cheat knob. Determinism is
++ * asserted through its OBSERVABLE CONSEQUENCE (the mine coordinate set) instead.
++ *
++ * This probe injects no test-id attribute anywhere (R18: n/a, inj=0).
++ */
++(function () {
++	'use strict'
++
++	var W = window
++
++	/** sentinel for "this accessor could not produce a value" */
++	var ERR = 'ERR'
++	var PROBE_VERSION = 'rb-probe/1'
++
++	// ---- script-level command bookkeeping (read back through the snapshot) ----
++	var lastCmdOk = true
++	var lastCmdError = null
++	var cmdCount = 0
++	var cmdLog = []
++	var pageErrorCount = 0
++	var errorHooksInstalled = false
++	var timerMark = null
++
++	// ---------------------------------------------------------------- helpers
++
++	function normalise(value) {
++		return value === undefined ? null : value
++	}
++
++	/** Wrap an accessor so it can never throw: `fallback` is the sentinel. */
++	function safe(fallback, fn) {
++		try {
++			var v = fn()
++			return v === undefined ? fallback : v
++		} catch (e) {
++			return fallback
++		}
++	}
++
++	/** Lazy handle on the seed's own board. Never cached. */
++	function boardHandle() {
++		try {
++			var b = W.board
++			return b && typeof b.length === 'number' ? b : null
++		} catch (e) {
++			return null
++		}
++	}
++
++	/** Lazy handle on ONE of the seed's own Cell objects, addressed BY INDEX. */
++	function cellAt(row, col) {
++		try {
++			var b = boardHandle()
++			if (!b) return null
++			var rowArr = b[Number(row)]
++			if (!rowArr) return null
++			return rowArr[Number(col)] || null
++		} catch (e) {
++			return null
++		}
++	}
++
++	/** Lazy handle on a DOM element by the seed's own id. */
++	function byId(id) {
++		try {
++			return document.getElementById(String(id)) || null
++		} catch (e) {
++			return null
++		}
++	}
++
++	/**
++	 * Lazy handle on the seed's own cell <td>, addressed BY INDEX through the seed's own
++	 * [data-row][data-col] attributes set in buildTable() (main.js:117-121). Deliberately NOT
++	 * `.game-cell` - see landmine 1 in the header.
++	 */
++	function tdAt(row, col) {
++		try {
++			return document.querySelector('[data-row="' + Number(row) + '"][data-col="' + Number(col) + '"]') || null
++		} catch (e) {
++			return null
++		}
++	}
++
++	/** Walk the seed's own board. AGGREGATION ONLY - no game rule is re-evaluated. */
++	function eachCell(visit) {
++		var n = 0
++		try {
++			var b = boardHandle()
++			if (!b) return 0
++			for (var r = 0; r < b.length; r++) {
++				var rowArr = b[r]
++				if (!rowArr) continue
++				for (var c = 0; c < rowArr.length; c++) {
++					if (!rowArr[c]) continue
++					visit(rowArr[c], r, c)
++					n++
++				}
++			}
++		} catch (e) {
++			return n
++		}
++		return n
++	}
++
++	/** The seed's own mine placement read from cell.bomb, row-major. addBombs() is never re-run. */
++	function minePairs() {
++		var out = []
++		eachCell(function (cell, r, c) {
++			if (cell.bomb === true) out.push([r, c])
++		})
++		return out
++	}
++
++	function pairsKey(pairs) {
++		try {
++			var s = []
++			for (var i = 0; i < pairs.length; i++) s.push(pairs[i][0] + ',' + pairs[i][1])
++			return s.join(';')
++		} catch (e) {
++			return ERR
++		}
++	}
++
++	function firstN(pairs, n) {
++		try {
++			return pairs.slice(0, Number(n)).map((p) => p[0] + ',' + p[1])
++		} catch (e) {
++			return ERR
++		}
++	}
++
++	function countWhere(pred) {
++		var n = 0
++		eachCell(function (cell) {
++			try {
++				if (pred(cell) === true) n++
++			} catch (e) {
++				/* a cell in a broken state simply is not counted */
++			}
++		})
++		return n
++	}
++
++	function qsaCount(sel) {
++		try {
++			return document.querySelectorAll(sel).length
++		} catch (e) {
++			return null
++		}
++	}
++
++	function imgSrcCount(src) {
++		try {
++			return document.querySelectorAll('#board img[src="' + src + '"]').length
++		} catch (e) {
++			return null
++		}
++	}
++
++	function text(id) {
++		var e = byId(id)
++		return e ? String(e.innerText) : null
++	}
++
++	/** window.onerror + unhandledrejection counters (idempotent). */
++	function installErrorHooks() {
++		if (errorHooksInstalled) return
++		errorHooksInstalled = true
++		try {
++			var previous = W.onerror
++			W.onerror = function () {
++				pageErrorCount++
++				try {
++					if (typeof previous === 'function') return previous.apply(W, arguments)
++				} catch (e) {
++					/* the counter is the only thing this hook owns */
++				}
++				// returning false keeps the browser's own error reporting alive, so the runner's
++				// pageerror listener still fires: the probe counts errors, it never swallows them.
++				return false
++			}
++		} catch (e) {
++			/* sentinel: the counter simply stays at 0 */
++		}
++		try {
++			W.addEventListener('unhandledrejection', () => pageErrorCount++)
++		} catch (e) {
++			/* sentinel */
++		}
++	}
++
++	// Installed at evaluation time - which is BEFORE main.js runs - so boot-time errors count too.
++	installErrorHooks()
++
++	/** Run a command, record ok/error, never throw. */
++	function command(name, fn) {
++		cmdCount++
++		try {
++			if (cmdLog.length >= 40) cmdLog.shift()
++		} catch (e) {
++			/* bookkeeping must never break a command */
++		}
++		cmdLog.push(name)
++		try {
++			var out = fn()
++			lastCmdOk = true
++			lastCmdError = null
++			return out === undefined ? null : out
++		} catch (e) {
++			lastCmdOk = false
++			lastCmdError = name + ': ' + String((e && e.message) || e).slice(0, 200)
++			return null
++		}
++	}
++
++	/** Require the seed's own board, or fail as a sentinel rather than an exception. */
++	function needBoard(name) {
++		if (!boardHandle()) throw new Error(name + ': no board handle (window.board missing)')
++	}
++
++	/** Require one of the seed's own top-level functions. */
++	function needFn(name, prop) {
++		if (typeof W[prop] !== 'function') throw new Error(name + ': no window.' + prop)
++	}
++
++	// ------------------------------------------------------- the read surface
++
++	/** The read-only snapshot. Recomputed on EVERY call. */
++	function snapshot() {
++		var mines = safe([], minePairs)
++		return {
++			// -- probe identity / liveness --
++			probe: PROBE_VERSION,
++			probe_present: true,
++			found: safe(false, () => !!boardHandle()),
++			ready: safe(false, () => !!boardHandle() && typeof W.size === 'number'),
++
++			// -- seed model scalars, each read straight off the seed's own globals --
++			size: safe(null, () => (typeof W.size === 'number' ? W.size : null)),
++			size_typeof: safe(ERR, () => typeof W.size),
++			bomb_count: safe(null, () => (typeof W.bombCount === 'number' ? W.bombCount : null)),
++			bomb_count_fn: safe(ERR, () => (typeof W.getBombCount === 'function' ? W.getBombCount() : null)),
++			elapsed_time: safe(null, () => (typeof W.elapsedTime === 'number' ? W.elapsedTime : null)),
++			hit_bomb: safe(null, () => (typeof W.hitBomb === 'boolean' ? W.hitBomb : null)),
++			winner: safe(null, () => (typeof W.winner === 'boolean' ? W.winner : null)),
++			// the seed's OWN win verdict (landmine 3: also true after a bomb hit)
++			winner_fn: safe(ERR, () => (typeof W.getWinner === 'function' ? W.getWinner() : null)),
++			// landmine 4: `var timeElapsed;` (main.js:26) is declared and NEVER assigned, so
++			// render():191 `var seconds = timeElapsed % 60` is a permanently NaN dead variable.
++			// Exposed as a typeof string so a checkpoint can pin the seed behaviour without ever
++			// asserting that `seconds` is a number.
++			time_elapsed_typeof: safe(ERR, () => typeof W.timeElapsed),
++			adj_bombs_global_typeof: safe(ERR, () => typeof W.adjBombs),
++			board_el_is_table: safe(false, () => {
++				var e = byId('board')
++				return !!e && e.tagName === 'TABLE'
++			}),
++
++			// -- clock signals: NEVER an absolute clock value --
++			timer_id_kind: safe(ERR, () => {
++				var t = W.timerId
++				return t === null ? 'null' : t === undefined ? 'undefined' : typeof t
++			}),
++			timer_mark: safe(null, () => timerMark),
++			timer_delta_since_mark: safe(null, () => {
++				if (!timerMark || typeof timerMark.elapsed_time !== 'number') return null
++				if (typeof W.elapsedTime !== 'number') return null
++				return W.elapsedTime - timerMark.elapsed_time
++			}),
++			timer_text_delta_since_mark: safe(null, () => {
++				if (!timerMark || timerMark.timer_text === null) return null
++				var now = parseInt(String(text('timer')), 10)
++				var then = parseInt(String(timerMark.timer_text), 10)
++				return isNaN(now) || isNaN(then) ? null : now - then
++			}),
++			// DIAGNOSTIC ONLY: how long the frozen window actually was. Assert the tick DELTA over
++			// this measured window, never a wall-clock reading.
++			timer_delta_ms_since_mark: safe(null, () => (timerMark ? Date.now() - timerMark.at : null)),
++
++			// -- board aggregates over the seed's OWN Cell fields --
++			board_rows: safe(null, () => {
++				var b = boardHandle()
++				return b ? b.length : null
++			}),
++			board_cols: safe(null, () => {
++				var b = boardHandle()
++				return b && b[0] ? b[0].length : null
++			}),
++			cells: safe(0, () => eachCell(() => {})),
++			mines_count: safe(null, () => mines.length),
++			mines_key: safe(ERR, () => pairsKey(mines)),
++			mines_first8: safe(ERR, () => firstN(mines, 8)),
++			mines_last4: safe(ERR, () => (mines.length ? firstN(mines.slice(mines.length - 4), 4) : [])),
++			revealed_count: safe(null, () => countWhere((c) => c.revealed === true)),
++			flagged_count: safe(null, () => countWhere((c) => c.flagged === true)),
++			unrevealed_count: safe(null, () => countWhere((c) => c.revealed !== true)),
++			// cells the seed itself marked adjBombs === 0, i.e. the flood-fill entry points that
++			// Cell.reveal() (cell.js:45-50) expands. A COUNT, not a re-implementation of the fill.
++			zero_adj_count: safe(null, () => countWhere((c) => c.adjBombs === 0)),
++			// row-major histogram of the seed's OWN cell.adjBombs (stored by cell.calcAdjBombs()).
++			adj_bombs_hist: safe(ERR, () => {
++				var h = {}
++				eachCell((cell) => {
++					var k = String(cell.adjBombs)
++					h[k] = (h[k] || 0) + 1
++				})
++				return h
++			}),
++
++			// -- DOM scalars, all through the seed's own ids and attributes --
++			bomb_counter_text: safe(ERR, () => text('bomb-counter')),
++			timer_text: safe(ERR, () => text('timer')),
++			reset_img_src: safe(ERR, () => {
++				var e = byId('reset')
++				if (!e) return null
++				var i = e.querySelector('img')
++				return i ? String(i.getAttribute('src')) : null
++			}),
++			board_style_width: safe(ERR, () => {
++				var e = byId('board')
++				return e ? String(e.style.width) : null
++			}),
++			board_inner_html_len: safe(null, () => {
++				var e = byId('board')
++				return e ? String(e.innerHTML).length : null
++			}),
++			td_game_cell_count: qsaCount('td.game-cell'), // BOOT-STATE-ONLY, landmine 1
++			td_data_row_count: qsaCount('#board td[data-row]'), // always size*size after buildTable()
++			td_revealed_class_count: qsaCount('td.revealed'),
++			img_bomb_count: imgSrcCount('images/bomb.png'),
++			img_flag_count: imgSrcCount('images/flag.png'),
++			img_wrong_bomb_count: imgSrcCount('images/wrong-bomb.png'),
++
++			//
++			jquery_typeof: safe(ERR, () => typeof W.jQuery),
++			dollar_typeof: safe(ERR, () => typeof W.$),
++			external_script_srcs: safe(ERR, () => {
++				var out = []
++				var s = document.getElementsByTagName('script')
++				for (var i = 0; i < s.length; i++) {
++					var src = String(s[i].getAttribute('src') || '')
++					if (/^https?:\/\//.test(src)) out.push(src)
++				}
++				return out
++			}),
++			script_srcs: safe(ERR, () => {
++				var out = []
++				var s = document.getElementsByTagName('script')
++				for (var i = 0; i < s.length; i++) out.push(String(s[i].getAttribute('src') || '(inline)'))
++				return out
++			}),
++			// The two folder-bar anchors are a LAZY SATELLITE face: declared, never modified, and no
++			// checkpoint may ever click them (SPEC_15 §0). Exposed read-only so the declaration in
++			// meta.determinism.network can be checked against the live DOM.
++			folder_anchor_count: qsaCount('#folder-bar a[href]'),
++			folder_anchor_hrefs: safe(ERR, () => {
++				var out = []
++				var a = document.querySelectorAll('#folder-bar a[href]')
++				for (var i = 0; i < a.length; i++) out.push(String(a[i].getAttribute('href')))
++				return out
++			}),
++
++			// -- residue channels (this seed persists nothing; P20-style state isolation) --
++			local_storage_keys: safe(ERR, () => Object.keys(W.localStorage)),
++			local_storage_len: safe(null, () => W.localStorage.length),
++			session_storage_keys: safe(ERR, () => Object.keys(W.sessionStorage)),
++			session_storage_len: safe(null, () => W.sessionStorage.length),
++			cookie_string: safe(ERR, () => String(document.cookie)),
++			location_search: safe(ERR, () => String(W.location.search)),
++			location_hash: safe(ERR, () => String(W.location.hash)),
++			// location.href is deliberately NOT exposed: it carries the leg's 127.0.0.1:<port>, which
++			// differs per leg, so it could never be a deterministic assertion anyway.
++
++			// -- command bookkeeping --
++			last_cmd_ok: lastCmdOk,
++			last_cmd_error: lastCmdError,
++			cmd_count: cmdCount,
++			cmd_log_last5: cmdLog.slice(-5),
++			page_errors: pageErrorCount,
++			error_hooks_installed: errorHooksInstalled
++		}
++	}
++
++	// ---- per-index READS, hung off the snapshot function (all lazy, all sentinel-guarded) ----
++
++	/** One of the seed's own Cell objects, read BY INDEX. */
++	snapshot.cell = function (row, col) {
++		var cell = cellAt(row, col)
++		if (!cell) return { found: false, row: Number(row), col: Number(col) }
++		return {
++			found: true,
++			row: safe(ERR, () => normalise(cell.row)),
++			col: safe(ERR, () => normalise(cell.col)),
++			bomb: safe(ERR, () => (typeof cell.bomb === 'boolean' ? cell.bomb : null)),
++			revealed: safe(ERR, () => (typeof cell.revealed === 'boolean' ? cell.revealed : null)),
++			flagged: safe(ERR, () => (typeof cell.flagged === 'boolean' ? cell.flagged : null)),
++			// the value the seed's own calcAdjBombs() stored - never recomputed here
++			adj_bombs: safe(ERR, () => (typeof cell.adjBombs === 'number' ? cell.adjBombs : null)),
++			adj_bombs_typeof: safe(ERR, () => typeof cell.adjBombs),
++			row_col_match_index: safe(ERR, () => cell.row === Number(row) && cell.col === Number(col))
++		}
++	}
++
++	/** One of the seed's own cell <td> elements, read BY INDEX via [data-row][data-col]. */
++	snapshot.td = function (row, col) {
++		var td = tdAt(row, col)
++		if (!td) return { found: false, row: Number(row), col: Number(col) }
++		return {
++			found: true,
++			tag_name: safe(ERR, () => td.tagName.toLowerCase()),
++			class_name: safe(ERR, () => String(td.className)),
++			class_list: safe(ERR, () => Array.prototype.slice.call(td.classList)),
++			is_game_cell: safe(ERR, () => td.classList.contains('game-cell')),
++			is_revealed_class: safe(ERR, () => td.classList.contains('revealed')),
++			text_content: safe(ERR, () => String(td.textContent)),
++			inner_html: safe(ERR, () => String(td.innerHTML)),
++			inner_html_len: safe(null, () => String(td.innerHTML).length),
++			img_src: safe(null, () => {
++				var i = td.querySelector('img')
++				return i ? String(i.getAttribute('src')) : null
++			}),
++			inline_color: safe(ERR, () => String(td.style.color || '')),
++			inline_background_color: safe(ERR, () => String(td.style.backgroundColor || '')),
++			data_row: safe(ERR, () => td.getAttribute('data-row')),
++			data_col: safe(ERR, () => td.getAttribute('data-col'))
++		}
++	}
++
++	snapshot.revealed_pairs = function () {
++		var out = []
++		eachCell((cell, r, c) => {
++			if (cell.revealed === true) out.push([r, c])
++		})
++		return out
++	}
++
++	snapshot.flagged_pairs = function () {
++		var out = []
++		eachCell((cell, r, c) => {
++			if (cell.flagged === true) out.push([r, c])
++		})
++		return out
++	}
++
++	snapshot.revealed_key = function () {
++		return pairsKey(snapshot.revealed_pairs())
++	}
++
++	snapshot.flagged_key = function () {
++		return pairsKey(snapshot.flagged_pairs())
++	}
++
++	/** The seed's own adjBombs for one whole row, as a compact array (read, never recomputed). */
++	snapshot.adj_row = function (row) {
++		try {
++			var b = boardHandle()
++			if (!b) return ERR
++			var rowArr = b[Number(row)]
++			if (!rowArr) return ERR
++			var out = []
++			for (var c = 0; c < rowArr.length; c++) out.push(rowArr[c] ? rowArr[c].adjBombs : null)
++			return out
++		} catch (e) {
++			return ERR
++		}
++	}
++
++	snapshot.version = PROBE_VERSION
++
++	// ---------------------------------------------------- the command surface
++
++	var commands = {
++		/** Positive control: proves the command surface itself is alive. */
++		ping: () => command('ping', () => 'pong'),
++
++		/** The seed's own init() (main.js:144-154). Does NOT render - the seed splits them. */
++		init: () =>
++			command('init', () => {
++				needFn('init', 'init')
++				W.init()
++				return true
++			}),
++
++		/** The seed's own render() (main.js:189-225). */
++		render: () =>
++			command('render', () => {
++				needFn('render', 'render')
++				W.render()
++				return true
++			}),
++
++		/** The seed's own reset sequence, main.js:69-70 in order: init(); render(); */
++		init_render: () =>
++			command('init_render', () => {
++				needFn('init_render', 'init')
++				needFn('init_render', 'render')
++				W.init()
++				W.render()
++				return true
++			}),
++
++		/** Drives the seed's OWN reset listener (createResetListener, main.js:67-72) via a real click. */
++		click_reset: () =>
++			command('click_reset', () => {
++				var e = byId('reset')
++				if (!e) throw new Error('no #reset element')
++				e.click()
++				return true
++			}),
++
++		/**
++		 * Drives the seed's OWN #size-btns listener (main.js:37-41) by clicking the BUTTON.
++		 * Never clicks the <img> inside it: main.js:38 `parseInt(e.target.id.replace('size-',''))`
++		 * yields NaN for an <img> target (seed landmine, NOT repaired here).
++		 */
++		click_size: (n) =>
++			command('click_size', () => {
++				var id = 'size-' + Number(n)
++				var e = byId(id)
++				if (!e) throw new Error('no #' + id + ' element')
++				if (e.tagName.toLowerCase() !== 'button') throw new Error('#' + id + ' is not a button')
++				e.click()
++				return true
++			}),
++
++		/**
++		 * Plain left click on one cell <td>, addressed BY INDEX => the seed's own board listener
++		 * (main.js:43-65) takes the else branch at :54-55 and calls cell.reveal(), running the seed's
++		 * OWN flood-fill (cell.js:45-50). The probe never implements that fill.
++		 */
++		reveal_cell: (row, col) =>
++			command('reveal_cell', () => {
++				needBoard('reveal_cell')
++				var td = tdAt(row, col)
++				if (!td) throw new Error('no td at ' + Number(row) + ',' + Number(col))
++				td.click()
++				return true
++			}),
++
++		/**
++		 * Shift+click on one cell <td>, addressed BY INDEX => the seed's own listener takes the flag
++		 * branch at main.js:52-53 and calls the seed's OWN cell.flag() (cell.js:34-39).
++		 * shiftKey MUST be carried by a dispatched MouseEvent: playwright 1.62.1's Mouse.click does
++		 * not accept modifiers, which measurably fell through to the reveal branch and left the flag
++		 * path completely unprobed (SPEC_15 §11.3). bubbles + cancelable + view reproduce the parts
++		 * of a real click that main.js:43-65 actually reads (target and shiftKey).
++		 */
++		flag_cell: (row, col) =>
++			command('flag_cell', () => {
++				needBoard('flag_cell')
++				var td = tdAt(row, col)
++				if (!td) throw new Error('no td at ' + Number(row) + ',' + Number(col))
++				td.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: W, shiftKey: true }))
++				return true
++			}),
++
++		/** The seed's own revealAll() (main.js:82-88). */
++		reveal_all: () =>
++			command('reveal_all', () => {
++				needFn('reveal_all', 'revealAll')
++				W.revealAll()
++				return true
++			}),
++
++		reveal_all_render: () =>
++			command('reveal_all_render', () => {
++				needFn('reveal_all_render', 'revealAll')
++				needFn('reveal_all_render', 'render')
++				W.revealAll()
++				W.render()
++				return true
++			}),
++
++		/** The seed's own getWinner() (main.js:179-187) - read-only, returns the seed's verdict. */
++		get_winner: () =>
++			command('get_winner', () => {
++				needBoard('get_winner')
++				needFn('get_winner', 'getWinner')
++				return W.getWinner()
++			}),
++
++		/** The seed's own getBombCount() (main.js:156-164) - read-only. */
++		get_bomb_count: () =>
++			command('get_bomb_count', () => {
++				needBoard('get_bomb_count')
++				needFn('get_bomb_count', 'getBombCount')
++				return W.getBombCount()
++			}),
++
++		/**
++		 * Freeze the clock baseline. Pair it with a real wait in the harness, then read
++		 * __MS__().timer_delta_since_mark. This is the ONLY sound way to assert "the clock is
++		 * running" / "the clock stopped" - see landmine 2 (a stale timerId survives a bomb hit).
++		 * No busy-wait is used anywhere: a synchronous spin would block the very setInterval callback
++		 * it is trying to measure.
++		 */
++		timer_mark: () =>
++			command('timer_mark', () => {
++				timerMark = {
++					elapsed_time: typeof W.elapsedTime === 'number' ? W.elapsedTime : null,
++					timer_text: text('timer'),
++					at: Date.now()
++				}
++				return timerMark
++			}),
++
++		timer_clear_mark: () =>
++			command('timer_clear_mark', () => {
++				timerMark = null
++				return null
++			}),
++
++		capture_page_errors: () => {
++			installErrorHooks()
++			return command('capture_page_errors', () => pageErrorCount)
++		},
++
++		reset_page_errors: () => command('reset_page_errors', () => (pageErrorCount = 0)),
++
++		last_cmd: () => ({ ok: lastCmdOk, error: lastCmdError, count: cmdCount, log_last5: cmdLog.slice(-5) })
++	}
++
++	try {
++		W.__MS__ = snapshot
++		W.__MS_CMD__ = commands
++	} catch (e) {
++		/* the probe must never break the application */
++	}
++})()

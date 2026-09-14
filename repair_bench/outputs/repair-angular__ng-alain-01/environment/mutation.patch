@@ -1,0 +1,131 @@
+diff --git a/_mock/_rule.ts b/_mock/_rule.ts
+index 6139e76..42c0868 100644
+--- a/_mock/_rule.ts
++++ b/_mock/_rule.ts
+@@ -35,7 +35,7 @@ function getRule(params: any): any[] {
+     ret = ret.filter(data => params.statusList.indexOf(data.status) > -1);
+   }
+   if (params.no) {
+-    ret = ret.filter(data => data.no.indexOf(params.no) > -1);
++    ret = ret.filter(data => data.no.indexOf(params.no) === -1);
+   }
+   return ret;
+ }
+diff --git a/src/app/layout/basic/widgets/notify.ts b/src/app/layout/basic/widgets/notify.ts
+index 1701846..bd0af0f 100644
+--- a/src/app/layout/basic/widgets/notify.ts
++++ b/src/app/layout/basic/widgets/notify.ts
+@@ -72,7 +72,7 @@ export class HeaderNotify {
+           } as Record<string, string | undefined>
+         )[newItem['status']];
+       }
+-      data.find(w => w.title === newItem['type'])!.list.push(newItem);
++      data.find(w => w.title === '通知')!.list.push(newItem);
+     });
+     return data;
+   }
+diff --git a/src/app/routes/dashboard/workplace/workplace.component.ts b/src/app/routes/dashboard/workplace/workplace.component.ts
+index 2276d2f..da81a18 100644
+--- a/src/app/routes/dashboard/workplace/workplace.component.ts
++++ b/src/app/routes/dashboard/workplace/workplace.component.ts
+@@ -88,7 +88,7 @@ export class DashboardWorkplaceComponent implements OnInit {
+         this.radarData = chart.radarData;
+         this.notice = notice;
+         this.activities = activities.map((item: any) => {
+-          item.template = item.template.split(/@\{([^{}]*)\}/gi).map((key: string) => {
++          item.template = item.template.split(/\{([^{}]*)\}/gi).map((key: string) => {
+             if (item[key]) {
+               return `<a>${item[key].name}</a>`;
+             }
+diff --git a/src/app/routes/pro/form/advanced-form/advanced-form.component.ts b/src/app/routes/pro/form/advanced-form/advanced-form.component.ts
+index eba9e2a..4b5bcd2 100644
+--- a/src/app/routes/pro/form/advanced-form/advanced-form.component.ts
++++ b/src/app/routes/pro/form/advanced-form/advanced-form.component.ts
+@@ -87,7 +87,7 @@ export class AdvancedFormComponent implements OnInit {
+   }
+ 
+   del(index: number): void {
+-    this.items.removeAt(index);
++    this.items.removeAt(this.items.length - 1);
+   }
+ 
+   edit(index: number): void {
+@@ -104,7 +104,6 @@ export class AdvancedFormComponent implements OnInit {
+     if (item.invalid) {
+       return;
+     }
+-    this.editIndex = -1;
+   }
+ 
+   cancel(index: number): void {
+diff --git a/src/app/routes/pro/form/basic-form/basic-form.component.html b/src/app/routes/pro/form/basic-form/basic-form.component.html
+index 5d0f26e..5544e22 100644
+--- a/src/app/routes/pro/form/basic-form/basic-form.component.html
++++ b/src/app/routes/pro/form/basic-form/basic-form.component.html
+@@ -30,7 +30,7 @@
+         <label data-testid="bf-public-2" nz-radio [nzValue]="2">部分公开</label>
+         <label data-testid="bf-public-3" nz-radio [nzValue]="3">不公开</label>
+       </nz-radio-group>
+-      @if (form.value.public === 2) {
++      @if (form.value.public === 3) {
+         <input data-testid="bf-public-users" nz-input formControlName="publicUsers" placeholder="公开给" />
+       }
+     </se>
+diff --git a/src/app/routes/pro/form/basic-form/basic-form.component.ts b/src/app/routes/pro/form/basic-form/basic-form.component.ts
+index 1e6bbee..4e476b0 100644
+--- a/src/app/routes/pro/form/basic-form/basic-form.component.ts
++++ b/src/app/routes/pro/form/basic-form/basic-form.component.ts
+@@ -41,7 +41,6 @@ export class BasicFormComponent {
+   submit(): void {
+     this.submitting = true;
+     setTimeout(() => {
+-      this.submitting = false;
+       this.msg.success(`提交成功`);
+       this.cdr.detectChanges();
+     }, 1000);
+diff --git a/src/app/routes/pro/form/step-form/step1.component.ts b/src/app/routes/pro/form/step-form/step1.component.ts
+index e0e0b66..8482814 100644
+--- a/src/app/routes/pro/form/step-form/step1.component.ts
++++ b/src/app/routes/pro/form/step-form/step1.component.ts
+@@ -33,7 +33,7 @@ export class Step1Component implements OnInit {
+   }
+ 
+   _submitForm(): void {
+-    Object.assign(this.item, this.form.value);
++    Object.assign(this.form.value, this.item);
+     ++this.item.step;
+   }
+ }
+diff --git a/src/app/routes/pro/list/basic-list/basic-list.component.ts b/src/app/routes/pro/list/basic-list/basic-list.component.ts
+index 1701d71..5e75d39 100644
+--- a/src/app/routes/pro/list/basic-list/basic-list.component.ts
++++ b/src/app/routes/pro/list/basic-list/basic-list.component.ts
+@@ -45,7 +45,6 @@ export class ProBasicListComponent implements OnInit {
+     this.http.get('/api/list', { count: 5 }).subscribe(res => {
+       this.data = res;
+       this.loading = false;
+-      this.cdr.detectChanges();
+     });
+   }
+ 
+@@ -54,7 +53,7 @@ export class ProBasicListComponent implements OnInit {
+       if (record.id) {
+         record = { ...record, id: 'mock_id', percent: 0, ...res };
+       } else {
+-        this.data.splice(0, 0, res);
++        this.data.splice(this.data.length, 0, res);
+         this.data = [...this.data];
+       }
+       this.cdr.detectChanges();
+diff --git a/src/app/routes/pro/list/table-list/table-list.component.html b/src/app/routes/pro/list/table-list/table-list.component.html
+index 4586a60..e044cf4 100644
+--- a/src/app/routes/pro/list/table-list/table-list.component.html
++++ b/src/app/routes/pro/list/table-list/table-list.component.html
+@@ -1,6 +1,6 @@
+ <page-header [title]="'查询表格'" />
+ <nz-card [nzBordered]="false">
+-  <form nz-form [nzLayout]="'inline'" (ngSubmit)="getData()" class="search__form">
++  <form nz-form [nzLayout]="'inline'" class="search__form">
+     <div nz-row [nzGutter]="{ xs: 8, sm: 8, md: 8, lg: 24, xl: 48, xxl: 48 }">
+       <div nz-col nzMd="8" nzSm="24">
+         <nz-form-item>

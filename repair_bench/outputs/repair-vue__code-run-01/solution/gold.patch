@@ -1,0 +1,164 @@
+diff --git a/src/components/Console.vue b/src/components/Console.vue
+index b6171c6..08586c7 100644
+--- a/src/components/Console.vue
++++ b/src/components/Console.vue
+@@ -80,7 +80,7 @@ const useLog = ({ proxy }) => {
+   // 错误信息数量
+   const errorCount = computed(() => {
+     return logList.value.filter(item => {
+-      return item.type === 'warn'
++      return item.type === 'error'
+     }).length
+   })
+ 
+diff --git a/src/components/EditAssets.vue b/src/components/EditAssets.vue
+index 40584cf..fb67874 100644
+--- a/src/components/EditAssets.vue
++++ b/src/components/EditAssets.vue
+@@ -122,7 +122,11 @@ const useHandleAssets = () => {
+   // 添加资源
+   const addResource = item => {
+     addResourceType.value = item
+-    resourceData.value = editData.value.code[item].resources || []
++    resourceData.value = (editData.value.code[item].resources || []).map(r => {
++      return {
++        ...r
++      }
++    })
+     addResourceDialogVisible.value = true
+   }
+ 
+diff --git a/src/components/Editor.vue b/src/components/Editor.vue
+index 32e159a..11fba09 100644
+--- a/src/components/Editor.vue
++++ b/src/components/Editor.vue
+@@ -352,6 +352,7 @@ const useAutoRun = ({ store, runCode }) => {
+     if (!isAutoRun.value) {
+       return
+     }
++    clearTimeout(autoRunTimer)
+     autoRunTimer = setTimeout(() => {
+       runCode()
+     }, 1000)
+diff --git a/src/components/EditorItem.vue b/src/components/EditorItem.vue
+index 2d70cb7..3dc8a27 100644
+--- a/src/components/EditorItem.vue
++++ b/src/components/EditorItem.vue
+@@ -352,6 +352,16 @@ const useDoc = ({ props }) => {
+     return editor.getValue()
+   }
+ 
++  // 更新文档内容
++  watch(
++    () => {
++      return props.content
++    },
++    () => {
++      updateDoc(props.content, props.language)
++    }
++  )
++
+   return {
+     updateDoc,
+     getValue
+diff --git a/src/components/Header.vue b/src/components/Header.vue
+index 68b50fe..bc0b7fa 100644
+--- a/src/components/Header.vue
++++ b/src/components/Header.vue
+@@ -39,7 +39,7 @@
+       <div class="btn" @click="save" v-loading="loading" data-testid="cr-btn-save">
+         <span class="icon iconfont icon-w_yunduan"></span> 保存
+       </div>
+-      <div class="dropdownBtn">
++      <div class="dropdownBtn" @click.stop>
+         <div class="btn" @click="toggleMoreList()" data-testid="cr-btn-more">
+           <span class="icon iconfont icon-gengduo"></span>
+         </div>
+@@ -309,6 +309,7 @@ const useTemplate = ({ layout, store, proxy }) => {
+     checkLayout(data)
+     nextTick(() => {
+       store.commit('setCode', JSON.parse(JSON.stringify(data.code)))
++      proxy.$eventEmitter.emit('reset_code')
+       templateDialogVisible.value = false
+     })
+   }
+diff --git a/src/components/Preview.vue b/src/components/Preview.vue
+index 62cadf9..78f8238 100644
+--- a/src/components/Preview.vue
++++ b/src/components/Preview.vue
+@@ -205,12 +205,14 @@ const useCreateHtml = () => {
+       <script type="module">
+         ${openAlmightyConsole ? 'eruda.init();' : ''}
+         ${jsStr}
++        ${successRunNotify}
+       <\/script>`
+     } else {
+       jsContent = `<script>
+         ${openAlmightyConsole ? 'eruda.init();' : ''}
+         try {
+           ${jsStr}
++          ${successRunNotify}
+         } catch (err) {
+           console.error('js代码运行出错')
+           console.error(err)
+@@ -279,6 +281,7 @@ const useRun = ({
+   const runStartTime = ref(0)
+   const run = async () => {
+     try {
++      runStartTime.value = Date.now()
+       proxy.$eventEmitter.emit('startRun')
+       if (!keepPreviousLogs.value) {
+         proxy.$eventEmitter.emit('clear_logs')
+@@ -434,7 +437,7 @@ const useDynamicRunJs = ({ proxy }) => {
+   // 动态执行js
+   const dynamicRunJs = code => {
+     iframeRef.value.contentWindow.postMessage({
+-      type: 'log_info',
++      type: 'command',
+       data: code
+     })
+   }
+diff --git a/src/components/Setting.vue b/src/components/Setting.vue
+index f31e6b1..47ed209 100644
+--- a/src/components/Setting.vue
++++ b/src/components/Setting.vue
+@@ -97,7 +97,7 @@ const useAutoRun = ({ store, config }) => {
+ 
+   // 切换自动运行
+   const autoRunChange = e => {
+-    store.commit('setOpenAlmightyConsole', e)
++    store.commit('setAutoRun', e)
+   }
+ 
+   return {
+diff --git a/src/pages/edit/Index.vue b/src/pages/edit/Index.vue
+index 6062973..cf3c274 100644
+--- a/src/pages/edit/Index.vue
++++ b/src/pages/edit/Index.vue
+@@ -95,6 +95,8 @@ const useQueryStore = (store, router) => {
+         data
+       }
+     })
++  }, {
++    deep: true
+   })
+ }
+ 
+diff --git a/src/utils/index.js b/src/utils/index.js
+index 84b81fb..680f3c2 100644
+--- a/src/utils/index.js
++++ b/src/utils/index.js
+@@ -153,11 +153,11 @@ export const newWindowOpenUrl = url => {
+ export const createShareUrl = (id, queryData) => {
+   if (queryData) {
+     return `${location.origin}${base}${
+-      routerMode === 'hash' ? '#/share/' + id : 'share/' + id
++      routerMode === 'hash' ? '#/?data=' + queryData : '/?data=' + queryData
+     }`
+   }
+   return `${location.origin}${base}${
+-    routerMode === 'hash' ? '#/?data=' + queryData : '/?data=' + queryData
++    routerMode === 'hash' ? '#/share/' + id : 'share/' + id
+   }`
+ }
+ 

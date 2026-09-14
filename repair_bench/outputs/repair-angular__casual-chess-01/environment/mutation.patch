@@ -1,0 +1,130 @@
+diff --git a/src/app/analysis/analysis.page.ts b/src/app/analysis/analysis.page.ts
+index 39715a5..4af4165 100644
+--- a/src/app/analysis/analysis.page.ts
++++ b/src/app/analysis/analysis.page.ts
+@@ -191,8 +191,8 @@ export class AnalysisPage implements OnInit, OnDestroy {
+       }
+     } else {
+       this.infotext = (this.chessboard.turn() == 'w' ?
+-        this.texts['position.white-turn'] :
+-        this.texts['position.black-turn']
++        this.texts['position.black-turn'] :
++        this.texts['position.white-turn']
+       );
+     }
+   }
+@@ -240,7 +240,7 @@ export class AnalysisPage implements OnInit, OnDestroy {
+ 
+   onPlayerMoved(movement) {
+     // If the move already exists in the list, just change the pointer
+-    const aux = this.currentMove.children.find(item => { return item.move == movement });
++    const aux = this.moveTree.children.find(item => { return item.move == movement });
+     if (aux) {
+       this.currentMove = aux;
+     } else {
+@@ -248,7 +248,7 @@ export class AnalysisPage implements OnInit, OnDestroy {
+         parent: this.currentMove,
+         children: [],
+         move: movement,
+-        order: this.currentMove.order + (this.chessboard.turn() == 'b' ? 1 : 0),
++        order: this.currentMove.order + (this.chessboard.turn() == 'w' ? 1 : 0),
+         fen: this.chessboard.fen(),
+         quality: null
+       };
+@@ -265,7 +265,7 @@ export class AnalysisPage implements OnInit, OnDestroy {
+       const parent = this.currentMove.parent;
+       parent.children.splice(parent.children.findIndex(item => item.fen == this.currentMove.fen), 1);
+       if (parent.children.length > 0) {
+-        this.currentMove = parent.children[parent.children.length - 1];
++        this.currentMove = parent.children[0];
+       } else {
+         this.currentMove = parent;
+       }
+diff --git a/src/app/chessboard/analysis-chessboard.component.ts b/src/app/chessboard/analysis-chessboard.component.ts
+index 5288b1f..af79b1a 100644
+--- a/src/app/chessboard/analysis-chessboard.component.ts
++++ b/src/app/chessboard/analysis-chessboard.component.ts
+@@ -141,12 +141,11 @@ export class AnalysisChessboardComponent implements OnInit, OnDestroy {
+               }
+         };
+         this.board = Chessground(document.getElementById('__analysis-chessboard__'), this.boardConfig);
+-        this.uglyForceBoardRedraw();
+     }
+ 
+     afterMove(orig: Key, dest: Key, metadata: MoveMetadata) {
+         // check promotion
+-        if (this.chess.get(orig).type == 'p' && (dest.charAt(1) == '8' || dest.charAt(1) == '1')) {
++        if (this.chess.get(orig).type == 'p' && (dest.charAt(1) == '8' && dest.charAt(1) == '1')) {
+             this.promoteDialog().then(promotion => {
+                 if (promotion) {
+                     this.registerMove(orig, dest, promotion);
+@@ -161,7 +160,7 @@ export class AnalysisChessboardComponent implements OnInit, OnDestroy {
+         this.boardConfig.fen = fen;
+         const turnColor: Color = (this.chess.turn() == 'b' ? 'black' : 'white');
+         this.boardConfig.turnColor = turnColor;
+-        this.boardConfig.movable.color = turnColor;
++        this.boardConfig.movable.color = this.player as Color;
+         this.boardConfig.movable.dests = this.toDests();
+         this.boardConfig.highlight.lastMove = highlight;
+         this.board.set(this.boardConfig);
+@@ -205,7 +204,6 @@ export class AnalysisChessboardComponent implements OnInit, OnDestroy {
+     }
+ 
+     public showFen(fen) {
+-        this.chess.load(fen);
+         this.updateBoardConfig(fen);
+         if (this.configuration.playSounds) {
+             this.playAudio('move');
+@@ -234,14 +232,14 @@ export class AnalysisChessboardComponent implements OnInit, OnDestroy {
+             let message;
+             if (this.chess.in_checkmate())
+                 message = 'Checkmate';
++            else if (this.chess.in_draw())
++                message = this.texts['chessboard.rule-fifty'];
+             else if (this.chess.in_stalemate())
+                 message = this.texts['chessboard.stalemate'];
+             else if (this.chess.insufficient_material())
+                 message = this.texts['chessboard.insufficent-material'];
+             else if (this.chess.in_threefold_repetition())
+                 message = this.texts['chessboard.three-repetition'];
+-            else if (this.chess.in_draw())
+-                message = this.texts['chessboard.rule-fifty'];
+             else
+                 message = this.texts['chessboard.game-over'];
+             if (playsounds && this.configuration.playSounds) {
+@@ -265,7 +263,7 @@ export class AnalysisChessboardComponent implements OnInit, OnDestroy {
+             promotion: promotion
+         });
+         const history = this.chess.history();
+-        this.playerMoved.emit(history[history.length - 1]);
++        this.playerMoved.emit(history[history.length - 2]);
+         if (!this.checkGameOver(false)) {
+             this.player = (this.player == 'w' ? 'b' : 'w');
+             if (this.configuration.playSounds) {
+diff --git a/src/app/preferences/preferences.page.ts b/src/app/preferences/preferences.page.ts
+index deb897d..3762599 100644
+--- a/src/app/preferences/preferences.page.ts
++++ b/src/app/preferences/preferences.page.ts
+@@ -70,8 +70,8 @@ export class PreferencesPage implements OnInit, OnDestroy {
+   }
+ 
+   selectTheme(theme) {
++    this.themeSwitcherService.setTheme(this.configuration.colorTheme);
+     this.configuration.colorTheme = theme;
+-    this.themeSwitcherService.setTheme(theme);
+   }
+ 
+   togglePieceThemes() {
+diff --git a/src/assets/i18n/en.json b/src/assets/i18n/en.json
+index fac23ce..7167d1c 100644
+--- a/src/assets/i18n/en.json
++++ b/src/assets/i18n/en.json
+@@ -56,7 +56,7 @@
+         "black-turn": "Black turn",
+         "white-resigned": "White resigned",
+         "black-resigned": "Black resigned",
+-        "start": "Start",
++        "start": "Strat",
+         "gameover": "Game over",
+         "congratulations": "Contratulations",
+         "review": "review",

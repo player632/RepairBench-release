@@ -1,0 +1,183 @@
+diff --git a/src/components/Input/index.tsx b/src/components/Input/index.tsx
+index a2f888c..c04789f 100644
+--- a/src/components/Input/index.tsx
++++ b/src/components/Input/index.tsx
+@@ -5,7 +5,7 @@ import { ListVariant, ListScale } from './types'
+ 
+ const Input = (props: IInputProps) => {
+   const { scale, variant, css, required, invalid, disabled, ...rest } = props
+-  props = mergeProps({ variant: 'default', scale: 'default', css: '' }, props)
++  props = mergeProps(props, { variant: 'default', scale: 'default', css: '' })
+ 
+   return (
+     <input
+diff --git a/src/components/_dapps/DeveloperDaoNftLookup/SerialNumber/index.tsx b/src/components/_dapps/DeveloperDaoNftLookup/SerialNumber/index.tsx
+index 7e1d3b0..a32852e 100644
+--- a/src/components/_dapps/DeveloperDaoNftLookup/SerialNumber/index.tsx
++++ b/src/components/_dapps/DeveloperDaoNftLookup/SerialNumber/index.tsx
+@@ -5,7 +5,7 @@ const SerialNumber = (props: ISerialNumberProps) => {
+     <div data-testid="rb-serial" class="tracking-lg font-800 pt-6 text-base text-end pie-3">
+       <span data-testid="rb-serial-id" class="text-neutral-900">{props.id}</span>
+       <span data-testid="rb-serial-sep" class="mx-1 text-neutral-900 text-opacity-20">/</span>
+-      <span data-testid="rb-serial-max" class="text-stroke-neutral-900 text-stroke-ss text-transparent">{props.max}</span>
++      <span data-testid="rb-serial-max" class="text-stroke-neutral-900 text-stroke-ss text-transparent">{props.id}</span>
+     </div>
+   )
+ }
+diff --git a/src/components/_dapps/DeveloperDaoNftLookup/TicketFrame/index.tsx b/src/components/_dapps/DeveloperDaoNftLookup/TicketFrame/index.tsx
+index 78b916d..3f74bc7 100644
+--- a/src/components/_dapps/DeveloperDaoNftLookup/TicketFrame/index.tsx
++++ b/src/components/_dapps/DeveloperDaoNftLookup/TicketFrame/index.tsx
+@@ -17,22 +17,23 @@ export const TicketHead = (props: ITicketHeadProps) => {
+ }
+ 
+ export const TicketFrame = (props: ITicketFrameProps) => {
+-  const [holographicPositionX, setHolographicPositionX] = createSignal('54.16374269005848%')
++  const { ticketNumber, backgroundStyle, isBackface } = props
++  let holographicPositionX = '54.16374269005848%'
+ 
+   function updateHolographicPositionX(e: MouseEvent) {
+     const x = e.clientX
+     const width = document.documentElement.clientWidth
+     const value = x / width
+-    setHolographicPositionX(`${value * 100}%`)
++    holographicPositionX = `${value * 100}%`
+   }
+ 
+   return (
+     <div class="absolute w-full h-full top-0 left-0">
+       <section
+         data-testid="rb-ticket"
+-        class={`w-full h-auto min-h-158 overflow-hidden flex flex-col relative rounded-lg ${styles.ticket} ${props.backgroundStyle}`}
++        class={`w-full h-auto min-h-158 overflow-hidden flex flex-col relative rounded-lg ${styles.ticket} ${backgroundStyle}`}
+         style={{
+-          '--holographicPositionX': holographicPositionX(),
++          '--holographicPositionX': holographicPositionX,
+         }}
+         onMouseOver={updateHolographicPositionX}
+       >
+@@ -43,8 +44,8 @@ export const TicketFrame = (props: ITicketFrameProps) => {
+         </div>
+         <TicketHead>
+           <Switch>
+-            <Match when={props.isBackface}>
+-              <BarcodeId id={props.ticketNumber} />
++            <Match when={isBackface}>
++              <BarcodeId id={ticketNumber} />
+             </Match>
+           </Switch>
+         </TicketHead>
+diff --git a/src/components/_dapps/DeveloperDaoNftLookup/index.tsx b/src/components/_dapps/DeveloperDaoNftLookup/index.tsx
+index 8d89575..ef68f5c 100644
+--- a/src/components/_dapps/DeveloperDaoNftLookup/index.tsx
++++ b/src/components/_dapps/DeveloperDaoNftLookup/index.tsx
+@@ -1,4 +1,4 @@
+-import { Switch, Match, createEffect, createSignal, Show } from 'solid-js'
++import { Switch, Match, createEffect, createSignal, Show, untrack } from 'solid-js'
+ import { IconOpenSea, IconTwitter } from '@components/Icons'
+ import { ButtonLink } from '@components/Button'
+ import { OPENSEA_DIRECT_LINK_PREFIX } from '@utils/DeveloperDaoConstants'
+@@ -39,11 +39,13 @@ const DeveloperDaoNftLookup = (props: IDeveloperDaoNftLookupProps) => {
+ 
+   // Update tagline text
+   createEffect(() => {
+-    if (props.nft.error !== null || props.owner.error !== null)
+-      setTaglineText('Something went wrong (definitely something)')
+-    if (props.nft.loading === true || props.owner.loading === true) setTaglineText('Loading (probably nothing...)')
+-    if (props.nft.loading === false && props.owner.loading === false && props.nft.error === null)
+-      setTaglineText('Probably nothing')
++    untrack(() => {
++      if (props.nft.error !== null || props.owner.error !== null)
++        setTaglineText('Something went wrong (definitely something)')
++      if (props.nft.loading === true || props.owner.loading === true) setTaglineText('Loading (probably nothing...)')
++      if (props.nft.loading === false && props.owner.loading === false && props.nft.error === null)
++        setTaglineText('Probably nothing')
++    })
+   })
+ 
+   // update tilt instance
+@@ -154,7 +156,7 @@ const DeveloperDaoNftLookup = (props: IDeveloperDaoNftLookupProps) => {
+           </TicketFrame>
+         </div>
+       </div>
+-      <Show when={props.nft.value !== null && props.owner.address !== null}>
++      <Show when={props.nft.value !== null}>
+         <div data-testid="rb-links" class="animate-appear px-2 pt-8 w-full max-w-75 flex flex-col space-y-3 justify-center items-center">
+           <ButtonLink
+             data-testid="rb-link-opensea"
+diff --git a/src/components/_dapps/DeveloperDaoNftLookup/useNftLookupDapp.ts b/src/components/_dapps/DeveloperDaoNftLookup/useNftLookupDapp.ts
+index 363d0ce..d70d271 100644
+--- a/src/components/_dapps/DeveloperDaoNftLookup/useNftLookupDapp.ts
++++ b/src/components/_dapps/DeveloperDaoNftLookup/useNftLookupDapp.ts
+@@ -72,7 +72,7 @@ async function fetchNFTOwnedByAddress(address: string, onError: () => void) {
+     const tokens = await Promise.all(
+       indexes.map(async (i) => parseInt(await contract.functions.tokenOfOwnerByIndex(address, i))),
+     )
+-    tokens.sort((a, b) => a - b)
++    tokens.sort()
+     cachedTokensByAddress[address] = tokens
+     return tokens
+   } catch (err) {
+diff --git a/src/pages/home/index.tsx b/src/pages/home/index.tsx
+index 5dd2002..23ffec4 100644
+--- a/src/pages/home/index.tsx
++++ b/src/pages/home/index.tsx
+@@ -10,9 +10,10 @@ import styles from './index.module.css'
+ 
+ export default function Home() {
+   const [nftStore, setNftStore] = useNftLookupDapp()
++  const devId = nftStore.lookupId
+   const [searchParams, setSearchParams] = useSearchParams()
+   /* @ts-expect-error */
+-  const [lookupValue, setLookupValue] = createSignal(nftStore.lookupId)
++  const [lookupValue, setLookupValue] = createSignal('')
+ 
+   /* RepairBench instrumentation: publish the store scalars, including ownerNFTList which
+    * the UI never renders. Live getters, read-only, fail-closed - see src/rb-probe.ts. */
+@@ -30,11 +31,12 @@ export default function Home() {
+     ownerListJoin: () => (nftStore.ownerNFTList.list ? nftStore.ownerNFTList.list.join(',') : null),
+   })
+ 
++  let pendingLookupId: any = nftStore.lookupId
++
+   function handleSubmit(e: Event) {
+     e.preventDefault()
+-    /* @ts-expect-error */
+-    setNftStore('lookupId', lookupValue())
+-    setSearchParams({ id: lookupValue() })
++    pendingLookupId = lookupValue()
++    setSearchParams({ id: pendingLookupId })
+   }
+ 
+   function handleFieldLookupIdChange(e: any) {
+@@ -86,7 +88,7 @@ export default function Home() {
+               scale={ListScale.sm}
+               onChange={handleFieldLookupIdChange}
+               /* @ts-expect-error */
+-              disabled={nftStore.nftData.loading === true || nftStore.owner.loading === true ? true : false}
++              disabled={nftStore.nftData.loading === true ? true : false}
+             />
+           </label>
+           <ButtonCta
+@@ -118,7 +120,7 @@ export default function Home() {
+         </form>
+       </div>
+       {/* @ts-expect-error */}
+-      <DeveloperDaoNftLookup nft={nftStore.nftData} owner={nftStore.owner} devId={nftStore.lookupId} />
++      <DeveloperDaoNftLookup nft={nftStore.nftData} owner={nftStore.owner} devId={devId} />
+     </div>
+   )
+ }
+diff --git a/src/routes.ts b/src/routes.ts
+index f6e79e3..a3f4496 100644
+--- a/src/routes.ts
++++ b/src/routes.ts
+@@ -9,7 +9,7 @@ export const routes: RouteDefinition[] = [
+     component: Home,
+   },
+   {
+-    path: '**',
++    path: '/404',
+     component: lazy(() => import('./errors/404')),
+   },
+ ]

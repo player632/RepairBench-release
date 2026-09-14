@@ -1,0 +1,137 @@
+diff --git a/components/EditPreviewContainer.js b/components/EditPreviewContainer.js
+index 518ca85..e17438a 100644
+--- a/components/EditPreviewContainer.js
++++ b/components/EditPreviewContainer.js
+@@ -17,7 +17,7 @@ const EditPreviewContainer = ({
+   const { isMobile } = useDeviceDetect()
+ 
+   useEffect(() => {
+-    setSelectedTab(isMobile ? TAB.PREVIEW : TAB.RAW)
++    setSelectedTab(isMobile ? TAB.EDITOR : TAB.PREVIEW)
+   }, [isMobile])
+ 
+   const showEditorColumn = !isMobile || selectedTab === TAB.EDITOR
+diff --git a/components/Nav.js b/components/Nav.js
+index 7490f0e..ac77601 100644
+--- a/components/Nav.js
++++ b/components/Nav.js
+@@ -14,7 +14,7 @@ export const Nav = ({
+   const markdown = selectedSectionSlugs.reduce((acc, section) => {
+     const template = getTemplate(section)
+     if (template) {
+-      return `${template.markdown}${acc}`
++      return `${acc}${template.markdown}`
+     } else {
+       return acc
+     }
+diff --git a/components/SectionsColumn.js b/components/SectionsColumn.js
+index 96f0572..8376c3d 100644
+--- a/components/SectionsColumn.js
++++ b/components/SectionsColumn.js
+@@ -63,6 +63,7 @@ export const SectionsColumn = ({
+       slugList.forEach(function (entry) {
+         setSectionSlugs((prev) => prev.filter((s) => s !== entry))
+       })
++      setSelectedSectionSlugs(slugList)
+       setFocusedSectionSlug(slugList[0])
+       localStorage.setItem('current-focused-slug', slugList[0])
+     }
+@@ -89,7 +90,7 @@ export const SectionsColumn = ({
+ 
+   const handleDragEnd = (event) => {
+     const { active, over } = event
+-    if (active.id === over.id) {
++    if (active.id !== over.id) {
+       setSelectedSectionSlugs((sections) => {
+         const oldIndex = sections.findIndex((s) => s === active.id)
+         const newIndex = sections.findIndex((s) => s === over.id)
+@@ -103,6 +104,7 @@ export const SectionsColumn = ({
+     e.stopPropagation()
+     setSelectedSectionSlugs((prev) => prev.filter((s) => s !== sectionSlug))
+     setSectionSlugs((prev) => [...prev, sectionSlug])
++    setFocusedSectionSlug(null)
+     localStorage.setItem('current-focused-slug', 'noEdit')
+   }
+ 
+@@ -120,7 +122,7 @@ export const SectionsColumn = ({
+ ## ${sectionTitle}`,
+       }
+     } else {
+-      originalSection = templates.find((s) => s.slug === sectionSlug)
++      originalSection = originalTemplate.find((s) => s.slug === sectionSlug)
+     }
+ 
+     const newTemplates = templates.map((s) => {
+@@ -144,7 +146,7 @@ export const SectionsColumn = ({
+       const slugList = data ? data.split(',') : []
+ 
+       setSectionSlugs((prev) => [...prev, ...slugList].filter((s) => s !== 'title-and-description'))
+-      setSelectedSectionSlugs([])
++      setSelectedSectionSlugs(['title-and-description'])
+       setFocusedSectionSlug('title-and-description')
+       localStorage.setItem('current-focused-slug', 'noEdit')
+       setTemplates(originalTemplate)
+@@ -187,7 +189,7 @@ export const SectionsColumn = ({
+ 
+     const suggestedSlugs = getAutoCompleteResults(searchFilter.trim())
+ 
+-    setFilteredSlugs([])
++    setFilteredSlugs(suggestedSlugs)
+   }, [searchFilter])
+ 
+   return (
+diff --git a/hooks/useLocalStorage.js b/hooks/useLocalStorage.js
+index ccf703c..4edba33 100644
+--- a/hooks/useLocalStorage.js
++++ b/hooks/useLocalStorage.js
+@@ -21,7 +21,7 @@ export default function useLocalStorage() {
+       setTimer(
+         setTimeout(() => {
+           localStorage.setItem('readme-backup', JSON.stringify(templates))
+-        }, 60000)
++        }, 1000)
+       )
+     } catch (_) {
+       console.error('Failed to create local backup')
+@@ -30,7 +30,7 @@ export default function useLocalStorage() {
+ 
+   const deleteBackup = () => {
+     try {
+-      localStorage.removeItem('readme-backups')
++      localStorage.removeItem('readme-backup')
+     } catch (_) {
+       console.error('Failed to delete local backup')
+     }
+diff --git a/pages/editor.js b/pages/editor.js
+index 1ae4e93..44aef77 100644
+--- a/pages/editor.js
++++ b/pages/editor.js
+@@ -16,8 +16,14 @@ export default function Editor() {
+   const [showDrawer, toggleDrawer] = useState(false)
+   const { backup } = useLocalStorage()
+ 
++  useEffect(() => {
++    if (backup) {
++      setTemplates(backup)
++    }
++  }, [backup])
++
+   const getTemplate = (slug) => {
+-    return sectionTemplates.find((t) => t.slug === slug)
++    return templates.find((t) => t.slug === slug)
+   }
+ 
+   useEffect(() => {
+diff --git a/pages/index.js b/pages/index.js
+index 6ef30e7..4ea7492 100644
+--- a/pages/index.js
++++ b/pages/index.js
+@@ -64,7 +64,7 @@ const Home = () => {
+               </div>
+               <div className="flex justify-center mt-6">
+                 <Link
+-                  href="/"
++                  href="/editor"
+                   className="inline-flex items-center px-8 py-3 font-medium text-xl bg-emerald-500 hover:bg-emerald-400 border border-transparent rounded-lg text-white shadow"
+                   data-testid="rs-get-started"
+                 >

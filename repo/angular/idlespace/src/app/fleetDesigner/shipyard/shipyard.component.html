@@ -1,0 +1,154 @@
+<h1>
+  <clr-icon shape="ship" size="48" class="resIcon"></clr-icon>
+  Shipyard
+</h1>
+
+<div class="clr-row">
+  <div class="clr-col-12	clr-col-sm-12	clr-col-md-12	clr-col-lg-6 clr-col-xl-6">
+    <div class="clr-row">
+      <div class="clr-col-6">
+        Naval Capacity:
+        <app-formatted-quantity
+          [quantity]="ms.game.fleetManager.totalWantedNavalCap"
+          [integer]="true"
+          [class.text-danger]="
+            ms.game.fleetManager.totalWantedNavalCap.gt(
+              ms.game.fleetManager.totalNavalCapacity
+            )
+          "
+        >
+        </app-formatted-quantity>
+        /
+        <app-formatted-quantity
+          [quantity]="ms.game.fleetManager.totalNavalCapacity"
+          [integer]="true"
+        ></app-formatted-quantity>
+      </div>
+
+      <div class="clr-col-6">
+        Ship:
+        <app-formatted-quantity
+          [quantity]="ms.game.fleetManager.totalShipWant"
+          [integer]="true"
+          [class.text-danger]="ms.game.fleetManager.totalShipWant > 1e4"
+        >
+        </app-formatted-quantity>
+        /
+        <app-formatted-quantity [quantity]="1e4" [integer]="true">
+        </app-formatted-quantity>
+      </div>
+    </div>
+
+    <ng-container *ngIf="ms.game.resourceManager.shipyardX1.quantity.lte(0)">
+      <clr-alert [clrAlertType]="'warning'" [clrAlertClosable]="false">
+        <clr-alert-item>
+          <span class="alert-text">
+            You don't have any
+            <a [routerLink]="'/home/res/S1'"
+              >{{ ms.game.resourceManager.shipyardX1.name }}
+            </a>
+          </span>
+        </clr-alert-item>
+      </clr-alert>
+      <br />
+    </ng-container>
+
+    <div
+      *ngIf="ms.game.fleetManager.ships.length > 0; else noDesignAlert"
+      class="btn-group btn-primary"
+    >
+      <button
+        class="btn"
+        [disabled]="!ms.game.fleetManager.configurationValid"
+        (click)="save()"
+      >
+        <clr-icon shape="floppy"></clr-icon>
+        Save
+      </button>
+      <button
+        class="btn btn-success"
+        [disabled]="!ms.game.fleetManager.configurationValid"
+        (click)="make()"
+      >
+        <clr-icon shape="cog"></clr-icon>
+        Reinforce fleet
+      </button>
+    </div>
+
+    <clr-alert [clrAlertType]="'info'" [clrAlertClosable]="false">
+      <clr-alert-item>
+        <span class="alert-text">
+          Total Price:
+          <app-price-line
+            [canBuy]="true"
+            [unit]="ms.game.resourceManager.shipyardProgress"
+            [price]="totalPrice"
+          ></app-price-line>
+        </span>
+      </clr-alert-item>
+    </clr-alert>
+
+    <ng-template #noDesignAlert>
+      <clr-alert [clrAlertClosable]="false">
+        <clr-alert-item>
+          <span class="alert-text">
+            You dont have any ship design. Make one
+            <a routerLink="/fleet/design/new">here</a>
+          </span>
+        </clr-alert-item>
+      </clr-alert>
+    </ng-template>
+
+    <form clrForm clrLayout="compact">
+      <ng-container
+        *ngFor="let ds of ms.game.fleetManager.ships; trackBy: designId"
+      >
+        <clr-input-container>
+          <label class="clr-col-12 clr-col-md-8">
+            <clr-icon shape="angle-double" *ngIf="ds.isUpgrading"></clr-icon>
+            <clr-icon shape="cog" *ngIf="ds.isBuilding"></clr-icon>
+            <clr-icon [attr.shape]="ds.type.shape"></clr-icon>
+            {{ ds.name }}
+            <small> ({{ ds.type.navalCapacity }}) </small>
+          </label>
+
+          <input
+            class="clr-col-12 clr-col-md-4"
+            type="number"
+            clrInput
+            min="0"
+            [name]="ds.id"
+            [attr.max]="ds.sliderOptions.ceil / ds.sliderOptions.step"
+            [(ngModel)]="ds.wantQuantityTemp"
+          />
+        </clr-input-container>
+
+        <input
+          type="range"
+          [name]="'sl' + ds.id"
+          [min]="ds.sliderOptions.floor"
+          [max]="ds.sliderOptions.ceil"
+          [step]="ds.sliderOptions.step"
+          [(ngModel)]="ds.wantQuantityTemp"
+        />
+        <!-- (change)="onSliderChange()" -->
+      </ng-container>
+    </form>
+  </div>
+  <div class="clr-col-12	clr-col-sm-12	clr-col-md-12	clr-col-lg-6 clr-col-xl-6">
+    <h4>
+      Jobs:
+
+      <app-polynom
+        [c]="ms.game.resourceManager.shipyardProgress.c"
+      ></app-polynom>
+    </h4>
+    <div cdkDropList (cdkDropListDropped)="drop($event)" class="myBg drag-list">
+      <app-job
+        cdkDrag
+        *ngFor="let job of ms.game.shipyard.jobs; trackBy: getJobId"
+        [job]="job"
+      ></app-job>
+    </div>
+  </div>
+</div>

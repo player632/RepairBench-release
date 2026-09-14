@@ -1,0 +1,157 @@
+diff --git a/admiral/dataTable/DataTable.tsx b/admiral/dataTable/DataTable.tsx
+index 2081e01..9761a72 100644
+--- a/admiral/dataTable/DataTable.tsx
++++ b/admiral/dataTable/DataTable.tsx
+@@ -318,7 +318,7 @@ export function DataTable<RecordType extends { id: number | string }>({
+                         pageSize: Number(urlState.page_size) || 10,
+                         total,
+                         showTotal: paginationShowTotal,
+-                        showSizeChanger: !!total && total > 10,
++                        showSizeChanger: !!total && total > 100,
+                         locale: paginationLocale,
+                     }
+                 }
+diff --git a/admiral/filters/Filters.tsx b/admiral/filters/Filters.tsx
+index 7cea2de..6e11591 100644
+--- a/admiral/filters/Filters.tsx
++++ b/admiral/filters/Filters.tsx
+@@ -69,7 +69,7 @@ export function Filters({ locale, fetchInitialData, children }: FiltersProps) {
+     }, [setUrlState, hideDrawer])
+ 
+     const onSubmit = useCallback(() => {
+-        const filters = formRef.current?.values ?? {}
++        const filters = {}
+         setUrlState((prev: Record<string, any>) => ({ ...prev, filter: filters, page: undefined }))
+         hideDrawer()
+     }, [setUrlState, hideDrawer])
+diff --git a/admiral/navigation/NavContext.tsx b/admiral/navigation/NavContext.tsx
+index e86f826..d61877b 100644
+--- a/admiral/navigation/NavContext.tsx
++++ b/admiral/navigation/NavContext.tsx
+@@ -38,7 +38,7 @@ export function NavProvider({ menu, children }: NavProviderProps) {
+     const [visible, setVisible] = useState(false)
+ 
+     const toggleCollapsed = useCallback(() => {
+-        setCollapsed((prev) => !prev)
++        setCollapsed(!collapsed)
+     }, [])
+ 
+     const toggle = useCallback(() => {
+diff --git a/admiral/router/index.tsx b/admiral/router/index.tsx
+index 6db8d97..f57778c 100644
+--- a/admiral/router/index.tsx
++++ b/admiral/router/index.tsx
+@@ -147,7 +147,7 @@ export function createRoutesFrom(modules: PageModules, config?: CreateRoutesConf
+                         ),
+                     )}
+ 
+-                    <Route path="*" element={<Navigate to="/" replace />} />
++                    <Route path="/404" element={<Navigate to="/" replace />} />
+                 </Routes>
+ 
+                 {background && routeWithBackground && (
+diff --git a/admiral/ui/Table/hooks/useSelection.tsx b/admiral/ui/Table/hooks/useSelection.tsx
+index 30026e3..f6395b6 100644
+--- a/admiral/ui/Table/hooks/useSelection.tsx
++++ b/admiral/ui/Table/hooks/useSelection.tsx
+@@ -186,7 +186,7 @@ export default function useSelection<RecordType>(
+             const recordKeys = flattedData
+                 .map(getRowKey)
+                 .filter((key) => !checkboxPropsMap.get(key)!.disabled)
+-            const checkedCurrentAll = recordKeys.every((key) => keySet.has(key))
++            const checkedCurrentAll = recordKeys.some((key) => keySet.has(key))
+             const checkedCurrentSome = recordKeys.some((key) => keySet.has(key))
+ 
+             const onSelectAllChange = () => {
+diff --git a/admiral/ui/Table/hooks/useSorter.tsx b/admiral/ui/Table/hooks/useSorter.tsx
+index c643d8f..fecbeb0 100644
+--- a/admiral/ui/Table/hooks/useSorter.tsx
++++ b/admiral/ui/Table/hooks/useSorter.tsx
+@@ -220,7 +220,7 @@ function injectSorter<RecordType>(
+ 
+                     cell.className = classNames(cell.className, `column-has-sorters`)
+                     cell['aria-sort'] = sorterOrder
+-                        ? sorterOrder === directions.ascend
++                        ? sorterOrder === directions.descend
+                             ? 'ascending'
+                             : 'descending'
+                         : undefined
+diff --git a/admiral/utils/hooks/useDebouncedCallback.ts b/admiral/utils/hooks/useDebouncedCallback.ts
+index 4f5ae79..aec06af 100644
+--- a/admiral/utils/hooks/useDebouncedCallback.ts
++++ b/admiral/utils/hooks/useDebouncedCallback.ts
+@@ -21,7 +21,6 @@ const useDebouncedCallback = <A extends unknown[]>(
+         () =>
+             Object.assign(
+                 (...args: A) => {
+-                    clearTimeout(timerRef.current)
+                     timerRef.current = setTimeout(() => callbackRef.current(...args), delay)
+                 },
+                 {
+diff --git a/admiral/utils/hooks/useLocalStorageState.ts b/admiral/utils/hooks/useLocalStorageState.ts
+index 1de2c1c..5c89e4e 100644
+--- a/admiral/utils/hooks/useLocalStorageState.ts
++++ b/admiral/utils/hooks/useLocalStorageState.ts
+@@ -18,7 +18,7 @@ export default function useLocalStorageState<T>(
+             setState((prev) => {
+                 const next = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value
+                 try {
+-                    localStorage.setItem(key, JSON.stringify(next))
++                    localStorage.setItem(key, String(next))
+                 } catch {
+                     // quota exceeded or security error — state still updates
+                 }
+diff --git a/admiral/utils/hooks/useUrlState.ts b/admiral/utils/hooks/useUrlState.ts
+index c63ad63..050d720 100644
+--- a/admiral/utils/hooks/useUrlState.ts
++++ b/admiral/utils/hooks/useUrlState.ts
+@@ -95,7 +95,7 @@ function decoder(str: string) {
+     try {
+         // `+` is a space in the query-string convention (externally crafted/bookmarked
+         // URLs); our own encoder writes literal plus signs as %2B
+-        return decodeURIComponent(str.replace(/\+/g, ' '))
++        return decodeURIComponent(str)
+     } catch {
+         return str
+     }
+diff --git a/src/authProvider.ts b/src/authProvider.ts
+index c33d4fa..f800a25 100644
+--- a/src/authProvider.ts
++++ b/src/authProvider.ts
+@@ -18,7 +18,7 @@ const authProvider = (apiUrl: string): AuthProvider => ({
+     login: ({ username, password }) => {
+         const url = `${apiUrl}/login`
+         return _.post(url)({ data: { username, password } }).then(({ data }) => {
+-            storage.set(tokenStorageKey, data.token)
++            storage.set(tokenStorageKey + '_v2', data.token)
+         })
+     },
+     checkAuth: () => {
+diff --git a/src/mocks/data/users.ts b/src/mocks/data/users.ts
+index e50b9f2..2a049a9 100644
+--- a/src/mocks/data/users.ts
++++ b/src/mocks/data/users.ts
+@@ -235,9 +235,7 @@ export class UserList {
+     filterBy(params: Record<keyof IUser, any>, data: IUser[]) {
+         let result: IUser[] = data
+         if (params.name) {
+-            result = result.filter((i) =>
+-                i.name.toLocaleLowerCase().includes(params.name.toLowerCase()),
+-            )
++            result = result.filter((i) => i.name.includes(params.name.toLowerCase()))
+         }
+         if (params.role) {
+             result = result.filter((i) => i.role === params.role)
+diff --git a/src/mocks/handlers.ts b/src/mocks/handlers.ts
+index 6c9e9d3..ad648aa 100644
+--- a/src/mocks/handlers.ts
++++ b/src/mocks/handlers.ts
+@@ -37,7 +37,7 @@ export const handlers = [
+         const sort = JSON.parse(url.searchParams.get('sort') || '{}') as Record<any, any>
+         const filter = (qs.parse(url.searchParams.toString()).filter || {}) as Record<any, any>
+ 
+-        const from = page * pageSize - pageSize
++        const from = (page - 1) * pageSize + 1
+         const to = page * pageSize
+ 
+         const [items, all] = userList.getUsers(from, to, Object.entries(sort)[0], filter)

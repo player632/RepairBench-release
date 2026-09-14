@@ -1,0 +1,166 @@
+diff --git a/src/App.vue b/src/App.vue
+index a40f244d2..c63975830 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -183,7 +183,7 @@ export default {
+           let pageConfig = await this.getConfig(
+             `assets/${this.currentPage}.yml`,
+           );
+-          config = Object.assign(pageConfig, config);
++          config = Object.assign(config, pageConfig);
+         }
+       } catch (error) {
+         console.log(error);
+diff --git a/src/components/ConnectivityChecker.vue b/src/components/ConnectivityChecker.vue
+index 2058c53df..698eb35d2 100644
+--- a/src/components/ConnectivityChecker.vue
++++ b/src/components/ConnectivityChecker.vue
+@@ -36,7 +36,7 @@ export default {
+   },
+   created: function () {
+     if (/t=\d+/.test(window.location.href)) {
+-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
++      window.history.replaceState({}, document.title, window.location.pathname);
+     }
+     this.checkOffline();
+ 
+diff --git a/src/components/DarkMode.vue b/src/components/DarkMode.vue
+index 0a3962ac1..ac1f362dc 100644
+--- a/src/components/DarkMode.vue
++++ b/src/components/DarkMode.vue
+@@ -53,7 +53,7 @@ export default {
+   },
+   methods: {
+     toggleTheme: function () {
+-      this.mode = (this.mode + 1) % 2;
++      this.mode = (this.mode + 1) % 3;
+       switch (this.mode) {
+         // Default behavior
+         case 0:
+diff --git a/src/components/Message.vue b/src/components/Message.vue
+index e751fbd3f..a5afd50bf 100644
+--- a/src/components/Message.vue
++++ b/src/components/Message.vue
+@@ -59,7 +59,7 @@ export default {
+         // keep the original config value if no value is provided by the endpoint
+         const message = this.message;
+         for (const prop of ["title", "style", "content", "icon"]) {
+-          if (fetchedMessage[prop] !== null) {
++          if (prop in fetchedMessage && fetchedMessage[prop] !== null) {
+             message[prop] = fetchedMessage[prop];
+           }
+         }
+diff --git a/src/components/Navbar.vue b/src/components/Navbar.vue
+index b67999d43..a99ae30ed 100644
+--- a/src/components/Navbar.vue
++++ b/src/components/Navbar.vue
+@@ -63,7 +63,7 @@ export default {
+   },
+   methods: {
+     isSmallScreen: function () {
+-      return window.matchMedia("screen and (max-width: 4096px)").matches;
++      return window.matchMedia("screen and (max-width: 1023px)").matches;
+     },
+   },
+ };
+diff --git a/src/components/SearchInput.vue b/src/components/SearchInput.vue
+index a12748221..4049d8d15 100644
+--- a/src/components/SearchInput.vue
++++ b/src/components/SearchInput.vue
+@@ -77,6 +77,7 @@ export default {
+       window.history.replaceState("search", null, url);
+     },
+     cancel: function () {
++      this.setSearchURL("");
+       this.$refs.search.value = "";
+       this.$refs.search.blur();
+       this.$emit("search-cancel");
+diff --git a/src/components/Service.vue b/src/components/Service.vue
+index a4f665737..f250aae66 100644
+--- a/src/components/Service.vue
++++ b/src/components/Service.vue
+@@ -16,7 +16,7 @@ export default {
+   },
+   computed: {
+     isGeneric() {
+-      return this.item.type === defaultService;
++      return defaultService === (this.item.type || defaultService);
+     },
+     component() {
+       return defineAsyncComponent({
+diff --git a/src/components/ServiceGroup.vue b/src/components/ServiceGroup.vue
+index 783a540fb..ee36fb549 100644
+--- a/src/components/ServiceGroup.vue
++++ b/src/components/ServiceGroup.vue
+@@ -1,6 +1,6 @@
+ <template>
+   <!-- Vertical layout: Group container wrapper -->
+-  <div v-if="isVertical" :class="['column', `is-${columns}`]">
++  <div v-if="isVertical" :class="['column', `is-${12 / columns}`]">
+     <GroupHeader v-if="group.name" :group="group" class="group-title" />
+     <Service
+       v-for="(item, index) in group.items"
+@@ -26,7 +26,7 @@
+       :proxy="proxy"
+       :class="[
+         'column',
+-        `is-${columns}`,
++        `is-${12 / columns}`,
+         `${item.class || group.class || ''}`,
+       ]"
+     />
+diff --git a/src/components/SettingToggle.vue b/src/components/SettingToggle.vue
+index 5bc5c7b2f..f35823574 100644
+--- a/src/components/SettingToggle.vue
++++ b/src/components/SettingToggle.vue
+@@ -28,7 +28,11 @@ export default {
+   created: function () {
+     this.secondaryIcon = this.iconAlt || this.icon;
+ 
+-    this.value = this.defaultValue;
++    if (this.name in localStorage) {
++      this.value = JSON.parse(localStorage[this.name]);
++    } else {
++      this.value = this.defaultValue;
++    }
+ 
+     this.$emit("updated", this.value);
+   },
+diff --git a/src/components/services/Generic.vue b/src/components/services/Generic.vue
+index f2f877933..434885f38 100644
+--- a/src/components/services/Generic.vue
++++ b/src/components/services/Generic.vue
+@@ -61,7 +61,7 @@ export default {
+   },
+   computed: {
+     mediaClass: function () {
+-      return { media: true, "no-subtitle": !!this.item.subtitle };
++      return { media: true, "no-subtitle": !this.item.subtitle };
+     },
+   },
+ };
+diff --git a/src/mixins/service.js b/src/mixins/service.js
+index 0cc11f4ac..0651e6f03 100644
+--- a/src/mixins/service.js
++++ b/src/mixins/service.js
+@@ -134,6 +134,7 @@ export default {
+               `[DEPRECATED] Service "${this.item.name || "unknown"}" uses deprecated config key "${key}". ` +
+                 `Please use "${intervalKey}" instead. Support for "${key}" will be removed in a future version.`,
+             );
++            intervalKey = key;
+             break;
+           }
+         }
+diff --git a/src/utils/updateScheduler.js b/src/utils/updateScheduler.js
+index a77669f68..2261e146a 100644
+--- a/src/utils/updateScheduler.js
++++ b/src/utils/updateScheduler.js
+@@ -64,7 +64,7 @@ class UpdateScheduler {
+ 
+   generateComponentId(component) {
+     // Use component's unique identifier or Vue instance uid
+-    return (component.$ && component.$.type && component.$.type.name) || "service"
++    return component._uid || component.$.uid
+   }
+ 
+   startGlobalTimer() {

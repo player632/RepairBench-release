@@ -1,0 +1,176 @@
+diff --git a/src/components/CreateBoard.svelte b/src/components/CreateBoard.svelte
+index a1af0df..e812c8c 100644
+--- a/src/components/CreateBoard.svelte
++++ b/src/components/CreateBoard.svelte
+@@ -52,6 +52,11 @@
+     }
+   }
+ 
++  $: {
++    if (isOpen) {
++      boardTitle = "";
++    }
++  };
+ </script>
+ 
+ <Modal {isOpen} on:close={handleClose}>
+diff --git a/src/components/EditableTitle.svelte b/src/components/EditableTitle.svelte
+index 2e649a4..c81b3a9 100644
+--- a/src/components/EditableTitle.svelte
++++ b/src/components/EditableTitle.svelte
+@@ -65,11 +65,11 @@
+   <div class="min-w-0 editable-title">
+     {#if isTitle}
+       <h1 class="w-full text-2xl font-semibold" title={bufferContent}>
+-        <span use:handlePasteEvent on:keyup|stopPropagation on:keydown={handleTitleInput} on:focus={handleTitleFocus} on:blur={handleTitleBlur} contenteditable class="block w-full focus:bg-light-100 dark:focus:bg-dark-100 border border-transparent border-dashed break-words hover:border-light dark:hover:border-dark rounded p-1" class:truncate-2-lines={!hasFocus} data-testid={tid}>{bufferContent}</span>
++        <span use:handlePasteEvent on:keyup|stopPropagation on:keydown={handleTitleInput} on:focus={handleTitleFocus} on:blur={handleTitleBlur} contenteditable class="block w-full focus:bg-light-100 dark:focus:bg-dark-100 border border-transparent border-dashed break-words hover:border-light dark:hover:border-dark rounded p-1" class:truncate-2-lines={!hasFocus} bind:textContent={bufferContent} data-testid={tid}></span>
+       </h1>
+     {:else}
+       <h2 class="w-full text-xl font-semibold pr-2" title={bufferContent}> 
+-        <span use:handlePasteEvent on:keyup|stopPropagation on:keydown={handleTitleInput} on:focus={handleTitleFocus} on:blur={handleTitleBlur} contenteditable class="block w-full focus:bg-light-300 dark:focus:bg-dark-100 border border-transparent border-dashed break-words hover:border-light dark:hover:border-dark rounded p-1" class:truncate-3-lines={!hasFocus} data-testid={tid}>{bufferContent}</span>
++        <span use:handlePasteEvent on:keyup|stopPropagation on:keydown={handleTitleInput} on:focus={handleTitleFocus} on:blur={handleTitleBlur} contenteditable class="block w-full focus:bg-light-300 dark:focus:bg-dark-100 border border-transparent border-dashed break-words hover:border-light dark:hover:border-dark rounded p-1" class:truncate-3-lines={!hasFocus} bind:textContent={bufferContent} data-testid={tid}></span>
+       </h2>
+     {/if}
+   </div>
+diff --git a/src/components/SearchPalette.svelte b/src/components/SearchPalette.svelte
+index ad3fb57..489eb55 100644
+--- a/src/components/SearchPalette.svelte
++++ b/src/components/SearchPalette.svelte
+@@ -109,7 +109,7 @@
+       let elements: HTMLElement[] = Array.from(document.querySelectorAll('.result'));
+ 
+       if (elements.length) {
+-        elements[0].focus();
++        elements[0].click();
+       }
+     }
+   }
+diff --git a/src/components/base/Editor.svelte b/src/components/base/Editor.svelte
+index 386f937..99ddb05 100644
+--- a/src/components/base/Editor.svelte
++++ b/src/components/base/Editor.svelte
+@@ -81,6 +81,7 @@
+   }
+ 
+   const handleCloseClick = (): void => {
++    dispatch("close");
+   }
+ 
+   const handleDateUpdate = (e: Event): void => {
+diff --git a/src/components/base/Modal.svelte b/src/components/base/Modal.svelte
+index f64293a..a89dd3a 100644
+--- a/src/components/base/Modal.svelte
++++ b/src/components/base/Modal.svelte
+@@ -31,7 +31,7 @@
+ </script>
+ 
+ {#if isOpen }
+-  <div class="fixed w-full top-0 left-0 h-screen z-10 bg-dark-300-75" transition:fade={{ duration: 175 }} data-testid="modal-overlay">
++  <div use:init class="fixed w-full top-0 left-0 h-screen z-10 bg-dark-300-75" transition:fade={{ duration: 175 }} data-testid="modal-overlay">
+     <div class="bg-light-200 mt-24 w-3/4 md:w-2/3 xl:w-1/2 mx-auto rounded py-2 shadow-lg dark:bg-dark-200" use:handleClickOutside>
+     	<slot isOpen={isOpen}></slot>
+     </div>
+diff --git a/src/components/card/CardLabel.svelte b/src/components/card/CardLabel.svelte
+index 4ccb352..adedfde 100644
+--- a/src/components/card/CardLabel.svelte
++++ b/src/components/card/CardLabel.svelte
+@@ -29,7 +29,7 @@
+ 
+   $: {
+     if (selected in LABEL_COLOR) {
+-      selectedText = labels.find(l => l.text == selected).text;
++      selectedText = labels.find(l => l.color == selected).text;
+     }
+   }
+ </script>
+diff --git a/src/components/column/Layout.svelte b/src/components/column/Layout.svelte
+index b3e3f46..e47bcb5 100644
+--- a/src/components/column/Layout.svelte
++++ b/src/components/column/Layout.svelte
+@@ -33,6 +33,7 @@
+ 
+     list.parentNode.after(inlineEditor);
+ 
++    $nimboStore.setSelectedCard(e.detail.cardId);
+     $nimboStore = $nimboStore;
+   }
+ 
+diff --git a/src/components/column/ListCard.svelte b/src/components/column/ListCard.svelte
+index 1e946af..272818a 100644
+--- a/src/components/column/ListCard.svelte
++++ b/src/components/column/ListCard.svelte
+@@ -21,6 +21,7 @@
+   const handleStopwatchStart = (e: Event): void => {
+     e.stopPropagation();
+     
++    clearInterval(stopwatchInterval);
+ 
+     if (stopwatchStarted) {
+       card.trackTime(seconds);
+@@ -37,7 +38,7 @@
+     }
+   }
+ 
+-  let card = c;
++  $: card = c;
+   $: checklistCompleted = card.checklist.filter(item => item.checked).length;
+   $: totalTrackedTime = card.log.reduce((a: TimeEntry, b: TimeEntry): number => a + b.duration, 0);
+   $: hasMoreDetails = !!card.checklist.length || !!card.log.length || !!card.due || !!card.description || card.priority in PRIORITY;
+diff --git a/src/components/zen/Multiselect.svelte b/src/components/zen/Multiselect.svelte
+index 8242562..d8361ed 100644
+--- a/src/components/zen/Multiselect.svelte
++++ b/src/components/zen/Multiselect.svelte
+@@ -86,6 +86,8 @@
+         selectedValues.push(optionValues[i]);
+       }
+     }
++
++    selectedValues = selectedValues;
+   })
+ </script>
+ 
+diff --git a/src/nimbo.ts b/src/nimbo.ts
+index e874b25..8f9c458 100644
+--- a/src/nimbo.ts
++++ b/src/nimbo.ts
+@@ -574,7 +574,7 @@ export default class nimbo {
+     // sort by priority
+     let cardsSortByPriority = cardsWithOutDueDate.filter(c => c.priority in PRIORITY);
+     cardsSortByPriority.sort((a: Card, b: Card) => {
+-      return b.priority - a.priority
++      return a.priority - b.priority
+     });
+ 
+     // sort by creation date
+diff --git a/src/routes/Board.svelte b/src/routes/Board.svelte
+index 6217c7a..e8a6aa0 100644
+--- a/src/routes/Board.svelte
++++ b/src/routes/Board.svelte
+@@ -37,6 +37,8 @@
+   const handleKeyPress = (e: KeyboardEvent): void => {
+     if (!e.target.closest('.flatpickr-calendar')) {
+       if (e.code === "Space") {
++        $nimboStore.openPalette();
++        $nimboStore = $nimboStore;
+       } else if (e.key === "h") {
+         $nimboStore.closePalette();
+         $nimboStore.setSelectedCard(null);
+diff --git a/src/routes/Home.svelte b/src/routes/Home.svelte
+index a684518..cbcbc87 100644
+--- a/src/routes/Home.svelte
++++ b/src/routes/Home.svelte
+@@ -97,12 +97,10 @@
+     return b.lastViewTime - a.lastViewTime
+   }).splice(0, 5);
+ 
+-  const filterBoards = (boards: Board[]): Board[] => boards.filter(b => !b.isArchived || !hideArchivedBoards).sort((a: Board, b: Board): number => {
+-    return a.title.localeCompare(b.title);
++  $: sortedBoards = [...$nimboStore.boards].filter(b => !b.isArchived || !hideArchivedBoards).sort((a: Board, b: Board): number => {
++   return a.title.localeCompare(b.title);
+   });
+ 
+-  $: sortedBoards = filterBoards($nimboStore.boards);
+-
+   $: importedDB && handleImportBoards();
+ </script>
+ 

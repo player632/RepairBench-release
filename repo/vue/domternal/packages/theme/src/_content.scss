@@ -1,0 +1,280 @@
+// =============================================================================
+// Content Typography
+// =============================================================================.
+
+.dm-editor .ProseMirror {
+  // ---------------------------------------------------------------------------
+  // Block inline padding
+  // ---------------------------------------------------------------------------
+  :where(p, h1, h2, h3, h4, h5, h6) {
+    padding-inline: var(--dm-block-inline-padding);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Headings
+  // ---------------------------------------------------------------------------
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    line-height: 1.25;
+  }
+
+  h3 {
+    font-size: 1.25em;
+  }
+
+  h4 {
+    font-size: 1.1em;
+  }
+
+  // Continues the ladder h3 1.25 / h4 1.1 rather than leaving h5 on the UA
+  // 0.83em, which sits BELOW h6 and below body text: an omission rather than
+  // a design, and invisible until a consumer enables levels 5 and 6 (the
+  // Heading extension ships with [1, 2, 3, 4]).
+  h5 {
+    font-size: 1em;
+  }
+
+  h6 {
+    font-size: 0.9em;
+    color: var(--dm-muted, #6b7280);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inline code
+  // ---------------------------------------------------------------------------
+
+  code {
+    background: var(--dm-code-bg);
+    color: var(--dm-code-text);
+    font-family: var(--dm-code-font);
+    font-size: 0.875em;
+    padding: 0.15em 0.35em;
+    border: 1px solid var(--dm-border-color);
+    border-radius: var(--dm-code-border-radius);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Code blocks (pre > code)
+  // ---------------------------------------------------------------------------
+
+  pre {
+    background: var(--dm-code-block-bg);
+    color: var(--dm-code-block-text);
+    font-family: var(--dm-code-font);
+    font-size: 0.875em;
+    padding: 1em;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+    margin: 0.75em 0;
+
+    code {
+      background: none;
+      color: inherit;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      font-size: inherit;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Blockquote
+  // ---------------------------------------------------------------------------
+
+  blockquote {
+    border-left: var(--dm-blockquote-border);
+    color: var(--dm-blockquote-color);
+    margin: 0.5em 0;
+    // Right padding picks up the same `--dm-block-inline-padding` token
+    // so colored blockquotes get breathing room from the right edge.
+    // Left stays at 0.8em - that gap is for the border-left bar, not
+    // text inset.
+    padding: 0.1em var(--dm-block-inline-padding) 0.1em 0.8em;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lists
+  // ---------------------------------------------------------------------------
+
+  ul,
+  ol {
+    margin: 0.75em 0;
+    // Logical inline padding so the marker gutter sits on the reading-start
+    // side and mirrors under `dir="rtl"`. End padding gives colored lists
+    // breathing room on the reading-end edge, matching paragraphs/headings.
+    padding-inline: 1.5em var(--dm-block-inline-padding);
+  }
+
+  // A nested list chunks tightly under its parent label (the within-item gap)
+  // instead of the 0.75em container margin, matching the sibling non-list
+  // children. `li :is(ul, ol)` covers every depth and both the bullet
+  // (`li > ul`) and task (`li > div > ul`) shapes.
+  li :is(ul, ol) {
+    margin-block: 0.25em;
+  }
+
+  // Notion-style "children zone" indent for plain bullet/ordered lists ONLY.
+  ul:not([data-type="taskList"]),
+  ol {
+    // `> li` (child, not descendant): a descendant `li` would match taskItems
+    // nested inside this list and shift them right via the rule below.
+    > li {
+      margin: 0.25em 0;
+
+      > p {
+        // List item paragraphs reset inline-end padding (bullet indentation is
+        // owned by the list container; doubling up shifts text under the
+        // bullet's hanging indent), and add a small inline-start padding (~5px.
+        margin: 0.1em 0;
+        padding-inline: 0.3em 0;
+      }
+
+      // Post-label blocks (heading, codeBlock, blockquote, etc.) sit indented
+      // one level below the label paragraph aligned with the bullet.
+      > :not(p:first-child):not(ul):not(ol) {
+        margin-inline-start: var(--dm-block-children-indent, 1.5rem);
+        margin-top: 0.25rem;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Marker cycle
+  // ---------------------------------------------------------------------------
+  --dm-list-level: 0;
+
+  // A table cell restarts it, matching `DocxSerializer.tableCell`, which builds
+  // its cell context from scratch by design. The cell's own content edge
+  // restarts the indentation here as well, so a list inside one reads as a top-
+  :is(td, th) {
+    --dm-list-level: 0;
+  }
+
+  // Every list spends a level, task lists included: the exporters count one
+  // even though it draws a checkbox rather than a marker, so a bullet list
+  // nested under a task item is a circle, not a disc. Only the elements that
+  // PAINT a marker are excluded below, never the ancestors that count.
+  :is(ul, ol) {
+    @container style(--dm-list-level: 0) {
+      --dm-list-level: 1;
+    }
+
+    @container style(--dm-list-level: 1) {
+      --dm-list-level: 2;
+    }
+
+    @container style(--dm-list-level: 2) {
+      --dm-list-level: 0;
+    }
+  }
+
+  // Excluded, for the two reasons a list inside the editor can carry no marker
+  // of its own: `[data-type="taskList"]` draws a checkbox in the marker column
+  // (`_task-list.scss`), and `.dm-toc-block-list` is the table-of-contents.
+  ul:where(:not([data-type="taskList"]):not(.dm-toc-block-list)) {
+    @container style(--dm-list-level: 0) {
+      list-style-type: disc;
+    }
+
+    @container style(--dm-list-level: 1) {
+      list-style-type: circle;
+    }
+
+    @container style(--dm-list-level: 2) {
+      list-style-type: square;
+    }
+  }
+
+  ol {
+    @container style(--dm-list-level: 0) {
+      list-style-type: decimal;
+    }
+
+    @container style(--dm-list-level: 1) {
+      list-style-type: lower-alpha;
+    }
+
+    @container style(--dm-list-level: 2) {
+      list-style-type: lower-roman;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Horizontal rule
+  // ---------------------------------------------------------------------------
+
+  hr {
+    border: none;
+    border-top: 2px solid var(--dm-hr-color);
+    margin: 1.5em 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Links
+  // ---------------------------------------------------------------------------
+
+  a {
+    color: var(--dm-link-color);
+    &:hover {
+      color: var(--dm-link-hover-color);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight / mark (fallback for pasted <mark> elements)
+  // ---------------------------------------------------------------------------
+
+  mark {
+    color: inherit;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Images
+  // ---------------------------------------------------------------------------
+
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0.75em 0;
+
+    &.ProseMirror-selectednode {
+      outline: 2px solid var(--dm-accent, #2563eb);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tables
+  // ---------------------------------------------------------------------------
+
+  // Data view: smaller than body, tight padding.
+  table {
+    border: var(--dm-table-border);
+    margin: 0.75em 0;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+
+    td,
+    th {
+      border: var(--dm-table-border);
+      padding: 0.375em 0.625em;
+      min-width: 100px;
+    }
+
+    th {
+      background: var(--dm-table-header-bg);
+      font-weight: 600;
+      text-align: left;
+    }
+
+    td > p,
+    th > p {
+      margin: 0;
+    }
+  }
+}

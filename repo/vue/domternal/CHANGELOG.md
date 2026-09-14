@@ -1,0 +1,583 @@
+# Changelog
+
+## 1.0.3 (2026-09-06)
+
+### Fixes
+
+- Markdown copied from a source editor converts on paste. A syntax-highlighted copy, such as a `.md` file copied from VS Code, carries an HTML flavor next to the plain text, and the paste plugin took any HTML flavor to mean a rich source and stood aside, so the Markdown landed as literal paragraphs, markers and all, instead of as headings, lists and links. The HTML now converts when it holds nothing but source wrappers (`pre`, `div`, `span`, `br`, at most a charset `meta`), preserves whitespace, and renders the same text the plain-text flavor carries. A tab the editor expanded to spaces for display is the one difference allowed, and it is the plain text that gets parsed, so the original indentation is kept. A copy from Google Docs or a web page, a slice copied out of the editor and any element carrying `data-type` still paste through ProseMirror's own HTML handling, and pastes into code blocks stay literal. The extension now sits at priority 110, above the default 100, so the check runs ahead of block-level HTML paste handlers such as `SmartPaste`. (#179)
+
+## 1.0.2 (2026-09-06)
+
+### Fixes
+
+- Every `@domternal` peer dependency is bounded at the next major. The ranges read `>=1.0.0 <2.0.0` where they read an open `>=1.0.0`, and the publish transform writes the same ceiling onto the internal runtime dependencies it rewrites at pack time. An open range declares that a 1.x extension supports a 2.x core, which is a compatibility nothing here has tested: a consumer upgrading core on its own would have had the old extension resolved as compatible and installed without a warning, and a mismatch of that kind surfaces as a schema or plugin failure at runtime rather than at install time. The four wrapper READMEs and the `@domternal/pm` README state the bounded range with it. (#176)
+
+### Docs
+
+- The npm listing for every package names the product it belongs to. Descriptions carry the MIT licence and "rich text editor" in place of "Domternal editor", and keywords gain `rich-text-editor` and `typescript`, with `wysiwyg`, `headless`, `self-hosted` and `web-components` where each applies, so a package is findable by the words people search with. Each wrapper keeps only its own framework keyword, so `@domternal/react` cannot answer a search for Angular. (#177)
+
+## 1.0.1 (2026-08-25)
+
+### Fixes
+
+- A bubble menu dismissed by a click outside the editor comes back when the same range is explicitly selected again; it used to stay locked until some other text was selected. Typing, a remote edit and a plain `focus()` still cannot pop it back over a selection the user has left alone. (#172)
+- The bubble menu's update guard keeps the DOM in step with a dismissal, and a pending show counts as shown, so a no-op transaction can neither leave the menu's element in a stale state nor keep re-arming the show timer. (#172)
+
+## 1.0.0 (2026-08-25)
+
+### Breaking
+
+- Every package now declares `engines.node: ">=22"`. It said `>=20` on twelve packages and nothing at all on the other six, and nothing here has ever run on Node 20: `.nvmrc` and CI have always been 22, so the claim was a guess rather than a tested promise. Node 20 reached end of life on 30 April 2026 and receives no further security patches. Nothing in the code requires 22, so an install on Node 20 will most likely still work; npm and pnpm treat this field as advisory for a dependency and will only warn. Yarn Classic refuses outright, which is the one case that needs `--ignore-engines` or a newer Node. The declared floor is now checked against `.nvmrc`, so the two cannot drift apart again. (#153)
+- An extension built by a SECOND copy of `@domternal/core` is now refused at construction instead of being mounted. Two copies of the core give two `Extension` base classes, two schemas and colliding plugin keys, and until now nothing said so: what followed was a `Gapcursor` from each copy under one plugin key, or an `instanceof` that is false for a node the schema itself produced. If your build has been carrying a duplicate core, an editor that previously half-worked now throws an `ExtensionConfigurationError` naming the extension and the fix. A plain object passed as an extension is unaffected. See [One copy of ProseMirror](https://domternal.dev/v1/guides/single-prosemirror-copy/). (#153)
+- List markers now follow a three-step cycle at depth instead of whatever the browser drew. `@domternal/theme` declares `list-style-type` for the lists inside the editor: bullets run disc, circle, square and numbers run `1.`, `a.`, `i.`, picked with `depth % 3`, which is the cycle both Pro export backends have always used. Nothing in the theme declared the property before, so the browser's own stylesheet answered, and it answers differently: it plateaus at square from the fourth bullet level down and numbers every ordered level `1.`. So a level-2 ordered item that read `1.` now reads `a.`, and a level-4 bullet that read square now reads disc. Every enclosing list counts as a level whatever its kind, a task list included, and a table cell restarts the count, because that is how the exporters count. Two consequences for host CSS, both of them the cascade doing its job. An application whose reset removes markers (`ul { list-style: none }` on a bare tag selector) gets them back inside the editor, because the theme's rules are `.dm-editor .ProseMirror ul` and outrank it. An application that pinned its own markers keeps them, for bullets and numbers alike, provided the rule is not inside a `@layer`, since an un-layered declaration beats a layered one whatever the specificity on either side. Pin both halves together: the two rules deliberately weigh the same, (0,2,1) each, so overriding one and not the other is how you end up with a fourth marker scheme. The level travels down in `--dm-list-level`, read by three style container queries per list type, so an engine without style queries declares nothing and keeps drawing exactly what it drew before. Measured at the time of writing, Chromium and WebKit apply them and Firefox does not, tested on 146: there the editor keeps the browser's own plateau, and a list inside a table cell keeps counting from the list outside it rather than restarting, because the restart is this cycle's rule and not a browser behaviour. See [Lists](https://domternal.dev/v1/guides/theming/#lists). (#153)
+
+### Features
+
+- `@domternal/core` records which copy of `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `prosemirror-transform` and of itself an editor is built from, and warns on the console when a second one is already there. `@domternal/extension-table` does the same for `prosemirror-tables`, which core cannot check because core never imports it. A warning rather than an error, because two copies only break once an object crosses between them. The message names both packages, which is what the ProseMirror error cannot do, and carries the fix for pnpm, npm, yarn, Vite and webpack. (#153)
+- `registerProseMirrorCopy`, `assertSingleProseMirrorCopy` and `warnOnDuplicateProseMirrorCopy` are exported so an extension can register its own identity-compared module and its users get the same message, naming that package. See [Registering your own copy](https://domternal.dev/v1/guides/single-prosemirror-copy/#registering-your-own-copy). (#153)
+- The Notion selection menu leads with `ai` and `comment` side by side, ahead of the block-type dropdown and `link`, so both selection actions sit in the front group when the Pro extensions supply them. This is a deliberate deviation from Notion, whose own menu keeps Link and Comment together after Turn into: commenting is frequent enough in collaborative editing to earn the leading spot. An editor without those extensions sees no change, since an absent item never renders, and a `contexts` option of your own still overrides the default. (#169)
+
+### Fixes
+
+- Published packages no longer carry the `@domternal/source` export condition. `@domternal/core`, `@domternal/react`, `@domternal/vue` and `@domternal/vanilla` shipped it pointing at `./src/index.ts`, a file their tarballs do not contain, so a build that enabled that condition resolved to nothing: Node throws `ERR_MODULE_NOT_FOUND`, and Vite 6 and 7 report "Failed to resolve entry for package", naming our manifest rather than the setting that caused it. Vite 8 falls back to the next condition without a word, and `tsc` stays green throughout, so on a current toolchain the only signal was at runtime or nowhere. The condition exists for developing inside this repository and is now removed as the package is prepared for publishing. Nothing changes for a consumer who never enabled it. (#153)
+- An extension you list yourself now beats one a bundle included on your behalf, whichever order they are written in. Duplicate names were resolved by keeping the last occurrence, which said "your configuration wins" only while every bundle was listed first: the habit for `StarterKit`, and no rule at all. An extension that carries a default and sits lower in the list replaced the configured copy above it, and your options went missing with it, silently and with nothing to read. Between two bundle defaults the later one still wins, so two bundles offering the same child resolve exactly as before. (#153)
+- `@domternal/theme` restores the `hidden` attribute for every element it styles, and for anything hidden inside one. `[hidden] { display: none }` comes from the user agent stylesheet, and author styles beat it whatever their specificity, so any component rule setting `display` disabled the attribute for that element: `.dm-toolbar` sets `display: flex`, and a hidden toolbar was left as an empty strip with the toolbar's background, border and padding, with nothing in the console. The theme sets `display` on roughly ninety selectors, so this was a property of the whole theme rather than a fault in one component. `hidden="until-found"` is deliberately left alone. See [Hiding an element](https://domternal.dev/v1/guides/theming/#hiding-an-element). (#153)
+- Printing no longer spends a sheet on every block that cannot fit one. `break-inside: avoid` is a request the engine is allowed to refuse, and the way it refuses is expensive: the box is deferred to a fresh sheet first and fragmented only once it does not fit there either, so a box taller than the page costs an almost empty page and is split anyway. The paper layer put that declaration on `li`, `tr`, `th`, `td`, `pre`, `blockquote`, `figure` and `.dm-toc-block`, and every one of those can hold a whole document (a list item is `paragraph block*` in the schema), so each nesting level was one deferral, recursively down the chain. It now stays only on boxes that cannot outgrow a page: headings and the accordion summary, which keep their existing keep-with-next as well, and images, `.dm-image-resizable` and block math, which have no line boxes to fragment at in the first place. `tr` keeps it behind a `:not(:has(...))` guard that stands down for a row holding two adjacent paragraphs, a list, a nested table, a code block, a quote, an image, block math, a `/toc` block, a details block or a column layout; the cells had to leave the list for either half of that to work, because an avoid on `th` or on `td` makes the row monolithic whatever the row itself says. Line-level rules do the work instead: `orphans` and `widows` of 2 on paragraphs and list items, 3 on code blocks, where a two-line fragment carries much less than two lines of prose do, and a keep-with-next on the block that labels a list item, `li > *:first-child:not(:last-child)` plus the same rule one level deeper for a task item, whose blocks sit in a wrapper div behind an absolutely positioned checkbox. `:not(:last-child)` is load-bearing: for an only child the break after it is the break after the item, so without the guard the avoid propagates outward and an ordinary flat list is one unbreakable box again. A picture taller than the page area is the case a fresh sheet cannot answer either, so it is clamped to `calc(100vh - 6em)` with `object-fit: contain`, `vh` resolving against the page area in paged media, instead of being sliced into page-high windows across consecutive sheets; `object-position` keeps it at the edge of the text column it sits at on screen rather than centred in its own letterbox. Measured on A4 at 25mm margins: a nine-level nested document goes from 10 sheets to 6, a 90-line code block after three paragraphs from 4 to 3, a 60-entry `/toc` block after three paragraphs from 4 to 3, and a 200-item flat list stays at 7. The cost is on the record: a block that used to stay whole can now split, a five-line code block, a short quoted paragraph, a `/toc` panel (whose border is left open at the break) and a table row of a few paragraphs, with whether it happens depending on where the break falls. See [Page breaks](https://domternal.dev/v1/extensions/print/#page-breaks). (#153)
+- A table split across sheets repeats its header row, which is what `w:tblHeader` and pdfmake's `headerRows` already did for the `.docx` and the `.pdf`. A browser repeats a header across a fragmentation break only for a real header group, and there is no `<thead>` to be one: the table node view makes the `tbody` its contentDOM and ProseMirror renders every row into that single element, so the shape cannot change without fighting the view's DOM sync. The paper layer drops the row group's box instead (`tbody { display: contents }`), which puts the rows directly in the table's own formatting context, the one place a row is allowed to be a header group, and promotes the leading row to `display: table-header-group` with a `break-inside: avoid` of its own, since a repeat only survives while the group cannot be broken. The promotion is guarded to the predicate the exporters count with, a leading row made entirely of header cells: the table has to own a data cell somewhere, because `toggleHeaderColumn` makes every cell of a single-column table a `th` and its first row would otherwise repeat as a label for itself, and a `rowspan` in that row is excluded, because a spanned cell cannot reach out of the header group into the body. Only a table that stands to gain loses its box; every other table prints exactly as it did, on every engine, whether or not `:has()` is supported. A header row can no longer be stranded as the last line of a sheet either, because a header group is never laid out alone. Measured: on a 90-row table behind an all-header row the first glyph run of sheet 1 now appears on all four sheets and appeared on sheet 1 alone before, while the same table led by a data row prints its first row once, before and after. Two costs. The repeat is a browser behaviour rather than a guarantee, and Chromium declines to repeat a header taller than a quarter of the page box and prints it once instead; the failure mode is a missing repeat, never a broken table. And repeating a row costs a row height on every sheet, measured at 3 of 76 row counts on a one-line-row axis and at 17 of 31 filler positions with four-line rows. See [Repeating the header row](https://domternal.dev/v1/extensions/print/#repeating-the-header-row). (#153)
+- A printed table keeps the proportions the author dragged, and a table too wide for the sheet is laid out inside it rather than taking the whole document down with it. Three changes. `colgroup col { width: auto !important }` is gone: it erased the widths the node view writes from the stored `colwidth` attributes, and an author's 200/120/200 table printed 80/441/84, the column dragged widest coming out narrowest. Nothing replaces it, because under the auto layout print already forces, Chromium reads a `col` width as a preferred width and hands the constrained space out in proportion, so the stored widths fit the sheet by themselves. The table's `width: 100%` loses its `!important` and gains `max-width: 100% !important`, so the absolute width the node view writes, which it writes only when every column carries a stored width and which is the width the editor shows on screen, wins where it fits the sheet and is scaled down where it does not, while a table that stores no widths has no inline width to win with and still fills the measure. A table inside a cell is the one place that cannot work, because a percentage `max-width` needs a definite containing block and a cell under auto layout has none while its own width is still being decided, so a nested table keeps `width: 100% !important`: without it a 900px table in a cell dragged the outer table past the sheet and clipped the neighbouring column out of the file rather than merely off the edge of it. And cells take `overflow-wrap: anywhere` rather than the `break-word` they inherit, because only `anywhere` counts the break opportunities it introduces when a cell's min-content width is measured, and min-content is the floor auto table layout will not go below. That last one is the expensive failure, and it is worth stating plainly: a table that cannot get under the page width is not merely cramped, Chromium shrinks the whole printed document to fit it, as far as two thirds, and then clips whatever still does not fit off the sheet. Measured before the fix, the fit broke at seven ordinary columns and columns began disappearing at eight; one eight-column table of ordinary long words printed every paragraph of every page at 8pt instead of 12pt; and a 150-character URL in a three-column table resolved to 1250px and took 52 percent of the grid off the paper with nothing said about it. Two costs, both measured. A long word in a narrow printed column now breaks mid-word, so a four-column table of long compounds that printed cleanly gets three words broken, and a column in a twelve-column table inside a two-column layout can collapse to the cell padding floor, about two characters; that is the same trade the two file backends already make in `fitColumnWidths`, which scales uniformly with no minimum floor. And page counts grow where the fix stops shrinking things: a 40-row twelve-column table goes from 2 sheets at 66.7 percent scale with four columns clipped away to 8 sheets at full size with all twelve present. (#153)
+- A dark document prints in the light palette instead of ink on ink. The layer forced the editor's text to black, dropped the dark panel behind it, and stopped there, so everything one level down that declares a colour of its own kept its dark value: a table header printed as a near-black band at 1.46:1 against the black labels inside it, and `print-color-adjust: exact` put that fill on the paper even with the dialog's background graphics switched off; a blockquote printed light grey on white, a mention pale blue, a coloured block a tint darker than the text on it, and an unticked task checkbox came out a filled dark square, which on paper reads as a ticked one. The whole light token set is now re-emitted on `.dm-editor` inside `@media print`, with `!important`, which settles all of that in one decision and covers a token the dark theme gains later on the day it lands rather than the day somebody prints it. The importance is load-bearing rather than house style: `_dark.scss` names `.dm-editor` in its own selector list, so with the theme class on an ancestor the dark values are declared on this same element and a plain redeclaration loses to them. Eight tokens `_variables.scss` derives from that palette are re-emitted with it (link colour, mention text and surface, inline and block code background, block code text, table header, details), because `light-tokens` is by construction only the set the dark theme flips, and a consumer who dark-themed through a component token instead would otherwise get this package's light ink on their own dark surface: a code block that was readable in the browser comes out black on black, which is worse than the dark sheet the section exists to prevent. Ink and surface move together or neither moves. Inline code takes `currentColor` rather than the light theme's pink, so the chip prints as the text around it. `color-scheme` is forced to light on the root elements and again on the editor, because a dark scheme paints a canvas that is not a background, covers the whole sheet including the margins, and is what draws that filled checkbox. The `/toc` block's row colours are reset on the block itself, since the dark theme sets them there, out of reach of anything declared on `.dm-editor`. Measured under a dark theme: `th` prints `rgb(248, 249, 250)` where it printed `rgb(42, 42, 42)`. One consequence for a consumer with a palette of their own: it is normalised on paper, accent, block colours and syntax colours included. The escape hatch is a rule of your own marked `!important` and loaded after the theme. (#153)
+- The print layer reaches `<html>` and `<body>`, which completes the `body` canvas fix in 0.15.0 (#150) below. That fix cleared the `body` background because the ancestor rule could not reach it, and it cleared half of a pairing: the printed canvas is taken from the ROOT element, and a body background reaches it only while the root has none, so a page tinted on `<html>`, which is what a dark theme with a pre-paint bootstrap writes, still flooded the page area of every sheet with a flat colour underneath text this same layer had already forced to black. The layout release had the same blind spot for a different reason. `body.dm-printing .dm-print-ancestor` is a descendant selector, and `mark()` walks to the root, so `<html>` and `<body>` both carry the class and neither is a descendant of the body: everything the release promised reached every ancestor except the two that decide the page. `html, body { height: 100%; overflow: hidden }`, the commonest full-height application shell there is, truncated a 160-paragraph print to 39 paragraphs on two sheets, identically with and without the marks; a body left `position: fixed` did the same and needs `position: static` as much as it needs the height and the overflow; and the user agent's own 8px body margin inset every sheet. Both elements are now named in the canvas rule, which is always on, and the release gained the twin selectors `body.dm-printing` and `html.dm-print-ancestor`, which stay on the command path. It also grew. `animation` and `transition`, because a running one outranks `!important` and a host animating a wrapper otherwise keeps that transform for the whole print. `min-width`, `min-height` (a `min-height: 100vh` shell is a whole page area of blank paper when the document is shorter than one), `box-shadow` and `outline`. Every property that establishes a containing block for a fixed descendant: `transform`, `translate`, `rotate`, `scale`, `transform-style`, `offset-path`, `perspective`, `contain`, `container-type`, `content-visibility`, `view-transition-name` and `will-change`, because that is how an ancestor turns a footer repeating on every sheet into one box at the end of the flow, measured at one marked sheet in five, and because `transform: none` does not reset the three individual transform properties and `contain: none` does not reset `content-visibility`. And the properties that make the engine rasterise the printed pages: `filter`, `backdrop-filter`, `mask`, `-webkit-mask`, `opacity` and `mix-blend-mode`, where a `filter` on a root element leaves the reader's saved PDF with no selectable text in it at all. Measured on a page painting `html { background: #f4f5f7 }`, the root's print background goes from `rgb(244, 245, 247)` to transparent and its `color-scheme` from `normal` to `light`. `zoom` is deliberately not released: it scales the print rather than losing any of it, and forcing it would take away a host's own `@media print { body { zoom: 0.8 } }`, measured at five sheets becoming seven. Two consequences, both on the command path. Ten more properties are dropped from marked ancestors; nine are screen effects with no meaning on paper, and the genuine loss is a host using `filter: invert(1)` on the root as a dark-mode hack, which now prints un-inverted. And `display: block` now reaches `<body>`, so a host whose body is the flex or grid container positioning the editor loses that for the duration of a command print. See [Isolation and the marking classes](https://domternal.dev/v1/extensions/print/#isolation-and-the-marking-classes). (#153)
+- New `--dm-print-reserve-block-end`, the hook a repeating page footer needs. A footer that repeats on every sheet has to be a `position: fixed` box, because no browser implements the CSS margin boxes a real footer would use, and a fixed box is laid out against the page area and is out of flow: it takes no height from the content flowing into that same page area, so a sheet filled to its last line prints that line underneath the footer. Set the property on `:root` inside `@media print` and the paper layer turns it into block-end padding on the root element, so every sheet ends that much higher. `box-decoration-break: clone` is the load-bearing half, because a fragmented box carries its block-end padding on its LAST fragment only, which is the one sheet that never needed the room; both spellings are emitted, since each engine implements exactly one, and WebKit honours neither for block-end padding under fragmentation, so a Safari print is unchanged. Unset, the fallback is `0`, nothing is reserved and a document paginates exactly as it did. Measured at `200pt` on a six-sheet document: eight sheets, which is what proves the band is taken per fragment rather than once at the end. Domternal Pro's evaluation mark is the first consumer, and an application with a fixed print footer of its own can set it too. One consequence: `box-decoration-break: clone` applies whether or not a band is set, so a host that borders or shadows `<html>` now gets that decoration repeated on every printed sheet. See [Styling](https://domternal.dev/v1/extensions/print/#styling). (#153)
+- The editor, the printed sheet, `getHTML({ styled: true })`, the `.docx` and the `.pdf` draw the same list marker at the same nesting level. Both Pro export backends pick theirs from a three-step cycle keyed on depth; the theme declared no `list-style-type` at all, so the browser's own stylesheet answered for the editor and for paper, and it answers differently, plateauing at square from the fourth bullet level down and numbering every ordered level `1.`. One document therefore carried three marker schemes at once: a level-4 bullet was a disc in the two files and a square on screen, and a level-2 ordered item was `a.` in the files and `1.` in the editor. The level now travels down by inheritance in `--dm-list-level`, read by three style container queries per list type, rather than by a chain of descendant selectors, which has to stop at some depth and then plateaus one level below wherever it stopped, which is the defect itself, and which cannot express the one place the exporters restart the count: a table cell, where a list begins at the cell's own content edge and reads as a top-level list in every output. Every list spends a level, task lists included, so a bullet list under a task item is a circle rather than a disc, and the only lists that opt out are the two that paint no marker of their own, the task list, which draws a checkbox in the marker column, and the table-of-contents block's own list; a node view rendering its own list needs the same opt-out and an editor-scoped selector to outrank the theme. `getHTML({ styled: true })` writes the same cycle into its inline styles, because pasted HTML carries no stylesheet and the recipient's own sheet would otherwise answer for it, which is exactly where a pasted copy stopped matching the two files; a list carrying a `type` attribute is left alone, since that path takes arbitrary HTML and would otherwise write `list-style-type: decimal` over a caller's `<ol type="A">`. What the editor draws changes with it, which is the breaking entry above. (#153)
+- The slash menu keeps its row elements across an update that does not change them (`@domternal/extension-block-controls`). `click` fires on the nearest common ancestor of the `mousedown` and `mouseup` targets, and a rebuilt button leaves none, so a press that straddled a transaction, which any re-filter of the list dispatches, was swallowed with nothing to read. A button that outlives an update still runs the fresh item's command. (#152)
+- The selected-block halo draws its bleed as a spread shadow instead of a negative `inset`. The inset joined the halo to the nearest scroll container's overflow, so a block filling one, a code block or a Pro column, handed its container a scrollbar for the whole drag. (#152)
+- The `@domternal/core`, `@domternal/extension-table` and `@domternal/theme` tarballs carry a `THIRD-PARTY-LICENSES.md` naming the Phosphor icons and the adapted ProseMirror stylesheets they embed, and a gate keeps the file in every future tarball. (#152)
+- The Notion color picker in all four wrappers validates its `palette` option at runtime and ignores a malformed one, instead of taking a value that is not an array of strings at its word. (#154)
+
+### Packages
+
+- Removed: `@domternal/extension-block-menu`, the deprecated rename shim from v0.10.0, ends with the 0.x line as announced there. Briefly published 1.0.x builds of it were withdrawn from the registry; import `@domternal/extension-block-controls` directly.
+
+### Docs
+
+- Every package README is back in line with its source: the SSR helpers, theme token targets, print options, image placement, math editing and the newer commands had arrived in the packages before they arrived in the READMEs. (#152)
+
+## 0.15.0 (2026-08-16)
+
+### Breaking
+
+- Notion mode's reading measure moved off the editor host onto the content column, behind the new `--dm-notion-column-width` token, and the default widens from `38rem` to `44rem`. `.dm-editor.dm-notion-mode` spans its container again instead of being capped at the measure, which is what gives a docked panel the whitespace to slide the column into rather than landing on the prose. If you changed the measure with a `max-width` on `.dm-notion-mode`, set the token instead; if you painted a border, background, or shadow on that element, move it onto your own page wrapper. (#150)
+- The `code` mark no longer excludes every other mark, only the marks in the new `formatting` group. A third-party mark that relied on `code` stripping it must now declare `group: 'formatting'` to keep being stripped; a mark that should survive inline code needs no change. (#144)
+
+### Features
+
+- feat(core): new `Print` extension. `editor.commands.printDocument()` opens the browser's own print dialog after marking the editor and its whole ancestor chain, so the host application's sidebar, header, and everything else beside the document is left off the page (the paired `@domternal/theme` rules do the hiding). It contributes a printer toolbar button that stays live in a read-only editor, binds `Mod-P` while the caret is in the editor, and fires the new `beforePrint` and `afterPrint` editor events, so a listener can set `document.title` or add page rules before the dialog opens. Options cover which element to print (`root`), whether the button appears (`toolbar`), and whether the reader's own Ctrl/Cmd+P gets the same isolation (`isolateNativePrint`, off by default). `Print` is not part of `StarterKit`, so add it explicitly. (#146)
+- feat(theme): a paper layer, so printing an editor produces the document rather than the screen, and it applies to the reader's own Ctrl/Cmd+P with no code involved. Editor chrome goes first: toolbar and its dropdown panel, bubble and floating menus, block handles and drop indicator, slash, emoji, and mention menus, link, image, and math popovers, the floating outline, table and image affordances, plus the selection halo, pending-link underline, and live query decorations; the editor's own border, shadow, panel tint, max-width, and drag gutter go with them, and text is forced to black so a dark theme no longer prints light grey on white. Content the screen was hiding comes back: a closed accordion prints its body, code blocks wrap instead of printing only their visible scroll window, wide tables and block formulae stop being clipped by their scroll wrappers and stored column widths, code, table, mention, highlight, and callout backgrounds survive through `print-color-adjust: exact`, and headings, list items, code blocks, quotes, images, and table rows get break rules with two-line widows and orphans. (#146)
+- feat(core,angular,react,vue,vanilla): new `preset` editor option (`'classic' | 'notion'`). `'notion'` paints `dm-notion-mode` on the `.dm-editor` host itself, so one option covers styling and behavior instead of a hand-written class, and preset-aware code follows it: the default bubble menu serves the Notion text context and the image extension offers align controls. `editor.preset` resolves the option first and still reports `'notion'` for a host that only carries the class, so existing setups behave exactly as before, and an explicit `'classic'` overrides even the class. Only a class the editor painted is removed again on destroy. The option is available on every wrapper as a create-time option, prop, or input, and `EditorPreset` is exported from `@domternal/core`. (#147)
+- feat(extension-image): images gain an align placement alongside float. A new `align` attribute (`'none' | 'left' | 'center' | 'right'`), a `setImageAlign` command, and matching bubble menu buttons place the picture within the measure with the text staying below it, the Notion behavior, while float keeps text wrapping beside it. The bubble menu offers exactly one of the two sets: the new `placement` option (`'float' | 'align'`, default `null`) pins a choice, otherwise the editor preset decides, with `'notion'` offering align. The two are one choice on a node, so setting either clears the other, and the alignment serialises as `data-align` plus block margins (never a float), so exported HTML lands correctly with no theme loaded. `ImageAlign` and `ImagePlacement` are exported. (#147)
+- feat(core): a floating menu item that declares no `group` now leads the menu, above every named category, instead of being filed last. Groups are ordered by the arrival of their first item, and an extension contributing an ungrouped item necessarily loads after the ones defining the categories, so declining a category used to sink the item to the bottom. A nameless group renders without a heading, so such an item reads as a primary action, and `group: ''` is treated identically. Both menus that share `groupFloatingMenuItems` follow: the slash popup and the `+` floating menu. (#150)
+- feat(core,extension-block-controls): new `keepOnDuplicate` mark option. A mark declaring `keepOnDuplicate: false` is stripped from the copy that the block handle menu's Duplicate action inserts, throughout the copied subtree and not only on the top node, so a mark that references identity outside the document (a comment thread anchor, a suggestion id) does not end up pointing at two unrelated places. It defaults to true, so every existing mark is duplicated exactly as before. (#144)
+
+### Fixes
+
+- fix(core): `UniqueID` no longer renames the blocks that arrive to replace a selection. Select all and paste counted the ids about to be deleted as incumbents and re-minted the pasted copies instead, orphaning every `#hash` anchor, table-of-contents deep link, and Copy link URL pointing into that content, and it looked intermittent because a second paste of the same clipboard kept its ids. `transformPasted` now skips any node lying wholly inside a range the paste is about to replace; a drop is excluded, since it inserts at the drop point and leaves the selection naming content that survives. (#150)
+- fix(core): input rules keep the marks of the text they rewrite. The bold, italic, strike, and code mark rules, the `==highlight==` rule, and Typography's replacements (ellipsis, arrows, fractions, smart quotes) now carry the replaced range's marks onto the replacement, preferring stored marks exactly as typing does, instead of punching an unmarked hole into surrounding linked, commented, or coloured text. Schema exclusion still wins, so a mark the newly applied mark excludes is dropped as before. (#144)
+- fix(core): applying `code` no longer destroys the marks around it. Only the marks in the new `formatting` group (bold, italic, underline, strike, subscript, superscript, textStyle) are stripped, so a link, or a third-party semantic mark such as a comment anchor, survives being formatted as inline code. Excluding by group rather than by name also keeps `Code` loadable in a minimal schema that has none of those marks. (#144)
+- fix(react): toolbar buttons, dropdown triggers, dropdown panel items, floating menu entries, and bubble menu buttons still fire when an editor transaction lands during the press. Every render handed `dangerouslySetInnerHTML` a fresh payload object, so React rewrote each button's icon markup on any re-render: an overlay closing on pointerdown and dispatching a transaction destroyed the icon node between mousedown and mouseup, leaving the two with no element in common and the browser firing no click at all. (#144, #145)
+- fix(vanilla): the bubble menu's buttons and the toolbar's dropdown triggers keep their identity across a render, so a press whose `mousedown` and `mouseup` straddle a transaction still produces a click. Both compared the markup they were about to write against `element.innerHTML`, which returns the browser's re-serialisation rather than the string last written, so the guard never held and the glyph under the pointer was replaced on every render; each now remembers what it wrote. The bubble menu additionally rebuilt its whole subtree on every transaction and now reuses the existing nodes unless the resolved item list or the trailing triggers change, so a consumer holding a trigger reference should still re-resolve it after an item-list change. (#150)
+- fix(core): the bubble menu stays open when a mousedown lands on an SVG icon inside an editor-UI overlay (`[data-dm-editor-ui]`), and when the pressed node has already been detached from the document mid-gesture. Both cases used to be read as a click outside every surface, so the menu dismissed itself and the click that followed was lost. (#144)
+- fix(extension-block-controls): the drag preview keeps the dragged block's own colour, type, and inner spacing. It was styled by assigning `getComputedStyle(source).cssText`, which the CSSOM specifies as the empty string on a computed declaration, so the detached clone in fact carried no styles at all and inherited `<body>`: close enough on a light theme, near-invisible dark-on-dark text on a dark one. Resolved paint properties are now copied one by one onto the clone and its descendants, and the root clone's margins are zeroed so the preview no longer sits offset from the cursor. (#146)
+- fix(extension-image): a px-suffixed width now sizes the picture. The node view interpolated a second `px`, so `setImage({ width: '300px' })` or pasted markup carrying `width="300px"` produced `300pxpx`, which CSSOM discards: the image fell back to its intrinsic size on screen while exports sized it at 300. A width that is not a length is now ignored instead of written through. (#147)
+- fix(theme): in Notion mode a floated image no longer wraps text beside it. A picture carrying `float: left` or `float: right` from a classic document renders as its aligned equivalent (a block with the same left, centre, or right position), instead of a layout the align-only controls on offer there cannot reach or undo. (#147)
+- fix(theme): `h5` gets its own size (1em) so the heading ladder keeps descending. It was left on the user-agent 0.83em, which rendered it smaller than `h6` and smaller than body text; only visible with heading levels 5 and 6 enabled, since `Heading` ships with levels 1 to 4. (#147)
+- fix(theme): the toolbar dropdown panel paints above the bubble menu instead of at parity with it, so its items stay clickable when the two overlap. (#146)
+- fix(theme): a dark page canvas no longer prints behind the black text the print layer forces. Printing now clears the `body` background, with its transition stopped first, since a running transition outranks `!important` and a theme toggle animates exactly that property, while the forced `#000` text is scoped to `body.dm-printing`, the command path where everything except the document is already hidden. (#150)
+- fix(angular,react,vue,vanilla): the bubble menu's trailing color trigger renders only while a `notionColorOpen` listener is live, so an editor that loads the `NotionColorPicker` extension without mounting the picker panel no longer shows an "A" button that does nothing when pressed. The check re-runs on every transaction, so a panel mounted after the editor flips the trigger back on. (#148)
+
+### Accessibility
+
+- fix(angular,react,vue,vanilla): Escape closes an open toolbar dropdown from anywhere, not only while focus sits inside the toolbar. Opening a dropdown with the mouse leaves the caret in the editor, so the toolbar's own keydown handler never saw the key and the panel could be dismissed only with a pointer. Focus stays where it is rather than being pulled out of the editor. (#146)
+
+### Docs
+
+- The `@domternal/core`, `@domternal/theme`, and `@domternal/extension-image` READMEs now cover printing, the `preset` option, and the image align placement, and the root README's package table counts the extension and icon this release adds. (#146, #147)
+
+## 0.14.0 (2026-07-26)
+
+### Features
+
+- feat(extension-block-controls): new `addBlockMenuItems()` hook. Any extension can contribute entries to the block handle menu the same way `addToolbarItems()` already works: an item declares a group (`primary`, `colors`, `turnInto`, `collaboration`), an optional order, and may report itself unavailable or disabled with a reason. Contributed entries keep the menu's `role="menuitem"`, roving tabindex and arrow-key navigation, a disabled item renders inert with `aria-disabled` and its reason as the title rather than disappearing, and a contributor that throws is skipped instead of taking the menu down. `ExtensionConfigBase` is exported from `@domternal/core` so the declaration merge resolves in a consuming package. (#140)
+- feat(core): read-only editors now refuse every editing affordance and command entry point. The toolbar hides behind a new `allowReadOnly` flag on toolbar items, block handles and table chrome are hidden, and the bubble menu, floating menu, heading shortcut, table dropdowns, details toggle and image resizing are all gated, closing the holes where a read-only document could still be edited. (#138)
+- feat(core): `table` joins the default `UniqueID` types, so a table is addressable by id like every other block. Naming the type is inert when the table extension is absent, exactly as `image` already was; without it a table was the one block the block menu could not Copy link and no id-anchored feature could name. (#140)
+
+### Fixes
+
+- fix(core): block ids now survive undo, moves and duplicates. The startup id sweep stays out of the undo stack, so the first undo no longer strips every id and lets the next sweep mint different ones; a block dragged within the document keeps its id, because `transformPasted` runs on the dragged slice before the source is deleted and made a plain move look like a paste; and when two nodes momentarily hold the same id the node that already had it keeps it, instead of the first in document order winning and renaming the original in favour of a copy pasted above it. Every id consumer benefits: `#hash` anchors, table-of-contents deep links and the block menu's Copy link all break silently when an id changes underneath them. (#140)
+- fix(core): the slash, emoji and mention menus shrink to the available viewport space instead of flipping over the content they were triggered from. (#134)
+- fix(extension-block-controls): a block handle whose hovered block is deleted now retracts, instead of freezing the next hover and handle click on a block that is gone. (#139)
+
+## 0.13.0 (2026-07-19)
+
+### Features
+
+- feat(core): the Notion-mode text bubble menu now leads with an `ai` item (Notion's "Ask AI") followed by a separator; like `mathInline`, it is silently skipped along with its separator when the Pro AI extension is not loaded. (#131)
+- feat(core): new `announce(view, message)` utility: a shared polite `aria-live` status region inside the editor for screen-reader feedback on actions with no other non-visual signal (WCAG 4.1.3). Used by the Pro columns keyboard commands; reusable by any extension. (#130)
+- feat(extension-block-controls): `DropZoneQuery` passed to `dropZoneProviders` now carries `draggedTo` (the dragged range's exclusive end) alongside `draggedFrom`, so providers read a range instead of assuming a single block; groundwork for multi-block drags while the API is still experimental. (#130)
+- feat(theme): the block drop indicator stays visible under Windows High Contrast (forced colors) by repainting with the OS `Highlight` color. (#130)
+- feat(extension-block-controls): experimental `dropZoneProviders` option on BlockHandle. Providers claim pointer positions during a handle drag; a claimed position hides the built-in drop indicator and turns the release into a no-op for BlockHandle, so a higher-priority plugin can own its own drop zones (custom indicators and transactions). With no providers registered, behavior is unchanged. (#130)
+- feat(extension-block-controls): experimental `nested.anchorContainers` option on BlockHandle. Blocks inside listed side-by-side containers (e.g. a `column` node) get Notion-style per-block handles: the cursor's horizontal position picks the container, hover resolution is scoped to that container's subtree, and the handle anchors to the container's left edge instead of the editor gutter. The gap between containers belongs to the container whose handle floats in it, so hovering the gap summons the neighbour block's handle instantly (Notion behavior); margins resolve into the nearest container. Pair it with a `dropZoneProviders` entry that claims drops back into the container; without one, moves out of it are irreversible. Default off; behavior is unchanged without the option. (#130)
+
+### Fixes
+
+- fix(extension-emoji): typing emoticons in a row (e.g. `xD xD`, `:) :)`) now converts every one; the rule was swallowing the space that triggered the conversion and then rejecting an emoticon left flush against the resulting emoji atom, so every other emoticon stayed as literal text. It now keeps the trailing space and treats an atom node as a valid leading boundary. (#132)
+- fix(extension-table): a table whose columns have no explicit widths is now floored at `defaultCellMinWidth` per column, so inside a narrow container (e.g. a layout column) the cells stay readable and the `.tableWrapper` scrolls horizontally instead of crushing them, matching Notion's tables. Tables with resized columns already behaved this way. (#130)
+- fix(extension-block-controls,theme): the block handle now matches Notion's control layout: the + button sits left of the drag grip (the grip is adjacent to the block it moves), the two buttons sit flush instead of 2px apart, and the 40px cluster ends 4px before the text instead of 10px. Anchored handles inside side-by-side containers now fit a 46px gutter without overhanging the left neighbor. (#130)
+- fix(extension-block-controls): a collaborator deleting the dragged block mid-drag no longer makes the drop move whichever block now occupies the stale source position; once the drag source is committed to plugin state, its mapped (or deleted) position is the only truth and the drop aborts cleanly. (#130)
+- fix(core): `setContent` now ends with the caret at the LAST TEXT position of the new document instead of leaving the mapped selection wherever the replace strands it; with a document ending in an atom (e.g. block math) that stranded selection was a NodeSelection on the trailing atom, which disabled every mark command until the user clicked into the editor. (#130)
+- fix(react): `useEditor` no longer echoes a full-document `setContent` on every mount; the content-sync effect reacts only to a `content` prop value the current editor does not already carry. (#130)
+- fix(extension-block-controls): dragging the last real block out of a generic `block+` container that also holds an empty placeholder paragraph no longer swallows the container and the placeholder with it; the filler-paragraph collapse rule is scoped to list items, its documented purpose. (#130)
+- fix(extension-block-controls): the drop zone now extends 80px past the editor's right edge, mirroring the left gutter, so a release in the page's right margin drops instead of dying at the content edge. This also gives `dropZoneProviders` symmetric room for right-edge side zones. (#130)
+- fix(core): the caret-follow placeholder (`showOnlyCurrent`) renders only while the editor is focused; after a load or tab switch the preserved selection no longer shows a misplaced hint on an unfocused editor. The empty-document placeholder still renders without focus. (#130)
+- fix(extension-block-controls): dragging a native text selection is no longer swallowed by the block drop handler; drops that do not come from a handle drag fall through to ProseMirror's default move. (#130)
+- fix(extension-block-controls): the drop indicator hides as soon as the dragged block is deleted mid-drag (e.g. by a collaborator), instead of advertising a landing line for a guaranteed no-op release. (#130)
+
+## 0.12.1 (2026-07-11)
+
+### Fixes
+
+- fix(theme): long block (display) equations now scroll horizontally instead of being clipped by the editor, and the LaTeX edit popover is bounded to the viewport with a scrolling preview instead of stretching to the formula's width. Inline math keeps its overflow visible so fractions, integrals, and roots are never vertically clipped. (#128)
+
+## 0.12.0 (2026-07-10)
+
+### Features
+
+- feat(extension-markdown): new `@domternal/extension-markdown` package: GitHub-flavored Markdown import and export for the full schema. Markdown-looking plain-text pastes convert to rich content (opt-out), `insertMarkdown` and `setMarkdownContent` commands plus a headless parser/serializer API cover programmatic use, and serialization reports fidelity losses through a warnings channel. Tables, task lists, math, and fenced code round-trip; a currency guard keeps `$5 and $10` from parsing as math. (#125)
+- feat(core): plugin views can dispatch transactions while the editor is constructed, so collaborative bindings apply their initial sync immediately. The framework wrappers gain a `history: false` option for editors that bring their own undo, `onError` is wired before extension setup so construction-time errors reach it, and the new `ExtensionConfigurationError` escapes extension error isolation for fatal misconfiguration. (#124)
+
+### Fixes
+
+- All packages now ship a LICENSE file in the npm tarball, and the repository gains issue forms, a pull request template, a code of conduct, and a security policy. (#123)
+
+## 0.11.2 (2026-07-01)
+
+### Fixes
+
+- fix(theme): the muted and placeholder text color now meets WCAG AA contrast on both themes. The light muted token moves from `#999999` (2.85:1) to `#6b7280`, and the dark token from `#777777` (3.72:1) to `#9ca3af`, so placeholder text, disclosure toggles, and menu hints stay legible. (#119, #120)
+
+### Docs
+
+- Every package now ships a package-specific README with a real description, install, and usage section, replacing the previous shared boilerplate. The four per-framework StackBlitz links are consolidated into a single "Live examples" link to https://domternal.dev/examples. (#119, #120)
+
+## 0.11.1 (2026-06-30)
+
+### Fixes
+
+- fix(extension-details): the disclosure toggle stays open on click. A DOMObserver flush triggered right after the pointer click (for example moving the selection out of the details) no longer redraws the node view and discards the DOM-only open state. (#117)
+
+## 0.11.0 (2026-06-25)
+
+### Breaking
+
+- Removed the never-emitted `paste`, `drop`, `delete`, and `unmount` editor events and their prop types (`PasteEventProps`, `DropEventProps`, `DeleteEventProps`). They were exported but never fired, so `editor.on('paste', ...)` and imports of those types will no longer compile. `mount` / `MountEventProps` are unchanged. (#115)
+
+### Features
+
+- feat(extension-image): edit alt text on existing images. Selecting an image adds an "Edit alt text" bubble action that opens an alt-only menu pre-filled with the current alt, and the action shows active when the image already has alt text. (#115)
+
+### Fixes
+
+- fix(angular, react, vue, vanilla): the editor honors the `skipUpdate` meta, so a programmatic `setContent(content, false)` no longer echoes through `onUpdate` / the Angular control-value accessor (it no longer marks reactive forms dirty on `writeValue`). (#115)
+- fix(vue): `immediatelyRender: true` no longer renders a blank editor (the editor DOM is re-parented on mount), and changing the extensions array no longer leaks an orphan clone into the container. (#115)
+- fix(vanilla): the toolbar no longer throws when keyboard navigation lands on an out-of-range button index. (#115)
+- fix(core): a heading configured with an empty `levels` option falls back to level 1 instead of rendering `<hundefined>`; `unsetTextColor` / `unsetHighlight` also clear the named color/highlight token so the "Default" swatch resets token-based colors; `insertContent([])` returns false instead of deleting the selection, and malformed JSON/HTML returns false instead of throwing; the input-rule `compositionend` handler guards against a destroyed view. (#115)
+- fix(theme): the light theme resets every dark-only token, so a `.dm-theme-light` region nested inside a dark context no longer leaks dark block colors, scrollbars, and shadows. (#115)
+- fix(extension-toc): the floating table-of-contents card collapses on scroll inside a container (`activeScrollParent`), not only on window scroll. (#115)
+- fix(extension-details): the disclosure toggle exposes `aria-expanded` and `aria-controls` so assistive technology can announce its open / closed state. (#115)
+- fix(extension-image): the node view no longer writes the literal string `"null"` to an image's `alt` / `title` when those attributes are absent. (#115)
+
+## 0.10.0 (2026-06-21)
+
+### Packages
+
+- New: `@domternal/extension-math` - LaTeX math (inline + block) with a pluggable renderer (KaTeX). Ships `MathInline`, `MathBlock`, the shared `MathEditing` edit popover, and a `MathRenderer` interface. (#110)
+- Renamed: `@domternal/extension-block-menu` is now `@domternal/extension-block-controls`. The old package becomes a thin re-export shim, so existing imports keep working unchanged; it is deprecated and will be removed in v1.0.0. Switch your imports to `@domternal/extension-block-controls`. (#111)
+
+### Features
+
+- feat(extension-math): inline (`$...$`) and block (`$$`) authoring via slash menu, toolbar, input rules, and the text bubble menu, with a distinct radical icon for inline equations and turning a text selection into an equation. The shared edit popover has a live preview and is keyboard accessible (Enter on a selected equation opens it, WCAG 2.1.1), and rendered math is RTL-isolated. (#110, #112)
+- feat(core): a command run from a toolbar or menu now returns focus to the editor on the next frame, yielding when the command opened a popover input (such as the math editor) so that field keeps focus. This keeps the selection highlight after keyboard activation of a toolbar button. (#112)
+
+## 0.9.1 (2026-06-17)
+
+### Fixes
+
+- fix(core): outdenting a list item into a list of a different kind keeps its own kind and checked state (a to-do outdented next to bullets stays a to-do), instead of taking on the surrounding list's type. (#108)
+- fix(core): pressing Enter at the end of a list item that has nested children adds a new sibling and leaves the children under the original item; Enter on an empty item with children no longer spawns a stray empty item. (#108)
+- fix(core): the ordered-list `start` attribute is clamped to a valid positive integer, so malformed markup no longer writes `NaN` / `null` into the document. (#108)
+- fix(core): GitHub-style (`contains-task-list`) markdown task lists import as real to-do lists with their checked state preserved, and a single `<ul>` that mixes to-do and plain items no longer fabricates a leading empty placeholder item. (#108)
+- fix(theme): list indentation now scales with the editor font size, a colored task item keeps its checkbox aligned with its label, and list markers / checkboxes mirror correctly in RTL; a task list nested inside a bullet or ordered list no longer inherits an extra children-zone indent. (#108)
+
+## 0.9.0 (2026-06-15)
+
+### Features
+
+- feat(core): the floating menu plugin now lives in `@domternal/core`, and `@domternal/extension-block-menu` is no longer a peer dependency of the framework wrappers. The Angular/React/Vue/Vanilla wrappers need only `@domternal/core` + `@domternal/theme`; add `@domternal/extension-block-menu` explicitly when you want the block handle, slash menu, or drag-and-drop. (#104)
+- feat(react): `immediatelyRender` creates the editor synchronously on the first render instead of after mount. (#104)
+- feat(extension-block-menu): per-item "Turn into" for lists. The slash command and block menu convert one list item at a time via the new `turnIntoBulletList` / `turnIntoOrderedList` / `turnIntoTaskList` commands, while the toolbar and keyboard shortcut still convert the whole list. (#105)
+- feat(theme): Notion-style list spacing. In notion mode, adjacent lists of different type chunk together at the within-item gap instead of the wider container gap; in both modes a nested list sits tightly under its parent label. (#105)
+
+### Fixes
+
+- fix(core): the placeholder paints on the initial draw of an empty editor instead of waiting for the first transaction. (#104)
+- fix(extension-mention, extension-emoji): suggestion items select on `mousemove`, so a resting pointer no longer overrides arrow-key navigation. (#104)
+- fix(theme): content clips on the editor's inner wrapper so popups can escape short editors; added the `--dm-editor-padding-top` variable for two-value padding shorthands. (#104)
+- fix(core, extension-table): `positionFloating` gained a flip-boundary option so the table cell toolbar stays inside the editor. (#104)
+- fix(core, extension-block-menu): a list item keeps its kind (bullet / ordered / to-do) across drag, paste, and turn-into; split numbering restarts and container drags close both ways. (#105)
+- fix(extension-block-menu): no-op block drops are suppressed. The drop indicator hides and the drop is ignored when the release target is the block's own slot. (#105)
+- fix(core): Shift+Tab outdents only the targeted children-zone block, splitting the list and keeping the parent item intact (Notion parity). (#105)
+
+## 0.8.0 (2026-06-09)
+
+### Features
+
+- feat(extension-block-menu): reworked block drag-and-drop onto a unified gap-first drop model. The drop indicator now snaps to the nearest gap between blocks and the pointer's horizontal position chooses the nesting depth, with Y and X dead-bands so the line no longer flickers between gaps or levels. Drag right to nest a block deeper, left to outdent it across ancestor levels. (#101, #102)
+- feat(extension-block-menu): position-aware nested drop. A dragged block can now land as the first, in-between, or last child of a list item, not just as a sibling. (#101)
+- feat(extension-block-menu): dropping a non-list block into a list keeps the block's own type and splits the list around it, instead of wrapping it in a bullet. A list item dropped into a list of the other kind keeps its kind too (a to-do dropped among bullets stays a to-do). (#102)
+- feat(extension-block-menu): two same-type lists rejoin into one when the block separating them is dragged out from between them, healing the ordered-list numbering. (#102)
+- feat(react): `ReactNodeViewRenderer` node-view types now match ProseMirror's `NodeViewConstructor` (`getPos`, `decorations`, `ignoreMutation`), so `addNodeView` no longer needs a cast. (#102)
+
+### Internal
+
+- test(demos): cross-wrapper functional parity for drag-and-drop, node views, and form integration. Added Angular `ngModel`, React node-view, and React compound demos with their e2e, and backported heading Notion-Enter and task-checkbox coverage to vanilla/react/vue. (#102)
+
+## 0.7.5 (2026-06-03)
+
+### Fixes
+
+- fix(core): `StarterKit` makes `ListIndent` opt-in (off by default). Tab on a paragraph that merely follows a list used to capture focus and pull the paragraph into the list; now Tab moves focus to the next field, which suits embedded / form usage. Opt back in with `StarterKit.configure({ listIndent: true })`. In-list Tab/Shift-Tab and block-menu drag-to-nest are unchanged. (#98)
+- fix(core): extension instances are now cloned per editor, so several editors on one page no longer clobber each other. Previously creating a second editor repointed the first editor's node types at its own schema, and list `Enter` on the earlier editors dropped an indented child paragraph instead of a new list item. (#91)
+- fix(core): `SelectionDecoration` no longer keeps a ghost range when focus moves from one editor to another on the same page. The "editor UI" blur check is now scoped to the editor that lost focus, so a click into a different editor collapses its selection.
+
+## 0.7.4 (2026-05-29)
+
+### Fixes
+
+- fix(extension-table): table control dropdowns (row/column handles, cell color and alignment menus) now render inside the editor container instead of `document.body`, so they display correctly when the editor lives inside a modal or `<dialog>`. They are positioned with `fixed` so the editor's `overflow: hidden` can no longer clip them. (#93)
+- fix(core): converting a nested list item via a slash or menu command (Heading, Code block, Quote, Details) now keeps it indented as a children-zone block of its parent (Notion-style "Turn into") instead of silently doing nothing. Top-level items still dissolve to a top-level block. (#94)
+- fix(extension-table): the Table extension now pulls in Gapcursor, so a table at the end of the document is no longer a caret trap. ArrowDown or a click below the table drops a gap cursor and lets you type a new paragraph. (#94)
+- fix(core): list markdown shortcuts (`- `, `* `, `+ `, `1. `, `[ ]`, `[x]`) now also join with the following same-type list, not just the preceding one. Creating a list item on a line between two lists merges them into a single list instead of orphaning the trailing one. (#95)
+
+## 0.7.3 (2026-05-24)
+
+### Fixes
+
+- fix(theme): link and image popovers were invisible on light theme. Popovers mount to `document.body` so the `--dm-*` design tokens defined inside `.dm-editor` never cascade to them; `background: var(--dm-bg)` resolved to the CSS initial value (transparent) and the popover blended into the toolbar. Hoisted token fallbacks to SCSS variables in `_link-popover.scss` and `_image.scss`, each carrying both the cascade lookup and a literal fallback. Also strengthened the default `--dm-popover-shadow` so popovers lift visibly off the toolbar. (#88)
+
+## 0.7.2 (2026-05-24)
+
+### Features
+
+- feat(extension-toc): `FloatingTocOutline.activeScrollParent` option enables `scroll-mode='container'`. The outline pins to the host viewport's vertical middle via CSS sticky (zero JS during scroll) and the scroll-spy follows the host scroll instead of the window. Pair with a fixed-height wrapper for Notion-style scrollable editors. (#86)
+- feat(extension-toc,theme): tick column caps at ~50% of the host viewport with `overflow: hidden` (matches Notion behaviour); the hover card matches that height and scrolls its rows internally. New `--dm-toc-ticks-max-h` token controls the cap. (#86)
+- feat(theme): new `--dm-editor-padding-top-extra` token adds a comfortable gap between the editor's top edge and the first row. Defaults to `1rem` and bumps automatically in Notion mode where there is no toolbar above the column. (#86)
+- feat(demo-vanilla,demo-react,demo-vue,demo-angular): "Notion scrollable" demo mode. Editor sits inside a fixed-height wrapper that scrolls internally; the TOC scroll-spy follows the host scroll, not the window. Full e2e parity across all four demos. (#86)
+
+### Fixes
+
+- fix(theme,extension-block-menu): BlockHandle `dragstart` now hides the native dropcursor element correctly. The previous selector targeted `.ProseMirror-dropcursor`, a class `prosemirror-dropcursor` v1.8+ does not emit, so both the custom and native indicators rendered at once during a handle drag. The hide rule now targets `prosemirror-dropcursor-block` and `prosemirror-dropcursor-inline`. E2E regression coverage added across all four demos. (#86)
+- fix(extension-toc): `FloatingTocOutline` default `minHeadings` lowered from 2 to 1 so the outline appears on a single-heading document (matches Notion). Click-to-scroll no longer bubbles to the window when `activeScrollParent` is set. (#86)
+- fix(extension-toc,theme): zero-jitter container scroll. Absolute UI children (BlockHandle, BubbleMenu, FloatingMenu) are pinned at `top: 0` so the hidden box doesn't inflate the host's `scrollHeight` and create a ghost scroll. (#86)
+- fix(theme): tokenised slim scrollbar on the TOC card and Notion scrollable container so contrast holds in dark mode. (#86)
+- fix(theme): suppressed the sharp 2px accent border on `li.ProseMirror-selectednode::after` when BlockHandle is active. The translucent halo is now the single source of truth for selection feedback so dragging a list item no longer shows a doubled frame. (#86)
+
+### Internal
+
+- refactor(extension-toc): extracted shared `getHeadingLabel` and `setActiveMarker` helpers used by both `FloatingTocOutline` and `TableOfContentsBlock`. (#86)
+- refactor(extension-block-menu): extracted `clearTriggeredFlag` helper in `FloatingMenu` (deduplicates the dismiss and update branches). (#86)
+- refactor(demos): standardised `TOAST_MS[kind]` access pattern across all four demos; Angular's copy-link listeners switched to `AbortController` for parity with the other three. (#86)
+
+## 0.7.1 (2026-05-23)
+
+### Features
+
+- feat(ci): layered safety nets to prevent silent surface regressions. Consumer type-surface test exercises every `RawCommands` augmentation through the dist; per-package API surface snapshots; CSS variable references validated against theme definitions; gzipped bundle size budgets per package; grep guard forbidding relative-path module augmentations; `publint --strict`. (#84)
+- feat(theme): tables render as a "data view" globally - 15px font, 1.5 line-height, tight cell padding. Easier to scan than body-scale tables. Override on `.dm-editor .ProseMirror table` for body-scale. (#84)
+- feat(theme): Notion mode suppresses the slash-command placeholder inside narrow `<td>` / `<th>` cells so long hints like `Press '/' for commands` don't wrap onto two lines. (#84)
+- feat(core): new `copyThemeClass(view, target)` utility - copies the editor's `dm-theme-*` class onto a floating element portaled to `document.body` so the dark/light cascade reaches it. (#84)
+
+### Fixes
+
+- fix(core): `RawCommands` module augmentations now reach external consumers. 30+ source files switched from `declare module '../types/Commands.js'` to `declare module '@domternal/core'`; tsup + rollup-plugin-dts dropped relative-path augmentations during bundling, silently breaking `editor.commands.focus()` and the rest of the command surface in any consumer of `@domternal/core@0.7.0`. (#84)
+- fix(theme): table dropdown text rendered dark-on-dark in dark mode because portaled popovers couldn't read `--dm-button-color`. Added fallback to `--dm-text`. (#84)
+- fix(core,extension-image,theme): `LinkPopover` and image popover rewritten to read theme tokens instead of hardcoded hex values; removed their dark-theme override blocks. Both popovers now adapt automatically to light/dark via the standard cascade. (#84)
+- fix(extension-block-menu,theme): native `prosemirror-dropcursor` no longer doubles up with BlockHandle's own `.dm-block-drop-indicator` during a handle drag. BlockHandle adds a `dm-block-handle-dragging` class for the drag's duration; the theme hides the native cursor only while that class is present. Non-handle drags (text selection, external file drops) keep the native cursor. (#84)
+- fix(extension-toc): `Table of contents` slash menu item moved from `Basic` group (priority 600, first slot) to `Advanced` (priority 90, last slot). Sits next to `Toggle block` at the end of the menu instead of dominating the first position. (#84)
+- fix(theme): Notion mode body and h1 / h2 / h3 `font-size` overrides removed. Both modes now share the base text scale, so toggling between classic and Notion shifts layout (narrow column, gutter, tight rhythm) without a text-size jump. (#84)
+- fix(theme): Notion mode table cells match classic-mode cell height. Higher-specificity rule keeps `td > p` / `th > p` margin at 0 against the Notion paragraph-margin rule that was puffing cells. (#84)
+
+## 0.7.0 (2026-05-19)
+
+### Breaking
+
+- `listItem`/`taskItem` schema is now Notion-strict (`paragraph block*`). Existing content where the first child is not a paragraph may need migration.
+
+### Packages
+
+- New: `@domternal/vanilla` - framework-free DOM wrapper for Astro, Svelte, Solid, plain HTML, and Web Components. Class-based API (`new DomternalEditor(host, opts)` + `.destroy()` + setters), ESM-only with subpath exports, SSR-safe. Ships `DomternalEditor`, `DomternalToolbar`, `DomternalBubbleMenu`, `DomternalFloatingMenu`, `DomternalEmojiPicker`, `DomternalNotionColorPicker`.
+- New: `@domternal/extension-block-menu` - Notion-style block UX: `BlockHandle` (hover gutter with drag and plus button), `BlockContextMenu` (Delete / Duplicate / Turn into / Colors / Copy link), `KeyboardReorder` (Mod-Shift-Up/Down), `SlashCommand`, `SmartPaste`.
+- New: `@domternal/extension-toc` - Notion-style Table of Contents. Ships `TableOfContents` (heading observer + `scrollToHeading` command), `FloatingTocOutline` (sticky outline with IntersectionObserver active tracking and hover-expanded card), `TableOfContentsBlock` (inline `/toc` atom node).
+
+### Features
+
+- feat(core): `FloatingMenu` items API with controller (role=menu, Alt-F10 / Mod-/ keymap, click-outside, roving tabindex). Default items contributed by Heading, Lists, Blockquote, CodeBlock, HorizontalRule, Image, Table, Details via `addFloatingMenuItems` hook. (#75)
+- feat(angular,react,vue): render `FloatingMenu` via controller with role=menu, groups, roving-tabindex keyboard nav. (#75)
+- feat(core): `NotionColorPicker` extension with named-token color attrs (`colorToken`, `backgroundColorToken`) on `textStyle` mark, hex/token mutual exclusion, last-action-wins for inline color conflicts. (#80)
+- feat(angular,react,vue,vanilla): `DomternalNotionColorPicker` component - circular 5x2 grid, dark palette, persistent picker, A trigger glyph with slash. (#80)
+- feat(core): Notion-style list/task UX. Strict `paragraph block*` schema with children-zone indent, `ListIndent` extension (`Tab`/`Shift-Tab` outside list items indents as nested child), Enter on empty children-zone paragraph inserts sibling inside the li, non-empty Enter splits in place, Backspace at offset 0 lifts as top-level paragraph. (#77)
+- feat(core): Notion-style Enter on heading - end-of-heading inserts paragraph below, empty heading converts in place. (#77)
+- feat(core): Notion-style `/h1` in a list-item label dissolves the item (setBlockType lift fallback). (#77)
+- feat(core): `TaskItem` checkbox click toggles checked state via NodeView and applies strikethrough; Enter on a checked task spawns an unchecked sibling. (#80)
+- feat(extension-block-menu): drag-to-reorder with custom drop indicator (sibling/nested modes via X-threshold over list items), auto-scroll near viewport edges, cross-list-type drop auto-conversion, wrap dropped block into listItem when target is a list. (#76, #77)
+- feat(extension-block-menu): nested drag handle for inner blocks of list/task items via `BlockHandle.nested` (configurable allowed nodes, deepest-block-at-Y resolution). (#77)
+- feat(extension-block-menu): `BlockContextMenu` Colors picker, Copy link via new `writeToClipboard` utility (async Clipboard API + execCommand fallback) with split success/error events. Turn into routes wrapper commands and accepts wrapper sources (list-type swap from list-item drag handle). (#76, #80)
+- feat(extension-block-menu): `SlashCommand` works in a list-item label and cooperates with other overlays via `dm:dismiss-overlays`. (#76, #77, #78)
+- feat(extension-toc): `FloatingTocOutline` editor anchor mode with middle/center/frozen state machine, expanded card scroll-closes and viewport-clamps, level-encoded width buttons, hover-expanded card with text labels and per-level indent. (#78, #80)
+- feat(extension-toc): inline `/toc` atom node with reactive heading list, initial-load `#hash` auto-scroll opens collapsed details ancestors. (#78)
+- feat(angular,react,vue,vanilla): `icons` prop / input on `DomternalBubbleMenu` (parity with `DomternalToolbar`). (#81)
+- feat(extension-block-menu,angular,theme): Notion-style empty-paragraph placeholder and `requireExplicitTrigger` on FloatingMenu (opens only on the `+` button). (#76, #80)
+- feat(theme): `.dm-notion-mode` opt-in class with task checkbox token overrides, Notion-style centered content + side gutter for block handle (no text shift on color toggle), task list aligns with bullet list. (#78, #80)
+- feat(demos): Notion mode in all four demo apps (default/custom/notion toggle) with the full extension stack. (#75, #76, #77, #80)
+- feat(angular,theme): text-align dropdown in Notion bubble menu with dynamic icon, Escape close, cross-overlay dismissal, scoped active highlight. (#80)
+- feat(core): `BlockColor` extension - global `bgColor` and `textColor` block attrs preserved across `turnIntoBlock`. (#76)
+- feat(core): `UniqueID` extension renames duplicate ids on `setContent`. (#80)
+- feat(emoji): toolbar option to hide the emoji button from the toolbar (default: `true`). (#71)
+
+### Fixes
+
+- fix(angular,react,vue): show image bubble menu by default when the `Image` extension is loaded. (#71)
+- fix(core): Backspace on an empty paragraph after a list deletes it and places the caret at the end of the last item, instead of wrapping it back as a list item. (#78)
+- fix(core): `toggleList` in a children-zone paragraph wraps that paragraph in a fresh list, instead of converting the ancestor. (#78)
+- fix(core): Backspace on an empty paragraph between two lists of the same type joins them back into one. (#78)
+- fix(extension-block-menu): slash menu activates only on a real typing event of the trigger char (not pure selection changes or bulk inserts); query tracks only typed chars. (#78)
+- fix(extension-block-menu): `SmartPaste` handles same-type slice paste (fixes heading-into-heading shred bug) and trailing hard-break (Shift+Enter). (#76, #80)
+- fix(extension-block-menu): Delete on a list item no longer kills the whole list. (#76)
+- fix(extension-block-menu): `turnIntoBlock` preserves global attrs (`bgColor`, `textColor`, `id`) across block type change. (#76)
+- fix(extension-block-menu): drag and drop edge cases - PM dispatch deferred out of `dragstart` tick, drop works in handle gutter and side margins, fast-drag race between `dragstart` and `drop` handled, dragging the only nested list item collapses its wrapper. (#76, #77)
+- fix(extension-block-menu): `SlashCommand` misposition and page scroll on open. (#76)
+- fix(extension-block-menu): hover detection on the editor parent so the block handle surfaces in the side gutter (Notion centered layout). (#76)
+- fix(extension-block-menu): virtual-ref preserves color picker and context-menu position when the bubble menu rebuilds its anchor. (#80)
+- fix(extension-toc): active heading tracks viewport-top crossing and always keeps one tick lit. (#80)
+- fix(angular,core): `LinkPopover` triggered from the bubble menu anchors to the Link button (bottom-start) and reparents into `.dm-editor`. (#80)
+- fix(core): bubble menu hides A and `...` triggers on node selection (image); `...` disabled on multi-block selection. (#80)
+- fix(theme): notion-demo page background and border follow the dark theme. (#78)
+- fix(theme): scope task-item checked strikethrough to the label paragraph so nested children stay unstruck. (#80)
+- fix(react): migrate to React 19 `RefObject`; runtime guard for `useEditorState` mode. (#74)
+- fix(angular): resolve ESLint errors in wrapper components; raise bundle size budgets for demo and example apps. (#74)
+- fix(extension-block-menu): security + correctness review fixes (XSS, empty-doc guard, position mapping, `duplicateBlock` marks). (#76)
+
+### Accessibility
+
+- `role="menu"` + `aria-label="Floating menu"` on FloatingMenu with roving tabindex. (#75)
+- `BlockContextMenu`: `aria-activedescendant`, arrow nav, Esc close, focus return on outside-click. (#76)
+- `DomternalNotionColorPicker`: `aria-haspopup`, `aria-modal="false"`, disconnected-anchor defense, keyboard arrow nav across the swatch grid. (#80)
+- `prefers-reduced-motion` guards on TOC tick highlight, card slide, drop-indicator transition. (#78, #80)
+- Forced-colors mode guard on TOC outline. (#78)
+
+### Internal
+
+- Codecov integration with per-package flags and coverage badge. `publint` + `arethetypeswrong` validation extended to React, Vue, Vanilla, extension-block-menu, and extension-toc. (#72, #80)
+- E2E retries set to `2` in all demo Playwright configs. (#74)
+- Demo-vanilla: 56 e2e spec files (41 shared + 15 Notion). Demo-angular full Notion mode e2e coverage. Demo-react / demo-vue Notion-specific specs.
+- Coverage raised across packages: `extension-table` 95.56% statements, `extension-block-menu` ~89% lines, `core` 94.42% (all files ≥80%). `FloatingMenuController` 100%. (#73, #75)
+
+## 0.6.2 (2026-04-16)
+
+### Fixes
+
+- fix(vue): `Domternal` compound subcomponents (`Domternal.Toolbar`, `Domternal.BubbleMenu`, etc.) were tree-shaken away in production builds due to `sideEffects: false`. Moved assignments into `Domternal.ts` so bundlers can't drop them.
+- fix(vue): `editable` prop on `<Domternal>` and `<DomternalEditor>` was not syncing at runtime. Added reactive `watch` since `useEditor`'s internal watcher can't track plain object props.
+- fix(react,vue): toolbar keyboard activation (Enter/Space) did not work in `EditorContent`. Added `data-dm-editor-ui` attribute so `SelectionDecoration` preserves selection on toolbar focus.
+
+## 0.6.1 (2026-04-16)
+
+### Fixes
+
+- fix(angular): `@domternal/angular@0.6.0` was published without compiled output (#66)
+- chore: add automatic `pnpm build` to `prepublishOnly` hook in all packages to prevent publishing without dist
+
+## 0.6.0 (2026-04-15)
+
+### Features
+
+- feat(vue): add `@domternal/vue` wrapper with `Domternal` compound component, `useEditor`/`useEditorState` composables, `DomternalEditor` (v-model), `DomternalToolbar`, `DomternalBubbleMenu`, `DomternalFloatingMenu`, `DomternalEmojiPicker`, and `VueNodeViewRenderer` (Vue 3.3+) (#64)
+- feat(vue): `useCurrentEditor()` inject for descendant components with Vue `appContext` forwarding into ProseMirror node views
+- feat(vue): `VueNodeViewRenderer` with reactive node/selected props, `NodeViewWrapper`, `NodeViewContent`, drag handle, and nested editable content
+
+### Fixes
+
+- fix(core): add `Backspace` handler to `TaskItem` - pressing Backspace at start of first task item now lifts it out of the task list (parity with `BulletList`/`OrderedList`)
+
+### Internal
+
+- 2014 E2E tests for Vue demo app: 1923 ported from demo-react (41 spec files across all extensions) + 91 Vue-specific tests covering v-model two-way binding, `<Domternal>` compound component, `useCurrentEditor()` provide/inject chain, `useEditorState` selector mode, and `VueNodeViewRenderer` lifecycle/reactivity/inject forwarding (22 tests via Callout demo extension)
+
+### Packages
+
+- New: `@domternal/vue` - Vue 3 wrapper with composable components, composables, and Vue node view renderer with `appContext` chain forwarding
+
+## 0.5.1 (2026-04-14)
+
+### Fixes
+
+- fix(core): `SelectionDecoration` preserves selection when focus moves to toolbar or editor UI (`data-dm-editor-ui`, `.dm-toolbar`, `.dm-bubble-menu` blur checks)
+- fix(angular): ArrowDown dropdown trigger detection uses `document.activeElement` instead of `controller.focusedIndex` (parity with React)
+- fix(angular,react): toolbar refocuses editor after keyboard-activated commands (Enter/Space) to preserve `::selection` highlight
+- fix(angular,react): arrow keys enter emoji grid when focus is on grid container
+- fix(angular,react): selecting emoji category tab via keyboard focuses first emoji in that category
+- fix(theme): table dropdown hover fallback for dark mode
+
+### Internal
+
+- 26 new E2E tests (13 Angular + 13 React) for toolbar dropdown keyboard navigation, text color, font size, heading, ARIA attributes, and Enter on color swatch
+
+## 0.5.0 (2026-04-13)
+
+### Features
+
+- feat(core): add `SelectionDecoration` to StarterKit (opt-out via `selectionDecoration: false`), collapses range selection on blur to prevent ghost selections
+- feat(core): add `ariaLabel` option to `EditorOptions` for configurable editor label
+- feat(core): editor element now has `role="textbox"`, `aria-multiline="true"`, and `aria-label` by default
+- feat(core): dynamic `aria-readonly` attribute synced with `setEditable()` state
+- feat(core): floating menu sets default `role="toolbar"` and `aria-label="Floating menu"`
+- feat(theme): `:focus-visible` indicators on 16 interactive element types (toolbar, emoji, table, popovers, details)
+- feat(theme): `prefers-reduced-motion` media query disabling all animations and transitions
+- feat(angular): bubble menu ARIA parity with React (`role="toolbar"`, `aria-label`, `aria-pressed`, `role="separator"`)
+- feat(angular,react): ArrowUp/ArrowDown keyboard navigation inside open toolbar dropdown menus
+- feat(angular,react): emoji picker grid 2D keyboard navigation (arrows, Enter/Space to select)
+- feat(angular,react): emoji picker tabs with `role="tab"` and `aria-selected`
+
+### Fixes
+
+- fix(theme): move `prefers-reduced-motion` block to end of stylesheet to correctly override all animation/transition rules
+- fix(angular): add missing `tabindex="-1"` on frequently used and category emoji swatches
+- fix(react): use `document.activeElement` for ArrowDown dropdown trigger detection instead of `controller.focusedIndex`
+
+### Accessibility
+
+- `aria-label="URL"` on link popover input, `aria-label="Image URL"` on image popover input
+- `aria-label="Task status"` on task item checkboxes
+- `aria-label="Search emoji"` on emoji picker search input
+- `aria-label="Emoji suggestions"` and `aria-label="Mention suggestions"` on suggestion containers
+- Table cell toolbar: `role="toolbar"` with `aria-label="Cell formatting"`
+- Table dropdowns: `role="menu"` with `aria-label`, `role="menuitem"` on items, `role="separator"` on dividers
+- Dropdown menu items: `tabindex="-1"` for keyboard focusability (Angular + React)
+
+### Internal
+
+- 105 new E2E accessibility tests (56 Angular + 49 React) covering editor ARIA, bubble menu, dropdown keyboard nav, emoji picker, task checkbox, link/image popover, emoji/mention suggestions, focus-visible, and prefers-reduced-motion
+- 10 new E2E tests for SelectionDecoration blur behavior (5 Angular + 5 React)
+
+## 0.4.1 (2026-04-09)
+
+### Fixes
+
+- fix(angular,react): prevent page scroll when emoji picker opens by using `focus({ preventScroll: true })`
+- fix(react): replace wrapper `<div>` with `<Fragment>` in emoji picker grid so categories render as rows instead of columns
+
+## 0.4.0 (2026-04-09)
+
+### Features
+
+- feat(react): add `@domternal/react` wrapper with hooks, composable components, toolbar, bubble menu, floating menu, emoji picker, and React node views (#54)
+- feat(react): scaffold React example app and demo app with full E2E test suite
+- feat(core): export `NodeViewContext` interface for framework wrapper node view integration
+
+### Fixes
+
+- fix(react): `deleteNode` in `ReactNodeViewRenderer` uses `node.nodeSize` instead of hardcoded `1` for correct deletion of nodes with content
+- fix(react): `useEditorState` skips expensive `getHTML()`/`getJSON()` on selection-only transactions
+- fix(react): `DomternalEditor` renders children before editor div (toolbar above content)
+- fix(react): bubble menu `activeVersion` triggers re-renders for active/disabled state updates
+- fix(core): replace `AnyExtension` union type with interface to fix generic variance issue with `configure()`
+
+### Accessibility
+
+- Bubble menu: `role="toolbar"`, `aria-label`, `aria-pressed` on buttons, `role="separator"` on dividers
+- `displayName` on all `Domternal` compound subcomponents for React DevTools
+- `DomternalEditorRef` exposes `isEditable`
+
+### Internal
+
+- 1856 E2E tests for React demo app (38 spec files covering all extensions, toolbar, bubble menu, emoji picker, tables, mentions, and more)
+- 60 React-specific E2E tests: bubble menu a11y, `aria-pressed` sync, active class updates, `useEditorState` reactive output, dark theme toggle, toolbar layout switch, context-aware bubble menu filtering
+
+### Packages
+
+- New: `@domternal/react` - React 18+ wrapper with `Domternal` composable component, `useEditor`, `useEditorState`, `DomternalEditor`, `EditorContent`, `DomternalToolbar`, `DomternalBubbleMenu`, `DomternalFloatingMenu`, `DomternalEmojiPicker`, `ReactNodeViewRenderer`
+
+## 0.3.0 (2026-04-01)
+
+### Features
+
+- feat(mention): add default mention suggestion renderer with keyboard navigation and dark mode support (#52)
+- feat(core): custom inputRules plugin with Backspace undo for all input rules (blockquote, lists, headings, code blocks) (#51)
+- feat(core): add input rule helper wrappers (wrappingInputRule, textblockTypeInputRule, nodeInputRule, textInputRule, markInputRule) with undoable option (#51)
+
+### Fixes
+
+- fix(core): HR input rule trailing paragraph and undo cursor position (#52)
+- fix(core): use event.code for heading shortcuts to fix macOS Alt key issues (#51)
+- fix(core): toggleWrap lifts all paragraphs when unwrapping with AllSelection (#51)
+- fix(core): prevent list input rules from firing inside existing list items (#51)
+- fix(core): flatten mixed list+paragraph selections into single flat list (#51)
+- fix(mention): add code mark guard to suggestion plugin (#52)
+- fix(mention): fix keydown handling in suggestion plugin (#52)
+- fix(theme): remove browser-default CSS from content styles (#51)
+- fix(theme): adjust blockquote spacing, remove link cursor override (#51)
+- fix(theme): add dark mode styles for mention dropdown (#52)
+
+### Internal
+
+- 195 new E2E tests: mention (81), horizontal rule, image (38), emoji (27), details (11), blockquote input rule, heading shortcuts, lists (#51, #52)
+
+## 0.2.1 (2026-03-27)
+
+### Fixes
+
+- fix(theme,table): apply dark theme to table dropdowns appended to document.body (#49)
+- fix(theme,table): improve syntax highlighting contrast ratios for WCAG AA (#49)
+- fix(core,table): toolbar layout button name fixes (#48)
+
+### Docs
+
+- Unified README across all 10 packages with badges, features, and documentation links (#48)
+- Rewrite main README (#47)
+
+## 0.2.0 (2026-03-21)
+
+Initial public release.
+
+### Packages
+
+- `@domternal/core` - Framework-agnostic editor engine (13 nodes, 9 marks, 25 extensions, 112+ chainable commands, SSR helpers, toolbar controller with 45 built-in icons)
+- `@domternal/pm` - ProseMirror re-exports (12 subpath exports: state, view, model, transform, commands, keymap, history, tables, inputrules, dropcursor, gapcursor, schema-list)
+- `@domternal/theme` - Light and dark themes with 70+ CSS custom properties
+- `@domternal/angular` - 5 Angular components (editor, toolbar, bubble menu, floating menu, emoji picker)
+- `@domternal/extension-table` - Tables with cell merging, column resize, row/column controls (18 commands)
+- `@domternal/extension-image` - Image with paste/drop upload, URL input, XSS protection, bubble menu
+- `@domternal/extension-emoji` - Emoji picker panel and `:shortcode:` autocomplete
+- `@domternal/extension-mention` - `@mention` autocomplete with multi-trigger and async support
+- `@domternal/extension-details` - Collapsible details/accordion blocks
+- `@domternal/extension-code-block-lowlight` - Syntax-highlighted code blocks powered by lowlight
+
+### Features
+
+- Built on ProseMirror with clean extension API
+- Headless core works with any framework or vanilla JS/TS
+- First-class Angular support (17.1+) with signals, OnPush, reactive forms, zoneless-ready
+- Tree-shakeable, fully typed, SSR-ready
+- SSR helpers: `generateHTML`, `generateJSON`, `generateText` for server-side rendering
+- Inline styles export: `getHTML({ styled: true })` for email clients, CMS, and Google Docs
+- Input rules for markdown-style shortcuts (e.g. `**bold**`, `# heading`, `> quote`, `- list`)
+- Toolbar controller with automatic active state tracking and 45 Phosphor icons
+- All floating elements (bubble menu, floating menu, popovers) powered by `@floating-ui/dom`

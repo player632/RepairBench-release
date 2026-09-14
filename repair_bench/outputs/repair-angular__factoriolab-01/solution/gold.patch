@@ -1,0 +1,184 @@
+diff --git a/src/app/app.config.ts b/src/app/app.config.ts
+index 39326e9..ec733f9 100644
+--- a/src/app/app.config.ts
++++ b/src/app/app.config.ts
+@@ -13,7 +13,7 @@ import {
+   provideBrowserGlobalErrorListeners,
+   provideZonelessChangeDetection,
+ } from '@angular/core';
+-import { provideRouter } from '@angular/router';
++import { provideRouter, withComponentInputBinding } from '@angular/router';
+ import { provideServiceWorker } from '@angular/service-worker';
+ import { loadModule } from 'glpk-ts';
+ 
+@@ -57,7 +57,7 @@ export const appConfig: ApplicationConfig = {
+     provideAppInitializer(() => initializeApp()),
+     provideBrowserGlobalErrorListeners(),
+     provideZonelessChangeDetection(),
+-    provideRouter(routes),
++    provideRouter(routes, withComponentInputBinding()),
+     provideHttpClient(),
+     provideServiceWorker('ngsw-worker.js', {
+       enabled: !isDevMode(),
+diff --git a/src/app/app.routes.ts b/src/app/app.routes.ts
+index f232a71..1e1ddde 100644
+--- a/src/app/app.routes.ts
++++ b/src/app/app.routes.ts
+@@ -1,9 +1,15 @@
+ import { Routes } from '@angular/router';
+ 
++import { errorGuard } from './error/error';
+ import { idGuard } from './id/id-guard';
+ import { landingGuard } from './landing/landing-guard';
+ 
+ export const routes: Routes = [
++  {
++    path: 'error',
++    canActivate: [errorGuard],
++    loadComponent: () => import('./error/error').then((c) => c.Error),
++  },
+   {
+     path: ':id',
+     canActivate: [idGuard],
+diff --git a/src/app/main/data/data.routes.ts b/src/app/main/data/data.routes.ts
+index 10a2e32..559a475 100644
+--- a/src/app/main/data/data.routes.ts
++++ b/src/app/main/data/data.routes.ts
+@@ -26,7 +26,7 @@ export const routes: DataRoute[] = [
+     },
+   },
+   {
+-    path: 'items/detail/:id',
++    path: 'items/:id',
+     loadComponent: () =>
+       import('./item-detail/item-detail').then((c) => c.ItemDetail),
+     data: { collectionLabel: 'data.items' },
+diff --git a/src/app/main/data/detail-base.ts b/src/app/main/data/detail-base.ts
+index 1b491e0..629c0b6 100644
+--- a/src/app/main/data/detail-base.ts
++++ b/src/app/main/data/detail-base.ts
+@@ -20,7 +20,7 @@ export abstract class DetailBase<T extends Category | Item | Recipe> {
+ 
+   protected readonly crumbs = computed(() => {
+     const result: LinkOption[] = [
+-      { label: this.collectionLabel(), routerLink: '/' },
++      { label: this.collectionLabel(), routerLink: '..' },
+     ];
+     const label = this.obj()?.name;
+     if (label != null) result.push({ label });
+diff --git a/src/app/main/main.routes.ts b/src/app/main/main.routes.ts
+index 8d9d171..f6591a5 100644
+--- a/src/app/main/main.routes.ts
++++ b/src/app/main/main.routes.ts
+@@ -8,8 +8,7 @@ export const routes: Routes = [
+   },
+   {
+     path: 'flow',
+-    loadComponent: () =>
+-      import('~/components/steps/steps').then((c) => c.Steps),
++    loadComponent: () => import('./flow/flow').then((c) => c.Flow),
+   },
+   {
+     path: 'data',
+diff --git a/src/option/option.ts b/src/option/option.ts
+index 0cc2e5f..fad29f3 100644
+--- a/src/option/option.ts
++++ b/src/option/option.ts
+@@ -34,7 +34,7 @@ export function getIdOptions(
+     };
+ 
+   if (include) ids = ids.filter((i) => include.has(i));
+-  if (exclude) ids = ids.filter((i) => exclude.has(i));
++  if (exclude) ids = ids.filter((i) => !exclude.has(i));
+ 
+   const list = ids.map((i): Option => {
+     const opt: Option = { label: record[i].name, value: i };
+diff --git a/src/state/objectives/step-detail-section.ts b/src/state/objectives/step-detail-section.ts
+index 8f0fd03..0da4824 100644
+--- a/src/state/objectives/step-detail-section.ts
++++ b/src/state/objectives/step-detail-section.ts
+@@ -10,4 +10,5 @@ export const stepDetailSections: StepDetailSection[] = [
+   'destinations',
+   'depletion',
+   'inputs',
++  'outputs',
+ ];
+diff --git a/src/state/preferences/theme.ts b/src/state/preferences/theme.ts
+index 1542172..8fe6087 100644
+--- a/src/state/preferences/theme.ts
++++ b/src/state/preferences/theme.ts
+@@ -5,5 +5,5 @@ export type Theme = 'system' | 'dark' | 'light';
+ export const themeOptions: Option<Theme>[] = [
+   { label: 'options.theme.system', value: 'system' },
+   { label: 'options.theme.dark', value: 'dark' },
+-  { label: 'options.theme.light', value: 'dark' },
++  { label: 'options.theme.light', value: 'light' },
+ ];
+diff --git a/src/state/settings/display-rate.ts b/src/state/settings/display-rate.ts
+index 96d652f..0363822 100644
+--- a/src/state/settings/display-rate.ts
++++ b/src/state/settings/display-rate.ts
+@@ -40,7 +40,7 @@ export const displayRateInfo: Record<DisplayRate, DisplayRateInfo> = {
+     wagonsLabel: 'options.objectiveUnit.wagonsPerMinute',
+     rocketsLabel: 'options.objectiveUnit.rocketsPerMinute',
+     pollutionLabel: 'options.objectiveUnit.pollutionPerMinute',
+-    value: rational(3600n),
++    value: rational(60n),
+   },
+   [DisplayRate.PerHour]: {
+     option: DisplayRate.PerHour,
+@@ -49,6 +49,6 @@ export const displayRateInfo: Record<DisplayRate, DisplayRateInfo> = {
+     wagonsLabel: 'options.objectiveUnit.wagonsPerHour',
+     rocketsLabel: 'options.objectiveUnit.rocketsPerHour',
+     pollutionLabel: 'options.objectiveUnit.pollutionPerHour',
+-    value: rational(60n),
++    value: rational(3600n),
+   },
+ };
+diff --git a/src/state/table/table-state.ts b/src/state/table/table-state.ts
+index be5ce99..1bddb4b 100644
+--- a/src/state/table/table-state.ts
++++ b/src/state/table/table-state.ts
+@@ -16,6 +16,7 @@ export const initialTableState: TableState = {
+ 
+ export const resetTableParams: Partial<LabParams> = {
+   tfi: undefined,
++  tso: undefined,
+   tas: undefined,
+   tpg: undefined,
+   tro: undefined,
+diff --git a/src/utils/signal.ts b/src/utils/signal.ts
+index 9c3f1ab..2543a52 100644
+--- a/src/utils/signal.ts
++++ b/src/utils/signal.ts
+@@ -5,9 +5,6 @@
+ export function updateApply<T>(
+   signal: WritableSignal<T>,
+   partial: Partial<T>,
+ ): void {
+-  signal.update((v) => {
+-    Object.assign(v as T & object, partial);
+-    return v;
+-  });
++  signal.update((v) => spread(v, partial));
+ }
+diff --git a/src/utils/stored-signal.ts b/src/utils/stored-signal.ts
+index cbf82f9..e5973b4 100644
+--- a/src/utils/stored-signal.ts
++++ b/src/utils/stored-signal.ts
+@@ -1,4 +1,4 @@
+-import { signal, WritableSignal } from '@angular/core';
++import { effect, signal, WritableSignal } from '@angular/core';
+ 
+ type StorageKey = 'preferences' | 'router';
+ 
+@@ -16,5 +16,9 @@ export function storedSignal(
+ ): WritableSignal<string | undefined> {
+   const result = signal(getStoredValue(key));
+ 
++  effect(() => {
++    storeValue(key, result());
++  });
++
+   return result;
+ }

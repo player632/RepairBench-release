@@ -1,0 +1,242 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/Will-Luck/iplayer-arr/internal/bbc"
+	"github.com/Will-Luck/iplayer-arr/internal/newznab"
+	"github.com/Will-Luck/iplayer-arr/internal/store"
+)
+
+func (h *Handler) handleListDownloads(w http.ResponseWriter, r *http.Request) {
+	downloads, err := h.store.ListDownloads()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if downloads == nil {
+		downloads = []*store.Download{}
+	}
+	writeJSON(w, http.StatusOK, downloads)
+}
+
+// handleListHistory serves GET /api/history with optional filtering, sorting,
+// and pagination.
+//
+// Query params:
+//
+//	?status=   -- "completed" or "failed" (default: all)
+//	?since=    -- ISO date or RFC3339 timestamp (default: all time)
+//	?page=     -- 1-based page number (default: 1)
+//	?per_page= -- entries per page (default: 20)
+//	?sort=     -- "completed_at" or "title" (default: "completed_at")
+//	?order=    -- "asc" or "desc" (default: "desc")
+func (h *Handler) handleListHistory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	f := store.HistoryFilter{
+		Status: q.Get("status"),
+		Since:  q.Get("since"),
+		Sort:   q.Get("sort"),
+		Order:  q.Get("order"),
+	}
+
+	if v := q.Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			f.Page = n
+		}
+	}
+	if v := q.Get("per_page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			f.PerPage = n
+		}
+	}
+
+	page, err := h.store.ListHistoryFiltered(f)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	// Ensure Items is never null in JSON.
+	if page.Items == nil {
+		page.Items = []*store.Download{}
+	}
+	annotateFileExists(page.Items)
+	writeJSON(w, http.StatusOK, page)
+}
+
+// annotateFileExists sets the FileExists flag on each completed history entry
+// by checking whether the output file is still on disk.
+func annotateFileExists(items []*store.Download) {
+	for _, dl := range items {
+		if dl.OutputFile == "" {
+			continue
+		}
+		exists := true
+		if _, err := os.Stat(dl.OutputFile); err != nil {
+			exists = false
+		}
+		dl.FileExists = &exists
+	}
+}
+
+func (h *Handler) handleClearHistory(w http.ResponseWriter, r *http.Request) {
+	n, err := h.store.ClearHistory()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"deleted": n})
+}
+
+func (h *Handler) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/history/")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing id"})
+		return
+	}
+	if err := h.store.DeleteHistory(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleHistoryStats serves GET /api/history/stats.
+//
+// Optional query param:
+//
+//	?since= -- ISO date or RFC3339 timestamp
+//
+// Response: {"completed": N, "failed": N, "total_bytes": N}
+func (h *Handler) handleHistoryStats(w http.ResponseWriter, r *http.Request) {
+	since := r.URL.Query().Get("since")
+
+	// Reuse ListHistoryFiltered for since-filtered access.
+	// Request a large page to get all entries; total is accurate regardless.
+	page, err := h.store.ListHistoryFiltered(store.HistoryFilter{
+		Since:   since,
+		Page:    1,
+		PerPage: 1<<31 - 1,
+		Sort:    "completed_at",
+		Order:   "desc",
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var completed, failed int
+	var totalBytes int64
+	for _, dl := range page.Items {
+		switch dl.Status {
+		case store.StatusCompleted:
+			completed++
+			totalBytes += dl.Size
+		case store.StatusFailed:
+			failed++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"completed":   completed,
+		"failed":      failed,
+		"total_bytes": totalBytes,
+	})
+}
+
+func (h *Handler) handleManualDownload(w http.ResponseWriter, r *http.Request) {
+	if h.mgr == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "downloads disabled"})
+		return
+	}
+
+	var req struct {
+		PID      string `json:"pid"`
+		Quality  string `json:"quality"`
+		Title    string `json:"title"`
+		Category string `json:"category"`
+		// Episode identity metadata from the search result. When any of
+		// these are set the raw title is replaced with a generated
+		// release title so manual downloads name their files the same
+		// way the Newznab feed does. Issue #48.
+		Subtitle   string `json:"subtitle"`
+		Series     int    `json:"series"`
+		EpisodeNum int    `json:"episodeNum"`
+		Position   int    `json:"position"`
+		AirDate    string `json:"airDate"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.PID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pid is required"})
+		return
+	}
+	if req.Quality == "" {
+		req.Quality = "720p"
+	}
+	if req.Category == "" {
+		req.Category = "manual"
+	}
+
+	title := req.Title
+	hasMetadata := req.Subtitle != "" || req.Series > 0 || req.EpisodeNum > 0 ||
+		req.Position > 0 || req.AirDate != ""
+	if title != "" && hasMetadata {
+		// Run the request through the same identity normalisation the
+		// Newznab feed uses (IBLResultToProgramme, including the #32
+		// Series=1 promotion) so manual downloads and Sonarr grabs name
+		// files identically.
+		prog := newznab.IBLResultToProgramme(bbc.IBLResult{
+			PID:        req.PID,
+			Title:      req.Title,
+			Subtitle:   req.Subtitle,
+			Series:     req.Series,
+			EpisodeNum: req.EpisodeNum,
+			Position:   req.Position,
+			AirDate:    req.AirDate,
+		})
+		var override *store.ShowOverride
+		if h.store != nil {
+			override, _ = h.store.GetOverride(prog.Name)
+		}
+		title, _ = newznab.GenerateTitle(prog, req.Quality, override)
+	}
+
+	id, err := h.mgr.Enqueue(req.PID, req.Quality, title, req.Category)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
+// handleCancelDownload serves DELETE /api/downloads/:id. It cancels the
+// worker context (when a manager is wired) so any running ffmpeg exits,
+// then moves the row to history so the UI stops showing it as active.
+// Idempotent: unknown IDs return 200 because the caller has no way to
+// distinguish "already finished" from "never existed". Same trust model
+// as handleDeleteHistory and handleDeleteDirectory: the dashboard surface
+// is unauthenticated. Issue #27.
+func (h *Handler) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/downloads/")
+	id = strings.TrimSuffix(id, "/")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id is required"})
+		return
+	}
+	if h.mgr != nil {
+		_ = h.mgr.CancelDownload(id)
+	} else {
+		if err := h.store.MoveToHistory(id); err != nil {
+			h.store.DeleteDownload(id)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
+}

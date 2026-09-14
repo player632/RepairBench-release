@@ -1,0 +1,239 @@
+diff --git a/src/lib/components/BackgroundContainer.svelte b/src/lib/components/BackgroundContainer.svelte
+index 41d73d9..409c4a0 100644
+--- a/src/lib/components/BackgroundContainer.svelte
++++ b/src/lib/components/BackgroundContainer.svelte
+@@ -14,7 +14,7 @@
+ </script>
+ 
+ {#key stageNumber}
+-	<div in:fade={{ duration: 400 }} out:fade={{ duration: 300 }} class="background-container">
++	<div data-testid={'bg-stage-' + (stageNumber + 1)} in:fade={{ duration: 400 }} out:fade={{ duration: 300 }} class="background-container">
+ 		<svelte:component this={CurrentBackground} />
+ 	</div>
+ {/key}
+diff --git a/src/lib/components/DynamicEntity.svelte b/src/lib/components/DynamicEntity.svelte
+index 2660c58..1868217 100644
+--- a/src/lib/components/DynamicEntity.svelte
++++ b/src/lib/components/DynamicEntity.svelte
+@@ -35,6 +35,7 @@
+ </script>
+ 
+ <img
++	data-testid={(entity.type === 'loot' ? 'loot-drop' : entity.type) + '-' + entity.id}
+ 	style:left={`${0}px`}
+ 	style:top={`${0}px`}
+ 	style:transform
+diff --git a/src/lib/components/GameArea.svelte b/src/lib/components/GameArea.svelte
+index bbd6fb7..9724c09 100644
+--- a/src/lib/components/GameArea.svelte
++++ b/src/lib/components/GameArea.svelte
+@@ -18,7 +18,7 @@
+ 	};
+ </script>
+ 
+-<section style:cursor={cursor.get('arrow')}>
++<section data-testid="game-area" style:cursor={cursor.get('arrow')}>
+ 	{#each entityManager.loot as loot (loot.id)}
+ 		<DynamicEntity entity={loot} --z-index={11} />
+ 	{/each}
+diff --git a/src/lib/components/Gui/Button.svelte b/src/lib/components/Gui/Button.svelte
+index ea9fa6d..1915d8e 100644
+--- a/src/lib/components/Gui/Button.svelte
++++ b/src/lib/components/Gui/Button.svelte
+@@ -4,6 +4,14 @@
+ 
+ 	const { onclick, disabled = false, text = '' } = $props();
+ 
++	const btnTestId = $derived(
++		'gui-btn-' +
++			String(text)
++				.toLowerCase()
++				.replace(/[^a-z0-9]+/g, '-')
++				.replace(/^-+|-+$/g, '')
++	);
++
+ 	const handleClick = () => {
+ 		if (soundManager?.preloaded) {
+ 			soundManager.play('clickMenu', true);
+@@ -12,7 +20,7 @@
+ 	};
+ </script>
+ 
+-<button style:cursor={cursor.get('arrow')} {disabled} class="btn" onclick={handleClick}
++<button data-testid={btnTestId} style:cursor={cursor.get('arrow')} {disabled} class="btn" onclick={handleClick}
+ 	>{text}</button
+ >
+ 
+diff --git a/src/lib/components/Gui/PauseScreen.svelte b/src/lib/components/Gui/PauseScreen.svelte
+index 41c5d18..61f901d 100644
+--- a/src/lib/components/Gui/PauseScreen.svelte
++++ b/src/lib/components/Gui/PauseScreen.svelte
+@@ -20,16 +20,16 @@
+ 	});
+ </script>
+ 
+-<div class="pause-overlay">
++<div class="pause-overlay" data-testid="pause-overlay">
+ 	<MenuLayout>
+ 		<div class="content">
+ 			<div class="header">
+-				<a href="https://github.com/baterson/svelte-tower-defence" class="git-link"
++				<a href="https://github.com/baterson/svelte-tower-defence" data-testid="git-link" class="git-link"
+ 					><GitHubIcon /></a
+ 				>
+ 			</div>
+ 			<div class="title">
+-				<h1>Paused</h1>
++				<h1 data-testid="pause-title">Paused</h1>
+ 			</div>
+ 			<div class="buttons-container">
+ 				<Button text="Resume Game" onclick={onResume} />
+diff --git a/src/lib/components/Gui/StartScreen.svelte b/src/lib/components/Gui/StartScreen.svelte
+index ed8d181..54405df 100644
+--- a/src/lib/components/Gui/StartScreen.svelte
++++ b/src/lib/components/Gui/StartScreen.svelte
+@@ -12,13 +12,13 @@
+ </script>
+ 
+ <MenuLayout>
+-	<div class="content" out:fade={{ duration: 300 }}>
++	<div class="content" data-testid="start-screen" out:fade={{ duration: 300 }}>
+ 		<Title />
+ 		<div>
+ 			<h2>Hint:</h2>
+-			<p>- Click on an Enemy to kill it</p>
+-			<p>- Click on a gray spot to build a Tower</p>
+-			<p>- Click on a Tower to upgrade</p>
++			<p data-testid="start-hint-kill">- Click on an Enemy to kill it</p>
++			<p data-testid="start-hint-build">- Click on a gray spot to build a Tower</p>
++			<p data-testid="start-hint-upgrade">- Click on a Tower to upgrade</p>
+ 			<div class="additional-hint">
+ 				<div>Manage your resources carefully if you want to survive until the last wave!</div>
+ 				<div class="cost">
+diff --git a/src/lib/components/HealthBar.svelte b/src/lib/components/HealthBar.svelte
+index 8654b24..ebe1cc6 100644
+--- a/src/lib/components/HealthBar.svelte
++++ b/src/lib/components/HealthBar.svelte
+@@ -15,12 +15,13 @@
+ 	const segmentMarkers = Array.from({ length: segments - 1 }, (_, i) => (i + 1) * (100 / segments));
+ </script>
+ 
+-<div class="health-bar-container" style:cursor={cursor.get('arrow')}>
++<div class="health-bar-container" data-testid="throne-health-bar" style:cursor={cursor.get('arrow')}>
+ 	<div class="health-bar-background">
+ 		{#each segmentMarkers as marker}
+ 			<div class="segment-marker" style:left="{marker}%" />
+ 		{/each}
+ 		<div
++			data-testid="throne-health-fill"
+ 			class="health-bar-fill"
+ 			style:width="{healthPercentage}%"
+ 			class:low={healthPercentage <= 20}
+diff --git a/src/lib/components/Loot.svelte b/src/lib/components/Loot.svelte
+index f55707c..bba9235 100644
+--- a/src/lib/components/Loot.svelte
++++ b/src/lib/components/Loot.svelte
+@@ -6,6 +6,7 @@
+ </script>
+ 
+ <div
++	data-testid="hud-loot"
+ 	class="loot"
+ 	class:isAnimated
+ 	style:cursor={cursor.get('arrow')}
+diff --git a/src/lib/components/StaticEntity.svelte b/src/lib/components/StaticEntity.svelte
+index c7624f5..bc9428b 100644
+--- a/src/lib/components/StaticEntity.svelte
++++ b/src/lib/components/StaticEntity.svelte
+@@ -34,6 +34,7 @@
+ 
+ <img
+ 	{onclick}
++	data-testid={entity.type === 'throne' ? 'throne' : 'tower-' + entity.name.toLowerCase()}
+ 	style:transform
+ 	bind:this={node}
+ 	src={frame}
+diff --git a/src/lib/store/StageManager.svelte.ts b/src/lib/store/StageManager.svelte.ts
+index 0bd0e0f..a1a1849 100644
+--- a/src/lib/store/StageManager.svelte.ts
++++ b/src/lib/store/StageManager.svelte.ts
+@@ -55,6 +55,7 @@ export class StageManager {
+ 	commonSpawnCd;
+ 	eliteSpawnCd;
+ 	stageResult = $state<'win ' | 'lose' | ''>('');
++	commonSpawns = $state(0);
+ 
+ 	init = () => {
+ 		const gameLoop = managers.get('gameLoop');
+@@ -71,6 +72,7 @@ export class StageManager {
+ 		this.eliteSpawnCd = null;
+ 		this.stageNumber = 0;
+ 		this.stageResult = '';
++		this.commonSpawns = 0;
+ 
+ 		this.init();
+ 	}
+@@ -102,6 +104,8 @@ export class StageManager {
+ 	}
+ 
+ 	spawnEnemy(type: 'common' | 'elite') {
++		if (type === 'common') this.commonSpawns++;
++
+ 		const entityManager = managers.get('entityManager');
+ 
+ 		const enemies =
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 01f9aa1..3082c8c 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -20,6 +20,7 @@
+ 
+ 	const gameLoop = $derived(managers.get('gameLoop'));
+ 	const stageManager = $derived(managers.get('stageManager'));
++	const entityManager = $derived(managers.get('entityManager'));
+ 
+ 	const handleGameClick = (e) => {
+ 		lootTracker.spendLoot({
+@@ -69,17 +70,19 @@
+ {/if}
+ 
+ {#if game.isStarted && soundManager.preloaded}
+-	<div class="window-wrapper" onclick={handleGameClick} style:cursor={cursor.get('arrow')}>
++	<div class="window-wrapper" data-testid="game-root" onclick={handleGameClick} style:cursor={cursor.get('arrow')}>
+ 		<div class="wrapper">
+ 			<BackgroundContainer stageNumber={stageManager.stageNumber} />
+ 			<Loot />
+ 			<button
+ 				tabindex="-1"
++				data-testid="pause-btn"
+ 				class="btn-pause"
+ 				onclick={handlePauseClick}
+ 				style:cursor={cursor.get('arrow')}><Pause /></button
+ 			>
+ 			<div
++				data-testid="game-container"
+ 				bind:offsetHeight={screen.gameAreaHeight}
+ 				bind:offsetWidth={screen.gameAreaWidth}
+ 				class="game-container"
+@@ -89,6 +92,21 @@
+ 			</div>
+ 		</div>
+ 	</div>
++	<div data-testid="wlb-probes" style="position: absolute; left: -9999px; top: 0; pointer-events: none;">
++		<span data-testid="probe-stage">{stageManager.stageNumber}</span>
++		<span data-testid="probe-common-spawns">{stageManager.commonSpawns}</span>
++		<span data-testid="probe-stage-result">{stageManager.stageResult || 'none'}</span>
++		<span data-testid="probe-elapsed">{Math.floor(gameLoop.elapsedTime / 1000)}</span>
++		<span data-testid="probe-paused">{gameLoop.pauseState ? 'paused' : 'running'}</span>
++		<span data-testid="probe-throne-hp">{entityManager.throne ? entityManager.throne.stats.health : -1}</span>
++		<span data-testid="probe-kills">{lootTracker.killsEnemy}</span>
++		<span data-testid="probe-score">{lootTracker.score}</span>
++		<span data-testid="probe-collected">{lootTracker.collectedLoot}</span>
++		<span data-testid="probe-enemies">{entityManager.enemies.length}</span>
++		<span data-testid="probe-projectiles">{entityManager.projectiles.length}</span>
++		<span data-testid="probe-upgrade-levels">{entityManager.towers.map((t) => t.upgradeLevel).join(',')}</span>
++		<span data-testid="probe-tower-stats">{entityManager.towers.map((t) => t.stats.attackSpeed + ':' + t.stats.projectileNumber).join('|')}</span>
++	</div>
+ {/if}
+ 
+ <style>

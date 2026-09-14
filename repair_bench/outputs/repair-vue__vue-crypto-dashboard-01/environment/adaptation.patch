@@ -1,0 +1,459 @@
+diff --git a/src/components/CoinCharts.vue b/src/components/CoinCharts.vue
+index 0988db5..2befbc0 100644
+--- a/src/components/CoinCharts.vue
++++ b/src/components/CoinCharts.vue
+@@ -28,6 +28,7 @@ import "amcharts3/amcharts/amcharts";
+ import "amcharts3/amcharts/serial";
+ // eslint-disable-next-line
+ import "amstock3/amcharts/amstock";
++import { fetchKlines } from "../fixtures/klines";
+ 
+ // const proxyUrl = 'https://proxy.mysoftnotes.com/proxy.php?curl=';
+ 
+@@ -46,7 +47,7 @@ export default {
+         theme: "light",
+         dataDateFormat: "YYYY-MM-DD HH",
+         mouseWheelZoomEnabled: true,
+-        pathToImages: "http://cdn.amcharts.com/lib/3/images/",
++        pathToImages: "",
+         categoryAxesSettings: {
+           minPeriod: "hh",
+         },
+@@ -172,7 +173,7 @@ export default {
+         theme: "light",
+         dataDateFormat: "YYYY-MM-DD HH",
+         mouseWheelZoomEnabled: true,
+-        pathToImages: "http://cdn.amcharts.com/lib/3/images/",
++        pathToImages: "",
+         categoryAxesSettings: {
+           minPeriod: "hh",
+         },
+@@ -254,15 +255,9 @@ export default {
+     },
+     fetchChartData(isUpdate = false) {
+       this.chartLoading = true;
+-      fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${this.symbol}&interval=${this.interval}`)
++      fetchKlines(this.symbol, this.interval)
+         .then(
+-          function (response) {
+-            if (response.status !== 200) {
+-              console.log("Looks like there was a problem. Status Code: " + response.status);
+-              return;
+-            }
+-            response.json().then(
+-              function (data) {
++          function (data) {
+                 this.chartData = data.map((val) => {
+                   return {
+                     date: new Date(val[0]),
+@@ -282,8 +277,6 @@ export default {
+                 }
+                 this.chartLoading = false;
+                 this.zoomChart();
+-              }.bind(this)
+-            );
+           }.bind(this)
+         )
+         .catch(function (err) {
+@@ -377,7 +370,7 @@ export default {
+         theme: "light",
+         dataDateFormat: "YYYY-MM-DD HH",
+         mouseWheelZoomEnabled: true,
+-        pathToImages: "http://cdn.amcharts.com/lib/3/images/",
++        pathToImages: "",
+         categoryAxesSettings: {
+           minPeriod: "hh",
+         },
+diff --git a/src/components/CryptoNews.vue b/src/components/CryptoNews.vue
+index 35ac2c1..5656874 100644
+--- a/src/components/CryptoNews.vue
++++ b/src/components/CryptoNews.vue
+@@ -22,6 +22,7 @@
+ </template>
+ <script>
+   import { ago } from '@/util/Utility'
++  import { fetchNews } from '@/fixtures/news'
+   export default {
+     created() {
+       this.getNews();
+@@ -50,15 +51,8 @@
+ 
+       },
+       async getNews() {
+-        let response = await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN');
+-        if (response.ok) {
+-          let json = await response.json();
+-          this.news = json["Data"];
+-          console.log(json);
+-        }
+-        else {
+-          console.log('Fetch Error :-S', response.status);
+-        }
++        let json = await fetchNews();
++        this.news = json["Data"];
+       },
+       time_since(val) {
+         if(val) {
+diff --git a/src/components/CurrencyCard.vue b/src/components/CurrencyCard.vue
+index 91563f8..5f38788 100644
+--- a/src/components/CurrencyCard.vue
++++ b/src/components/CurrencyCard.vue
+@@ -36,6 +36,7 @@
+ <script>
+   import Sparkline from './Sparkline.vue'
+   import {unSubscribeSymbol} from '../services/binance'
++  const COIN_ICON_URI = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='64'%20height='64'%3E%3Ccircle%20cx='32'%20cy='32'%20r='30'%20fill='%23f7931a'/%3E%3C/svg%3E" // local placeholder (adaptation: coinmarketcap icons removed)
+   export default {
+     props: ['ticker', 'info'],
+     data() {
+@@ -45,7 +46,7 @@
+     },
+     computed: {
+         iconbase() {
+-            return `https://s2.coinmarketcap.com/static/img/coins/64x64/${this.info.cid}.png`
++            return COIN_ICON_URI
+         }
+     },
+     methods: {
+diff --git a/src/fixtures/klines.js b/src/fixtures/klines.js
+new file mode 100644
+index 0000000..eb168b0
+--- /dev/null
++++ b/src/fixtures/klines.js
+@@ -0,0 +1,44 @@
++// Deterministic offline klines (adaptation: replaces data-api.binance.vision REST).
++// Row shape = Binance klines: [openTime, open, high, low, close, volume, closeTime].
++// Point counts are per (symbol, interval); first closes differ across symbols so the
++// stale-chart probe can tell cached datasets apart.
++
++const LENGTHS = {
++  BTCUSDT: { '1d': 60, '1h': 30, '1w': 12, '1M': 24 },
++  ETHUSDT: { '1d': 45 }
++};
++const BASE = { BTCUSDT: 60000, ETHUSDT: 3000 };
++const DEFAULT_LENGTH = 15;
++const DEFAULT_BASE = 100;
++const STEP_MS = { '1h': 3600000, '1d': 86400000, '1w': 604800000, '1M': 2592000000 };
++const OPEN_TIME_BASE = 1740000000000;
++
++function rows(symbol, interval) {
++  const sym = String(symbol || '').toUpperCase();
++  const len = (LENGTHS[sym] && LENGTHS[sym][interval]) || DEFAULT_LENGTH;
++  const base = BASE[sym] || DEFAULT_BASE;
++  const step = base / 100;
++  const stepMs = STEP_MS[interval] || 86400000;
++  const out = [];
++  for (let i = 0; i < len; i += 1) {
++    const open = base + i * step;
++    const close = open + step;
++    const high = close + step / 2;
++    const low = open - step / 2;
++    const volume = 1000 + i * 7;
++    out.push([
++      OPEN_TIME_BASE + i * stepMs,
++      String(open),
++      String(high),
++      String(low),
++      String(close),
++      String(volume),
++      OPEN_TIME_BASE + (i + 1) * stepMs - 1
++    ]);
++  }
++  return out;
++}
++
++export function fetchKlines(symbol, interval) {
++  return Promise.resolve(rows(symbol, interval));
++}
+diff --git a/src/fixtures/news.js b/src/fixtures/news.js
+new file mode 100644
+index 0000000..e6d15c1
+--- /dev/null
++++ b/src/fixtures/news.js
+@@ -0,0 +1,59 @@
++// Deterministic offline news feed (adaptation: replaces min-api.cryptocompare.com).
++// Shape matches the cryptocompare /data/v2/news response consumed by CryptoNews.vue:
++// { Data: [ { id, url, imageurl, title, body, source_info: { name }, published_on } ] }.
++// Bodies exceed 135 chars so the truncateText branch stays covered.
++
++const IMAGE = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='48'%20height='48'%3E%3Crect%20width='48'%20height='48'%20fill='%23cccccc'/%3E%3C/svg%3E";
++const BASE_TIME = 1750000000;
++
++const articles = [
++  {
++    id: '1',
++    url: 'https://example.local/news/bitcoin-etf-inflows',
++    imageurl: IMAGE,
++    title: 'Bitcoin ETF Inflows Hit Record High as Institutional Demand Builds',
++    body: 'Spot bitcoin funds recorded their largest weekly inflow of the year, with desks citing treasury allocation mandates and improving custody infrastructure as the main drivers behind the sustained buying pressure across venues.',
++    source_info: { name: 'Market Wire' },
++    published_on: BASE_TIME - 3600
++  },
++  {
++    id: '2',
++    url: 'https://example.local/news/ethereum-upgrade-fees',
++    imageurl: IMAGE,
++    title: 'Ethereum Upgrade Cuts Network Fees for Layer Two Users',
++    body: 'The latest network upgrade trimmed calldata costs, and layer two operators report noticeably cheaper transfers for end users while validators see no meaningful change in their operating requirements or staking yield.',
++    source_info: { name: 'Chain Daily' },
++    published_on: BASE_TIME - 7200
++  },
++  {
++    id: '3',
++    url: 'https://example.local/news/zero-fee-trading',
++    imageurl: IMAGE,
++    title: 'Exchange Launches Zero-Fee Trading for Select Spot Pairs',
++    body: 'A major venue announced zero-fee promotions on a basket of major spot pairs, intensifying the race for retail order flow. Analysts expect margins to stay under pressure through the remainder of the quarter.',
++    source_info: { name: 'Block Report' },
++    published_on: BASE_TIME - 10800
++  },
++  {
++    id: '4',
++    url: 'https://example.local/news/stablecoin-framework',
++    imageurl: IMAGE,
++    title: 'Regulators Outline New Framework for Stablecoin Issuers',
++    body: 'The draft framework spells out reserve attestation cadence, redemption windows and disclosure duties for issuers. Industry groups welcomed the clarity while asking for longer implementation timelines.',
++    source_info: { name: 'Ledger Times' },
++    published_on: BASE_TIME - 14400
++  },
++  {
++    id: '5',
++    url: 'https://example.local/news/long-term-holders',
++    imageurl: IMAGE,
++    title: 'Onchain Data Shows Long-Term Holders Accumulating Again',
++    body: 'Coin-age metrics moved higher for a third straight week, suggesting conviction buyers are absorbing exchange supply. Derivatives funding stayed flat, pointing to spot-led accumulation rather than leverage.',
++    source_info: { name: 'Node Journal' },
++    published_on: BASE_TIME - 18000
++  }
++];
++
++export function fetchNews() {
++  return Promise.resolve({ Data: articles });
++}
+diff --git a/src/fixtures/streams.js b/src/fixtures/streams.js
+new file mode 100644
+index 0000000..6a1be6d
+--- /dev/null
++++ b/src/fixtures/streams.js
+@@ -0,0 +1,82 @@
++// Deterministic offline ticker streams (adaptation: replaces wss://stream.binance.com).
++// Each stream = array of Binance 24hrTicker payloads, replayed at a 500ms tick by
++// services/ws.js; a fresh subscription receives the first message immediately.
++// When a sequence is exhausted the last message repeats (plateau).
++//
++// Fixture contract (defects.md):
++// - BTCUSDT: 25 rising ticks 60000.50 -> 60012.50 step 0.50, then plateau 60012.50
++// - ETHUSDT: alternating +-0.5% around 3000 (even ticks carry the negative percent)
++// - XRPUSDT: constant 0.7500 (direction-assert reference, no phase rotation)
++// - remaining defaults + ADABNB: constant streams; unknown names -> generic constant
++
++const EVENT_TIME = 1750000000000;
++
++function msg(symbol, price, extra) {
++  const base = {
++    e: '24hrTicker',
++    E: EVENT_TIME,
++    s: symbol.toUpperCase(),
++    c: String(price),
++    P: '0.00',
++    p: '0.0000',
++    h: String(price),
++    l: String(price),
++    o: String(price),
++    q: '1000.00'
++  };
++  return Object.assign(base, extra || {});
++}
++
++function constant(symbol, price, extra) {
++  return [msg(symbol, price, extra)];
++}
++
++const btcusdt = [];
++for (let i = 0; i < 25; i += 1) {
++  const price = (60000.5 + i * 0.5).toFixed(2);
++  btcusdt.push(msg('BTCUSDT', price, {
++    P: '2.50',
++    p: '1500.50',
++    h: '60500.00',
++    l: '58000.00',
++    o: '58500.00',
++    q: '12345.67'
++  }));
++}
++
++const ethusdt = [];
++for (let i = 1; i <= 200; i += 1) {
++  const negative = i % 2 === 0;
++  ethusdt.push(msg('ETHUSDT', negative ? '2985.00' : '3015.00', {
++    P: negative ? '-0.50' : '0.50',
++    p: negative ? '-15.00' : '15.00',
++    h: '3015.00',
++    l: '2985.00',
++    o: '3000.00',
++    q: '5000.00'
++  }));
++}
++
++const streams = {
++  'btcusdt@ticker': btcusdt,
++  'ethusdt@ticker': ethusdt,
++  'xrpusdt@ticker': constant('XRPUSDT', '0.7500', { h: '0.7500', l: '0.7500', o: '0.7500', q: '123456.78' }),
++  'dogebtc@ticker': constant('DOGEBTC', '0.0000125', { q: '888888.00' }),
++  'ethbtc@ticker': constant('ETHBTC', '0.0500', { q: '7777.00' }),
++  'wrxbtc@ticker': constant('WRXBTC', '0.0000300', { q: '66666.00' }),
++  'tfuelbtc@ticker': constant('TFUELBTC', '0.0000090', { q: '55555.00' }),
++  'dotbnb@ticker': constant('DOTBNB', '0.0120', { q: '4444.00' }),
++  'atabnb@ticker': constant('ATABNB', '0.00080', { q: '3333.00' }),
++  'maticbnb@ticker': constant('MATICBNB', '0.00150', { q: '2222.00' }),
++  'btcgbp@ticker': constant('BTCGBP', '47000.00', { q: '111.00' }),
++  'shibeur@ticker': constant('SHIBEUR', '0.0000200', { q: '99999.00' }),
++  'adabnb@ticker': constant('ADABNB', '0.00450', { q: '1212.00' })
++};
++
++const generic = constant('UNKNOWN', '1.0000');
++
++export function getStream(streamName) {
++  return streams[streamName] || generic;
++}
++
++export const TICK_PERIOD_MS = 500;
+diff --git a/src/main.js b/src/main.js
+index 965c94a..629e51a 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -2,7 +2,6 @@ import Vue from 'vue'
+ import App from './App.vue'
+ import router from './router'
+ import store from './store'
+-import './registerServiceWorker'
+ import "./assets/vendor/font-awesome/css/font-awesome.css";
+ import "./assets/app.scss"
+ 
+diff --git a/src/services/ws.js b/src/services/ws.js
+index efc6fa6..62d80e6 100644
+--- a/src/services/ws.js
++++ b/src/services/ws.js
+@@ -1,46 +1,41 @@
+ function noop() {}
+-//Websocket Wrapper API with reconnection option
++import { getStream, TICK_PERIOD_MS } from '../fixtures/streams';
++// Deterministic offline replay of the websocket contract (adaptation).
++// Signature unchanged: export default function(url, opts); the stream name is the
++// last url segment (e.g. btcusdt@ticker). onopen fires asynchronously before the
++// first message; messages tick every 500ms; exhausted sequences repeat the last
++// payload (plateau); close() clears the timer and reports onclose({code:1000}).
+ export default function (url, opts) {
+   opts = opts || {};
+-
+-  let k, ws, num, $={}, self=this;
+-  let ms=opts.timeout || 1e3, max=opts.maxAttempts || Infinity;
+-
+-  $.onmessage = opts.onmessage || noop;
+-
+-  $.onclose = e => {
+-    e.endpoint = url;
+-    (e.code !== 1e3 && e.code !== 1005) && self.reconnect(e);
+-    (opts.onclose || noop)(e);
+-  };
+-
+-  $.onerror = e => {
+-    e.endpoint = url;
+-    (e && e.code==='ECONNREFUSED') ? self.reconnect(e) : (opts.onerror || noop)(e);
+-  };
+-
+-  $.onopen = e => {
+-    e.endpoint = url;
+-    num=0; (opts.onopen || noop)(e);
+-  };
+-
+-  self.open = () => {
+-    ws = new WebSocket(url, opts.protocols);
+-    for (k in $) ws[k] = $[k];
+-  };
+-
+-  self.reconnect = e => {
+-    (num++ < max) ? setTimeout(() => {
+-      (opts.onreconnect || noop)(e);
+-      self.open();
+-    }, ms) : (opts.onmaximum || noop)(e);
++  const streamName = String(url).split('/').pop();
++  const messages = getStream(streamName);
++  let index = 0;
++  let timer = null;
++  let closed = false;
++
++  const self = {
++    close: (x) => {
++      if (closed) return;
++      closed = true;
++      if (timer) clearInterval(timer);
++      timer = null;
++      (opts.onclose || noop)({ code: x || 1000, endpoint: url });
++    }
+   };
+ 
+-  self.close = (x, y) => {
+-    ws.close(x, y);
++  const emit = () => {
++    if (closed) return;
++    const payload = index < messages.length ? messages[index] : messages[messages.length - 1];
++    index += 1;
++    (opts.onmessage || noop)({ data: JSON.stringify(payload) });
+   };
+ 
+-  self.open(); // init
++  setTimeout(() => {
++    if (closed) return;
++    (opts.onopen || noop)({ endpoint: url });
++    emit();
++    timer = setInterval(emit, TICK_PERIOD_MS);
++  }, 50);
+ 
+   return self;
+-}
+\ No newline at end of file
++}
+diff --git a/src/views/InfoView.vue b/src/views/InfoView.vue
+index d631501..a04c0f6 100644
+--- a/src/views/InfoView.vue
++++ b/src/views/InfoView.vue
+@@ -7,7 +7,7 @@
+                         <div class="info-card">
+                             <div class="row">
+                                 <div class="col">
+-                                    <span class="coin-img" :style="{ backgroundImage : `url('https://s2.coinmarketcap.com/static/img/coins/64x64/${currency.cid}.png')` }"></span>
++                                    <span class="coin-img" :style="{ backgroundImage : coinIcon }"></span>
+                                     <div class="coin-name">{{currency.name}} ({{currency.base}}) / <span class="small">{{currency.quote}}</span></div>
+                                 </div>
+                             </div>
+@@ -50,6 +50,7 @@
+ <script>
+   import CryptoNews from '../components/CryptoNews.vue'
+   import CoinCharts from '../components/CoinCharts.vue'
++  const COIN_ICON_URI = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='64'%20height='64'%3E%3Ccircle%20cx='32'%20cy='32'%20r='30'%20fill='%23f7931a'/%3E%3C/svg%3E" // local placeholder (adaptation: coinmarketcap icons removed)
+   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+   export default {
+     props:['symbol'],
+@@ -75,6 +76,9 @@
+       CoinCharts
+     },
+     computed: {
++      coinIcon() {
++        return "url('" + COIN_ICON_URI + "')"
++      },
+       currency() {
+         return this.$store.getters.getSymbolById(this.symbol) || {}
+       },
+diff --git a/vue.config.js b/vue.config.js
+index 920db12..4a91144 100644
+--- a/vue.config.js
++++ b/vue.config.js
+@@ -1,5 +1,5 @@
+ //publicPath is set as vue-crypto-dashboard for production you can change it according to your application
+ module.exports = {
+-  publicPath: process.env.NODE_ENV === 'production' ? '/vue-crypto-dashboard/' : '/' ,
++  publicPath: '/' ,
+   filenameHashing: false
+ };
+\ No newline at end of file

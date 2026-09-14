@@ -1,0 +1,153 @@
+diff --git a/frontend/src/helpers/appStore.ts b/frontend/src/helpers/appStore.ts
+index 30d4571b6..7308c671a 100644
+--- a/frontend/src/helpers/appStore.ts
++++ b/frontend/src/helpers/appStore.ts
+@@ -216,7 +216,7 @@ export const applyTypedMessage = (message: WsMessage) => {
+         case 'LeaseUpdate':
+             setState(
+                 produce((s) => {
+-                    s.leaseMap[message.payload.host] = [];
++                    s.leaseMap[message.payload.host] = message.payload.leases;
+                 }),
+             );
+             break;
+diff --git a/frontend/src/helpers/demo.ts b/frontend/src/helpers/demo.ts
+index 9298a75eb..5222b1144 100644
+--- a/frontend/src/helpers/demo.ts
++++ b/frontend/src/helpers/demo.ts
+@@ -227,7 +227,7 @@ const demoRequests = {
+                                 type: 'HostStatus',
+                                 payload: { [host]: 'online' },
+                             });
+-                        }, 150),
++                        }, 1500),
+                     );
+                 }, 300),
+             );
+diff --git a/frontend/src/pages/HostDetail/HostInfoSection.tsx b/frontend/src/pages/HostDetail/HostInfoSection.tsx
+index 19cf3ccf7..ca62369ed 100644
+--- a/frontend/src/pages/HostDetail/HostInfoSection.tsx
++++ b/frontend/src/pages/HostDetail/HostInfoSection.tsx
+@@ -18,7 +18,7 @@ import { CopyableCodeBlock } from '../../sharedComponents/CopyButton';
+ const buildHostUpdateCommands = (
+     hostStats: HostStats | undefined,
+ ): { sh?: string; ps1?: string } | null => {
+-    if (hostStats == null || hostStats.agentVersion !== buildData.version) {
++    if (hostStats == null || hostStats.agentVersion === buildData.version) {
+         return null;
+     }
+ 
+@@ -88,6 +88,9 @@ const HostHookCard = ((props: {
+         hook.action.type === 'exec' ? hook.action.program : hook.action.url;
+ 
+     const formatHookTiming = (hook: NonNullable<typeof props.hook>) => {
++        if (hook.delaySecs === 0) {
++            return `Timeout: ${hook.timeoutSecs}s`;
++        }
+         return `Delay: ${hook.delaySecs}s · Timeout: ${hook.timeoutSecs}s`;
+     };
+ 
+diff --git a/frontend/src/pages/HostDetail/NotifyDurationButton.tsx b/frontend/src/pages/HostDetail/NotifyDurationButton.tsx
+index ef7a2f46e..aba12b127 100644
+--- a/frontend/src/pages/HostDetail/NotifyDurationButton.tsx
++++ b/frontend/src/pages/HostDetail/NotifyDurationButton.tsx
+@@ -47,12 +47,12 @@ export const NotifyDurationButton = ((props: {
+             if (durationSecs != null) {
+                 let unit: DurationUnit = 'minutes';
+                 let value = durationSecs / 60;
+-                if (durationSecs % 3600 === 0) {
+-                    unit = 'hours';
+-                    value = durationSecs / 3600;
+-                } else if (durationSecs % 86400 === 0) {
++                if (durationSecs % 86400 === 0) {
+                     unit = 'days';
+                     value = durationSecs / 86400;
++                } else if (durationSecs % 3600 === 0) {
++                    unit = 'hours';
++                    value = durationSecs / 3600;
+                 }
+                 setUnit(unit);
+                 setDuration(value);
+@@ -67,7 +67,7 @@ export const NotifyDurationButton = ((props: {
+ 
+     const handleUnitChange = (newUnit: DurationUnit) => {
+         setUnit(newUnit);
+-        if (durationModified()) {
++        if (!durationModified()) {
+             setDuration(unitDefaults[newUnit]);
+         }
+     };
+diff --git a/frontend/src/pages/Hosts.tsx b/frontend/src/pages/Hosts.tsx
+index d28201afb..0854b1ab0 100644
+--- a/frontend/src/pages/Hosts.tsx
++++ b/frontend/src/pages/Hosts.tsx
+@@ -54,7 +54,7 @@ const makeInstallCommands = () => {
+     const baseUrl = window.location.origin + demoSubpath;
+     const bpArg = `--broadcast-port ${serverData.broadcastPort}`;
+     return {
+-        hostSh: `curl -fsSL ${baseUrl}/download/host_agent_installer.sh | sh -s ${baseUrl}`,
++        hostSh: `curl -fsSL ${baseUrl}/download/host_agent_installer.sh | sh -s ${baseUrl} -- ${bpArg}`,
+         hostPs1: `curl.exe -sSLO '${baseUrl}/download/host_agent_installer.ps1'; powershell -ExecutionPolicy Bypass -File .\\host_agent_installer.ps1 ${baseUrl} ${bpArg}`,
+     };
+ };
+diff --git a/frontend/src/pages/Login.tsx b/frontend/src/pages/Login.tsx
+index 08efb139f..f522702b2 100644
+--- a/frontend/src/pages/Login.tsx
++++ b/frontend/src/pages/Login.tsx
+@@ -100,7 +100,7 @@ export const LoginPage = (() => {
+     const errorInfo = () => {
+         const key = errorKey();
+         if (!key) return null;
+-        return ERROR_MESSAGES[key] ?? ERROR_MESSAGES['oidc'];
++        return ERROR_MESSAGES[key] ?? ERROR_MESSAGES['unknown'];
+     };
+ 
+     return (
+diff --git a/frontend/src/pages/SavingsCalculator.tsx b/frontend/src/pages/SavingsCalculator.tsx
+index 7bdd79461..c686a1cbd 100644
+--- a/frontend/src/pages/SavingsCalculator.tsx
++++ b/frontend/src/pages/SavingsCalculator.tsx
+@@ -18,7 +18,7 @@ export const SavingsCalculatorPage = (() => {
+     const [activeHoursPerWeek, setActiveHoursPerWeek] = createSignal(4);
+ 
+     const idleHoursPerDay = () => 24 - activeHoursPerWeek() / HOURS_PER_WEEK;
+-    const savedPowerW = () => idlePowerW();
++    const savedPowerW = () => idlePowerW() - shutdownPowerW();
+     const energyKwhPerDay = () =>
+         (idleHoursPerDay() * savedPowerW()) / W_PER_KW;
+ 
+@@ -33,7 +33,7 @@ export const SavingsCalculatorPage = (() => {
+     const handleInput = (setter: (v: number) => void) =>
+         ((e) => {
+             const val = parseFloat(e.currentTarget.value);
+-            if (Number.isNaN(val)) setter(val);
++            if (!Number.isNaN(val)) setter(val);
+         }) satisfies JSX.EventHandler<HTMLInputElement, InputEvent>;
+ 
+     return (
+diff --git a/frontend/src/sharedComponents/Header.tsx b/frontend/src/sharedComponents/Header.tsx
+index b0a21cb92..89970edc4 100644
+--- a/frontend/src/sharedComponents/Header.tsx
++++ b/frontend/src/sharedComponents/Header.tsx
+@@ -61,7 +61,7 @@ const HeaderShell = ((
+ const SHOW_LOGOUT_FOR = {
+     disabled: false,
+     external: false,
+-    token: false,
++    token: true,
+     oidc: true,
+ } satisfies Record<AuthMode, boolean>;
+ 
+diff --git a/frontend/src/sharedComponents/HostStatusBadge.tsx b/frontend/src/sharedComponents/HostStatusBadge.tsx
+index 354c3728d..6f400d837 100644
+--- a/frontend/src/sharedComponents/HostStatusBadge.tsx
++++ b/frontend/src/sharedComponents/HostStatusBadge.tsx
+@@ -16,7 +16,7 @@ export const HostStatusBadge = ((props: {
+                 online
+             </span>
+         </Match>
+-        <Match when={props.status === 'online'}>
++        <Match when={props.status === 'offline'}>
+             <span class="host-status-badge bg-red-100 text-red-800 dark:bg-[rgba(244,135,113,0.15)] dark:text-[rgba(244,135,113,0.9)]">
+                 offline
+             </span>

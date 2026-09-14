@@ -1,0 +1,105 @@
+import { clsx } from 'clsx'
+import { memo } from 'react'
+import { LuMenu } from 'react-icons/lu'
+import { Activities } from '../../activities/ui/Activities'
+import { CombatPage } from '../../battle/ui/BattleZoneUi'
+import { CombatUi } from '../../battle/ui/CombatUi'
+import { CharactersUi } from '../../characters/ui/CharactersUi'
+import { DeadDialog } from '../../characters/ui/DeadDialog'
+import { Button } from '../../components/ui/button'
+import { CardTitle } from '../../components/ui/card'
+import { CraftingUi } from '../../crafting/ui/CraftingUi'
+import { useGameStore } from '../../game/state'
+import { SaveExportDialog } from '../../game/save/ui/SaveExportDialog'
+import { Gathering } from '../../gathering/ui/Gathering'
+import { Mining } from '../../mining/ui/Mining'
+import { useTranslations } from '../../msg/useTranslations'
+import { QuestUi } from '../../quests/ui/QuestUi'
+import { UiStorage } from '../../storage/ui/Storage'
+import { Woodcutting } from '../../wood/ui/Woodcutting'
+import { ModeToggle } from '../modeToggle'
+import { Sidebar } from '../sidebar/Sidebar'
+import { UiPages } from '../state/UiPages'
+import { UiPagesData } from '../state/UiPagesData'
+import { sidebarOpen, toggle } from '../state/uiFunctions'
+import { selectPage } from '../uiSelectors'
+import classes from './appShell.module.css'
+
+export const AppShell = memo(function AppShell() {
+    const open = useGameStore(sidebarOpen)
+
+    return (
+        <div className={clsx(classes.container, { sideOpen: open }, { contentOpen: !open })}>
+            <Header />
+
+            <div className={classes.side}>
+                <Sidebar />
+            </div>
+
+            <PageContent />
+
+            <DeadDialog />
+        </div>
+    )
+})
+
+const Header = memo(function Header() {
+    return (
+        <header className={classes.header}>
+            <div className={classes.headerLeft}>
+                <Button data-testid="btn-menu" onClick={toggle} className={classes.menu} variant="outline">
+                    <LuMenu />
+                </Button>
+                <HeaderTitle />
+            </div>
+            <div className={classes.headerRight}>
+                <SaveExportDialog />
+                <ModeToggle />
+            </div>
+        </header>
+    )
+})
+
+const HeaderTitle = memo(function HeaderTitle() {
+    const page = useGameStore(selectPage)
+    const { t } = useTranslations()
+
+    const uiPage = UiPagesData[page]
+    if (!uiPage) return null
+    return (
+        <CardTitle data-testid="header-title">
+            {uiPage.icon}
+            {t[uiPage.nameId]}
+        </CardTitle>
+    )
+})
+
+const PageContent = memo(function PageContent() {
+    const page = useGameStore(selectPage)
+    switch (page) {
+        case UiPages.Woodcutting:
+            return <Woodcutting />
+        case UiPages.Storage:
+            return <UiStorage />
+        case UiPages.Activities:
+            return <Activities />
+        case UiPages.Mining:
+            return <Mining />
+        case UiPages.Gathering:
+            return <Gathering />
+        case UiPages.CombatZones:
+            return <CombatPage />
+        case UiPages.Combat:
+            return <CombatUi />
+        case UiPages.Characters:
+            return <CharactersUi />
+        case UiPages.Quest:
+            return <QuestUi />
+
+        case UiPages.Woodworking:
+        case UiPages.Smithing:
+        case UiPages.Butchering:
+        case UiPages.Alchemy:
+            return <CraftingUi />
+    }
+})

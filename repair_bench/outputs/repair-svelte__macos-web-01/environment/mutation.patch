@@ -1,0 +1,150 @@
+diff --git a/src/components/Desktop/Window/TrafficLights.svelte b/src/components/Desktop/Window/TrafficLights.svelte
+index a20144c..e1b34c4 100644
+--- a/src/components/Desktop/Window/TrafficLights.svelte
++++ b/src/components/Desktop/Window/TrafficLights.svelte
+@@ -12,8 +12,8 @@
+ 	}: { app_id: AppID; on_close_app: () => void; on_maximize_click: () => void } = $props();
+ </script>
+ 
+-<div data-testid={'tl-' + app_id} class="container" class:unfocused={apps.active !== app_id}>
+-	<button data-testid={'close-light-' + app_id} class="close-light" onclick={on_close_app}> <CloseIcon /> </button>
++<div data-testid={'tl-' + app_id} class="container" class:unfocused={apps.active === app_id}>
++	<button data-testid={'close-light-' + app_id} class="close-light"> <CloseIcon /> </button>
+ 	<button data-testid={'minimize-light-' + app_id} class="minimize-light"> <MinimizeSvg /> </button>
+ 	<button data-testid={'stretch-light-' + app_id} class="stretch-light" onclick={on_maximize_click}>
+ 		<GreenLight expandable={apps_config[app_id].expandable} />
+diff --git a/src/components/Desktop/Window/Window.svelte b/src/components/Desktop/Window/Window.svelte
+index e96b1e3..e04765a 100644
+--- a/src/components/Desktop/Window/Window.svelte
++++ b/src/components/Desktop/Window/Window.svelte
+@@ -83,7 +83,7 @@
+ 
+ 			windowEl.style.width = `100%`;
+ 			// windowEl.style.height = 'calc(100vh - 1.7rem - 5.25rem)';
+-			windowEl.style.height = 'calc(100vh - 1.7rem)';
++			windowEl.style.height = 'calc(100vh - 17rem)';
+ 		} else {
+ 			dragging_enabled = true;
+ 			windowEl.style.transform = minimized_transform;
+@@ -94,7 +94,7 @@
+ 
+ 		is_maximized = !is_maximized;
+ 
+-		apps.fullscreen[app_id] = is_maximized;
++		apps.fullscreen[app_id] = !is_maximized;
+ 
+ 		await sleep(300);
+ 
+diff --git a/src/components/TopBar/ActionCenter.svelte b/src/components/TopBar/ActionCenter.svelte
+index 8614ace..bb97645 100644
+--- a/src/components/TopBar/ActionCenter.svelte
++++ b/src/components/TopBar/ActionCenter.svelte
+@@ -23,7 +23,7 @@
+ 
+ 	function toggleTheme() {
+ 		if (
+-			wallpapers_config[preferences.wallpaper.id].type === 'dynamic' &&
++			wallpapers_config[preferences.wallpaper.id].type !== 'dynamic' &&
+ 			preferences.wallpaper.canControlTheme
+ 		) {
+ 			_is_theme_warning_dialog_open = true;
+@@ -34,7 +34,7 @@
+ 	}
+ 
+ 	function toggleNotch() {
+-		should_show_notch.value = !should_show_notch.value;
++		should_show_notch.value = !should_show_notch;
+ 	}
+ 
+ 	function toggleMotionPreference() {
+diff --git a/src/components/TopBar/MenuBar.svelte b/src/components/TopBar/MenuBar.svelte
+index 492018d..9ac586a 100644
+--- a/src/components/TopBar/MenuBar.svelte
++++ b/src/components/TopBar/MenuBar.svelte
+@@ -20,7 +20,7 @@
+ 					class:apple-icon-button={menuID === 'apple'}
+ 					style:--scale={menubar_state.active === menuID ? 1 : 0}
+ 					onclick={() => (menubar_state.active = menuID)}
+-					onmouseover={() => menubar_state.active && (menubar_state.active = menuID)}
++					onmouseover={() => (menubar_state.active = menuID)}
+ 					onfocus={() => (menubar_state.active = menuID)}
+ 				>
+ 					{#if menuID === 'apple'}
+diff --git a/src/components/apps/Calendar/Calendar.svelte b/src/components/apps/Calendar/Calendar.svelte
+index 22a587a..2e2a77f 100644
+--- a/src/components/apps/Calendar/Calendar.svelte
++++ b/src/components/apps/Calendar/Calendar.svelte
+@@ -14,7 +14,7 @@
+ 	}
+ 
+ 	function goPreviousMonth() {
+-		selected_date = addMonths(selected_date, -1);
++		selected_date = addMonths(selected_date, 1);
+ 	}
+ 
+ 	function goNextMonth() {
+diff --git a/src/components/apps/Calendar/calendar-utils.ts b/src/components/apps/Calendar/calendar-utils.ts
+index 4f5d6ca..c7531f3 100644
+--- a/src/components/apps/Calendar/calendar-utils.ts
++++ b/src/components/apps/Calendar/calendar-utils.ts
+@@ -16,7 +16,7 @@ export function is_leap_year(year: number) {
+  */
+ export function get_range_array(lower: number, upper: number) {
+ 	const arr: number[] = [];
+-	for (let i = lower + 1; i <= upper; i++) {
++	for (let i = lower + 1; i < upper; i++) {
+ 		arr.push(i);
+ 	}
+ 	return arr;
+diff --git a/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte b/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
+index 4d6bce4..bfcf0bc 100644
+--- a/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
++++ b/src/components/apps/WallpaperApp/WallpaperSelectorApp.svelte
+@@ -13,7 +13,7 @@
+ 	const current_wallpaper_thumb = $derived(`url(${preferences.wallpaper.image})`);
+ 
+ 	function change_wallpaper(wallpaperName: WallpaperID) {
+-		preferences.wallpaper.id = wallpaperName;
++		preferences.wallpaper.image = wallpaperName;
+ 	}
+ 
+ 	function preload(url: string) {
+diff --git a/src/state/interval.svelte.ts b/src/state/interval.svelte.ts
+index 711ff17..e029acb 100644
+--- a/src/state/interval.svelte.ts
++++ b/src/state/interval.svelte.ts
+@@ -8,7 +8,7 @@ export function create_interval(duration: number) {
+ 		$effect(() => {
+ 			const interval = setInterval(() => {
+ 				untrack(() => (time = Date.now()));
+-			}, duration);
++			}, duration * 60);
+ 
+ 			return () => {
+ 				clearInterval(interval);
+diff --git a/src/state/persisted.svelte.ts b/src/state/persisted.svelte.ts
+index b1c81ee..74eba1e 100644
+--- a/src/state/persisted.svelte.ts
++++ b/src/state/persisted.svelte.ts
+@@ -10,7 +10,7 @@ export function persisted<T>(key: string, initial: T) {
+ 	const existing = localStorage.getItem(key);
+ 
+ 	const primitive = is_primitive(initial);
+-	const parsed_value = existing ? JSON.parse(existing) : initial;
++	const parsed_value = initial;
+ 
+ 	let state = $state<T extends Primitive ? { value: T } : T>(
+ 		primitive ? { value: parsed_value } : parsed_value,
+diff --git a/src/state/preferences.svelte.ts b/src/state/preferences.svelte.ts
+index 9569a9e..44146b3 100644
+--- a/src/state/preferences.svelte.ts
++++ b/src/state/preferences.svelte.ts
+@@ -35,7 +35,7 @@ $effect.root(() => {
+ 
+ 		// Primary color
+ 		const colorObj = colors[preferences.theme.primaryColor][preferences.theme.scheme];
+-		document.body.style.setProperty('--system-color-primary', `hsl(${colorObj.hsl})`);
++		document.body.style.setProperty('--system-color-primary-accent', `hsl(${colorObj.hsl})`);
+ 		document.body.style.setProperty('--system-color-primary-hsl', `${colorObj.hsl}`);
+ 		document.body.style.setProperty(
+ 			'--system-color-primary-contrast',

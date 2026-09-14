@@ -1,0 +1,223 @@
+<script lang="ts">
+	import { gsap } from 'gsap';
+	import { onMount } from 'svelte';
+	import { cn } from '../utils/cn';
+
+	interface Image {
+		src: string;
+		alt?: string;
+	}
+
+	interface ComponentProps {
+		/**
+		 * Array of images to preload/display during the sequence.
+		 */
+		images: Image[];
+		/**
+		 * Additional CSS classes for the container.
+		 */
+		class?: string;
+		/**
+		 * Loading progress 0..1. Drives the progress bar at the bottom.
+		 */
+		progress?: number;
+		/**
+		 * Full-screen cover image shown behind the animation. Set it to the same URL the next screen
+		 * paints so the preloader→app hand-off shows the same frame with no swap/flash.
+		 */
+		backdrop?: string;
+		/**
+		 * Callback function triggered when the preloading animation completes.
+		 */
+		onComplete?: () => void;
+		[prop: string]: unknown;
+	}
+
+	let {
+		images,
+		class: className = '',
+		progress = 0,
+		backdrop,
+		onComplete,
+		...restProps
+	}: ComponentProps = $props();
+
+	const progressPct = $derived(Math.round(Math.min(1, Math.max(0, progress)) * 100));
+
+	let containerRef = $state<HTMLElement>();
+	let revealImagesRef: HTMLElement[] = $state([]);
+	let isScaleUpRef: HTMLElement[] = $state([]);
+	let secondLoopImagesRef: HTMLImageElement[] = $state([]);
+
+	const attachContainerRef = (node: HTMLElement) => {
+		containerRef = node;
+	};
+
+	const attachRevealImageRef = (index: number) => (node: HTMLElement) => {
+		revealImagesRef[index] = node;
+	};
+
+	const attachScaleUpRef = (index: number) => (node: HTMLElement) => {
+		isScaleUpRef[index] = node;
+	};
+
+	const attachSecondLoopImageRef = (index: number) => (node: HTMLImageElement) => {
+		secondLoopImagesRef[index] = node;
+	};
+
+	onMount(() => {
+		if (!containerRef) return;
+		const middleIndex = Math.floor(images.length / 2);
+		const radiusTarget = isScaleUpRef[images.length + middleIndex];
+		const isScaleDownTargets = secondLoopImagesRef.filter((_, i) => i !== middleIndex);
+
+		const ctx = gsap.context(() => {
+			const tl = gsap.timeline({
+				defaults: {
+					ease: 'expo.inOut'
+				},
+				onComplete: () => {
+					if (onComplete) onComplete();
+				}
+			});
+
+			if (revealImagesRef.length) {
+				tl.fromTo(
+					revealImagesRef,
+					{
+						xPercent: 500
+					},
+					{
+						xPercent: -500,
+						duration: 2.5,
+						stagger: 0.05
+					}
+				);
+			}
+
+			if (isScaleDownTargets.length) {
+				tl.to(
+					isScaleDownTargets,
+					{
+						scale: 0.5,
+						duration: 2,
+						stagger: {
+							each: 0.05,
+							from: 'edges',
+							ease: 'none'
+						},
+						onComplete: () => {
+							if (radiusTarget) {
+								radiusTarget.style.borderRadius = '0';
+							}
+						}
+					},
+					'-=0.1'
+				);
+			}
+
+			if (isScaleUpRef.length) {
+				tl.fromTo(
+					isScaleUpRef,
+					{
+						width: '10em',
+						height: '10em'
+					},
+					{
+						width: '100vw',
+						height: '100dvh',
+						duration: 2
+					},
+					'< 0.5'
+				);
+			}
+		}, containerRef);
+
+		return () => {
+			ctx.revert();
+		};
+	});
+</script>
+
+<div
+	{@attach attachContainerRef}
+	class={cn('fixed inset-0 z-999 flex items-center justify-center overflow-hidden', className)}
+	{...restProps}
+>
+	{#if backdrop}
+		<img
+			src={backdrop}
+			alt=""
+			aria-hidden="true"
+			class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+		/>
+	{/if}
+
+	<div
+		class="relative flex items-center justify-center"
+		style="mask-image: linear-gradient(to right, transparent, black 5em, black calc(100% - 5em), transparent); -webkit-mask-image: linear-gradient(to right, transparent, black 5em, black calc(100% - 5em), transparent);"
+	>
+		<div class="relative overflow-hidden">
+			<div class="absolute flex items-center justify-center rounded-[0.5em]">
+				{#each images as image, i (image.src + i)}
+					<div {@attach attachRevealImageRef(i)} class="relative px-[1em]">
+						<div
+							{@attach attachScaleUpRef(i)}
+							class="relative flex h-[10em] w-[10em] items-center justify-center rounded-[0.5em]"
+						>
+							<img
+								loading="eager"
+								src={image.src}
+								alt={image.alt ?? ''}
+								class="absolute h-full w-full rounded-[inherit] object-cover"
+							/>
+						</div>
+					</div>
+				{/each}
+			</div>
+
+			<div class="relative left-full flex items-center justify-center rounded-[0.5em]">
+				{#each images as image, i (image.src + i)}
+					{@const isMiddle = i === Math.floor(images.length / 2)}
+					<div {@attach attachRevealImageRef(images.length + i)} class="relative px-[1em]">
+						<div
+							{@attach attachScaleUpRef(images.length + i)}
+							class:is--radius={isMiddle}
+							style={isMiddle ? 'transition: border-radius 0.5s cubic-bezier(1, 0, 0, 1);' : ''}
+							class="relative flex h-[10em] w-[10em] items-center justify-center rounded-[0.5em] {isMiddle
+								? 'will-change-transform'
+								: ''}"
+						>
+							<img
+								{@attach attachSecondLoopImageRef(i)}
+								loading="eager"
+								src={image.src}
+								alt={image.alt ?? ''}
+								class="absolute h-full w-full rounded-[inherit] object-cover {isMiddle
+									? ''
+									: 'will-change-transform'}"
+							/>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</div>
+
+	<div
+		class="pointer-events-none absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-2"
+	>
+		<div
+			class="flex items-center gap-3 font-mono text-[10px] tracking-[0.3em] text-white/80 uppercase tabular-nums"
+		>
+			<span>Loading</span>
+			<span class="text-white/80">{progressPct}%</span>
+		</div>
+		<div class="relative h-[1.5px] w-48 overflow-hidden rounded-full bg-white/[0.08]">
+			<div
+				class="absolute inset-y-0 left-0 bg-white shadow-[0_0_8px_rgba(255,255,255,0.45)] transition-[width] duration-300 ease-out"
+				style="width: {progressPct}%"
+			></div>
+		</div>
+	</div>
+</div>

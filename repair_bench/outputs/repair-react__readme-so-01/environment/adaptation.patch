@@ -1,0 +1,181 @@
+diff --git a/components/DownloadModal.js b/components/DownloadModal.js
+index 77a3fe3..3d59251 100644
+--- a/components/DownloadModal.js
++++ b/components/DownloadModal.js
+@@ -65,18 +65,6 @@ export const DownloadModal = ({ showModal, setShowModal }) => {
+                   </div>
+                 </div>
+               </div>
+-              <div className="flex justify-center mx-auto mt-5 sm:mt-6">
+-                <a
+-                  href="https://www.buymeacoffee.com/katherinecodes"
+-                  target="_blank"
+-                  rel="noopener noreferrer"
+-                >
+-                  <img
+-                    src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=katherinecodes&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff"
+-                    alt="Buy me a coffee"
+-                  />
+-                </a>
+-              </div>
+             </DialogPanel>
+           </TransitionChild>
+         </div>
+diff --git a/components/EditorColumn.js b/components/EditorColumn.js
+index 6c98d68..e02ef53 100644
+--- a/components/EditorColumn.js
++++ b/components/EditorColumn.js
+@@ -1,6 +1,5 @@
+-import { useEffect, useRef, useState } from 'react'
++import { useEffect, useState } from 'react'
+ 
+-import useDeviceDetect from '../hooks/useDeviceDetect'
+ import useLocalStorage from '../hooks/useLocalStorage'
+ 
+ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, theme }) => {
+@@ -10,13 +9,8 @@ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, them
+   }
+ 
+   const [markdown, setMarkdown] = useState(getMarkdown())
+-  const { isMobile } = useDeviceDetect()
+-  const [MonacoEditor, setMonacoEditor] = useState(null)
+   const { saveBackup } = useLocalStorage()
+ 
+-  const monacoEditorRef = useRef(null)
+-  const textEditorRef = useRef(null)
+-
+   useEffect(() => {
+     const markdown = getMarkdown()
+     setMarkdown(markdown)
+@@ -34,18 +28,6 @@ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, them
+     saveBackup(newTemplates)
+   }
+ 
+-  const handleEditorDidMount = (editor) => {
+-    monacoEditorRef.current = editor
+-  }
+-
+-  useEffect(() => {
+-    if (!isMobile && !MonacoEditor) {
+-      import('@monaco-editor/react').then((EditorComp) => {
+-        setMonacoEditor(() => EditorComp.default)
+-      })
+-    }
+-  }, [MonacoEditor, isMobile, setMonacoEditor])
+-
+   if (focusedSectionSlug === 'noEdit') {
+     return (
+       <p className="text-sm text-emerald-500 max-w-[28rem] text-center mx-auto mt-10">
+@@ -55,36 +37,11 @@ export const EditorColumn = ({ focusedSectionSlug, templates, setTemplates, them
+   }
+ 
+   return (
+-    <>
+-      {isMobile ? (
+-        <textarea
+-          ref={textEditorRef}
+-          onChange={(e) => onEdit(e.target.value)}
+-          value={markdown}
+-          className="full-screen rounded-sm border border-gray-500 w-full p-6 resize-none"
+-        />
+-      ) : (
+-        MonacoEditor && (
+-          <MonacoEditor
+-            onMount={handleEditorDidMount}
+-            wrapperClassName="rounded-sm border border-gray-500"
+-            className="full-screen" // By default, it fully fits with its parent
+-            theme={theme}
+-            language="markdown"
+-            value={markdown}
+-            onChange={onEdit}
+-            loading={'Loading...'}
+-            aria-label="Markdown Editor"
+-            options={{
+-              minimap: {
+-                enabled: false,
+-              },
+-              lineNumbers: false,
+-              wordWrap: true,
+-            }}
+-          />
+-        )
+-      )}
+-    </>
++    <textarea
++      aria-label="Markdown Editor"
++      onChange={(e) => onEdit(e.target.value)}
++      value={markdown}
++      className="full-screen rounded-sm border border-gray-500 w-full p-6 resize-none"
++    />
+   )
+ }
+diff --git a/package.json b/package.json
+index 3584ed3..881b1fa 100644
+--- a/package.json
++++ b/package.json
+@@ -9,8 +9,7 @@
+     "test": "jest",
+     "test:watch": "jest --watchAll",
+     "lint": "next lint && prettier --check .",
+-    "format": "prettier --write . && git add -A .",
+-    "postinstall": "husky install"
++    "format": "prettier --write . && git add -A ."
+   },
+   "dependencies": {
+     "@dnd-kit/core": "^6.0.5",
+diff --git a/pages/editor.js b/pages/editor.js
+index eaecd42..44aef77 100644
+--- a/pages/editor.js
++++ b/pages/editor.js
+@@ -1,4 +1,3 @@
+-import Head from 'next/head'
+ import { useEffect, useState } from 'react'
+ import { DownloadModal } from '../components/DownloadModal'
+ import EditPreviewContainer from '../components/EditPreviewContainer'
+@@ -35,23 +34,6 @@ export default function Editor() {
+ 
+   return (
+     <div className="w-full h-full">
+-      <Head>
+-        <link rel="preconnect" href="https://fonts.gstatic.com" />
+-        <link href="https://fonts.googleapis.com/css2?family=Mali&display=swap" rel="stylesheet" />
+-        <script
+-          data-name="BMC-Widget"
+-          data-cfasync="false"
+-          src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
+-          data-id="katherinecodes"
+-          data-description="Support me on Buy me a coffee!"
+-          data-message=""
+-          data-color="#FFDD00"
+-          data-position="Right"
+-          data-x_margin="18"
+-          data-y_margin="18"
+-        ></script>
+-      </Head>
+-
+       <Nav
+         selectedSectionSlugs={selectedSectionSlugs}
+         setShowModal={setShowModal}
+diff --git a/pages/index.js b/pages/index.js
+index c1e0f10..5e6cddb 100644
+--- a/pages/index.js
++++ b/pages/index.js
+@@ -1,6 +1,5 @@
+ import Image from 'next/image'
+ import Link from 'next/link'
+-import Script from 'next/script'
+ 
+ const DotPattern = ({ id, className }) => (
+   <svg
+@@ -22,11 +21,6 @@ const DotPattern = ({ id, className }) => (
+ const Home = () => {
+   return (
+     <>
+-      <Script
+-        data-domain="readme.so"
+-        src="https://plausible.io/js/plausible.js"
+-        strategy="afterInteractive"
+-      />
+       <div className="bg-gray-50">
+         <div className="relative overflow-hidden">
+           <div className="absolute inset-y-0 w-full h-full" aria-hidden="true">

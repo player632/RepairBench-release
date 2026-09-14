@@ -1,0 +1,102 @@
+diff --git a/index.html b/index.html
+index 0ee8b67..101d695 100644
+--- a/index.html
++++ b/index.html
+@@ -3,7 +3,11 @@
+ <html lang="en">
+   <head>
+     <!-- Google tag (gtag.js) -->
+-    <script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
++    <!-- [ADAPTATION] the remote analytics tag is gone: task.toml sets allow_internet = false,
++         and that googletagmanager URL was the only https:// script reference in the document
++         (measured: 1 remote of 69 local refs). The local window.dataLayer / gtag() definitions
++         right below are kept verbatim, so any gtag(...) call site still resolves instead of
++         turning into a ReferenceError. -->
+     <script>
+       window.dataLayer = window.dataLayer || [];
+       function gtag() {
+@@ -332,6 +336,19 @@
+ 
+     <!-- START-BUNDLE -->
+     <script src="/js/secrets.js"></script>
++    <script>
++      /* [ADAPTATION] pin the first-visit basemap to the seed's own offline entry.
++         getSavedBasemapKey() (js/map-layers.js:91) falls back to BASEMAP_CONFIG[0].key, which is
++         "OpenStreetMap" - a remote XYZ tile layer that initMapView() adds to the map, so the
++         pristine face would fire tile requests on every load. BASEMAP_CONFIG already ships an
++         offline entry (key "Empty" / label "No Base Map", js/map-layers.js:77) and js/map-view.js:50
++         turns a url-less entry into a plain L.layerGroup(), so writing the seed's own storage key
++         selects it with zero new code paths and zero tile requests. Only written when unset, so a
++         user's own choice still wins. */
++      try {
++        if (!localStorage.getItem("lastBasemap")) localStorage.setItem("lastBasemap", "Empty");
++      } catch (e) { /* storage disabled: the map still boots on the default layer */ }
++    </script>
+     <script src="/js/config.js"></script>
+     <script src="/js/color-utils.js"></script>
+     <script src="/js/mode-manager.js"></script>
+diff --git a/js/map-view.js b/js/map-view.js
+index c122c59..ab06ff9 100644
+--- a/js/map-view.js
++++ b/js/map-view.js
+@@ -97,25 +97,12 @@ async function initMapView() {
+     history.replaceState(null, "", savedHash);
+     map.setView([savedView.lat, savedView.lon], savedView.zoom);
+   } else {
+-    fetch(`https://www.googleapis.com/geolocation/v1/geolocate?key=${googleApiKey}`, {
+-      method: "POST",
+-      headers: { "Content-Type": "application/json" },
+-    })
+-      .then((response) => {
+-        if (!response.ok) {
+-          throw new Error("Response not OK");
+-        }
+-        return response.json();
+-      })
+-      .then((data) => {
+-        if (data && data.location) {
+-          console.log(`Centering map on user location via Google Geolocation API.`);
+-          map.setView([data.location.lat, data.location.lng], 5);
+-        }
+-      })
+-      .catch((error) => {
+-        console.error("Geolocation failed, using default map view.", error);
+-      });
++    /* [ADAPTATION] remote IP-geolocation fallback disabled. This was the only outbound request
++       on the boot path (a POST to www.googleapis.com/geolocation/v1/geolocate keyed by
++       googleApiKey). task.toml sets allow_internet = false, so it could only ever fail; the
++       .catch() already fell back to the default view, which is now taken unconditionally: the map
++       keeps the L.map() constructor default (center [0, 0], zoom 2). No core feature is replaced -
++       drawing, editing, measuring, import and export never consulted this branch. */
+   }
+ 
+   const updateUrlHash = () => {
+diff --git a/js/secrets.js b/js/secrets.js
+new file mode 100644
+index 0000000..5caa098
+--- /dev/null
++++ b/js/secrets.js
+@@ -0,0 +1,23 @@
++// Copyright (C) 2026 Aron Sommer. See LICENSE file for full license details.
++
++// [ADAPTATION] Offline provisioning of the seed's own local config slot.
++// The pristine tree ships js/secrets.js.example and .gitignore:3 ("js/secrets.js"), so the real
++// js/secrets.js is NOT in the snapshot. js/main.js:85 hard-gates initApp() on
++//   typeof googleApiKey === "undefined" || typeof mapboxAccessToken === "undefined" ||
++//   typeof osmClientId === "undefined"
++// and bails out with a "Configuration Error" dialog, leaving every control unwired. This file is
++// the copy the seed's own README asks for ("Copy this file and rename it to 'secrets.js'"), with
++// every key left empty exactly as the template ships them: the drawing / editing / import / export
++// surface this task measures needs no key, and the key-consuming features are all remote services
++// that task.toml forbids at runtime (allow_internet = false). Nothing here stands in for a core
++// feature - it only satisfies a config-presence check with the template's own empty strings.
++
++// Service API Keys
++const googleApiKey = "";
++const mapboxAccessToken = "";
++const osmClientId = "";
++
++// Strava Integration (Optional)
++// Leave these empty to have users provide their own keys in the UI
++const stravaClientId = "";
++const stravaClientSecret = "";

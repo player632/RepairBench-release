@@ -1,0 +1,130 @@
+diff --git a/src/app/components/carousel-category/carousel-category.component.html b/src/app/components/carousel-category/carousel-category.component.html
++++ b/src/app/components/carousel-category/carousel-category.component.html
+--- a/src/app/components/carousel-category/carousel-category.component.html
+@@ -10,7 +10,7 @@
+       <mat-card-header>
+         <mat-card-title-group>
+         <mat-card-title>{{ item.name }}</mat-card-title>
++        <mat-card-subtitle data-testid="category-count">{{item.count}} {{ item.count == 1 ? "quiz" : "quizzes" }} </mat-card-subtitle>
+-        <mat-card-subtitle data-testid="category-count">{{item.count}} {{ item.count == 2 ? "quiz" : "quizzes" }} </mat-card-subtitle>
+ 
+         </mat-card-title-group>
+       </mat-card-header>
+diff --git a/src/app/components/category/category.component.ts b/src/app/components/category/category.component.ts
++++ b/src/app/components/category/category.component.ts
+--- a/src/app/components/category/category.component.ts
+@@ -72,7 +72,7 @@ export class CategoryComponent implements OnInit, OnDestroy {
+         if(this.quizzes)
+         this.quizzes.forEach(quiz => {
+           if(quiz)
++          this.userService.getUsername(quiz.authorId)
+-          this.userService.getUsername(quiz.quizID!)
+             .pipe(takeUntil(this.unsubscribe$))
+             .subscribe(username => {
+               quiz.authorName = username;
+diff --git a/src/app/components/quiz-creator/quiz-creator.component.ts b/src/app/components/quiz-creator/quiz-creator.component.ts
++++ b/src/app/components/quiz-creator/quiz-creator.component.ts
+--- a/src/app/components/quiz-creator/quiz-creator.component.ts
+@@ -121,7 +121,7 @@ export class QuizCreatorComponent implements OnInit {
+   updateLastValid(event: any, category: string) {
+     if (event.isUserInput) {
+       // @ts-ignore
++      const categoryId = Array.from(this.categories.entries()).find(([key, value]) => value === category)[0];
+-      const categoryId = Array.from(this.categories.entries()).find(([key, value]) => value === category)[1];
+       this.quizForm.controls['categoryId'].setValue(categoryId);
+       this.lastValidCategory = categoryId;
+     }
+diff --git a/src/app/components/quiz/quiz.component.html b/src/app/components/quiz/quiz.component.html
++++ b/src/app/components/quiz/quiz.component.html
+--- a/src/app/components/quiz/quiz.component.html
+@@ -39,7 +39,7 @@
+         <mat-card-header>
+             <!-- Question -->
+             <mat-card-title-group>
++              <mat-card-subtitle><span data-testid="question-subtitle">Question {{quizService.qnProgress+1}}</span>
+-              <mat-card-subtitle><span data-testid="question-subtitle">Question {{quizService.qnProgress}}</span>
+               </mat-card-subtitle>
+               <mat-card-title><span data-testid="question-title">{{quizService.questionData[quizService.qnProgress].question}}</span>
+               </mat-card-title>
+diff --git a/src/app/components/quiz/quiz.component.ts b/src/app/components/quiz/quiz.component.ts
++++ b/src/app/components/quiz/quiz.component.ts
+--- a/src/app/components/quiz/quiz.component.ts
+@@ -36,7 +36,7 @@ export class QuizComponent implements OnInit {
+         }
+           this.route.queryParams.pipe(first())
+             .subscribe(params => {
++                this.quizID = params['id'];
+-                this.quizID = params['quiz'];
+                 this.getQuizData(this.quizID);
+               }
+             );
+@@ -113,9 +113,11 @@ export class QuizComponent implements OnInit {
+ 
+   selectAnswer(id: any){
+     console.log(id);
++    this.quizService.answers[this.quizService.qnProgress] = id;
+     this.quizService.qnProgress++;
+-    this.quizService.answers[this.quizService.qnProgress] = id;
+     if (this.quizService.questionData.length == this.quizService.qnProgress) {
++      // @ts-ignore
++      clearInterval(this.quizService.timer);
+       this.router.navigate(['/result']);
+       return;
+     }
+diff --git a/src/app/components/result/result.component.ts b/src/app/components/result/result.component.ts
++++ b/src/app/components/result/result.component.ts
+--- a/src/app/components/result/result.component.ts
+@@ -18,7 +18,7 @@ export class ResultComponent implements OnInit {
+   constructor(public quizService: QuizService, private router: Router, private _snackBar: MatSnackBar) { }
+ 
+   ngOnInit(): void {
++    if(this.quizService.questionData.length === 0)
+-    if(this.quizService.questionData.length !== 0)
+       this.router.navigate([""]);
+     this.quizService.correctAnsCount = 0;
+     this.getAnswers();
+@@ -28,7 +28,7 @@ export class ResultComponent implements OnInit {
+     if (this.quizService.questionData) {
+       this.quizService.questionData.filter((question, i)=> {
+ 
++        if (question.answer === this.quizService.answers[i]) {
+-        if (question.answer !== this.quizService.answers[i]) {
+           this.quizService.correctAnsCount++;
+         }
+       })
+diff --git a/src/app/components/user-profile/user-profile.component.ts b/src/app/components/user-profile/user-profile.component.ts
++++ b/src/app/components/user-profile/user-profile.component.ts
+--- a/src/app/components/user-profile/user-profile.component.ts
+@@ -82,7 +82,7 @@ export class UserProfileComponent implements OnInit {
+     });
+ 
+     dialogRef.afterClosed().subscribe(result => {
++      if(result) {
+-      if(!result) {
+         if(quiz.quizID) {
+           this.isLoading=true;
+           this.quizService.deleteQuiz(quiz.quizID).then(() => {
+diff --git a/src/app/shared/auth/auth.service.ts b/src/app/shared/auth/auth.service.ts
++++ b/src/app/shared/auth/auth.service.ts
+--- a/src/app/shared/auth/auth.service.ts
+@@ -194,7 +194,7 @@ export class AuthService implements OnInit, OnDestroy{
+     const usersService = this.injector.get(UsersService)
+ 
+     return await lastValueFrom(usersService.isUsernameExists(username).pipe(map(async value => {
++        if (value)
+-        if (!value)
+           return "usernameExists";
+         return await this.afAuth
+           .createUserWithEmailAndPassword(email, password)
+diff --git a/src/app/shared/clipboard.service.ts b/src/app/shared/clipboard.service.ts
++++ b/src/app/shared/clipboard.service.ts
+--- a/src/app/shared/clipboard.service.ts
+@@ -13,7 +13,7 @@ export class ClipboardService {
+   constructor(private snackBar: MatSnackBar) {}
+ 
+   public  getQuizUrl(quizID: string){
++    const baseUrl = window.location.origin + environment.baseHref;
+-    const baseUrl = window.location.origin;
+     return `${baseUrl}/quiz?id=${quizID}`;
+   }
+ 

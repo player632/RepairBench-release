@@ -1,0 +1,1310 @@
+diff --git a/e2e/protractor.conf.js b/e2e/protractor.conf.js
+deleted file mode 100644
+index 7c798cf..0000000
+--- a/e2e/protractor.conf.js
++++ /dev/null
+@@ -1,32 +0,0 @@
+-// @ts-check
+-// Protractor configuration file, see link for more information
+-// https://github.com/angular/protractor/blob/master/lib/config.ts
+-
+-const { SpecReporter } = require('jasmine-spec-reporter');
+-
+-/**
+- * @type { import("protractor").Config }
+- */
+-exports.config = {
+-  allScriptsTimeout: 11000,
+-  specs: [
+-    './src/**/*.e2e-spec.ts'
+-  ],
+-  capabilities: {
+-    browserName: 'chrome'
+-  },
+-  directConnect: true,
+-  baseUrl: 'http://localhost:4200/',
+-  framework: 'jasmine',
+-  jasmineNodeOpts: {
+-    showColors: true,
+-    defaultTimeoutInterval: 30000,
+-    print: function() {}
+-  },
+-  onPrepare() {
+-    require('ts-node').register({
+-      project: require('path').join(__dirname, './tsconfig.json')
+-    });
+-    jasmine.getEnv().addReporter(new SpecReporter({ spec: { displayStacktrace: true } }));
+-  }
+-};
+\ No newline at end of file
+diff --git a/e2e/src/app.e2e-spec.ts b/e2e/src/app.e2e-spec.ts
+deleted file mode 100644
+index f8b8268..0000000
+--- a/e2e/src/app.e2e-spec.ts
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import { AppPage } from './app.po';
+-import { browser, logging } from 'protractor';
+-
+-describe('workspace-project App', () => {
+-  let page: AppPage;
+-
+-  beforeEach(() => {
+-    page = new AppPage();
+-  });
+-
+-  it('should display welcome message', () => {
+-    page.navigateTo();
+-    expect(page.getTitleText()).toEqual('frontend app is running!');
+-  });
+-
+-  afterEach(async () => {
+-    // Assert that there are no errors emitted from the browser
+-    const logs = await browser.manage().logs().get(logging.Type.BROWSER);
+-    expect(logs).not.toContain(jasmine.objectContaining({
+-      level: logging.Level.SEVERE,
+-    } as logging.Entry));
+-  });
+-});
+diff --git a/e2e/src/app.po.ts b/e2e/src/app.po.ts
+deleted file mode 100644
+index b68475e..0000000
+--- a/e2e/src/app.po.ts
++++ /dev/null
+@@ -1,11 +0,0 @@
+-import { browser, by, element } from 'protractor';
+-
+-export class AppPage {
+-  navigateTo(): Promise<unknown> {
+-    return browser.get(browser.baseUrl) as Promise<unknown>;
+-  }
+-
+-  getTitleText(): Promise<string> {
+-    return element(by.css('app-root .content span')).getText() as Promise<string>;
+-  }
+-}
+diff --git a/e2e/tsconfig.json b/e2e/tsconfig.json
+deleted file mode 100644
+index c92199c..0000000
+--- a/e2e/tsconfig.json
++++ /dev/null
+@@ -1,13 +0,0 @@
+-{
+-  "extends": "../tsconfig.json",
+-  "compilerOptions": {
+-    "outDir": "../out-tsc/e2e",
+-    "module": "commonjs",
+-    "target": "es2018",
+-    "types": [
+-      "jasmine",
+-      "jasminewd2",
+-      "node"
+-    ]
+-  }
+-}
+diff --git a/src/app/app.component.html b/src/app/app.component.html
+index 64f137e..510727a 100644
+--- a/src/app/app.component.html
++++ b/src/app/app.component.html
+@@ -1,5 +1,6 @@
+ <div id="app-frame">
+-    <nz-spin class="global-spinner"
++    <nz-spin data-testid="global-spinner"
++             class="global-spinner"
+              [nzSpinning]="projectQuery.isLoading$ | async"
+              nzSize="large">
+         <router-outlet></router-outlet>
+diff --git a/src/app/app.component.spec.ts b/src/app/app.component.spec.ts
+deleted file mode 100644
+index efb0189..0000000
+--- a/src/app/app.component.spec.ts
++++ /dev/null
+@@ -1,54 +0,0 @@
+-import { AppComponent } from '@trungk18/app.component';
+-import { NavigationEnd } from '@angular/router';
+-import { environment } from '../environments/environment';
+-
+-describe('AppComponent', () => {
+-  let component: AppComponent;
+-
+-  const router: any = {
+-    events: {
+-      subscribe: vi.fn()
+-    }
+-  };
+-  const projectQuery: any = {};
+-  const changeDetectorRef: any = {
+-    detectChanges: vi.fn()
+-  };
+-  const projectService: any = {
+-    setLoading: vi.fn()
+-  };
+-  const googleAnalyticsService: any = {
+-    sendPageView: vi.fn()
+-  };
+-
+-  beforeEach(() => {
+-    environment.production = true;
+-    component = new AppComponent(
+-      router,
+-      projectQuery,
+-      changeDetectorRef,
+-      projectService,
+-      googleAnalyticsService
+-    );
+-  });
+-  it('should be able to set Loading', () => {
+-    expect(router.events.subscribe).toHaveBeenCalled();
+-    expect(projectService.setLoading).toHaveBeenCalledWith(true);
+-  });
+-  it('should be able to make ng After View Init', () => {
+-    component.ngAfterViewInit();
+-    expect(changeDetectorRef.detectChanges).toHaveBeenCalled();
+-  });
+-  it('should be able to handle Google Analytics', () => {
+-    component.handleGoogleAnalytics( new NavigationEnd(1, '/', '/'));
+-
+-    expect(googleAnalyticsService.sendPageView).toHaveBeenCalled();
+-  });
+-  it('should not be able to handle Google Analytics', () => {
+-    googleAnalyticsService.sendPageView.mockReset();
+-    component.handleGoogleAnalytics({ });
+-
+-    expect(googleAnalyticsService.sendPageView).not.toHaveBeenCalled();
+-  });
+-
+-});
+diff --git a/src/app/core/directives/autofocus.directive.spec.ts b/src/app/core/directives/autofocus.directive.spec.ts
+deleted file mode 100644
+index 60f6bf4..0000000
+--- a/src/app/core/directives/autofocus.directive.spec.ts
++++ /dev/null
+@@ -1,34 +0,0 @@
+-import { AutofocusDirective } from '@trungk18/core/directives/autofocus.directive';
+-
+-describe('AutofocusDirective', () => {
+-  let component: any;
+-  const elementRef: any = {
+-    nativeElement: {
+-      focus: vi.fn()
+-    }
+-  };
+-
+-  beforeEach(() => {
+-    vi.useFakeTimers();
+-    component = new AutofocusDirective(
+-      elementRef
+-    );
+-  });
+-
+-  afterEach(() => {
+-    vi.useRealTimers();
+-  });
+-
+-  it('should be able to make ng After Content Init', () => {
+-    component.ngAfterContentInit();
+-    vi.advanceTimersByTime(10);
+-    expect(component.enable).toBe(true);
+-    expect(elementRef.nativeElement.focus).toHaveBeenCalled();
+-  });
+-  it('should be able to make ng After Content Init and destroy', () => {
+-    component.ngAfterContentInit();
+-    vi.advanceTimersByTime(10);
+-    component.ngOnDestroy();
+-    expect(component.timer).toEqual(null);
+-  });
+-});
+diff --git a/src/app/core/services/google-analytics.service.spec.ts b/src/app/core/services/google-analytics.service.spec.ts
+deleted file mode 100644
+index 518b276..0000000
+--- a/src/app/core/services/google-analytics.service.spec.ts
++++ /dev/null
+@@ -1,44 +0,0 @@
+-import {GoogleAnalyticsService} from '@trungk18/core/services/google-analytics.service';
+-
+-describe('GoogleAnalyticsService', () => {
+-  let service: GoogleAnalyticsService;
+-  beforeEach(() => {
+-    service = new GoogleAnalyticsService();
+-
+-  });
+-
+-  it('should be able to sendEvent', () => {
+-    service.gtag = vi.fn().mockReturnValue(true);
+-    service.sendEvent(
+-     '',
+-     '',
+-     '',
+-     null
+-    );
+-    expect(service.gtag).toHaveBeenCalled();
+-  });
+-  it('should not be able to sendEvent', () => {
+-    service.gtag = false;
+-
+-    expect(service.sendEvent(
+-      '',
+-      '',
+-      '',
+-      null
+-    )).toEqual();
+-  });
+-  it('should be able to sendPageView', () => {
+-    service.gtag = vi.fn().mockReturnValue(true);
+-    service.sendPageView(
+-     ''
+-    );
+-    expect(service.gtag).toHaveBeenCalled();
+-  });
+-  it('should not be able to sendPageView', () => {
+-    service.gtag = false;
+-
+-    expect(service.sendPageView(
+-      ''
+-    )).toEqual();
+-  });
+-});
+diff --git a/src/app/core/validators/no-whitespace.validator.spec.ts b/src/app/core/validators/no-whitespace.validator.spec.ts
+deleted file mode 100644
+index 6366fd0..0000000
+--- a/src/app/core/validators/no-whitespace.validator.spec.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import { NoWhitespaceValidator } from './no-whitespace.validator';
+-import { UntypedFormControl } from '@angular/forms';
+-
+-describe('NoWhitespaceValidator', () => {
+-  const validator = NoWhitespaceValidator();
+-
+-  it('should be able to return no whitespace validator null value', () => {
+-    const formControl = new UntypedFormControl();
+-    formControl.setValue('Test');
+-
+-    expect(validator(formControl)).toEqual(null);
+-  });
+-  it('should be able to return no whitespace validator whitespace value', () => {
+-    const formControl = new UntypedFormControl();
+-    formControl.setValue('');
+-
+-    expect(validator(formControl).whitespace).toEqual('value is only whitespace');
+-  });
+-  it('should be able to return no whitespace validator on number validation', () => {
+-    const formControl = new UntypedFormControl();
+-    formControl.setValue(5);
+-
+-    expect(validator(formControl)).toEqual(null);
+-  });
+-});
+diff --git a/src/app/interface/comment.spec.ts b/src/app/interface/comment.spec.ts
+deleted file mode 100644
+index 59d9772..0000000
+--- a/src/app/interface/comment.spec.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import { JComment } from '@trungk18/interface/comment';
+-
+-describe('JComment', () => {
+-  let testClass: any;
+-
+-  beforeEach(() => {
+-    testClass = new JComment(
+-      '',
+-      {
+-        id: '',
+-        name: '',
+-        email: '',
+-        avatarUrl: '',
+-        createdAt: '',
+-        updatedAt: '',
+-        issueIds: ['']
+-      }
+-    );
+-  });
+-
+-  it('Should have interfaces ', () => {
+-    expect(Object.keys(testClass).length).toEqual(5);
+-    expect(Object.keys(testClass.user).length).toEqual(7);
+-  });
+-});
+diff --git a/src/app/jira-control/avatar/avatar.component.spec.ts b/src/app/jira-control/avatar/avatar.component.spec.ts
+deleted file mode 100644
+index 45983ba..0000000
+--- a/src/app/jira-control/avatar/avatar.component.spec.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import {AvatarComponent} from '@trungk18/jira-control/avatar/avatar.component';
+-
+-describe('AvatarComponent', () => {
+-  let component: AvatarComponent;
+-  beforeEach(() => {
+-    component = new AvatarComponent();
+-  });
+-
+-  it('should be able to get styles', () => {
+-    expect(component.style.width).toEqual('12px');
+-    expect(component.style.height).toEqual('12px');
+-  });
+-});
+diff --git a/src/app/jira-control/button/button.component.spec.ts b/src/app/jira-control/button/button.component.spec.ts
+deleted file mode 100644
+index 1e31906..0000000
+--- a/src/app/jira-control/button/button.component.spec.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import { ButtonComponent } from '@trungk18/jira-control/button/button.component';
+-
+-describe('ButtonComponent', () => {
+-  let component: ButtonComponent;
+-
+-  beforeEach(() => {
+-    component = new ButtonComponent();
+-  });
+-
+-  it('should be able to create', () => {
+-    expect(component).toBeTruthy();
+-  });
+-});
+diff --git a/src/app/jira-control/input/input.component.spec.ts b/src/app/jira-control/input/input.component.spec.ts
+deleted file mode 100644
+index 40c273e..0000000
+--- a/src/app/jira-control/input/input.component.spec.ts
++++ /dev/null
+@@ -1,26 +0,0 @@
+-import { InputComponent } from '@trungk18/jira-control/input/input.component';
+-
+-describe('InputComponent', () => {
+-  let component: InputComponent;
+-
+-  beforeEach(() => {
+-    component = new InputComponent();
+-  });
+-
+-  it('should be able to init', () => {
+-    component.ngOnInit();
+-    expect(component.control).toBeTruthy();
+-  });
+-  it('should be able to get icon size', () => {
+-    expect(component.iconContainerWidth).toEqual(32);
+-  });
+-  it('should be able to get return  is Show Clear Button', () => {
+-    expect(typeof component.isShowClearButton).toEqual('undefined');
+-  });
+-  it('should be able to clear control', () => {
+-    component.ngOnInit();
+-    vi.spyOn(component.control, 'patchValue');
+-    component.clear();
+-    expect(component.control.patchValue).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/jira-control/svg-icon/svg-icon.component.spec.ts b/src/app/jira-control/svg-icon/svg-icon.component.spec.ts
+deleted file mode 100644
+index bdcae0e..0000000
+--- a/src/app/jira-control/svg-icon/svg-icon.component.spec.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import {SvgIconComponent} from '@trungk18/jira-control/svg-icon/svg-icon.component';
+-
+-describe('SvgIconComponent', () => {
+-  let component: SvgIconComponent;
+-
+-  beforeEach(() => {
+-    component = new SvgIconComponent();
+-    component.name = 'test';
+-    component.window = {
+-      location: {
+-        href: ''
+-      }
+-    };
+-  });
+-
+-  it('should be able to get icon url ', () => {
+-    expect(component.iconUrl).toEqual('#test');
+-  });
+-});
+diff --git a/src/app/project/auth/auth.service.spec.ts b/src/app/project/auth/auth.service.spec.ts
+deleted file mode 100644
+index c2c0a03..0000000
+--- a/src/app/project/auth/auth.service.spec.ts
++++ /dev/null
+@@ -1,68 +0,0 @@
+-import { AuthService } from './auth.service';
+-import { Subject } from 'rxjs';
+-
+-describe('AuthService', () => {
+-  let service: AuthService;
+-
+-  const httpClient: any = {
+-    get: vi.fn()
+-  };
+-  const authStore: any = {
+-    setLoading: vi.fn(),
+-    update: vi.fn(),
+-    setError: vi.fn()
+-  };
+-
+-  beforeEach(() => {
+-    service = new AuthService(
+-      httpClient,
+-      authStore
+-    );
+-  });
+-
+-  it('should be able to login', () => {
+-    const data = new Subject();
+-    httpClient.get.mockReturnValue(data);
+-    service.login({
+-      email: '',
+-      password: '',
+-    });
+-    expect(authStore.setLoading).toHaveBeenCalledWith(true);
+-    data.next({
+-      id: '',
+-      name: '',
+-      email: '',
+-      avatarUrl: '',
+-      createdAt: '',
+-      updatedAt: '',
+-      issueIds: []
+-    });
+-    expect(httpClient.get).toHaveBeenCalledWith('/assets/data/auth.json');
+-    expect(authStore.update).toHaveBeenCalled();
+-  });
+-  it('should not be able to login', () => {
+-    const data = new Subject();
+-    httpClient.get.mockReturnValue(data);
+-    service.login({
+-      email: '',
+-      password: '',
+-    });
+-    authStore.update.mockImplementation(() => {
+-      throw new Error('Something bad happened');
+-    });
+-    expect(authStore.setLoading).toHaveBeenCalledWith(true);
+-    authStore.setLoading.mockReset();
+-    data.next({
+-      id: '',
+-      name: '',
+-      email: '',
+-      avatarUrl: '',
+-      createdAt: '',
+-      updatedAt: '',
+-      issueIds: []
+-    });
+-
+-    expect(authStore.setLoading).toHaveBeenCalledWith(false);
+-    expect(authStore.setError).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/project/components/add-issue-modal/add-issue-modal.component.html b/src/app/project/components/add-issue-modal/add-issue-modal.component.html
+index f6dccc8..01c2d6e 100644
+--- a/src/app/project/components/add-issue-modal/add-issue-modal.component.html
++++ b/src/app/project/components/add-issue-modal/add-issue-modal.component.html
+@@ -1,6 +1,6 @@
+ <div class="px-8 py-5">
+     <div class="flex items-center py-3 text-textDarkest">
+-        <div class="text-xl">
++        <div data-testid="create-issue-title" class="text-xl">
+             Create issue
+         </div>
+         <div class="flex-auto"></div>
+diff --git a/src/app/project/components/add-issue-modal/add-issue-modal.component.spec.ts b/src/app/project/components/add-issue-modal/add-issue-modal.component.spec.ts
+deleted file mode 100644
+index 0718967..0000000
+--- a/src/app/project/components/add-issue-modal/add-issue-modal.component.spec.ts
++++ /dev/null
+@@ -1,39 +0,0 @@
+-import { AddIssueModalComponent } from '@trungk18/project/components/add-issue-modal/add-issue-modal.component';
+-
+-describe('AddIssueModalComponent', () => {
+-  let component: AddIssueModalComponent;
+-
+-  const formBuilder: any = {
+-    group: vi.fn().mockReturnValue({
+-      invalid: false,
+-      getRawValue: vi.fn()
+-    }),
+-  };
+-  const nzModalRef: any = {
+-    close: vi.fn()
+-  };
+-  const projectService: any = {
+-    updateIssue: vi.fn()
+-  };
+-  const projectQuery: any = {};
+-
+-  beforeEach(() => {
+-    component = new AddIssueModalComponent(
+-      formBuilder,
+-      nzModalRef,
+-      projectService,
+-      projectQuery
+-    );
+-  });
+-
+-  it('should be able to initForm', () => {
+-    component.initForm();
+-    expect(formBuilder.group).toHaveBeenCalled();
+-  });
+-  it('should be able to submit Form', () => {
+-    component.initForm();
+-    component.submitForm();
+-    expect(projectService.updateIssue).toHaveBeenCalled();
+-    expect(formBuilder.group).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/project/components/add-issue-modal/issue-assignees-select/issue-assignees-select.component.spec.ts b/src/app/project/components/add-issue-modal/issue-assignees-select/issue-assignees-select.component.spec.ts
+deleted file mode 100644
+index 013e54f..0000000
+--- a/src/app/project/components/add-issue-modal/issue-assignees-select/issue-assignees-select.component.spec.ts
++++ /dev/null
+@@ -1,24 +0,0 @@
+-import { IssueAssigneesSelectComponent } from '@trungk18/project/components/add-issue-modal/issue-assignees-select/issue-assignees-select.component';
+-
+-describe('IssueAssigneesSelectComponent', () => {
+-  let component: IssueAssigneesSelectComponent;
+-
+-  beforeEach(() => {
+-    component = new IssueAssigneesSelectComponent();
+-    component.users = [
+-      {
+-        id: 'test',
+-        name: '',
+-        email: '',
+-        avatarUrl: '',
+-        createdAt: '',
+-        updatedAt: '',
+-        issueIds: []
+-      }
+-    ];
+-  });
+-
+-  it('should be able to ', () => {
+-    expect(Object.keys(component.getUser('test')).length).toEqual(7);
+-  });
+-});
+diff --git a/src/app/project/components/add-issue-modal/issue-priority-select/issue-priority-select.component.spec.ts b/src/app/project/components/add-issue-modal/issue-priority-select/issue-priority-select.component.spec.ts
+deleted file mode 100644
+index 3025870..0000000
+--- a/src/app/project/components/add-issue-modal/issue-priority-select/issue-priority-select.component.spec.ts
++++ /dev/null
+@@ -1,16 +0,0 @@
+-import { IssuePrioritySelectComponent } from '@trungk18/project/components/add-issue-modal/issue-priority-select/issue-priority-select.component';
+-import { IssuePriority } from '@trungk18/interface/issue';
+-
+-describe('IssuePrioritySelectComponent', () => {
+-  let component: IssuePrioritySelectComponent;
+-  beforeEach(() => {
+-    component = new IssuePrioritySelectComponent();
+-  });
+-
+-  it('should be able to get Priority Icon', () => {
+-    const expectedIcon = component.getPriorityIcon(IssuePriority.LOW);
+-    expect(expectedIcon.value).toEqual('Low');
+-    expect(expectedIcon.icon).toEqual('arrow-down');
+-    expect(expectedIcon.color).toEqual('#2D8738');
+-  });
+-});
+diff --git a/src/app/project/components/board/board-dnd-list/board-dnd-list.component.html b/src/app/project/components/board/board-dnd-list/board-dnd-list.component.html
+index 4ba1c6c..0d1e614 100644
+--- a/src/app/project/components/board/board-dnd-list/board-dnd-list.component.html
++++ b/src/app/project/components/board/board-dnd-list/board-dnd-list.component.html
+@@ -1,4 +1,4 @@
+-<div class="status-list">
++<div [attr.data-testid]="'col-' + status" class="status-list">
+   <div class="px-3 pb-4 pt-3 uppercase text-textMedium text-13 truncate">
+     {{ IssueStatusDisplay[status] }}
+     <span class="lowercase text-13">{{ issuesCount }}</span>
+@@ -10,6 +10,7 @@
+     (cdkDropListDropped)="drop($event)">
+     @for (issue of issues; track issue) {
+       <issue-card
++        [attr.data-testid]="'issue-card-' + issue.id"
+         [issue]="issue"
+         cdkDrag
+         [cdkDragData]="issue">
+diff --git a/src/app/project/components/board/board-filter/board-filter.component.html b/src/app/project/components/board/board-filter/board-filter.component.html
+index ffb2eaf..bd374d2 100644
+--- a/src/app/project/components/board/board-filter/board-filter.component.html
++++ b/src/app/project/components/board/board-filter/board-filter.component.html
+@@ -1,6 +1,7 @@
+ <div class="flex items-center mt-6">
+   <form class="w-40 mr-4">
+-    <j-input aria-label="search"
++    <j-input data-testid="board-search"
++      aria-label="search"
+       icon="search"
+       [control]="searchControl">
+     </j-input>
+@@ -8,6 +9,7 @@
+   <div class="flex flex-row mr-3">
+     @for (user of projectQuery.users$ | async; track user) {
+       <div
++        [attr.data-testid]="'filter-user-' + user.id"
+         class="lift-avatar"
+         nz-tooltip
+         [nzTooltipPlacement]="'bottom'"
+@@ -22,13 +24,15 @@
+       </div>
+     }
+   </div>
+-  <j-button class="ml-3"
++  <j-button data-testid="filter-only-my-issues"
++    class="ml-3"
+     className="btn-empty"
+     [isActive]="filterQuery.onlyMyIssue$ | async"
+     (click)="onlyMyIssueChanged()">
+     Only My Issues
+   </j-button>
+-  <j-button class="ml-3"
++  <j-button data-testid="filter-ignore-resolved"
++    class="ml-3"
+     [isActive]="filterQuery.ignoreResolve$ | async"
+     (click)="ignoreResolvedChanged()"
+     className="btn-empty">
+@@ -38,7 +42,7 @@
+     <div class="ml-3 flex items-center"
+       >
+       <div class="mr-3 w-px bg-backgroundMedium self-stretch"></div>
+-      <j-button [className]="'btn-secondary'"
++      <j-button data-testid="filter-clear-all" [className]="'btn-secondary'"
+         (click)="resetAll()">Clear all
+       </j-button>
+     </div>
+diff --git a/src/app/project/components/issues/issue-assignees/issue-assignees.component.html b/src/app/project/components/issues/issue-assignees/issue-assignees.component.html
+index a681b9c..779cc49 100644
+--- a/src/app/project/components/issues/issue-assignees/issue-assignees.component.html
++++ b/src/app/project/components/issues/issue-assignees/issue-assignees.component.html
+@@ -4,6 +4,7 @@
+ 
+ @for (assignee of assignees; track assignee) {
+   <j-button
++    data-testid="assignee-chip"
+     [className]="'btn-secondary mr-1-5 mb-2'">
+     <div class="flex items-center">
+       <j-user [user]="assignee"></j-user>
+@@ -17,7 +18,7 @@
+   </j-button>
+ }
+ 
+-<a class="add-more"
++<a data-testid="assignee-add" class="add-more"
+   nz-dropdown
+   [nzTrigger]="'click'"
+   [nzDropdownMenu]="menu">
+@@ -34,7 +35,8 @@
+     nzNoAnimation>
+     @for (option of users; track option) {
+       @if (!isUserSelected(option)) {
+-        <li nz-menu-item
++        <li [attr.data-testid]="'assignee-option-' + option.id"
++          nz-menu-item
+           (click)="addUserToIssue(option)">
+           <j-user [user]="option"></j-user>
+         </li>
+diff --git a/src/app/project/components/issues/issue-card/issue-card.component.html b/src/app/project/components/issues/issue-card/issue-card.component.html
+index 2137c43..7b30337 100644
+--- a/src/app/project/components/issues/issue-card/issue-card.component.html
++++ b/src/app/project/components/issues/issue-card/issue-card.component.html
+@@ -8,6 +8,7 @@
+       <div class="flex items-center ml-1">
+         @for (user of assignees; track user) {
+           <j-avatar
++            data-testid="card-avatar"
+             [className]="'shadow-outline-white -ml-1'"
+             [size]="24"
+             nz-tooltip
+diff --git a/src/app/project/components/issues/issue-comment/issue-comment.component.html b/src/app/project/components/issues/issue-comment/issue-comment.component.html
+index 150f62e..972b2ea 100644
+--- a/src/app/project/components/issues/issue-comment/issue-comment.component.html
++++ b/src/app/project/components/issues/issue-comment/issue-comment.component.html
+@@ -18,7 +18,8 @@
+       @if (createMode) {
+         <div class="editing-area"
+           >
+-          <textarea #commentBoxRef
++          <textarea data-testid="comment-input"
++            #commentBoxRef
+             class="textarea-inline-control textarea-border"
+             [formControl]="commentControl"
+             placeholder="Add a comment"
+@@ -28,13 +29,15 @@
+           </textarea>
+           @if (!isEditing) {
+             <div
++              data-testid="comment-protip"
+               class="text-xs"><strong>Pro tip: </strong>press <span class="px-1 font-semibold bg-backgroundMedium">M</span> to comment
+             </div>
+           }
+           @if (isEditing) {
+             <div
+               class="flex pt-2 pb-4 items-center">
+-              <j-button [className]="'btn btn-primary mr-2'"
++              <j-button data-testid="comment-save"
++                [className]="'btn btn-primary mr-2'"
+                 (click)="addComment()">
+                 Save
+               </j-button>
+diff --git a/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.html b/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.html
+index 7661844..c8d9f57 100644
+--- a/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.html
++++ b/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.html
+@@ -4,7 +4,7 @@
+     </div>
+     <p class="pb-4 whitespace-pre-wrap text-15">This action cannot be undone.</p>
+     <div class="flex pt-3">
+-        <j-button className="btn-primary mr-2" (click)="deleteIssue()">Delete</j-button>
++        <j-button data-testid="delete-confirm-btn" className="btn-primary mr-2" (click)="deleteIssue()">Delete</j-button>
+         <j-button className="'btn-empty'"
+                   (click)="closeModal()">
+             Cancel</j-button>
+diff --git a/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.spec.ts b/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.spec.ts
+deleted file mode 100644
+index 1770a92..0000000
+--- a/src/app/project/components/issues/issue-delete-modal/issue-delete-modal.component.spec.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import {IssueDeleteModalComponent} from '@trungk18/project/components/issues/issue-delete-modal/issue-delete-modal.component';
+-import { EventEmitter } from '@angular/core';
+-
+-describe('IssueDeleteModalComponent', () => {
+-  let component: IssueDeleteModalComponent;
+-
+-  const nzModalRef: any = {
+-    close: vi.fn()
+-  };
+-
+-  const modalData: any = {
+-    issueId: 'test-id',
+-    onDelete: new EventEmitter()
+-  };
+-
+-  beforeEach(() => {
+-    component = new IssueDeleteModalComponent(
+-      nzModalRef,
+-      modalData
+-    );
+-  });
+-
+-  it('should have delete issue', () => {
+-    vi.spyOn(component.onDelete, 'emit');
+-    component.deleteIssue();
+-    expect(component.onDelete.emit).toHaveBeenCalled();
+-  });
+-  it('should ne able to close modal', () => {
+-    component.closeModal();
+-    expect(nzModalRef.close).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/project/components/issues/issue-detail/issue-detail.component.html b/src/app/project/components/issues/issue-detail/issue-detail.component.html
+index 34c2f4b..fc76799 100644
+--- a/src/app/project/components/issues/issue-detail/issue-detail.component.html
++++ b/src/app/project/components/issues/issue-detail/issue-detail.component.html
+@@ -11,7 +11,8 @@
+           Give Feedback
+         </j-button>
+       </a>
+-      <j-button icon="trash"
++      <j-button data-testid="delete-issue-btn"
++        icon="trash"
+         [className]="'btn-empty'"
+         (click)="openDeleteIssueModal()">
+       </j-button>
+diff --git a/src/app/project/components/issues/issue-detail/issue-detail.component.spec.ts b/src/app/project/components/issues/issue-detail/issue-detail.component.spec.ts
+deleted file mode 100644
+index 2cea68d..0000000
+--- a/src/app/project/components/issues/issue-detail/issue-detail.component.spec.ts
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import {IssueDetailComponent} from '@trungk18/project/components/issues/issue-detail/issue-detail.component';
+-import {IssuePriority, IssueStatus, IssueType} from '@trungk18/interface/issue';
+-
+-describe('IssueDetailComponent', () => {
+-  let component: IssueDetailComponent;
+-
+-  const projectQuery: any = {
+-
+-  };
+-  const nzModalService: any = {
+-    create: vi.fn()
+-  };
+-  beforeEach(() => {
+-    component = new IssueDetailComponent(
+-      projectQuery,
+-      nzModalService
+-    );
+-    component.issue = {
+-      id: '',
+-      title: '',
+-      type: IssueType.TASK,
+-      status: IssueStatus.BACKLOG,
+-      priority: IssuePriority.LOW,
+-      listPosition: 0,
+-      description: '',
+-      estimate: 0,
+-      timeSpent: 0,
+-      timeRemaining: 0,
+-      createdAt: '',
+-      updatedAt: '',
+-      reporterId: '',
+-      userIds: [],
+-      comments: [],
+-      projectId: ''
+-    };
+-  });
+-
+-  it('should be able to open Delete Issue Modal', () => {
+-    component.openDeleteIssueModal();
+-    expect(nzModalService.create).toHaveBeenCalled();
+-  });
+-  it('should be able to close Modal', () => {
+-    vi.spyOn(component.onClosed, 'emit');
+-    component.closeModal();
+-    expect(component.onClosed.emit).toHaveBeenCalled();
+-  });
+-  it('should be able to open Issue Page', () => {
+-    vi.spyOn(component.onOpenIssue, 'emit');
+-    component.openIssuePage();
+-    expect(component.onOpenIssue.emit).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/project/components/issues/issue-modal/issue-modal.component.html b/src/app/project/components/issues/issue-modal/issue-modal.component.html
+index 90315a0..923f0d4 100644
+--- a/src/app/project/components/issues/issue-modal/issue-modal.component.html
++++ b/src/app/project/components/issues/issue-modal/issue-modal.component.html
+@@ -1,4 +1,4 @@
+-<div class="px-3">
++<div data-testid="issue-modal-root" class="px-3">
+     <issue-detail [issue]="issue$ | async"
+                   [isShowFullScreenButton]="true"
+                   [isShowCloseButton]="true"
+diff --git a/src/app/project/components/issues/issue-priority/issue-priority.component.html b/src/app/project/components/issues/issue-priority/issue-priority.component.html
+index cd3e966..ecdbb3f 100644
+--- a/src/app/project/components/issues/issue-priority/issue-priority.component.html
++++ b/src/app/project/components/issues/issue-priority/issue-priority.component.html
+@@ -1,7 +1,8 @@
+ <div class="mt-6 mb-1 uppercase text-textMedium text-13 font-bold">
+   Priority
+ </div>
+-<j-button className="btn-secondary"
++<j-button data-testid="priority-button"
++  className="btn-secondary"
+   nz-dropdown
+   nzTrigger="click"
+   [nzDropdownMenu]="menu">
+@@ -10,7 +11,7 @@
+       [size]="20"
+       [style.color]="selectedPriorityIcon.color">
+     </svg-icon>
+-    <span class="ml-3 priority-label">{{ selectedPriorityIcon.value }}</span>
++    <span data-testid="priority-label" class="ml-3 priority-label">{{ selectedPriorityIcon.value }}</span>
+   </div>
+ </j-button>
+ 
+@@ -20,7 +21,8 @@
+     nzNoAnimation>
+     @for (option of priorities; track option) {
+       @if (!isPrioritySelected(option.value)) {
+-        <li nz-menu-item
++        <li [attr.data-testid]="'priority-option-' + option.value"
++          nz-menu-item
+           (click)="updateIssue(option.value)">
+           <div class="flex items-center">
+             <svg-icon [name]="option.icon"
+diff --git a/src/app/project/components/issues/issue-reporter/issue-reporter.component.html b/src/app/project/components/issues/issue-reporter/issue-reporter.component.html
+index e354be1..cc930a9 100644
+--- a/src/app/project/components/issues/issue-reporter/issue-reporter.component.html
++++ b/src/app/project/components/issues/issue-reporter/issue-reporter.component.html
+@@ -1,7 +1,8 @@
+ <div class="mt-6 mb-1 uppercase text-textMedium text-13 font-bold">
+   Reporter
+ </div>
+-<j-button className="btn-secondary"
++<j-button data-testid="reporter-button"
++  className="btn-secondary"
+   nz-dropdown
+   [nzTrigger]="'click'"
+   [nzDropdownMenu]="menu">
+@@ -13,7 +14,8 @@
+     nzNoAnimation>
+     @for (option of users; track option) {
+       @if (!isUserSelected(option)) {
+-        <li nz-menu-item
++        <li [attr.data-testid]="'reporter-option-' + option.id"
++          nz-menu-item
+           (click)="updateIssue(option)">
+           <j-user [user]="option"></j-user>
+         </li>
+diff --git a/src/app/project/components/issues/issue-status/issue-status.component.html b/src/app/project/components/issues/issue-status/issue-status.component.html
+index 8974d08..7bc8f37 100644
+--- a/src/app/project/components/issues/issue-status/issue-status.component.html
++++ b/src/app/project/components/issues/issue-status/issue-status.component.html
+@@ -1,7 +1,8 @@
+ <div class="mt-6 mb-1 uppercase text-textMedium text-13 font-bold">
+   Status
+ </div>
+-<j-button nz-dropdown
++<j-button data-testid="status-button"
++  nz-dropdown
+   nzTrigger="click"
+   [nzDropdownMenu]="menu"
+   [className]="variants[issue.status] + ' uppercase text-textMedium text-13'">
+@@ -14,7 +15,8 @@
+     class="mt-3">
+     @for (option of issueStatuses; track option) {
+       @if (!isStatusSelected(option.value)) {
+-        <li nz-menu-item
++        <li [attr.data-testid]="'status-option-' + option.value"
++          nz-menu-item
+           (click)="updateIssue(option.value)">
+           <div class="flex items-center">
+             <span class="ml-3 font-semibold uppercase text-textMedium text-13">{{ option.label }}</span>
+diff --git a/src/app/project/components/issues/issue-title/issue-title.component.html b/src/app/project/components/issues/issue-title/issue-title.component.html
+index 1893853..47912ce 100644
+--- a/src/app/project/components/issues/issue-title/issue-title.component.html
++++ b/src/app/project/components/issues/issue-title/issue-title.component.html
+@@ -1,4 +1,5 @@
+-<textarea class="textarea-inline-control"
++<textarea data-testid="issue-title-input"
++          class="textarea-inline-control"
+           cdkTextareaAutosize
+           [formControl]="titleControl"
+           [rows]="1"
+diff --git a/src/app/project/components/issues/issue-title/issue-title.component.spec.ts b/src/app/project/components/issues/issue-title/issue-title.component.spec.ts
+deleted file mode 100644
+index 1f41927..0000000
+--- a/src/app/project/components/issues/issue-title/issue-title.component.spec.ts
++++ /dev/null
+@@ -1,76 +0,0 @@
+-import { UntypedFormControl } from '@angular/forms';
+-import { IssueTitleComponent } from './issue-title.component';
+-import {SimpleChange} from '@angular/core';
+-import {JComment} from '@trungk18/interface/comment';
+-import {IssuePriority, IssueStatus, IssueType} from '@trungk18/interface/issue';
+-
+-describe('IssueTitleComponent', () => {
+-  let component: IssueTitleComponent;
+-
+-  const projectService: any = {
+-    updateIssue: vi.fn()
+-  };
+-
+-  beforeEach(() => {
+-    component = new IssueTitleComponent(
+-      projectService
+-    );
+-    component.titleControl = new UntypedFormControl('test');
+-  });
+-
+-  it('should be able to make onBlur action', () => {
+-    component.onBlur();
+-    expect(projectService.updateIssue).toHaveBeenCalled();
+-  });
+-  it('should be able to change title', () => {
+-    component.issue = {
+-      id: '',
+-      title: 'New title',
+-      type: IssueType.BUG,
+-      status: IssueStatus.BACKLOG,
+-      priority: IssuePriority.HIGH,
+-      listPosition: 0,
+-      description: '',
+-      estimate: 0,
+-      timeSpent: 0,
+-      timeRemaining: 0,
+-      createdAt: '',
+-      updatedAt: '',
+-      reporterId: '',
+-      userIds: [],
+-      comments: [],
+-      projectId: ''
+-    };
+-    component.ngOnChanges({
+-      issue: new SimpleChange(null, {title: 'New title'}, null)
+-    });
+-    expect(component.titleControl.value).toEqual('New title');
+-  });
+-  it('should not be able to change title', () => {
+-    component.issue = {
+-      id: '',
+-      title: 'New title 2',
+-      type: IssueType.BUG,
+-      status: IssueStatus.BACKLOG,
+-      priority: IssuePriority.HIGH,
+-      listPosition: 0,
+-      description: '',
+-      estimate: 0,
+-      timeSpent: 0,
+-      timeRemaining: 0,
+-      createdAt: '',
+-      updatedAt: '',
+-      reporterId: '',
+-      userIds: [],
+-      comments: [],
+-      projectId: ''
+-    };
+-
+-    const expected = {title: 'New title'};
+-
+-    component.ngOnChanges({
+-      issue: new SimpleChange(expected, expected, null)
+-    });
+-    expect(component.titleControl.value).toEqual('test');
+-  });
+-});
+diff --git a/src/app/project/components/navigation/navbar-left/navbar-left.component.html b/src/app/project/components/navigation/navbar-left/navbar-left.component.html
+index cfb61b0..6895196 100644
+--- a/src/app/project/components/navigation/navbar-left/navbar-left.component.html
++++ b/src/app/project/components/navigation/navbar-left/navbar-left.component.html
+@@ -43,6 +43,7 @@
+ 
+     @for (item of items; track item) {
+       <div
++        [attr.data-testid]="'nav-' + item.icon"
+         class="item">
+         <div (click)="item.handler()"
+           nz-tooltip
+diff --git a/src/app/project/components/navigation/navigation/navigation.component.spec.ts b/src/app/project/components/navigation/navigation/navigation.component.spec.ts
+deleted file mode 100644
+index 571fd86..0000000
+--- a/src/app/project/components/navigation/navigation/navigation.component.spec.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-import { NavigationComponent } from './navigation.component';
+-
+-describe('NavigationComponent', () => {
+-  let component: NavigationComponent;
+-
+-  beforeEach(() => {
+-    component = new NavigationComponent();
+-  });
+-
+-  it('should be able to toggle', () => {
+-    vi.spyOn(component.manualToggle, 'emit');
+-    component.toggle();
+-    expect(component.manualToggle.emit).toHaveBeenCalled();
+-  });
+-});
+diff --git a/src/app/project/components/navigation/resizer/resizer.component.html b/src/app/project/components/navigation/resizer/resizer.component.html
+index ac6584a..883eafc 100644
+--- a/src/app/project/components/navigation/resizer/resizer.component.html
++++ b/src/app/project/components/navigation/resizer/resizer.component.html
+@@ -5,7 +5,7 @@
+ 
+         </div>
+     </div>
+-    <button class="btn">
++    <button data-testid="sidebar-resizer" class="btn">
+         <div class="overlay"></div>
+         <span class="cursor-pointer fill-current text-white flex-shrink-0 leading-none">
+             <svg-icon [name]="icon"
+diff --git a/src/app/project/components/navigation/sidebar/sidebar.component.html b/src/app/project/components/navigation/sidebar/sidebar.component.html
+index c368621..a22ab9f 100644
+--- a/src/app/project/components/navigation/sidebar/sidebar.component.html
++++ b/src/app/project/components/navigation/sidebar/sidebar.component.html
+@@ -1,4 +1,5 @@
+-<div [style.width.px]="sidebarWidth"
++<div data-testid="sidebar"
++  [style.width.px]="sidebarWidth"
+   class="sidebar">
+   <div class="sidebar-content">
+     <div class="flex px-1 py-6">
+@@ -22,6 +23,7 @@
+       <div>
+         @if (link.url) {
+           <a
++            [attr.data-testid]="'sidebar-link-' + idx"
+             [routerLink]="link.url"
+             routerLinkActive="active"
+             class="link allowed">
+diff --git a/src/app/project/components/search/issue-result/issue-result.component.html b/src/app/project/components/search/issue-result/issue-result.component.html
+index 2d9d883..00cf596 100644
+--- a/src/app/project/components/search/issue-result/issue-result.component.html
++++ b/src/app/project/components/search/issue-result/issue-result.component.html
+@@ -1,4 +1,4 @@
+-<div class="flex items-center py-1 px-3 rounded transition duration-100 cursor-pointer select-none hover:bg-backgroundLight">
++<div data-testid="search-result" class="flex items-center py-1 px-3 rounded transition duration-100 cursor-pointer select-none hover:bg-backgroundLight">
+     <svg-icon [name]="issueTypeIcon"
+               [size]="24"></svg-icon>
+     <div class="pl-4">
+diff --git a/src/app/project/components/search/search-drawer/search-drawer.component.html b/src/app/project/components/search/search-drawer/search-drawer.component.html
+index daadeb7..ff00283 100644
+--- a/src/app/project/components/search/search-drawer/search-drawer.component.html
++++ b/src/app/project/components/search/search-drawer/search-drawer.component.html
+@@ -1,5 +1,6 @@
+ <div class="mb-10">
+-  <j-input [control]="searchControl"
++  <j-input data-testid="drawer-search"
++    [control]="searchControl"
+     containerClassName="flat text-textMedium"
+     icon="search"
+     [iconSize]="26"
+diff --git a/src/app/project/pages/board/board.component.html b/src/app/project/pages/board/board.component.html
+index fac1257..5fd3b94 100644
+--- a/src/app/project/pages/board/board.component.html
++++ b/src/app/project/pages/board/board.component.html
+@@ -1,5 +1,5 @@
+ <div class="flex flex-col w-full h-full py-8 pl-8 pr-6">
+-    <breadcrumbs [items]="breadcrumbs"></breadcrumbs>
++    <breadcrumbs data-testid="breadcrumbs" [items]="breadcrumbs"></breadcrumbs>
+     <header class="flex justify-between mt-3 text-textDarkest">
+         <div class="text-2xl font-medium">Kanban board</div>
+         <div class="social-links">
+diff --git a/src/app/project/pages/full-issue-detail/full-issue-detail.component.html b/src/app/project/pages/full-issue-detail/full-issue-detail.component.html
+index a65f413..4cc3a4f 100644
+--- a/src/app/project/pages/full-issue-detail/full-issue-detail.component.html
++++ b/src/app/project/pages/full-issue-detail/full-issue-detail.component.html
+@@ -1,5 +1,5 @@
+-<div class="pr-6 py-8 pl-8 h-full w-full flex flex-col">
+-  <breadcrumbs [items]="breadcrumbs"></breadcrumbs>
++<div data-testid="full-issue-detail" class="pr-6 py-8 pl-8 h-full w-full flex flex-col">
++  <breadcrumbs data-testid="breadcrumbs" [items]="breadcrumbs"></breadcrumbs>
+   @if (issueId) {
+     <issue-detail
+       [issue]="issueById$ | async"
+diff --git a/src/app/project/pages/settings/settings.component.html b/src/app/project/pages/settings/settings.component.html
+index 00995b0..b75c4b9 100644
+--- a/src/app/project/pages/settings/settings.component.html
++++ b/src/app/project/pages/settings/settings.component.html
+@@ -8,7 +8,8 @@
+       <label class="label">
+         Name
+       </label>
+-      <input class="form-input"
++      <input data-testid="settings-name"
++        class="form-input"
+         placeholder="Project Name"
+         formControlName="name"
+         jAutofocus />
+diff --git a/src/app/project/project.component.spec.ts b/src/app/project/project.component.spec.ts
+deleted file mode 100644
+index f6612de..0000000
+--- a/src/app/project/project.component.spec.ts
++++ /dev/null
+@@ -1,22 +0,0 @@
+-import { ProjectComponent } from '@trungk18/project/project.component';
+-
+-
+-describe('ProjectComponent', () => {
+-  let component: ProjectComponent;
+-
+-  const projectService: any = {};
+-  const authService: any = {};
+-
+-  beforeEach(() => {
+-    component = new ProjectComponent(
+-      projectService,
+-      authService
+-    );
+-  });
+-
+-  it('should be able to toggle', () => {
+-    component.expanded = false;
+-    component.manualToggle();
+-    expect(component.expanded).toBe(true);
+-  });
+-});
+diff --git a/src/app/project/state/project/project.service.spec.ts b/src/app/project/state/project/project.service.spec.ts
+deleted file mode 100644
+index 641c324..0000000
+--- a/src/app/project/state/project/project.service.spec.ts
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import { ProjectService } from './project.service';
+-
+-describe('ProjectService', () => {
+-  let service: ProjectService;
+-
+-  const httpClient: any = {};
+-  const projectStore: any = {
+-    setLoading: vi.fn()
+-  };
+-
+-  beforeEach(() => {
+-    service = new ProjectService(
+-      httpClient,
+-      projectStore
+-    );
+-    service.baseUrl = '';
+-  });
+-
+-  it('should be able to set loading ', () => {
+-    service.setLoading(true);
+-    expect(projectStore.setLoading).toHaveBeenCalledWith(true);
+-  });
+-});
+diff --git a/src/test-setup.ts b/src/test-setup.ts
+deleted file mode 100644
+index 13da307..0000000
+--- a/src/test-setup.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import '@analogjs/vitest-angular/setup-zone';
+-
+-import { getTestBed } from '@angular/core/testing';
+-import {
+-  BrowserDynamicTestingModule,
+-  platformBrowserDynamicTesting,
+-} from '@angular/platform-browser-dynamic/testing';
+-
+-getTestBed().initTestEnvironment(
+-  BrowserDynamicTestingModule,
+-  platformBrowserDynamicTesting(),
+-);
+diff --git a/tsconfig.spec.json b/tsconfig.spec.json
+deleted file mode 100644
+index cb5ebe9..0000000
+--- a/tsconfig.spec.json
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{
+-  "extends": "./tsconfig.json",
+-  "compilerOptions": {
+-    "outDir": "./out-tsc/spec",
+-    "types": [
+-      "vitest/globals",
+-      "node"
+-    ]
+-  },
+-  "include": [
+-    "src/**/*.spec.ts",
+-    "src/**/*.d.ts"
+-  ]
+-}
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+index ccd77f9..0000000
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-/// <reference types="vitest" />
+-import { defineConfig } from 'vite';
+-import angular from '@analogjs/vite-plugin-angular';
+-import { resolve } from 'node:path';
+-
+-export default defineConfig({
+-  plugins: [angular()],
+-  resolve: {
+-    alias: {
+-      '@trungk18/interface': resolve(__dirname, 'src/app/interface'),
+-      '@trungk18': resolve(__dirname, 'src/app'),
+-      'src/environments': resolve(__dirname, 'src/environments'),
+-      '@ngneat/until-destroy': resolve(
+-        __dirname,
+-        'node_modules/@ngneat/until-destroy/fesm2015/ngneat-until-destroy.js'
+-      ),
+-    },
+-    mainFields: ['module', 'main'],
+-  },
+-  test: {
+-    globals: true,
+-    setupFiles: ['src/test-setup.ts'],
+-    include: ['src/**/*.spec.ts'],
+-    environment: 'jsdom',
+-    reporters: ['default'],
+-    server: {
+-      deps: {
+-        inline: [/node_modules/],
+-      },
+-    },
+-  },
+-});

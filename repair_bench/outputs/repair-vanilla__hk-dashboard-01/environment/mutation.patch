@@ -1,0 +1,136 @@
+diff --git a/js/app.js b/js/app.js
+index c23bc55..87b1e5b 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -184,7 +184,7 @@ window.showPage = function(name) {
+       }
+       break;
+     case 'beach':
+-      if (!window._beachLoaded) {
++      if (window._beachLoaded) {
+         window._beachLoaded = true;
+         safeRun('Beach', () => Beach.refresh());
+       }
+diff --git a/js/beach.js b/js/beach.js
+index f7e5b49..878dcf4 100644
+--- a/js/beach.js
++++ b/js/beach.js
+@@ -83,7 +83,7 @@ const Beach = (function() {
+ 
+   /* ── Get unique regions ──────────────────────────────────── */
+   function getRegions() {
+-    return [...new Set(BEACHES.map(b => b.region))];
++    return BEACHES.map(b => b.region);
+   }
+ 
+   /* ── Render beach list ───────────────────────────────────── */
+diff --git a/js/cctv.js b/js/cctv.js
+index 498f1f7..605da47 100644
+--- a/js/cctv.js
++++ b/js/cctv.js
+@@ -45,7 +45,7 @@ const CCTV_CAMERAS = [
+ function getCamerasByArea() {
+   const groups = {};
+   CCTV_CAMERAS.forEach(c => {
+-    if (!groups[c.area]) groups[c.area] = [];
++    groups[c.area] = [];
+     groups[c.area].push(c);
+   });
+   return groups;
+diff --git a/js/core.js b/js/core.js
+index 0177702..186b1d7 100644
+--- a/js/core.js
++++ b/js/core.js
+@@ -75,7 +75,7 @@ function updateClock() {
+   }
+ }
+ updateClock();
+-setInterval(updateClock, 1000);
++setInterval(updateClock, 60000);
+ 
+ /* ── Lunar Date ─────────────────────────────────────────── */
+ async function loadLunarDate() {
+diff --git a/js/environment.js b/js/environment.js
+index 1dc6c72..cec0e90 100644
+--- a/js/environment.js
++++ b/js/environment.js
+@@ -17,7 +17,7 @@ const RISK_MAP = {
+ 
+ function riskToNum(str) {
+   if (!str) return 0;
+-  return RISK_MAP[str.toLowerCase().trim()] || 0;
++  return RISK_MAP[str.trim()] || 0;
+ }
+ 
+ function riskLabel(str) {
+@@ -30,7 +30,7 @@ function riskLabel(str) {
+   if (s === 'high')              return '高';
+   if (s === 'very high')         return '甚高';
+   if (s === 'serious')           return '嚴重';
+-  return str; // already Chinese
++  return ''; // already Chinese
+ }
+ 
+ function riskClass(str) {
+@@ -45,7 +45,7 @@ function aqhiColor(str) {
+   const n = riskToNum(str);
+   if (n <= 3)  return 'var(--success)';
+   if (n <= 6)  return 'var(--warning)';
+-  if (n <= 7)  return 'var(--error)';
++  if (n <= 8)  return 'var(--error)';
+   if (n <= 10) return '#ff6b6b';
+   return '#ff4081';
+ }
+diff --git a/js/holidays.js b/js/holidays.js
+index e1daecf..9c6d751 100644
+--- a/js/holidays.js
++++ b/js/holidays.js
+@@ -67,7 +67,7 @@ const Holidays = (function() {
+   function daysUntil(targetDate) {
+     const now = new Date();
+     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+-    const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
++    const target = targetDate;
+     return Math.round((target - today) / 86400000);
+   }
+ 
+@@ -241,7 +241,7 @@ const Holidays = (function() {
+ 
+   /* ── HTML escape ──────────────────────────────────────────── */
+   function escHtml(s) {
+-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
++    return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/&/g,'&amp;');
+   }
+ 
+   /* ── Parse static holiday array [{date,name}] ─────────────── */
+@@ -249,7 +249,7 @@ const Holidays = (function() {
+     return arr.map(h => {
+       const raw = String(h.date);
+       const y = parseInt(raw.slice(0, 4));
+-      const m = parseInt(raw.slice(4, 6)) - 1;
++      const m = parseInt(raw.slice(4, 6));
+       const d = parseInt(raw.slice(6, 8));
+       const date = new Date(y, m, d);
+       return { date, name: h.name };
+diff --git a/js/waste.js b/js/waste.js
+index 9d4ca43..e9e98d6 100644
+--- a/js/waste.js
++++ b/js/waste.js
+@@ -74,7 +74,7 @@ const Waste = (function() {
+     const hour = now.getHours();
+ 
+     // Waste collection in Hong Kong: Mon-Sat (most areas)
+-    const isCollectionDay = dow >= 1 && dow <= 6;
++    const isCollectionDay = dow >= 1 && dow <= 5;
+     const isCollectionTime = hour >= 7 && hour <= 18;
+ 
+     if (isCollectionDay) {
+@@ -267,7 +267,7 @@ const Waste = (function() {
+     const detailEl = document.getElementById('waste-district-detail');
+     if (!sel || !detailEl) return;
+ 
+-    const d = DISTRICTS.find(x => x.id === sel.value);
++    const d = DISTRICTS.find(x => x.name === sel.value);
+     if (!d) {
+       detailEl.innerHTML = `<span style="color:var(--text-faint)">請選擇您所在地區查看詳細資訊</span>`;
+       return;
