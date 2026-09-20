@@ -1,0 +1,126 @@
+diff --git a/src/components/Grid/components/GridItem.vue b/src/components/Grid/components/GridItem.vue
+--- a/src/components/Grid/components/GridItem.vue
++++ b/src/components/Grid/components/GridItem.vue
+@@ -53,7 +53,7 @@
+   let offset = props[breakPoint.value]?.offset ?? props.offset;
+   if (props.suffix) {
+     return {
+-      gridColumnStart: cols.value - span - offset + 1,
++      gridColumnStart: cols.value - span - offset,
+       gridColumnEnd: `span ${span + offset}`,
+       marginLeft: offset !== 0 ? `calc(((100% + ${gap}px) / ${span + offset}) * ${offset})` : "unset"
+     };
+diff --git a/src/components/Grid/index.vue b/src/components/Grid/index.vue
+--- a/src/components/Grid/index.vue
++++ b/src/components/Grid/index.vue
+@@ -32,7 +32,7 @@
+ const props = withDefaults(defineProps<GridProps>(), {
+   cols: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 }),
+   collapsed: false,
+-  collapsedRows: 1,
++  collapsedRows: 0,
+   gap: 0
+ });
+ 
+@@ -65,7 +65,7 @@
+     case width >= 992 && width < 1200:
+       breakPoint.value = "md";
+       break;
+-    case width >= 1200 && width < 1920:
++    case width >= 1200 && width < 1400:
+       breakPoint.value = "lg";
+       break;
+     case width >= 1920:
+diff --git a/src/components/ProTable/components/TableColumn.vue b/src/components/ProTable/components/TableColumn.vue
+--- a/src/components/ProTable/components/TableColumn.vue
++++ b/src/components/ProTable/components/TableColumn.vue
+@@ -34,7 +34,7 @@
+       {item.isShow && (
+         <el-table-column
+           {...item}
+-          align={item.align ?? "center"}
++          align={item.align ?? "left"}
+           showOverflowTooltip={item.showOverflowTooltip ?? item.prop !== "operation"}
+         >
+           {{
+@@ -48,7 +48,7 @@
+             header: (scope: HeaderRenderScope<any>) => {
+               if (item.headerRender) return item.headerRender(scope);
+               if (item.prop && slots[`${handleProp(item.prop)}Header`]) return slots[`${handleProp(item.prop)}Header`]!(scope);
+-              return item.label;
++              return item.prop;
+             }
+           }}
+         </el-table-column>
+diff --git a/src/components/ProTable/index.vue b/src/components/ProTable/index.vue
+--- a/src/components/ProTable/index.vue
++++ b/src/components/ProTable/index.vue
+@@ -141,7 +141,7 @@
+   requestAuto: true,
+   pagination: true,
+   initParam: {},
+-  border: true,
++  border: false,
+   toolButton: true,
+   rowKey: "id",
+   searchCol: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 })
+@@ -238,7 +238,7 @@
+ 
+     // column 添加默认 isShow && isSetting && isFilterEnum 属性值
+     col.isShow = col.isShow ?? true;
+-    col.isSetting = col.isSetting ?? true;
++    col.isSetting = col.isSetting ?? false;
+     col.isFilterEnum = col.isFilterEnum ?? true;
+ 
+     // 设置 enumMap
+diff --git a/src/stores/modules/global.ts b/src/stores/modules/global.ts
+--- a/src/stores/modules/global.ts
++++ b/src/stores/modules/global.ts
+@@ -34,7 +34,7 @@
+     // 页面水印
+     const watermark = ref<boolean>(false);
+     // 面包屑导航
+-    const breadcrumb = ref<boolean>(true);
++    const breadcrumb = ref<boolean>(false);
+     // 面包屑导航图标
+     const breadcrumbIcon = ref<boolean>(true);
+     // 标签页
+diff --git a/src/utils/index.ts b/src/utils/index.ts
+--- a/src/utils/index.ts
++++ b/src/utils/index.ts
+@@ -124,7 +124,7 @@
+   let newMenuList: Menu.MenuOptions[] = JSON.parse(JSON.stringify(menuList));
+   return newMenuList.filter(item => {
+     if (item.children?.length) item.children = getShowMenuList(item.children);
+-    return !item.meta?.isHide;
++    return true;
+   });
+ }
+ 
+@@ -137,7 +137,7 @@
+  */
+ export const getAllBreadcrumbList = (menuList: Menu.MenuOptions[], parent = [], result: { [key: string]: any } = {}) => {
+   for (const item of menuList) {
+-    result[item.path] = [...parent, item];
++    result[item.path] = [item];
+     if (item.children) getAllBreadcrumbList(item.children, result[item.path], result);
+   }
+   return result;
+@@ -219,7 +219,7 @@
+  * @returns {*}
+  * */
+ export function handleRowAccordingToProp(row: { [key: string]: any }, prop: string) {
+-  if (!prop.includes(".")) return row[prop] ?? "--";
++  if (prop.includes(".")) return row[prop] ?? "--";
+   prop.split(".").forEach(item => (row = row[item] ?? "--"));
+   return row;
+ }
+@@ -232,7 +232,7 @@
+ export function handleProp(prop: string) {
+   const propArr = prop.split(".");
+   if (propArr.length == 1) return prop;
+-  return propArr[propArr.length - 1];
++  return propArr[0];
+ }
+ 
+ /**

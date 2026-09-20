@@ -1,0 +1,57 @@
+<template>
+  <ContextMenu
+    :class="classes"
+    :tooltip="t('navigation.year.change')"
+    tooltipPosition="right"
+    :position="appSize === 'mobile' ? 'top' : 'right center'"
+    :options="options"
+    testId="navigation-change-year"
+    :highlight="state.activeYear"
+    @select="changeYear($event.id as number)"
+  >
+    <template #default="{ toggle }">
+      <Button size="l" testId="navigation-change-year" :icon="RiCalendarLine" textual color="dimmed" @click="toggle" />
+    </template>
+  </ContextMenu>
+</template>
+
+<script lang="ts" setup>
+import Button from '@components/base/button/Button.vue';
+import ContextMenu from '@components/base/context-menu/ContextMenu.vue';
+import { useAppSize } from '@composables/app-size/useAppSize.ts';
+import { useTime } from '@composables/time/useTime.ts';
+import { useDataStore } from '@store/state';
+import { RiCalendarCheckLine, RiCalendarLine, RiCalendarTodoLine } from '@remixicon/vue';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { ContextMenuOption } from '@components/base/context-menu/ContextMenu.types';
+import type { ClassNames } from '@utils/types.ts';
+
+const PRE_PLANNABLE_YEARS = 1;
+
+const props = defineProps<{
+  class: ClassNames;
+}>();
+
+const { t } = useI18n();
+const { changeYear, state } = useDataStore();
+const appSize = useAppSize();
+const time = useTime();
+
+const classes = computed(() => props.class);
+const options = computed((): ContextMenuOption[] => {
+  const yearsStored = state.years.map((v) => v.year);
+  const firstYear = Math.min(...yearsStored);
+  const list: ContextMenuOption[] = [];
+
+  for (let year = firstYear - 1; year <= time.year.value + PRE_PLANNABLE_YEARS; year++) {
+    list.push({
+      id: year,
+      muted: year === firstYear - 1,
+      icon: state.activeYear === year ? RiCalendarCheckLine : RiCalendarTodoLine
+    });
+  }
+
+  return list;
+});
+</script>

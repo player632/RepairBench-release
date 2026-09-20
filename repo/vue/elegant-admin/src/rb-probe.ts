@@ -1,0 +1,485 @@
+/**
+ * RepairBench 检测探针（INSTRUMENTATION 面，**不是**种子行为）。
+ *
+ * 三件事，全部只读／只做种子自己就会做的事：
+ *   1. 认证播种：用种子自己的 `setLocal` 把 account/token/avatar 写进 localStorage，
+ *      使路由守卫在无人值守验证下直接放行（token 以 `admin` 开头，离线 mock 的
+ *      `/mock/user/permission` 据此发全量权限）。检查点可用 sessionStorage
+ *      `rb-noauth` = '1' 声明登出态，声明后本探针不播种。avatar 播为空串，
+ *      使 `rightSide.vue` 走内置人形图标回落，**不产生任何外链头像请求**。
+ *   2. `window.__EAD__` 桥：全部是「读取时求值」的 live getter（每次调用都重新
+ *      解析 pinia / DOM，绝不缓存对象），且每个 getter 都 try/catch 成 null。
+ *      返回标量：dsl_runner 对 js_eval 用宽松 `==` 比较，对象/数组恒为 false。
+ *      `nav` / `theme` 两个命名空间是**薄转发**：只调用种子自己的
+ *      `router.push()` 与 `settingsStore.setColorScheme()`，不新增任何逻辑。
+ *   3. data-testid 压印：只 `setAttribute`，**不包裹任何元素、不新增任何节点、
+ *      不改任何 class**，因此对布局与样式零影响；持续重试以覆盖异步挂载。
+ *
+ * 🔴 本文件不参与任何被测判据的成立与否：它既不修复也不掩盖 12 处缺陷。
+ */
+import pinia from '@/store'
+import router from '@/router'
+import useSettingsStore from '@/store/modules/settings'
+import useUserStore from '@/store/modules/user'
+import useMenuStore from '@/store/modules/menu'
+import useRouteStore from '@/store/modules/route'
+import useTabbarStore from '@/store/modules/tabbar'
+import { setLocal } from '@/utils/storage'
+
+const PROBE_VERSION = 'rb-probe/1 elegant-admin'
+const SEED_ACCOUNT = 'admin'
+const SEED_TOKEN = 'admin_@string'
+const SEED_AVATAR = ''
+const KNOWN_LOCAL_KEYS = ['account', 'avatar', 'lang', 'tabbarScrollTip', 'themeColor', 'token']
+
+const WINDOW_ERRORS: string[] = []
+try {
+  window.addEventListener('error', (e) => {
+    WINDOW_ERRORS.push(String((e && e.message) || 'error'))
+  })
+  window.addEventListener('unhandledrejection', (e: any) => {
+    WINDOW_ERRORS.push(String((e && e.reason) || 'rejection'))
+  })
+}
+catch {
+  /* listener installation is best-effort only */
+}
+
+// ---------------------------------------------------------------- auth seed
+function seedAuth(): void {
+  try {
+    if (window.sessionStorage.getItem('rb-noauth') === '1') {
+      return
+    }
+    setLocal('account', SEED_ACCOUNT)
+    setLocal('token', SEED_TOKEN)
+    setLocal('avatar', SEED_AVATAR)
+  }
+  catch {
+    /* storage unavailable - leave the app to its own devices */
+  }
+}
+seedAuth()
+
+// ---------------------------------------------------------------- store access
+type AnyStore = Record<string, any> | undefined
+
+function safe(fn: () => AnyStore): AnyStore {
+  try {
+    return fn()
+  }
+  catch {
+    return undefined
+  }
+}
+const settingsStore = (): AnyStore => safe(() => useSettingsStore(pinia) as unknown as AnyStore)
+const userStore = (): AnyStore => safe(() => useUserStore(pinia) as unknown as AnyStore)
+const menuStore = (): AnyStore => safe(() => useMenuStore(pinia) as unknown as AnyStore)
+const routeStore = (): AnyStore => safe(() => useRouteStore(pinia) as unknown as AnyStore)
+const tabbarStore = (): AnyStore => safe(() => useTabbarStore(pinia) as unknown as AnyStore)
+
+// ---------------------------------------------------------------- helpers
+function guard<T>(fn: () => T): T | null {
+  try {
+    const v = fn()
+    return v === undefined ? null : v
+  }
+  catch {
+    return null
+  }
+}
+function q(sel: string): Element | null {
+  try {
+    return document.querySelector(sel)
+  }
+  catch {
+    return null
+  }
+}
+function qa(sel: string): Element[] {
+  try {
+    return Array.from(document.querySelectorAll(sel))
+  }
+  catch {
+    return []
+  }
+}
+function txt(el: Element | null): string {
+  return el ? String(el.textContent || '').trim() : ''
+}
+function joinTexts(sel: string): string | null {
+  const els = qa(sel)
+  return els.length ? els.map(el => txt(el)).join('|') : null
+}
+function hashPath(): string | null {
+  const h = location.hash || ''
+  const body = h.startsWith('#') ? h.slice(1) : h
+  const noQuery = body.split('?')[0]
+  return noQuery === '' ? '/' : noQuery
+}
+function titleOf(t: any): string {
+  if (typeof t === 'function') {
+    try {
+      return String(t())
+    }
+    catch {
+      return ''
+    }
+  }
+  return t === null || t === undefined ? '' : String(t)
+}
+
+const USER_MENU_TRIGGER = 'header .flex-center.gap-1.text-inherit'
+const HEADER_TOOLBAR = 'header .header-container > .flex.items-center'
+
+// ---------------------------------------------------------------- bridge
+const bridge = {
+  version: (): string => PROBE_VERSION,
+
+  boot: {
+    ready: (): boolean => guard(() => {
+      const s = settingsStore()
+      const r = routeStore()
+      return !!s && !!r && r.isGenerate === true && !!q('.layout')
+    }) ?? false,
+    hash: (): string | null => guard(() => location.hash || '#/'),
+    hashPath: (): string | null => guard(() => hashPath()),
+    docTitle: (): string | null => guard(() => document.title),
+    docTitleHasAppTitle: (): boolean => guard(() => document.title.indexOf('Elegant-admin') >= 0) ?? false,
+    appChildCount: (): number | null => guard(() => {
+      const el = q('#app')
+      return el ? el.children.length : null
+    }),
+    layoutPresent: (): boolean => guard(() => !!q('.layout')) ?? false,
+    headerPresent: (): boolean => guard(() => !!q('header')) ?? false,
+    windowErrors: (): number => guard(() => WINDOW_ERRORS.length) ?? -1,
+    probeIntact: (): boolean => {
+      const w = window as any
+      return !!w.__EAD__ && typeof w.__EAD__.boot === 'object' && typeof w.__EAD__.boot.ready === 'function'
+    },
+  },
+
+  auth: {
+    isLogin: (): boolean | null => guard(() => userStore()?.isLogin === true),
+    account: (): string | null => guard(() => {
+      const v = userStore()?.account
+      return v === undefined || v === null ? null : String(v)
+    }),
+    avatar: (): string | null => guard(() => {
+      const v = userStore()?.avatar
+      return v === undefined || v === null ? null : String(v)
+    }),
+    tokenPresent: (): boolean | null => guard(() => {
+      const v = userStore()?.token
+      return !!v
+    }),
+    permissionsCount: (): number | null => guard(() => {
+      const p = userStore()?.permissions
+      return Array.isArray(p) ? p.length : null
+    }),
+  },
+
+  settings: {
+    mode: (): string | null => guard(() => {
+      const v = settingsStore()?.mode
+      return v === undefined || v === null ? null : String(v)
+    }),
+    bodyMode: (): string | null => guard(() => document.body.getAttribute('data-mode')),
+    bodyMenuMode: (): string | null => guard(() => document.body.getAttribute('data-menu-mode')),
+    menuMode: (): string | null => guard(() => String(settingsStore()?.settings?.menu?.menuMode)),
+    colorScheme: (): string | null => guard(() => String(settingsStore()?.settings?.app?.colorScheme)),
+    currentColorScheme: (): string | null => guard(() => String(settingsStore()?.currentColorScheme)),
+    darkClass: (): boolean | null => guard(() => document.documentElement.classList.contains('dark')),
+    homeTitle: (): string | null => guard(() => String(settingsStore()?.settings?.home?.title)),
+    homeFullPath: (): string | null => guard(() => String(settingsStore()?.settings?.home?.fullPath)),
+    homeEnable: (): boolean | null => guard(() => settingsStore()?.settings?.home?.enable === true),
+    tabbarEnable: (): boolean | null => guard(() => settingsStore()?.settings?.tabbar?.enable === true),
+    breadcrumbEnabled: (): boolean | null => guard(() => settingsStore()?.settings?.toolbar?.breadcrumb === true),
+    enableMobileAdaptation: (): boolean | null => guard(() => settingsStore()?.settings?.layout?.enableMobileAdaptation === true),
+    enablePermission: (): boolean | null => guard(() => settingsStore()?.settings?.app?.enablePermission === true),
+    routeBaseOn: (): string | null => guard(() => String(settingsStore()?.settings?.app?.routeBaseOn)),
+    os: (): string | null => guard(() => String(settingsStore()?.os)),
+  },
+
+  menu: {
+    actived: (): number | null => guard(() => {
+      const v = menuStore()?.actived
+      return typeof v === 'number' ? v : null
+    }),
+    allCount: (): number | null => guard(() => {
+      const m = menuStore()?.allMenus
+      return Array.isArray(m) ? m.length : null
+    }),
+    mainTitles: (): string | null => guard(() => {
+      const m = menuStore()?.allMenus
+      return Array.isArray(m) ? m.map((x: any) => titleOf(x?.meta?.title)).join('|') : null
+    }),
+    sidebarCount: (): number | null => guard(() => {
+      const s = menuStore()?.sidebarMenus
+      return Array.isArray(s) ? s.length : null
+    }),
+    sidebarFirstTitle: (): string | null => guard(() => {
+      const s = menuStore()?.sidebarMenus
+      return Array.isArray(s) && s.length ? titleOf(s[0]?.meta?.title) : null
+    }),
+    firstDeepestPath: (): string | null => guard(() => {
+      const v = menuStore()?.sidebarMenusFirstDeepestPath
+      return v === undefined || v === null ? null : String(v)
+    }),
+  },
+
+  tabbar: {
+    count: (): number | null => guard(() => {
+      const l = tabbarStore()?.list
+      return Array.isArray(l) ? l.length : null
+    }),
+    routeNames: (): string | null => guard(() => {
+      const l = tabbarStore()?.list
+      return Array.isArray(l) ? l.map((t: any) => String(t?.routeName === undefined || t?.routeName === null ? '' : t.routeName)).join('|') : null
+    }),
+    firstTitle: (): string | null => guard(() => {
+      const l = tabbarStore()?.list
+      return Array.isArray(l) && l.length ? titleOf(l[0]?.title) : null
+    }),
+    firstRouteName: (): string | null => guard(() => {
+      const l = tabbarStore()?.list
+      return Array.isArray(l) && l.length ? String(l[0]?.routeName) : null
+    }),
+    firstTabId: (): string | null => guard(() => {
+      const l = tabbarStore()?.list
+      return Array.isArray(l) && l.length ? String(l[0]?.tabId) : null
+    }),
+    domCount: (): number | null => guard(() => qa('.tabbar-container .tab').length),
+    domTitles: (): string | null => joinTexts('.tabbar-container .tab .title'),
+  },
+
+  crumbs: {
+    rendered: (): boolean | null => guard(() => !!q('.breadcrumb')),
+    containerCount: (): number | null => guard(() => qa('.breadcrumb').length),
+    count: (): number | null => guard(() => qa('.breadcrumb .breadcrumb-item').length),
+    texts: (): string | null => joinTexts('.breadcrumb .breadcrumb-item .text'),
+    lastText: (): string | null => guard(() => {
+      const els = qa('.breadcrumb .breadcrumb-item .text')
+      return els.length ? txt(els[els.length - 1]) : null
+    }),
+    tailTexts: (): string | null => guard(() => {
+      const els = qa('.breadcrumb .breadcrumb-item .text')
+      return els.length > 1 ? els.slice(1).map(el => txt(el)).join('|') : (els.length ? '' : null)
+    }),
+  },
+
+  logo: {
+    present: (): boolean | null => guard(() => !!q('header a.title')),
+    href: (): string | null => guard(() => {
+      const el = q('header a.title')
+      return el ? el.getAttribute('href') : null
+    }),
+    hrefPath: (): string | null => guard(() => {
+      const el = q('header a.title')
+      const h = el ? el.getAttribute('href') : null
+      if (typeof h !== 'string') {
+        return null
+      }
+      const i = h.indexOf('#')
+      const body = i >= 0 ? h.slice(i + 1) : h
+      const noQuery = body.split('?')[0]
+      return noQuery === '' ? '/' : noQuery
+    }),
+    titleAttr: (): string | null => guard(() => {
+      const el = q('header a.title')
+      return el ? el.getAttribute('title') : null
+    }),
+    cursorPointer: (): boolean | null => guard(() => {
+      const el = q('header a.title')
+      return el ? el.classList.contains('cursor-pointer') : null
+    }),
+    text: (): string | null => guard(() => txt(q('header a.title span'))),
+  },
+
+  table: {
+    paginationPresent: (): boolean | null => guard(() => !!q('.el-pagination')),
+    pageSize: (): number | null => guard(() => {
+      const root = q('.el-pagination__sizes')
+      if (!root) {
+        return null
+      }
+      const inp = root.querySelector('input') as HTMLInputElement | null
+      if (inp && typeof inp.value === 'string' && /\d/.test(inp.value)) {
+        const n = Number.parseInt(inp.value, 10)
+        if (!Number.isNaN(n)) {
+          return n
+        }
+      }
+      const m = String(root.textContent || '').match(/\d+/)
+      return m ? Number.parseInt(m[0], 10) : null
+    }),
+    pageCount: (): number | null => guard(() => {
+      const li = qa('.el-pager li')
+      if (!li.length) {
+        return null
+      }
+      const n = Number.parseInt(txt(li[li.length - 1]), 10)
+      return Number.isNaN(n) ? null : n
+    }),
+    pagerButtonCount: (): number | null => guard(() => qa('.el-pager li').length),
+    rowCount: (): number | null => guard(() => qa('.el-table__body tr.el-table__row').length),
+    total: (): number | null => guard(() => {
+      const el = q('.el-pagination__total')
+      const m = txt(el).match(/\d+/)
+      return m ? Number.parseInt(m[0], 10) : null
+    }),
+  },
+
+  stat: {
+    cardCount: (): number | null => guard(() => qa('h3.text-16px').length),
+    titles: (): string | null => joinTexts('h3.text-16px'),
+    texts: (): string | null => guard(() => {
+      const hs = qa('h3.text-16px')
+      if (!hs.length) {
+        return null
+      }
+      return hs.map((h) => {
+        const box = h.parentElement
+        const s = box ? box.querySelector('span.text-30px') : null
+        return s ? txt(s) : ''
+      }).join('|')
+    }),
+  },
+
+  dom: {
+    headerKbdCount: (): number | null => guard(() => qa('header kbd').length),
+    headerAccountText: (): string | null => guard(() => txt(q(USER_MENU_TRIGGER))),
+    headerUserMenuIconCount: (): number | null => guard(() => qa(`${USER_MENU_TRIGGER} i`).length),
+    headerTabCount: (): number | null => guard(() => qa('.menu-container .el-tabs__item').length),
+    headerActiveTabText: (): string | null => guard(() => txt(q('.menu-container .el-tabs__item.is-active'))),
+    headerToolbarChildCount: (): number | null => guard(() => {
+      const el = q(HEADER_TOOLBAR)
+      return el ? el.children.length : null
+    }),
+    headerToolbarPresent: (): boolean | null => guard(() => !!q(HEADER_TOOLBAR)),
+    toolbarContainerPresent: (): boolean | null => guard(() => !!q('.toolbar-container')),
+    tabbarContainerPresent: (): boolean | null => guard(() => !!q('.tabbar-container')),
+    appSettingPresent: (): boolean | null => guard(() => !!q('.app-setting')),
+    copyrightText: (): string | null => guard(() => txt(q('footer.copyright'))),
+    copyrightPresent: (): boolean | null => guard(() => !!q('footer.copyright')),
+    testid: (): number | null => guard(() => qa('[data-testid^="ead-"]').length),
+  },
+
+  route: {
+    count: (): number | null => guard(() => router.getRoutes().length),
+    currentName: (): string | null => guard(() => String(router.currentRoute.value.name ?? '')),
+    currentPath: (): string | null => guard(() => String(router.currentRoute.value.path ?? '')),
+    hasBreadcrumbList1: (): boolean | null => guard(() => router.hasRoute('breadcrumbDemoList1')),
+    hasMultilevelPage: (): boolean | null => guard(() => router.hasRoute('multilevelMenuDemo1')),
+    hasSysUser: (): boolean | null => guard(() => router.hasRoute('SysUser')),
+    hasReload: (): boolean | null => guard(() => router.hasRoute('reload')),
+    hasDashboard: (): boolean | null => guard(() => router.hasRoute('Dashboard')),
+    crumbNesteCount: (): number | null => guard(() => {
+      const b = router.currentRoute.value.meta?.breadcrumbNeste
+      return Array.isArray(b) ? b.length : null
+    }),
+  },
+
+  residue: {
+    localKeys: (): string | null => guard(() => Object.keys(window.localStorage).sort().join('|')),
+    sessionKeys: (): string | null => guard(() => Object.keys(window.sessionStorage).sort().join('|')),
+    unexpectedLocalKeys: (): string | null => guard(() => Object.keys(window.localStorage)
+      .filter(k => !KNOWN_LOCAL_KEYS.includes(k))
+      .sort()
+      .join('|')),
+    cookie: (): string | null => guard(() => document.cookie || ''),
+    rbNoAuth: (): string | null => guard(() => window.sessionStorage.getItem('rb-noauth')),
+  },
+
+  // 薄转发：只调用种子自己的 API，不新增任何逻辑
+  nav: {
+    push: (to: string): boolean => {
+      try {
+        const p: any = router.push(to)
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {})
+        }
+        return true
+      }
+      catch {
+        return false
+      }
+    },
+  },
+  theme: {
+    setColorScheme: (v: string): boolean => {
+      try {
+        const s = settingsStore()
+        if (!s || typeof s.setColorScheme !== 'function') {
+          return false
+        }
+        s.setColorScheme(v)
+        return true
+      }
+      catch {
+        return false
+      }
+    },
+  },
+}
+
+try {
+  const w = window as any
+  w.__EAD__ = Object.freeze(bridge)
+}
+catch {
+  /* window frozen or unavailable - the bridge is best-effort */
+}
+
+// ---------------------------------------------------------------- stamping
+const STAMPS: Array<[string, string]> = [
+  ['.layout', 'ead-shell'],
+  ['header', 'ead-header'],
+  ['.menu-container', 'ead-header-menu'],
+  ['header a.title', 'ead-logo'],
+  [USER_MENU_TRIGGER, 'ead-user-menu-trigger'],
+  [HEADER_TOOLBAR, 'ead-header-toolbar'],
+  ['.toolbar-container', 'ead-toolbar'],
+  ['.tabbar-container', 'ead-tabbar'],
+  ['.breadcrumb', 'ead-breadcrumb'],
+  ['.app-setting', 'ead-app-setting'],
+  ['.el-pagination', 'ead-pagination'],
+]
+
+function stampAll(): void {
+  for (const [selector, testId] of STAMPS) {
+    const el = q(selector)
+    if (el && !el.hasAttribute('data-testid')) {
+      try {
+        el.setAttribute('data-testid', testId)
+      }
+      catch {
+        /* read-only element - skip */
+      }
+    }
+  }
+}
+
+function startStamping(): void {
+  stampAll()
+  let ticks = 0
+  const timer = window.setInterval(() => {
+    stampAll()
+    ticks += 1
+    if (ticks > 400) {
+      window.clearInterval(timer)
+    }
+  }, 250)
+}
+
+try {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startStamping)
+  }
+  else {
+    startStamping()
+  }
+}
+catch {
+  /* stamping is best-effort only */
+}

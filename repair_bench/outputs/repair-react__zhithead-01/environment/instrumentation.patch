@@ -1,0 +1,564 @@
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+index 0000000..f117edfc9ad21577a09a34b4d39633f0fc9920f1
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,509 @@
++// repair-bench instrumentation probe (read-only).
++//
++// It renders nothing and changes no rule of the game. It does exactly three things:
++//   1. determinism  - when the URL carries ?rbseed=<int>, Math.random is replaced by a
++//                     mulberry32 PRNG so the shuffled deal, the bot's pick among equal-rank
++//                     candidates and the bot's 450-750 ms think time are all reproducible;
++//   2. rigging      - when the URL carries any rb* deal parameter, window.__rbRigContext()
++//                     hands zhithead.machine.ts a fully specified initial context (deck,
++//                     pile, both players' three zones, whose turn it is) so a checkpoint can
++//                     start from an exact position instead of hoping for a lucky shuffle.
++//                     With no rb* parameter the hook returns undefined and the seed's own
++//                     createInitialContext() runs untouched.
++//   3. a fact table - window.__rb* publishes the machine context plus a handful of latches
++//                     that survive later transitions (a burn that already happened is still
++//                     a burn after the bot moves on). Every key is defined non-enumerable, so
++//                     Object.keys(window) never shows one.
++//
++// Card tokens used by the rig and the fact table are <SUIT><RANK> with SUIT in S/D/C/H
++// (the seed's own Suite enum order: Spades, Diamonds, Clubs, Hearts) and RANK in
++// 2..10, J, Q, K, A - e.g. "S10" is the ten of spades, "HA" the ace of hearts.
++import {
++  Card,
++  Cards,
++  createCard,
++  getRank,
++  getSuite,
++  makePlayer,
++  OffHandCards,
++  Player as TPlayer,
++  Rank,
++  Suite,
++} from "./lib";
++
++type ShownHand = "hand" | "offhand";
++type WhoseTurn = "bot" | "human";
++
++interface RbContext {
++  deck: Card[];
++  pile: Card[];
++  human: TPlayer;
++  bot: TPlayer;
++  shownHand: { human: ShownHand; bot: ShownHand };
++  currentTurn: WhoseTurn;
++}
++
++// ---------------------------------------------------------------- card codec
++const SUITE_LETTER: Record<number, string> = {
++  [Suite.Spades]: "S",
++  [Suite.Diamonds]: "D",
++  [Suite.Clubs]: "C",
++  [Suite.Hearts]: "H",
++};
++const LETTER_SUITE: Record<string, Suite> = {
++  S: Suite.Spades,
++  D: Suite.Diamonds,
++  C: Suite.Clubs,
++  H: Suite.Hearts,
++};
++const RANK_LABEL: Record<number, string> = {
++  [Rank.Num2]: "2",
++  [Rank.Num3]: "3",
++  [Rank.Num4]: "4",
++  [Rank.Num5]: "5",
++  [Rank.Num6]: "6",
++  [Rank.Num7]: "7",
++  [Rank.Num8]: "8",
++  [Rank.Num9]: "9",
++  [Rank.Num10]: "10",
++  [Rank.Jack]: "J",
++  [Rank.Queen]: "Q",
++  [Rank.King]: "K",
++  [Rank.Ace]: "A",
++};
++const LABEL_RANK: Record<string, Rank> = {
++  "2": Rank.Num2,
++  "3": Rank.Num3,
++  "4": Rank.Num4,
++  "5": Rank.Num5,
++  "6": Rank.Num6,
++  "7": Rank.Num7,
++  "8": Rank.Num8,
++  "9": Rank.Num9,
++  "10": Rank.Num10,
++  J: Rank.Jack,
++  Q: Rank.Queen,
++  K: Rank.King,
++  A: Rank.Ace,
++};
++
++export function cardToken(card: Card): string {
++  return SUITE_LETTER[getSuite(card)] + RANK_LABEL[getRank(card)];
++}
++
++export function parseCard(token: string): Card {
++  const t = token.trim().toUpperCase();
++  const m = /^(S|D|C|H)(10|[2-9JQKA])$/.exec(t);
++  if (!m) throw new Error(`rbProbe: unparseable card token "${token}"`);
++  return createCard(LETTER_SUITE[m[1]], LABEL_RANK[m[2]]);
++}
++
++function tokens(cards: ReadonlyArray<Card | undefined>): string[] {
++  return cards.filter((c): c is Card => c !== undefined).map(cardToken);
++}
++
++function parseCards(raw: string | null): Cards {
++  if (raw === null) return [];
++  return raw
++    .split(",")
++    .map((s) => s.trim())
++    .filter(Boolean)
++    .map(parseCard);
++}
++
++// ---------------------------------------------------------------- determinism
++function mulberry32(seed: number): () => number {
++  let a = seed >>> 0;
++  return function next() {
++    a = (a + 0x6d2b79f5) | 0;
++    let t = Math.imul(a ^ (a >>> 15), 1 | a);
++    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++}
++
++const PARAMS =
++  typeof window === "undefined"
++    ? new URLSearchParams()
++    : new URLSearchParams(window.location.search);
++const SEED_RAW = PARAMS.get("rbseed");
++const SEEDED = SEED_RAW !== null && /^-?\d+$/.test(SEED_RAW);
++if (SEEDED) {
++  const prng = mulberry32(Number(SEED_RAW));
++  Math.random = prng;
++}
++
++// ---------------------------------------------------------------- rigging
++const RIG_KEYS = [
++  "rbdeck",
++  "rbpile",
++  "rbhand",
++  "rbfaceup",
++  "rbfacedown",
++  "rbothand",
++  "rbbotfaceup",
++  "rbbotfacedown",
++  "rbturn",
++  "rbshown",
++];
++
++function rigActive(): boolean {
++  return RIG_KEYS.some((k) => PARAMS.has(k));
++}
++
++function offHandOf(list: Cards): OffHandCards {
++  // no padding: an absent parameter means an empty zone, so the pick-phase gate
++  // (offHand.faceUp.length === 3) still reads the truth instead of three undefined holes
++  return list.slice(0, 3) as OffHandCards;
++}
++
++function rigContext(): RbContext | undefined {
++  if (!rigActive()) return undefined;
++  const human = makePlayer();
++  human.hand = parseCards(PARAMS.get("rbhand"));
++  human.offHand.faceUp = offHandOf(parseCards(PARAMS.get("rbfaceup")));
++  human.offHand.faceDown = offHandOf(parseCards(PARAMS.get("rbfacedown")));
++  const bot = makePlayer();
++  bot.hand = parseCards(PARAMS.get("rbothand"));
++  bot.offHand.faceUp = offHandOf(parseCards(PARAMS.get("rbbotfaceup")));
++  bot.offHand.faceDown = offHandOf(parseCards(PARAMS.get("rbbotfacedown")));
++  const turn = PARAMS.get("rbturn");
++  const shown = PARAMS.get("rbshown");
++  return {
++    deck: parseCards(PARAMS.get("rbdeck")),
++    pile: parseCards(PARAMS.get("rbpile")),
++    human,
++    bot,
++    shownHand: {
++      human: shown === "offhand" ? "offhand" : "hand",
++      bot: "hand",
++    },
++    currentTurn: turn === "bot" ? "bot" : "human",
++  };
++}
++
++// ---------------------------------------------------------------- fact table
++interface Sample {
++  pileLen: number;
++  deckLen: number;
++  humanTotal: number;
++  botTotal: number;
++  hand: string[];
++}
++
++const S = {
++  phase: "unpublished",
++  loop: "none",
++  turn: "unpublished",
++  pile: "[]",
++  pileLen: -1,
++  deck: "[]",
++  deckLen: -1,
++  deckTop: "none",
++  humanHand: "[]",
++  humanHandLen: -1,
++  humanFaceUp: "[]",
++  humanFaceDown: "[]",
++  humanTotal: -1,
++  botHand: "[]",
++  botHandLen: -1,
++  botFaceUp: "[]",
++  botFaceDown: "[]",
++  botTotal: -1,
++  shownHuman: "unpublished",
++  shownBot: "unpublished",
++  // latches - once true they stay true, so a later bot turn cannot erase the evidence
++  burns: 0,
++  everPlaying: "no",
++  maxPileGrowth: 0,
++  pileMax: 0,
++  selectorMaxSeen: 0,
++  maxHumanHandAfterPlay: 0,
++  drawnCards: "[]",
++  selectorEverShown: "no",
++  selectorClicks: "[]",
++  pageErrors: 0,
++  publishes: 0,
++};
++
++const FACT_NAMES = [
++  "__rbPhase",
++  "__rbLoopState",
++  "__rbTurn",
++  "__rbPile",
++  "__rbPileLen",
++  "__rbDeck",
++  "__rbDeckLen",
++  "__rbDeckTop",
++  "__rbHumanHand",
++  "__rbHumanHandLen",
++  "__rbHumanFaceUp",
++  "__rbHumanFaceDown",
++  "__rbHumanTotal",
++  "__rbBotHand",
++  "__rbBotHandLen",
++  "__rbBotFaceUp",
++  "__rbBotFaceDown",
++  "__rbBotTotal",
++  "__rbShownHandHuman",
++  "__rbShownHandBot",
++  "__rbBurns",
++  "__rbEverPlaying",
++  "__rbMaxPileGrowth",
++  "__rbPileMax",
++  "__rbSelectorMaxSeen",
++  "__rbMaxHumanHandAfterPlay",
++  "__rbDrawnCards",
++  "__rbSelectorEverShown",
++  "__rbSelectorClicks",
++  "__rbPageErrors",
++  "__rbPublishes",
++  "__rbSeed",
++  "__rbRigUsed",
++  "__rbRigParams",
++] as const;
++
++const GETTERS: Record<string, () => string | number> = {
++  __rbPhase: () => S.phase,
++  __rbLoopState: () => S.loop,
++  __rbTurn: () => S.turn,
++  __rbPile: () => S.pile,
++  __rbPileLen: () => S.pileLen,
++  __rbDeck: () => S.deck,
++  __rbDeckLen: () => S.deckLen,
++  __rbDeckTop: () => S.deckTop,
++  __rbHumanHand: () => S.humanHand,
++  __rbHumanHandLen: () => S.humanHandLen,
++  __rbHumanFaceUp: () => S.humanFaceUp,
++  __rbHumanFaceDown: () => S.humanFaceDown,
++  __rbHumanTotal: () => S.humanTotal,
++  __rbBotHand: () => S.botHand,
++  __rbBotHandLen: () => S.botHandLen,
++  __rbBotFaceUp: () => S.botFaceUp,
++  __rbBotFaceDown: () => S.botFaceDown,
++  __rbBotTotal: () => S.botTotal,
++  __rbShownHandHuman: () => S.shownHuman,
++  __rbShownHandBot: () => S.shownBot,
++  __rbBurns: () => S.burns,
++  __rbEverPlaying: () => S.everPlaying,
++  __rbMaxPileGrowth: () => S.maxPileGrowth,
++  __rbPileMax: () => S.pileMax,
++  __rbSelectorMaxSeen: () => S.selectorMaxSeen,
++  __rbMaxHumanHandAfterPlay: () => S.maxHumanHandAfterPlay,
++  __rbDrawnCards: () => S.drawnCards,
++  __rbSelectorEverShown: () => S.selectorEverShown,
++  __rbSelectorClicks: () => S.selectorClicks,
++  __rbPageErrors: () => S.pageErrors,
++  __rbPublishes: () => S.publishes,
++  __rbSeed: () => (SEEDED ? String(SEED_RAW) : "none"),
++  __rbRigUsed: () => (rigActive() ? "yes" : "no"),
++  __rbRigParams: () =>
++    JSON.stringify(RIG_KEYS.filter((k) => PARAMS.has(k)).sort()),
++};
++
++function defineHidden(name: string, get: () => unknown) {
++  Object.defineProperty(window, name, {
++    get,
++    enumerable: false,
++    configurable: true,
++  });
++}
++
++// A FACT is published as a getter, so reading window.__rbPhase yields the string itself.
++// A HELPER must be published as a non-enumerable function VALUE instead: the graded
++// expressions call window.__rbKeys() / window.__rbDump() and the machine hook calls
++// window.__rbRigContext?.(), so a getter would be invoked by the property access itself
++// and hand back the RESULT - which made window.__rbKeys() throw "is not a function",
++// left the App bridge SILENT (window.__rbPublish was already consumed by the access, so
++// the ?.() call had nothing to call) and made every rigged deal throw
++// "o.call is not a function" inside createInitialContext, killing the whole app.
++// Measured, not inferred: probe/probe_clean.json - ready 0/12, pageerrors 11,
++// probeKeys=THREW:window.__rbKeys is not a function, probeDumpParses=DUMP_BAD,
++// probePublishing=SILENT, and S01_start pageerror "o.call is not a function".
++function defineHiddenFn(name: string, fn: (...args: never[]) => unknown) {
++  Object.defineProperty(window, name, {
++    value: fn,
++    writable: false,
++    enumerable: false,
++    configurable: true,
++  });
++}
++
++for (const name of FACT_NAMES) defineHidden(name, GETTERS[name]);
++
++defineHiddenFn("__rbKeys", () => JSON.stringify([...FACT_NAMES].sort()));
++defineHiddenFn("__rbDump", () => {
++  const out: Record<string, string | number> = {};
++  for (const name of FACT_NAMES) out[name] = GETTERS[name]();
++  out.__rbCardToken = "S10";
++  return JSON.stringify(out);
++});
++defineHiddenFn("__rbRigContext", rigContext);
++defineHiddenFn("__rbCardToken", cardToken);
++defineHiddenFn("__rbParseCard", parseCard);
++
++// page errors are counted, never swallowed: a checkpoint that reads a fact from a
++// page that threw must be able to tell "the app is broken" from "the app disagrees".
++window.addEventListener("error", () => {
++  S.pageErrors += 1;
++});
++window.addEventListener("unhandledrejection", () => {
++  S.pageErrors += 1;
++});
++
++// The 1-4 "play this many of the same rank" selector (components/ui/Card.tsx Selector)
++// has no stable attribute of its own, so it is recognised structurally: an element whose
++// button children read exactly 1,2,3,4. Polled at 40 ms because it mounts on a click and
++// is removed again by the very next click.
++const SELECTOR_RE = /^1234$/;
++function selectorVisibleNow(): boolean {
++  const hosts = document.querySelectorAll("div.divide-x");
++  for (const host of Array.from(hosts)) {
++    const buttons = host.querySelectorAll("button");
++    if (buttons.length === 4) {
++      const text = Array.from(buttons)
++        .map((b) => (b.textContent || "").trim())
++        .join("");
++      if (SELECTOR_RE.test(text)) {
++        const enabled = Array.from(buttons).filter(
++          (b) => !(b as HTMLButtonElement).disabled
++        ).length;
++        if (enabled > S.selectorMaxSeen) S.selectorMaxSeen = enabled;
++        return true;
++      }
++    }
++  }
++  return false;
++}
++if (typeof window !== "undefined") {
++  window.setInterval(() => {
++    if (selectorVisibleNow()) S.selectorEverShown = "yes";
++  }, 40);
++  document.addEventListener(
++    "click",
++    (event) => {
++      const target = event.target as HTMLElement | null;
++      if (!target || target.tagName !== "BUTTON") return;
++      const label = (target.textContent || "").trim();
++      if (!/^[1-4]$/.test(label)) return;
++      const parent = target.parentElement;
++      if (!parent || !parent.classList.contains("divide-x")) return;
++      const clicks = JSON.parse(S.selectorClicks) as string[];
++      clicks.push(label);
++      S.selectorClicks = JSON.stringify(clicks);
++    },
++    true
++  );
++}
++
++function topPhase(value: unknown): string {
++  if (typeof value === "string") return value;
++  if (value && typeof value === "object") {
++    const keys = Object.keys(value as Record<string, unknown>);
++    return keys.length ? keys[0] : "unknown";
++  }
++  return "unknown";
++}
++
++function loopState(value: unknown): string {
++  if (!value || typeof value !== "object") return "none";
++  const playing = (value as Record<string, unknown>).playing;
++  if (!playing || typeof playing !== "object") return "none";
++  const loop = (playing as Record<string, unknown>).loop;
++  return typeof loop === "string" ? loop : "none";
++}
++
++function totalOf(player: TPlayer): number {
++  return (
++    player.hand.length +
++    player.offHand.faceUp.filter((c) => c !== undefined).length +
++    player.offHand.faceDown.filter((c) => c !== undefined).length
++  );
++}
++
++// publish() is called by the App-level bridge that instrumentation.patch installs; it is
++// the only writer of the fact table. Every latch is derived by comparing the incoming
++// context with the previous sample, so nothing here depends on wall-clock timing.
++export function publish(snapshot: any): void {
++  if (!snapshot || !snapshot.context) return;
++  const ctx = snapshot.context as RbContext;
++  const prev: Sample = {
++    pileLen: S.pileLen,
++    deckLen: S.deckLen,
++    humanTotal: S.humanTotal,
++    botTotal: S.botTotal,
++    hand: JSON.parse(S.humanHand) as string[],
++  };
++
++  const pile = tokens(ctx.pile);
++  const hand = tokens(ctx.human.hand);
++  const deck = tokens(ctx.deck);
++  const humanTotal = totalOf(ctx.human);
++  const botTotal = totalOf(ctx.bot);
++
++  S.publishes += 1;
++  S.phase = topPhase(snapshot.value);
++  S.loop = loopState(snapshot.value);
++  if (S.phase === "playing") S.everPlaying = "yes";
++  if (pile.length > S.pileMax) S.pileMax = pile.length;
++  S.turn = String(ctx.currentTurn);
++  S.pile = JSON.stringify(pile);
++  S.pileLen = pile.length;
++  S.deck = JSON.stringify(deck);
++  S.deckLen = deck.length;
++  S.deckTop = deck.length ? deck[deck.length - 1] : "none";
++  S.humanHand = JSON.stringify(hand);
++  S.humanHandLen = hand.length;
++  S.humanFaceUp = JSON.stringify(tokens(ctx.human.offHand.faceUp));
++  S.humanFaceDown = JSON.stringify(tokens(ctx.human.offHand.faceDown));
++  S.humanTotal = humanTotal;
++  S.botHand = JSON.stringify(tokens(ctx.bot.hand));
++  S.botHandLen = ctx.bot.hand.length;
++  S.botFaceUp = JSON.stringify(tokens(ctx.bot.offHand.faceUp));
++  S.botFaceDown = JSON.stringify(tokens(ctx.bot.offHand.faceDown));
++  S.botTotal = botTotal;
++  S.shownHuman = String(ctx.shownHand.human);
++  S.shownBot = String(ctx.shownHand.bot);
++
++  if (prev.pileLen >= 0) {
++    const growth = pile.length - prev.pileLen;
++    if (growth > 0) {
++      if (growth > S.maxPileGrowth) S.maxPileGrowth = growth;
++    }
++    // A burn empties the pile and moves nothing into anybody's zones; taking the pile also
++    // empties it but grows the taker's hand. Requiring every total and the deck to be
++    // unchanged is what separates the two without looking at a clock.
++    if (
++      prev.pileLen > 0 &&
++      pile.length === 0 &&
++      humanTotal === prev.humanTotal &&
++      botTotal === prev.botTotal &&
++      deck.length === prev.deckLen &&
++      humanTotal > 0
++    ) {
++      S.burns += 1;
++    }
++    // A draw is the only way a card enters the hand while the pile stands still.
++    if (pile.length === prev.pileLen) {
++      const seen = prev.hand.slice();
++      const drawn: string[] = [];
++      for (const card of hand) {
++        const at = seen.indexOf(card);
++        if (at === -1) drawn.push(card);
++        else seen.splice(at, 1);
++      }
++      if (drawn.length) {
++        const all = JSON.parse(S.drawnCards) as string[];
++        all.push(...drawn);
++        S.drawnCards = JSON.stringify(all);
++      }
++    }
++  }
++
++  if (S.maxPileGrowth > 0 && hand.length > S.maxHumanHandAfterPlay) {
++    S.maxHumanHandAfterPlay = hand.length;
++  }
++
++}
++
++defineHiddenFn("__rbPublish", publish);
+diff --git a/src/main.tsx b/src/main.tsx
+index 3aeb022e8214a9a722455af89a0b503af7782d9e..ea60922 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -3,6 +3,9 @@
+ import React from "react";
+ import ReactDOM from "react-dom/client";
+ 
++// repair-bench read-only instrumentation: deterministic PRNG + exact-position rig + window.__rb* fact table
++import "./rbProbe";
++
+ import BreakpointsProvider from "./components/providers/BreakpointsProvider";
+ import { GlobalStateContext } from "./components/providers/GlobalStateProvider";
+ import App from "./components/App";
+diff --git a/src/state/machines/zhithead.machine.ts b/src/state/machines/zhithead.machine.ts
+index db5684c887ee865481026f7e0cf58b50db70049d..1a22c9d 100644
+--- a/src/state/machines/zhithead.machine.ts
++++ b/src/state/machines/zhithead.machine.ts
+@@ -37,6 +37,10 @@
+ }
+ 
+ function createInitialContext(): ZhitheadContext {
++  // repair-bench instrumentation hook: returns an exact starting position when the URL
++  // carries rb* deal parameters, undefined otherwise (the seed path below then runs untouched).
++  const rbRigged = (window as any).__rbRigContext?.();
++  if (rbRigged) return rbRigged;
+   const shuffledDeck = shuffle(createDeck());
+   const [deck, [human, bot]] = dealCardsFor(2, shuffledDeck);
+ 
+diff --git a/src/components/App.tsx b/src/components/App.tsx
+index 9af2b5eadfea840cce36b5cc58d35d2a4ae46195..6609c68 100644
+--- a/src/components/App.tsx
++++ b/src/components/App.tsx
+@@ -14,6 +14,15 @@
+ import TitleScreenOverlay from "./TitleScreenOverlay";
+ 
+ export default function App() {
++  // repair-bench instrumentation bridge: mirror the machine snapshot into the probe fact
++  // table. Read-only - it never sends an event and never writes to the context.
++  const rbActor = GlobalStateContext.useActorRef();
++  useEffect(() => {
++    const rbWin = window as any;
++    // no plain window.__rb* assignment here on purpose: checkpoint P14 grades that    // Object.keys(window) contains 0 __rb* keys and a plain assignment is enumerable    // (measured: probe_clean.json S00_boot probeEnumerable="1" before this fix). The    // bridge only calls the probe helper, which rbProbe.ts publishes as a    // NON-ENUMERABLE function value.    rbWin.__rbPublish?.(rbActor.getSnapshot());
++    const rbSub = rbActor.subscribe((rbSnap: any) => rbWin.__rbPublish?.(rbSnap));
++    return () => rbSub.unsubscribe();
++  }, [rbActor]);
+   const isPlaying = GlobalStateContext.useSelector(selectors.isPlaying);
+   const isChoosingFaceUpCards = GlobalStateContext.useSelector(
+     selectors.isChoosingFaceUpCards

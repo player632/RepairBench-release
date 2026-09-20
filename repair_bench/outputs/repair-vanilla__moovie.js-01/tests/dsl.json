@@ -1,0 +1,1325 @@
+{
+ "schema_version": "1.0",
+ "instance_id": "repair-vanilla__moovie.js-01",
+ "framework": "vanilla",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "context": {
+  "viewport": {
+   "width": 1280,
+   "height": 720
+  },
+  "locale": "en-US"
+ },
+ "checkpoints": [
+  {
+   "id": "F01",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D01-caption-fontsize-ratio-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "Math.round(1000*parseFloat(document.getElementById('caption_track_rbA').style.fontSize)/document.getElementById('moovie__video_rbA').offsetWidth)",
+     "expected": 100,
+     "expected_intent": "字幕层行内字号是按「容器实际像素宽 × 一个固定比例」算出来的百分比，所以「行内百分比字号 ÷ 容器实际像素宽 × 1000」这个比值就是那个比例的千倍整数读数，与容器到底多宽无关（对布局漂移免疫）。上游意图＝容器宽的 10% ⇒ 读数 100。落点是那条比例常数，不经过存储、跳转、时间标签、时间戳格式化、音轨枚举，也不经过任何 CSS 令牌。"
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D02-persistence-backend-misattached",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "String(localStorage.getItem('scrubsound'))",
+     "expected": "1",
+     "expected_intent": "播放器在媒体元数据就绪时会走一遍存储读回；持久层里没有音量记忆键时，它经统一写入入口把默认值 1 写出去。上游意图＝写进关掉标签页仍在的那一层 ⇒ 本读数应为字符串 \"1\"。写入层与读回层必须同一个后端，这是本枚唯一的跨层契约读数。"
+    }
+   ]
+  },
+  {
+   "id": "F03",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D03-seek-direction-sign-flip",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.currentTime=6;return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true,shiftKey:false});Object.defineProperty(e,'keyCode',{get:function(){return 37;}});v.dispatchEvent(e);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "Math.round(document.getElementById('moovie_vid_rbA').currentTime)",
+     "expected": 1,
+     "expected_intent": "把播放位置钉在 6 秒、再往媒体元素派发一次左方向键（键码 37、无修饰键）之后，播放位置取整应是 1 秒＝往回退了 5 秒。上游意图＝左向是减法。进度条滑块的数值在两个态下被同一行「滑块挪 5」写成同样的值，故本读数只取播放位置本身。"
+    }
+   ]
+  },
+  {
+   "id": "F04",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D04-currenttime-label-source-field",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.currentTime=5.2;v.dispatchEvent(new Event('timeupdate'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_currentime_rbA').textContent",
+     "expected": "00:05",
+     "expected_intent": "把播放位置钉在 5.2 秒并同步派发一次 timeupdate 之后，「当前时间 / 总时长」这对标签里前一半的文本应是格式化后的播放位置 \"00:05\"。这条读数**在加载完成的静态截图里分辨不出来**（初值本来就是 \"00:00\"），必须先把状态演化到 5.2 秒再冻结标量 ⇒ 时序敏感。"
+    }
+   ]
+  },
+  {
+   "id": "F05",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D05-caption-timestamp-pad-width",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.PlayCaption(document.getElementById('example').getElementsByTagName('track')[1]);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.currentTime=9;v.dispatchEvent(new Event('timeupdate'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('caption_track_rbA').textContent",
+     "expected": "- Jyn, whatever I do,",
+     "expected_intent": "走播放器自己的公开字幕装载入口装载树内英文轨（真实等待本地伺服往返完成、字幕轨解析就绪），再把播放位置推进该轨第一条 cue 的时间窗（8.520→10.000 秒）并派发一次 timeupdate，字幕层文本就应是那条 cue 的文本。装载链本身是否成功由 P08／P09 单独钉住 ⇒ 本读数只反映「秒数换算成的时间戳字符串是否与 cue 的时间戳逐字同构」。"
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D06-caption-enumeration-index-frozen",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "Array.prototype.map.call(document.querySelectorAll('#moovie_submenu_captions_rbA .caption_track span:first-child'),function(e){return e.textContent;}).join('|')",
+     "expected": "Portuguese|English|French",
+     "expected_intent": "播放器构造时把媒体元素上的所有 track 子元素逐条交给「添加一条字幕项」的入口，由它读出**该条**轨道的标签写进列表项。把三条列表项各自的首个 span 文本用竖线连起来，应逐字等于文档里三条轨道的标签序列。条数（P10）与文档里的轨道数（P11）在两态下同值 ⇒ 本读数只反映枚举下标是否跟着循环走。"
+    }
+   ]
+  },
+  {
+   "id": "F07",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D07-playlist-loop-wrap-off-by-one",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var s=document.createElement('script');s.src='js/plugins/playlist/playlist.js';s.onload=function(){res('loaded');};s.onerror=function(){rej(new Error('playlist plugin failed to load'));};document.head.appendChild(s);})"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.muted=true;window.__rbSrcA=v.src;return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.__rbErr=0;if(!window.__rbErrOn){window.__rbErrOn=1;window.addEventListener('error',function(){window.__rbErr++;});}return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{new _Moovie_Playlist({reference:window.rbPlayer,sources:[{src:window.__rbSrcA,title:'A'}]});return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{document.getElementById('moovie_vid_rbA').dispatchEvent(new Event('ended'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{document.getElementById('moovie_vid_rbA').dispatchEvent(new Event('ended'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbErr",
+     "expected": 0,
+     "expected_intent": "把轮播插件注入页面、用一支「唯一一条就是当前源」的列表构造它、装一个 window error 计数器，然后连派两次 ended（每次之间真实等待 600 毫秒，让插件内部那个 100 毫秒延时回调跑完）。上游意图＝游标自增后按列表长度回绕，永远落在下标范围内 ⇒ 两次结束都不该抛异常，计数为 0。这条构造下自检极性无论正反都不越界 ⇒ 本读数的红只可能来自回绕边界。"
+    }
+   ]
+  },
+  {
+   "id": "F08",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D08-playlist-same-source-check-polarity",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var s=document.createElement('script');s.src='js/plugins/playlist/playlist.js';s.onload=function(){res('loaded');};s.onerror=function(){rej(new Error('playlist plugin failed to load'));};document.head.appendChild(s);})"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.muted=true;window.__rbA=v.src;window.__rbB=window.rbMedia(13);v.src=window.__rbB;return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{new _Moovie_Playlist({reference:window.rbPlayer,sources:[{src:window.__rbA,title:'A'},{src:window.__rbB,title:'B'}]});return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.pause();v.dispatchEvent(new Event('ended'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');window.__rbF08dur=Math.round(v.duration);window.__rbF08switched=(v.src===window.__rbA)?1:0;v.pause();return 'ok';})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08dur",
+     "expected": 12,
+     "expected_intent": "先把媒体换成本地生成的 13 秒静音媒体（真实等待其元数据就绪），再用「第一条＝原来的 12 秒源、第二条＝当前这条 13 秒源」的列表构造轮播插件，暂停后派一次 ended，等 900 毫秒让插件内部那个 100 毫秒延时回调与随后的元数据加载都跑完，然后把「媒体总时长取整」这个标量停在页面上，断言只读这个停好的标量（对轮询幂等：本树用的 12 秒替身媒体会在断言轮询窗内真的播完并再次进入轮播回调，所以任何对媒体属性的实时读都会在轮询期间漂移，必须停标量）。上游意图＝自检发现「当前源不是游标指向的那一条」就换源 ⇒ 换回第一条后媒体总时长取整应为 12。这一次游标只从 0 走到 1、两态下都不触发回绕 ⇒ 本读数的红只可能来自自检极性。"
+    }
+   ]
+  },
+  {
+   "id": "F09",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D09-icon-width-token-unit",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(parseFloat(getComputedStyle(document.getElementById('moovie_bplay_rbA')).width)>50)?1:0",
+     "expected": 0,
+     "expected_intent": "控制条按钮内的 img 规则把宽度取自样式表顶部那条图标尺寸令牌。上游意图＝15 像素 ⇒ 计算宽度远小于 50 像素，本读数压成 0。令牌的**数字部分**逐字未动、只有单位从绝对长度变成相对字号长度时，计算宽度会跳到 15 倍继承字号（本页约 240 像素）⇒ 读数 1。图标资源名（P14／P15）不经过尺寸令牌。"
+    }
+   ]
+  },
+  {
+   "id": "F10",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D10-controls-layout-mode",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('moovie__controls_rbA')).display",
+     "expected": "flex",
+     "expected_intent": "控制条那条规则用弹性盒把控件横排成一行、并让进度条吃掉剩余空间（进度条的弹性增长因子只有弹性盒下才生效）。上游意图＝flex。同一条规则里的定位（P16）与贴底偏移（P17）逐字未动 ⇒ 本读数只反映排布模式本身。"
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D11-caption-layer-offset-sign",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.querySelector('.moovie_captionspot')).bottom",
+     "expected": "40px",
+     "expected_intent": "字幕层那条规则让它绝对定位、贴底向上偏 40 像素（正好让开控制条）。上游意图＝正 40 像素 ⇒ 计算 bottom 为 \"40px\"；符号反转后整块被推到底边之外、被容器裁掉，观感与「字幕没显示」完全一样，而字幕功能其实正常。同一条规则里的对齐（P18）与定位模式（P19）逐字未动。"
+    }
+   ]
+  },
+  {
+   "id": "F12",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D12-progress-hitarea-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('moovie_moovie_el_progressbar_rbA')).height",
+     "expected": "33px",
+     "expected_intent": "进度条外层容器同时是滑块输入与缓冲画布的命中区，那条规则用 !important 把基准高度钉成 33 像素（另有一条过渡声明在悬停时改它）。上游意图＝33 像素。同一条规则里的右侧外边距（P20）逐字未动 ⇒ 本读数只反映基准高度的数量级。"
+    }
+   ]
+  },
+  {
+   "id": "P01",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D01-caption-fontsize-ratio-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var el=document.getElementById('caption_track_rbA');window.__rbB=parseFloat(getComputedStyle(el).fontSize);window.rbPlayer.SetCaptionSize('sizeUp');return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var el=document.getElementById('caption_track_rbA');window.__rbA=parseFloat(getComputedStyle(el).fontSize);return 'ok';})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "Math.round((window.__rbA-window.__rbB)*100)/100",
+     "expected": 1,
+     "expected_intent": "D01 的领地守卫：走播放器自己的「字号增大」公开入口一次，字幕层计算字号必须恰好长 1.00 像素（上游的增大步长是 +1，与比例常数无关）。字幕层带 0.2 秒的 all 过渡（css/moovie.css:240），所以读数前后各留 1200 毫秒让过渡落定，否则读到的是过渡中途的插值。两态同值 ⇒ 修 D01 只许改比例常数，不许动步长、也不许把字号写死成常量（写死会让增量变 0）。"
+    }
+   ]
+  },
+  {
+   "id": "P02",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D02-persistence-backend-misattached",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_vid_rbA').volume",
+     "expected": 1,
+     "expected_intent": "D02 的领地守卫之一：媒体元素音量必须是 1。存储读回侧在「持久层无此键」时走兜底路径，把滑块初值置 \"1\"、解除静音，所以两态下音量都是 1 ⇒ 修 D02 不许靠改读回侧的兜底值来让 F02 变绿。"
+    }
+   ]
+  },
+  {
+   "id": "P03",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D02-persistence-backend-misattached",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "localStorage.length+sessionStorage.length",
+     "expected": 1,
+     "expected_intent": "D02 的领地守卫之二：持久层键数 ＋ 会话层键数之和必须恰好是 1（只有音量记忆这一个键）。两态同值 ⇒ 专治「两层都写一遍」这种把症状糊过去的修法（那会让和变成 2），也专治「顺手往存储里塞旗标」的骗绿修法。"
+    }
+   ]
+  },
+  {
+   "id": "P04",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D03-seek-direction-sign-flip",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.currentTime=6;return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true,shiftKey:false});Object.defineProperty(e,'keyCode',{get:function(){return 39;}});v.dispatchEvent(e);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "Math.round(document.getElementById('moovie_vid_rbA').currentTime)",
+     "expected": 11,
+     "expected_intent": "D03 的领地守卫之一：同样从 6 秒出发按**右**方向键（键码 39），播放位置取整必须是 11 秒＝往前进了 5 秒。两态同值（右向分支未被注入）⇒ 修 D03 不许把两个分支一起取反、也不许把步长从 5 改成别的数。"
+    }
+   ]
+  },
+  {
+   "id": "P05",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D03-seek-direction-sign-flip",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.currentTime=6;return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true,shiftKey:false});Object.defineProperty(e,'keyCode',{get:function(){return 39;}});v.dispatchEvent(e);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('range_progress_rbA').value",
+     "expected": "11",
+     "expected_intent": "D03 的领地守卫之二：那次右键之后进度条滑块的数值必须是 \"11\"（跳转函数的两个分支各自把滑块数值同向挪 5）。两态同值 ⇒ 修 D03 不许顺手改掉滑块那一行，也不许把左向分支的滑块挪动方向反过来凑数。"
+    }
+   ]
+  },
+  {
+   "id": "P06",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D04-currenttime-label-source-field",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_fulltime_rbA').textContent",
+     "expected": "00:12",
+     "expected_intent": "D04 的领地守卫之一：「当前时间 / 总时长」里后一半的文本必须是格式化后的总时长 \"00:12\"（本地生成的媒体恰好 12 秒）。两态同值 ⇒ 修 D04 不许把两个标签都改成读播放位置。"
+    }
+   ]
+  },
+  {
+   "id": "P07",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D04-currenttime-label-source-field",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('range_progress_rbA').getAttribute('max')",
+     "expected": "12",
+     "expected_intent": "D04 的领地守卫之二：媒体元数据就绪时写进进度条滑块的 max 属性必须是 \"12\"（＝媒体总时长）。两态同值 ⇒ 修 D04 不许动 loadedmetadata 里写 max 与写总时长的那两行。"
+    }
+   ]
+  },
+  {
+   "id": "P08",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D05-caption-timestamp-pad-width",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.PlayCaption(document.getElementById('example').getElementsByTagName('track')[1]);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1500
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "String(window.rbPlayer.events.captions.name)",
+     "expected": "English",
+     "expected_intent": "D05 的领地守卫之一：装载英文轨之后，播放器事件对象里记的字幕轨名必须是 \"English\"。这条读数把「装载链本身是好的」证成绿的，从而把 F05 的空字幕责任精确归到时间戳格式化上。两态同值 ⇒ 修 D05 不许绕过格式化函数去改装载链。"
+    }
+   ]
+  },
+  {
+   "id": "P09",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D05-caption-timestamp-pad-width",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.__rbCC=0;document.getElementById('moovie_vid_rbA').addEventListener('captionchange',function(){window.__rbCC++;});window.rbPlayer.PlayCaption(document.getElementById('example').getElementsByTagName('track')[1]);return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 800
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbCC",
+     "expected": 1,
+     "expected_intent": "D05 的领地守卫之二：装载一条字幕轨必须恰好派发一次字幕变更事件（不多不少）。两态同值 ⇒ 修 D05 不许靠重复装载、也不许靠 suppressing 事件来改变 F05 的读数。"
+    }
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D06-caption-enumeration-index-frozen",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('#moovie_submenu_captions_rbA .caption_track').length",
+     "expected": 3,
+     "expected_intent": "D06 的领地守卫之一：字幕子菜单里的列表项必须仍是 3 条（枚举条数没被改，只是每条读的是同一条轨道）。两态同值 ⇒ 修 D06 不许靠减少或增加列表项来让 F06 变绿。"
+    }
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D06-caption-enumeration-index-frozen",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('[data-testid=\"rb-media\"] track').length",
+     "expected": 3,
+     "expected_intent": "D06 的领地守卫之二（用 instrumentation 提供的稳定选择器）：媒体元素下的 track 子元素必须仍是 3 条。两态同值 ⇒ 修 D06 不许动文档里的轨道数、也不许把三条轨道合并成一条来「让标签一致」。"
+    }
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D07-playlist-loop-wrap-off-by-one",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var s=document.createElement('script');s.src='js/plugins/playlist/playlist.js';s.onload=function(){res('loaded');};s.onerror=function(){rej(new Error('playlist plugin failed to load'));};document.head.appendChild(s);})"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.muted=true;window.__rbA=v.src;window.__rbB=window.rbMedia(13);v.src=window.__rbB;return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.__rbErr=0;if(!window.__rbErrOn){window.__rbErrOn=1;window.addEventListener('error',function(){window.__rbErr++;});}return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{new _Moovie_Playlist({reference:window.rbPlayer,sources:[{src:window.__rbA,title:'A'},{src:window.__rbB,title:'B'}]});return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{document.getElementById('moovie_vid_rbA').dispatchEvent(new Event('ended'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbErr",
+     "expected": 0,
+     "expected_intent": "D07 的领地守卫：用一支**两条**源的列表（当前源是第二条）只派一次 ended，window error 计数必须仍是 0——这一次游标只从 0 走到 1，两态下都不需要回绕，也不该抛任何异常。⇒ 修 D07 只许把回绕判据的边界改回「大于等于」，不许把回绕删掉或换成会引入新越界的写法。"
+    }
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D08-playlist-same-source-check-polarity",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var s=document.createElement('script');s.src='js/plugins/playlist/playlist.js';s.onload=function(){res('loaded');};s.onerror=function(){rej(new Error('playlist plugin failed to load'));};document.head.appendChild(s);})"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.muted=true;window.__rbSrcA=v.src;return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.__rbErr=0;if(!window.__rbErrOn){window.__rbErrOn=1;window.addEventListener('error',function(){window.__rbErr++;});}return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{new _Moovie_Playlist({reference:window.rbPlayer,sources:[{src:window.__rbSrcA,title:'A'}]});return 'ok';})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{document.getElementById('moovie_vid_rbA').dispatchEvent(new Event('ended'));return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_vid_rbA').src===window.__rbSrcA?1:0",
+     "expected": 1,
+     "expected_intent": "D08 的领地守卫：用一支「唯一一条就是当前源」的列表派一次 ended 之后，媒体元素的 src 必须仍逐字等于 setup 里冻结的那个地址。相等走原地分支不动源；不等走换源分支但设回的是**同一个**地址 ⇒ 两态同值，是一条真不变量。⇒ 修 D08 只许把极性改回相等判定，不许把两条分支合并成「总是换源」（那会让单源列表在重载后落到另一个 blob 地址上）。"
+    }
+   ]
+  },
+  {
+   "id": "P14",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D09-icon-width-token-unit",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_bplay_rbA').getAttribute('src')",
+     "expected": "./icons/play.svg",
+     "expected_intent": "D09 的领地守卫之一：播放按钮图标的 src 属性必须仍是树内那份播放图标资源名（相对路径逐字未动）。两态同值 ⇒ 修 D09 不许换图标资源、也不许靠替换图标元素来让 F09 变绿。"
+    }
+   ]
+  },
+  {
+   "id": "P15",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D09-icon-width-token-unit",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{document.getElementById('moovie_vid_rbA').muted=true;document.getElementById('tooglebutton_rbA').click();return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_bplay_rbA').getAttribute('src')",
+     "expected": "./icons/pause.svg",
+     "expected_intent": "D09 的领地守卫之二：在 setup 里对播放按钮触发一次点击（走播放器自己的播放／暂停入口）之后，图标 src 必须切成暂停图标。用元素自己的 click 而不是坐标点击，正是为了让这条守卫在 D09 把图标撑到两百多像素、控制栏互相重叠时**仍然可复现**（坐标命中测试会被布局漂移影响）。两态同值。"
+    }
+   ]
+  },
+  {
+   "id": "P16",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D10-controls-layout-mode",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('moovie__controls_rbA')).position",
+     "expected": "absolute",
+     "expected_intent": "D10 的领地守卫之一：控制条的计算 position 必须仍是 \"absolute\"（与被注入的 display 值在同一条规则里，但那一行逐字未动）。两态同值 ⇒ 修 D10 不许顺手改掉定位模式。"
+    }
+   ]
+  },
+  {
+   "id": "P17",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D10-controls-layout-mode",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('moovie__controls_rbA')).bottom",
+     "expected": "1px",
+     "expected_intent": "D10 的领地守卫之二：控制条的计算 bottom 必须仍是 \"1px\"。两态同值 ⇒ 修 D10 不许靠把控制条挪走来让 F10 的读数「看起来对」。"
+    }
+   ]
+  },
+  {
+   "id": "P18",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D11-caption-layer-offset-sign",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.querySelector('.moovie_captionspot')).textAlign",
+     "expected": "center",
+     "expected_intent": "D11 的领地守卫之一：字幕层的计算 text-align 必须仍是 \"center\"（与被注入的偏移量在同一条规则里，但那一行带 !important 且逐字未动）。两态同值 ⇒ 修 D11 不许改掉居中。"
+    }
+   ]
+  },
+  {
+   "id": "P19",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D11-caption-layer-offset-sign",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.querySelector('.moovie_captionspot')).position",
+     "expected": "absolute",
+     "expected_intent": "D11 的领地守卫之二：字幕层的计算 position 必须仍是 \"absolute\"（bottom 只有绝对定位下才有意义，把它改成静态定位会让 F11 的读数变成 \"auto\" 而**假绿**）。两态同值 ⇒ 这条守卫正是堵那个假绿通道的。"
+    }
+   ]
+  },
+  {
+   "id": "P20",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "D12-progress-hitarea-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('moovie_moovie_el_progressbar_rbA')).marginRight",
+     "expected": "11px",
+     "expected_intent": "D12 的领地守卫：进度条容器的计算 margin-right 必须仍是 \"11px\"（与被注入的高度在同一条规则里，但那一行逐字未动）。两态同值 ⇒ 修 D12 不许靠改外边距或删掉整条规则来让 F12 变绿。"
+    }
+   ]
+  },
+  {
+   "id": "P21",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-1-playing-getter-dead-property",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{var v=document.getElementById('moovie_vid_rbA');v.muted=true;v.play();return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.__rbD1=String(window.rbPlayer.playing)+'|'+String(document.getElementById('moovie_vid_rbA').paused);return 'ok';})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbD1",
+     "expected": "false|false",
+     "expected_intent": "诱饵 1 的绿守卫：在 setup 里真正把媒体播起来（静音 ⇒ 无需用户手势即可自动播放）并等 700 毫秒之后，把「播放器的在播查询」与「媒体元素自己的暂停标志」拼成一个字符串冻结在页面上。上游出厂行为＝查询恒为假（它的条件挂在一个媒体元素并不存在的属性上），而媒体确实在放（paused 为假）⇒ 两态都必须是 \"false|false\"。把那个属性名「修好」会让读数变成 \"true|false\" ⇒ 当场判红。"
+    }
+   ]
+  },
+  {
+   "id": "P22",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-2-setstate-play-branch-unimplemented",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    },
+    {
+     "action": "js_eval",
+     "expr": "new Promise(function(res,rej){var v=document.getElementById('moovie_vid_rbA');if(!v){rej(new Error('internal media element absent'));return;}if(v.readyState>=1){res('ready');return;}v.addEventListener('loadedmetadata',function(){res('ready');},{once:true});setTimeout(function(){rej(new Error('media metadata timeout readyState='+v.readyState));},15000);})"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(()=>{window.rbPlayer.setState('play');return 'ok';})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 500
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('moovie_bplay_rbA').getAttribute('src')",
+     "expected": "./icons/play.svg",
+     "expected_intent": "诱饵 2 的绿守卫：调用播放器那个「改播放状态」的公开入口并传 \"play\" 之后，播放按钮图标必须仍是播放图标——也就是这个调用确实什么都没做（上游只实现了 \"pause\" 一支，另一支上游自己留了注释说以后再补）。两态同值。把这一支补上（切图标＋开始播）会让读数变成 \"./icons/pause.svg\" ⇒ 当场判红。"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,227 @@
+<script lang="ts" generics="TData">
+	import type { Cell, Table } from '@tanstack/table-core';
+	import type { Snippet } from 'svelte';
+	import { getContext } from 'svelte';
+	import type { HTMLAttributes } from 'svelte/elements';
+	import { getCellKey, type Direction, type RowHeightValue } from '$lib/types/data-grid.js';
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import { DEFAULT_ROW_HEIGHT } from '$lib/config/data-grid.js';
+	import { GRID_DIR_CONTEXT_KEY, type GridDirGetter } from './grid-dir-context.js';
+
+	interface Props extends WithElementRef<Omit<HTMLAttributes<HTMLDivElement>, 'dir'>, HTMLDivElement> {
+		cell: Cell<TData, unknown>;
+		table: Table<TData>;
+		rowIndex: number;
+		columnId: string;
+		isEditing: boolean;
+		isFocused: boolean;
+		isSelected: boolean;
+		wrapperRef?: HTMLDivElement | null;
+		children?: Snippet;
+	}
+
+	let {
+		cell,
+		table,
+		rowIndex,
+		columnId,
+		isEditing,
+		isFocused,
+		isSelected,
+		class: className,
+		wrapperRef = $bindable(null),
+		ref = $bindable(null),
+		onclick: onClickProp,
+		onkeydown: onKeyDownProp,
+		children,
+		...restProps
+	}: Props = $props();
+
+	// Track if cell was focused BEFORE mousedown (to prevent single-click opening edit)
+	let wasFocusedOnMouseDown = $state(false);
+
+	// Register/unregister cell in cellMapRef
+	$effect(() => {
+		const meta = table.options.meta;
+		if (wrapperRef && meta?.cellMapRef) {
+			const cellKey = getCellKey(rowIndex, columnId);
+			meta.cellMapRef.set(cellKey, wrapperRef);
+
+			return () => {
+				table.options.meta?.cellMapRef?.delete(cellKey);
+			};
+		}
+	});
+
+	function getWrapperElement() {
+		return wrapperRef;
+	}
+
+	function setWrapperElement(element: HTMLDivElement | null) {
+		wrapperRef = element;
+		ref = element;
+	}
+
+	// Compute cellKey reactively for virtualization
+	const cellKey = $derived(getCellKey(rowIndex, columnId));
+	const showSelectionHighlight = $derived(isSelected && !isEditing);
+
+	const isSearchMatch = $derived.by(() => {
+		const meta = table.options.meta;
+		// Direct SvelteSet.has() - Svelte tracks this specific key
+		return meta?.searchMatchSet?.has(cellKey) ?? false;
+	});
+	const isActiveSearchMatch = $derived.by(() => {
+		const meta = table.options.meta;
+		const active = meta?.activeSearchMatch;
+		return active?.rowIndex === rowIndex && active?.columnId === columnId;
+	});
+	const rowHeight = $derived.by<RowHeightValue>(() => {
+		const meta = table.options.meta;
+		return meta?.rowHeight ?? DEFAULT_ROW_HEIGHT;
+	});
+	const readOnly = $derived(table.options.meta?.readOnly ?? false);
+
+	const getGridDir = getContext<GridDirGetter>(GRID_DIR_CONTEXT_KEY);
+	const dir = $derived(getGridDir?.() ?? 'ltr');
+
+	// Compute cell classes declaratively from reactive table state.
+	const cellClasses = $derived(
+		cn(
+			'size-full px-2 py-1.5 text-start text-sm outline-none has-data-[slot=checkbox]:pt-2.5',
+			{
+				'ring-1 ring-ring ring-inset': isFocused,
+				'bg-yellow-100 dark:bg-yellow-900/30': isSearchMatch && !isActiveSearchMatch,
+				'bg-orange-200 dark:bg-orange-900/50': isActiveSearchMatch,
+				'bg-primary/10': showSelectionHighlight,
+				'cursor-default': !isEditing,
+				'**:data-[slot=grid-cell-content]:line-clamp-1': !isEditing && rowHeight === 'short',
+				'**:data-[slot=grid-cell-content]:line-clamp-2': !isEditing && rowHeight === 'medium',
+				'**:data-[slot=grid-cell-content]:line-clamp-3': !isEditing && rowHeight === 'tall',
+				'**:data-[slot=grid-cell-content]:line-clamp-4': !isEditing && rowHeight === 'extra-tall'
+			},
+			className
+		)
+	);
+
+	function handleClick(event: Parameters<NonNullable<Props['onclick']>>[0]) {
+		if (!isEditing) {
+			event.preventDefault();
+			onClickProp?.(event);
+			const meta = table.options.meta;
+			// Only start editing if cell was ALREADY focused before this mousedown/click
+			// Selection is handled by mousedown, so we only handle editing here
+			if (wasFocusedOnMouseDown && !readOnly) {
+				meta?.onCellEditingStart?.(rowIndex, columnId);
+			}
+		}
+	}
+
+	function handleContextMenu(event: MouseEvent) {
+		if (!isEditing) {
+			table.options.meta?.onCellContextMenu?.(rowIndex, columnId, event);
+		}
+	}
+
+	function handleMouseDown(event: MouseEvent) {
+		if (!isEditing) {
+			// Capture focus state BEFORE mousedown changes it
+			wasFocusedOnMouseDown = isFocused;
+			table.options.meta?.onCellMouseDown?.(rowIndex, columnId, event);
+		}
+	}
+
+	function handleMouseEnter(event: MouseEvent) {
+		if (!isEditing) {
+			table.options.meta?.onCellMouseEnter?.(rowIndex, columnId, event);
+		}
+	}
+
+	function handleMouseUp() {
+		if (!isEditing) {
+			table.options.meta?.onCellMouseUp?.();
+		}
+	}
+
+	function handleDoubleClick(event: MouseEvent) {
+		if (isEditing || event.defaultPrevented) return;
+
+		table.options.meta?.onCellDoubleClick?.(rowIndex, columnId, event);
+		event.preventDefault();
+	}
+
+	function handleKeyDown(event: Parameters<NonNullable<Props['onkeydown']>>[0]) {
+		onKeyDownProp?.(event);
+
+		if (event.defaultPrevented) return;
+
+		// When editing, don't interfere with navigation keys in the input
+		if (isEditing) {
+			return;
+		}
+
+		// Let navigation keys bubble up to grid handler when not editing
+		if (
+			event.key === 'ArrowUp' ||
+			event.key === 'ArrowDown' ||
+			event.key === 'ArrowLeft' ||
+			event.key === 'ArrowRight' ||
+			event.key === 'Home' ||
+			event.key === 'End' ||
+			event.key === 'PageUp' ||
+			event.key === 'PageDown' ||
+			event.key === 'Tab' ||
+			event.key === 'Escape'
+		) {
+			// Don't prevent default - let the grid handler deal with it
+			return;
+		}
+
+		// Handle editing keys when focused
+		if (isFocused && !isEditing && !readOnly) {
+			const meta = table.options.meta;
+			if (event.key === 'F2' || event.key === 'Enter') {
+				event.preventDefault();
+				event.stopPropagation();
+				meta?.onCellEditingStart?.(rowIndex, columnId);
+				return;
+			}
+
+			if (event.key === ' ') {
+				event.preventDefault();
+				event.stopPropagation();
+				meta?.onCellEditingStart?.(rowIndex, columnId);
+				return;
+			}
+
+			// Printable character starts editing
+			if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+				event.preventDefault();
+				event.stopPropagation();
+				meta?.onCellEditingStart?.(rowIndex, columnId);
+			}
+		}
+	}
+</script>
+
+<div
+	role="button"
+	data-slot="grid-cell-wrapper"
+	data-editing={isEditing ? '' : undefined}
+	data-focused={isFocused ? '' : undefined}
+	data-selected={isSelected ? '' : undefined}
+	{dir}
+	tabindex={isFocused && !isEditing ? 0 : -1}
+	{...restProps}
+	bind:this={getWrapperElement, setWrapperElement}
+	class={cellClasses}
+	onclick={handleClick}
+	oncontextmenu={handleContextMenu}
+	ondblclick={handleDoubleClick}
+	onmousedown={handleMouseDown}
+	onmouseenter={handleMouseEnter}
+	onmouseup={handleMouseUp}
+	onkeydown={handleKeyDown}
+>
+	{@render children?.()}
+</div>

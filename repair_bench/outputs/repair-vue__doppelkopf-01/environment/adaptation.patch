@@ -1,0 +1,90 @@
+diff --git a/index.html b/index.html
+index 743e558..82d4035 100644
+--- a/index.html
++++ b/index.html
+@@ -4,15 +4,6 @@
+     <meta charset="UTF-8" />
+     <link rel="icon" href="/favicon.ico" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-    <!--
+-      No secrets, the analytics data is completely open for you to see. Hope that's a fair deal.
+-      Check this out: https://plausible.io/doppelkopf.party
+-    -->
+-    <script
+-      defer
+-      data-domain="doppelkopf.party"
+-      src="https://plausible.io/js/script.js"
+-    ></script>
+     <title>Doppelkopf</title>
+   </head>
+   <body>
+diff --git a/src/main.ts b/src/main.ts
+index 1cb5839..ecdee87 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,6 +1,5 @@
+ import { createApp } from "vue";
+ import { createI18n } from "vue-i18n";
+-import * as Sentry from "@sentry/vue";
+ import App from "./App.vue";
+ import router from "./router";
+ import "@/assets/css/app.css";
+@@ -11,18 +10,11 @@ const messages = Object.assign(languages);
+ 
+ const i18n = createI18n({
+   legacy: false,
+-  locale: navigator.language.split("-")[0] || defaultLocale,
++  locale: "en", // [repair-bench adaptation] pinned for determinism; was navigator.language.split("-")[0] || defaultLocale
+   fallbackLocale: "en",
+   messages,
+ });
+ 
+ const app = createApp(App);
+ 
+-if (!Config.debug) {
+-  Sentry.init({
+-    app,
+-    dsn: "https://69b3af20d4fa454f851a6be71502334c@o57417.ingest.sentry.io/1235644",
+-  });
+-}
+-
+ app.use(i18n).use(router).mount("#app");
+diff --git a/src/models/random.ts b/src/models/random.ts
+index 1008f11..27b0eb8 100644
+--- a/src/models/random.ts
++++ b/src/models/random.ts
+@@ -2,9 +2,24 @@ export function generateNames(numberOfNames: number) {
+   return sampleSize(names, numberOfNames);
+ }
+ 
++// [repair-bench adaptation] deterministic RNG. The two Math.random() call sites of this module
++// (randomInt below and chance() at the bottom) drive the deal, the AI's card choice and the generated
++// player names, so a verifier that reads DOM/model state would otherwise measure a different game on
++// every run. xorshift32 with a FIXED seed replaces both sites; the distribution contract (a float in
++// [0,1)) is unchanged, no call site is added or removed, and nothing outside this module is touched.
++let rbRngState = 0x9e3779b9;
++function rbRandom(): number {
++  rbRngState ^= rbRngState << 13;
++  rbRngState >>>= 0;
++  rbRngState ^= rbRngState >>> 17;
++  rbRngState ^= rbRngState << 5;
++  rbRngState >>>= 0;
++  return rbRngState / 0x100000000;
++}
++
+ /** Returns a random integer between 0 and `exclusiveMax - 1` */
+ function randomInt(exclusiveMax: number): number {
+-  return Math.floor(Math.random() * exclusiveMax);
++  return Math.floor(rbRandom() * exclusiveMax);
+ }
+ 
+ export function sample<T>(array: Array<T>): T | undefined {
+@@ -38,7 +53,7 @@ export function sampleSize<T>(array: Array<T>, n: number = 1): T[] {
+ }
+ 
+ export function chance(percentage: number) {
+-  return Math.random() <= percentage;
++  return rbRandom() <= percentage;
+ }
+ 
+ /**

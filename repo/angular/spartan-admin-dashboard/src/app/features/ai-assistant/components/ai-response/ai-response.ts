@@ -1,0 +1,158 @@
+import { Clipboard } from '@angular/cdk/clipboard';
+
+import { isPlatformBrowser } from '@angular/common';
+import { Component, DestroyRef, PLATFORM_ID, booleanAttribute, inject, input, output, signal } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCheck,
+  lucideCopy,
+  lucideRefreshCcw,
+  lucideSparkle,
+  lucideThumbsDown,
+  lucideThumbsUp,
+} from '@ng-icons/lucide';
+import { TranslocoDirective } from '@jsverse/transloco';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+
+import { AiMarkdownRenderer } from './ai-markdown-renderer';
+
+@Component({
+  selector: 'adm-ai-response',
+  imports: [NgIcon, HlmButtonImports, AiMarkdownRenderer, TranslocoDirective],
+  viewProviders: [
+    provideIcons({ lucideSparkle, lucideRefreshCcw, lucideCheck, lucideCopy, lucideThumbsDown, lucideThumbsUp }),
+  ],
+  host: {
+    '[aria-busy]': 'isStreaming()',
+  },
+  template: `
+    <!-- Content Wrapper -->
+    <div class="group min-w-0 flex-1">
+      <!-- Content Area with Markdown Rendering -->
+      <div class="text-foreground text-sm leading-relaxed">
+        <adm-ai-markdown-renderer [content]="content()" />
+        @if (isStreaming()) {
+          <span class="text-foreground ml-0.5 inline-block animate-pulse">▊</span>
+        }
+      </div>
+
+      <!-- Action Bar -->
+      @if (!isStreaming()) {
+        <div
+          *transloco="let t; prefix: 'aiAssistant.ariaLabels'"
+          class="mt-2 flex items-center justify-between gap-2"
+        >
+          <span class="sr-only" role="status">{{ copied() ? t('copied') : '' }}</span>
+          <div class="flex items-center gap-2">
+            <button type="button" hlmBtn size="icon" variant="ghost" class="size-8" (click)="handleCopy()">
+              <span class="sr-only">{{ t('copyResponse') }}</span>
+              @if (copied()) {
+                <ng-icon name="lucideCheck" />
+              } @else {
+                <ng-icon name="lucideCopy" />
+              }
+            </button>
+
+            <button type="button" hlmBtn size="icon" variant="ghost" class="size-8" (click)="handleRegenerate()">
+              <span class="sr-only">{{ t('regenerate') }}</span>
+              <ng-icon name="lucideRefreshCcw" />
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button type="button" hlmBtn size="icon" variant="ghost" class="size-8" (click)="handleThumbsDown()">
+              <span class="sr-only">{{ t('badResponse') }}</span>
+              <ng-icon name="lucideThumbsDown" />
+            </button>
+            <button type="button" hlmBtn size="icon" variant="ghost" class="size-8" (click)="handleThumbsUp()">
+              <span class="sr-only">{{ t('goodResponse') }}</span>
+              <ng-icon name="lucideThumbsUp" />
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  `,
+})
+export class AiResponseCard {
+  // ==========================================
+  // Services
+  // ==========================================
+
+  private readonly _clipboard = inject(Clipboard);
+  private readonly _platformId = inject(PLATFORM_ID);
+
+  // ==========================================
+  // Inputs
+  // ==========================================
+
+  public readonly content = input.required<string>();
+
+  public readonly isStreaming = input(false, { transform: booleanAttribute });
+
+  // ==========================================
+  // Outputs
+  // ==========================================
+
+  /** Emitted when copy button is clicked with full content */
+  public readonly messageCopied = output<string>();
+
+  /** Emitted when a code block is copied */
+  public readonly codeBlockCopy = output<string>();
+
+  /** Emitted when regenerate button is clicked */
+  public readonly regenerate = output<void>();
+
+  /** Emitted when thumbs up is clicked */
+  public readonly thumbsUp = output<void>();
+
+  /** Emitted when thumbs down is clicked */
+  public readonly thumbsDown = output<void>();
+
+  // ==========================================
+  // State
+  // ==========================================
+
+  protected readonly copied = signal(false);
+
+  // ==========================================
+  // Public Methods
+  // ==========================================
+
+  handleCopy(): void {
+    if (!isPlatformBrowser(this._platformId)) return;
+
+    if (this.copied()) return;
+
+    const success = this._clipboard.copy(this.content());
+
+    if (success) {
+      this.copied.set(true);
+      this._copiedResetTimer = setTimeout(() => {
+        this.copied.set(false);
+      }, 2000);
+    }
+  }
+
+  private _copiedResetTimer?: ReturnType<typeof setTimeout>;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this._copiedResetTimer));
+  }
+
+  handleCodeBlockCopy(code: string): void {
+    this.codeBlockCopy.emit(code);
+  }
+
+  handleRegenerate(): void {
+    this.regenerate.emit();
+  }
+
+  handleThumbsUp(): void {
+    this.thumbsUp.emit();
+  }
+
+  handleThumbsDown(): void {
+    this.thumbsDown.emit();
+  }
+}

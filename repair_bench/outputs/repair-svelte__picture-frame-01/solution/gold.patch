@@ -1,0 +1,149 @@
+diff --git a/web/src/lib/auth.ts b/web/src/lib/auth.ts
+index a8cb089..37319b2 100644
+--- a/web/src/lib/auth.ts
++++ b/web/src/lib/auth.ts
+@@ -26,7 +26,7 @@ export function loginRedirectTarget(
+ 	search: string
+ ): string | null {
+ 	if (response.status !== 401) return null;
+-	if (response.url.includes('/api/auth/login')) return null;
++	if (response.url.includes('/api/auth/')) return null;
+ 	if (pathname === '/login') return null;
+ 	return `/login?next=${encodeURIComponent(pathname + search)}`;
+ }
+diff --git a/web/src/lib/duration.ts b/web/src/lib/duration.ts
+index c814377..64c1d6f 100644
+--- a/web/src/lib/duration.ts
++++ b/web/src/lib/duration.ts
+@@ -15,7 +15,7 @@ const UNIT_SECONDS: Record<string, number> = {
+ // input) is treated as zero, matching the server's durString("") for a zero value.
+ export function toSeconds(d: string): number {
+ 	let total = 0;
+-	for (const [, num, unit] of (d ?? '').matchAll(/(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|h)/g)) {
++	for (const [, num, unit] of (d ?? '').matchAll(/(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g)) {
+ 		total += parseFloat(num) * UNIT_SECONDS[unit];
+ 	}
+ 	return total;
+@@ -43,7 +43,7 @@ export function formatDuration(d: string, zeroLabel = 'Off'): string {
+ 		}
+ 	}
+ 	// Two most-significant units is enough to read at a glance (e.g. "1 hr 30 min").
+-	return parts.slice(0, 1).join(' ');
++	return parts.slice(0, 2).join(' ');
+ }
+ 
+ // Per-field slider stops, ordered ascending. An empty string is the "off"/"never"
+diff --git a/web/src/lib/links.ts b/web/src/lib/links.ts
+index 2f99938..e7a13c0 100644
+--- a/web/src/lib/links.ts
++++ b/web/src/lib/links.ts
+@@ -1,4 +1,4 @@
+ // Canonical project URLs, defined once so the UI links stay in sync.
+ export const REPO_URL = 'https://github.com/MateEke/picture-frame';
+ export const DOCS_URL = 'https://pictureframe.ekemate.hu';
+-export const MANUAL_URL = `${REPO_URL}/manual/dashboard/`;
++export const MANUAL_URL = `${DOCS_URL}/manual/dashboard/`;
+diff --git a/web/src/lib/reorder.ts b/web/src/lib/reorder.ts
+index 9f0d4ef..20a7833 100644
+--- a/web/src/lib/reorder.ts
++++ b/web/src/lib/reorder.ts
+@@ -6,7 +6,7 @@ export function arrayMove<T>(items: readonly T[], from: number, to: number): T[]
+ }
+ 
+ export function moveUp<T>(items: readonly T[], index: number): T[] {
+-	if (index < 0) return [...items];
++	if (index <= 0) return [...items];
+ 	return arrayMove(items, index, index - 1);
+ }
+ 
+diff --git a/web/src/lib/slideNav.ts b/web/src/lib/slideNav.ts
+index aa7b02b..c3edc90 100644
+--- a/web/src/lib/slideNav.ts
++++ b/web/src/lib/slideNav.ts
+@@ -4,8 +4,8 @@ export type TapZone = 'left' | 'right';
+ export type TapAction = 'wake' | 'next' | 'prev' | null;
+ 
+ export function tapAction(zone: TapZone, opts: { busy: boolean; screenOff: boolean }): TapAction {
+-	if (opts.busy) return null;
+ 	if (opts.screenOff) return 'wake';
++	if (opts.busy) return null;
+ 	return zone === 'left' ? 'prev' : 'next';
+ }
+ 
+diff --git a/web/src/lib/uploadPrefs.ts b/web/src/lib/uploadPrefs.ts
+index 8e146da..9c2f56f 100644
+--- a/web/src/lib/uploadPrefs.ts
++++ b/web/src/lib/uploadPrefs.ts
+@@ -14,7 +14,7 @@ export const CROP_RATIOS: CropRatio[] = [
+ 	{ id: '1:1', w: 1, h: 1 }
+ ];
+ 
+-const DEFAULT_RATIO = CROP_RATIOS[CROP_RATIOS.length - 1];
++const DEFAULT_RATIO = CROP_RATIOS[0];
+ const STORAGE_KEY = 'pf:crop-ratio';
+ 
+ export function getCropRatio(): CropRatio {
+diff --git a/web/src/lib/versionReload.svelte.ts b/web/src/lib/versionReload.svelte.ts
+index 40b52a9..7bacbb1 100644
+--- a/web/src/lib/versionReload.svelte.ts
++++ b/web/src/lib/versionReload.svelte.ts
+@@ -12,7 +12,7 @@ export function shouldReload(
+ 	now: number
+ ): boolean {
+ 	if (!backend || backend === version) return false;
+-	return now - lastReloadAt <= RELOAD_THROTTLE_MS;
++	return now - lastReloadAt >= RELOAD_THROTTLE_MS;
+ }
+ 
+ // Reloads when the backend reports a build different from this bundle's (a
+diff --git a/web/src/lib/wifi.ts b/web/src/lib/wifi.ts
+index 74eb0ff..60efb6b 100644
+--- a/web/src/lib/wifi.ts
++++ b/web/src/lib/wifi.ts
+@@ -82,8 +82,8 @@ export async function configureAP(
+ }
+ 
+ export function signalLevel(signal: number): number {
+-	if (signal >= 50) return 4;
+-	if (signal >= 75) return 3;
++	if (signal >= 75) return 4;
++	if (signal >= 50) return 3;
+ 	if (signal >= 25) return 2;
+ 	return 1;
+ }
+diff --git a/web/src/routes/admin/settings/validate.ts b/web/src/routes/admin/settings/validate.ts
+index 1ac8912..9a07c72 100644
+--- a/web/src/routes/admin/settings/validate.ts
++++ b/web/src/routes/admin/settings/validate.ts
+@@ -158,7 +158,7 @@ export function sectionFromDetail(detail: string): IssueSection | 'display' | nu
+ 	const prefix = detail.split(':', 1)[0].trim().toLowerCase();
+ 	if (prefix.startsWith('library')) return 'library';
+ 	if (prefix.startsWith('weather')) return 'weather';
+-	if (prefix.startsWith('mqtt')) return 'sensors';
++	if (prefix.startsWith('mqtt')) return 'mqtt';
+ 	if (prefix.startsWith('sensor')) return 'sensors';
+ 	if (prefix.startsWith('display')) return 'display';
+ 	return null;
+diff --git a/web/src/routes/kiosk/components/overlayShift.ts b/web/src/routes/kiosk/components/overlayShift.ts
+index 723de58..6524fc0 100644
+--- a/web/src/routes/kiosk/components/overlayShift.ts
++++ b/web/src/routes/kiosk/components/overlayShift.ts
+@@ -32,6 +32,6 @@ export function overlayShiftPair(
+ 	const { x, y } = overlayShift(date);
+ 	return {
+ 		lead: toStyle(x, y, rootFontSizePx),
+-		trail: toStyle(portrait ? -x : x, y, rootFontSizePx)
++		trail: toStyle(portrait ? x : -x, y, rootFontSizePx)
+ 	};
+ }
+diff --git a/web/src/routes/kiosk/components/weather-icons.ts b/web/src/routes/kiosk/components/weather-icons.ts
+index d8e8e75..bf1be7d 100644
+--- a/web/src/routes/kiosk/components/weather-icons.ts
++++ b/web/src/routes/kiosk/components/weather-icons.ts
+@@ -36,5 +36,5 @@ export const METEOCONS: Record<string, string> = {
+ 
+ /** Icon for an OWM code; unknown codes fall back to clear-day. */
+ export function weatherIconFor(code: string): string {
+-	return METEOCONS[code] ?? cloudy;
++	return METEOCONS[code] ?? clearDay;
+ }

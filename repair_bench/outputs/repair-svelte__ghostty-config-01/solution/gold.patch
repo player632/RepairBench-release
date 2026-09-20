@@ -1,0 +1,165 @@
+diff --git a/src/lib/components/settings/Dropdown.svelte b/src/lib/components/settings/Dropdown.svelte
+index 7a1d3379a..2a9ce8bbd 100644
+--- a/src/lib/components/settings/Dropdown.svelte
++++ b/src/lib/components/settings/Dropdown.svelte
+@@ -197,7 +197,8 @@
+         const onPointerDown = (event: MouseEvent) => {
+             const target = event.target as Node;
+             const clickedTriggerRegion = rootEl?.contains(target);
+-            if (!clickedTriggerRegion) {
++            const clickedMenuRegion = menuEl?.contains(target);
++            if (!clickedTriggerRegion && !clickedMenuRegion) {
+                 close();
+             }
+         };
+diff --git a/src/lib/components/settings/CustomInput.svelte b/src/lib/components/settings/CustomInput.svelte
+index adb9be0c1..489038515 100644
+--- a/src/lib/components/settings/CustomInput.svelte
++++ b/src/lib/components/settings/CustomInput.svelte
+@@ -61,7 +61,8 @@
+ 
+ 
+     function onModeChange(next: string) {
+-        value = next;
++        if (next === "custom") value = customValue;
++        else value = next;
+     }
+ 
+     // Track changes coming from the inner custom control
+diff --git a/src/lib/components/settings/Number.svelte b/src/lib/components/settings/Number.svelte
+index 3af3f1512..ad17894a2 100644
+--- a/src/lib/components/settings/Number.svelte
++++ b/src/lib/components/settings/Number.svelte
+@@ -108,6 +108,7 @@
+ 
+         if (!isNaN(numValue)) {
+             let constrainedValue = isActuallyInteger ? Math.round(numValue) : numValue;
++            if (min !== undefined && constrainedValue < min) constrainedValue = min;
+             if (max !== undefined && constrainedValue > max) constrainedValue = max;
+             commit(constrainedValue);
+         }
+diff --git a/src/lib/stores/search.svelte.ts b/src/lib/stores/search.svelte.ts
+index 2561009e5..640659c06 100644
+--- a/src/lib/stores/search.svelte.ts
++++ b/src/lib/stores/search.svelte.ts
+@@ -50,6 +50,11 @@ const groupedSearchResults = $derived.by(() => {
+     }> = [];
+ 
+     searchResults.forEach((result, index) => {
++        const existing = grouped.find(group => group.categoryId === result.categoryId);
++        if (existing) {
++            existing.results.push({...result, index});
++            return;
++        }
+ 
+         grouped.push({
+             categoryId: result.categoryId,
+diff --git a/src/lib/components/SettingsSearch.svelte b/src/lib/components/SettingsSearch.svelte
+index c71e97ff5..8294e8346 100644
+--- a/src/lib/components/SettingsSearch.svelte
++++ b/src/lib/components/SettingsSearch.svelte
+@@ -69,7 +69,7 @@
+ 
+         if (event.key === "ArrowDown") {
+             event.preventDefault();
+-        searchState.selectedIndex = searchState.selectedIndex + 1;
++            searchState.selectedIndex = searchState.selectedIndex < getResults().length - 1 ? searchState.selectedIndex + 1 : 0;
+             return;
+         }
+ 
+diff --git a/src/lib/stores/modals.svelte.ts b/src/lib/stores/modals.svelte.ts
+index f15589e02..32819af62 100644
+--- a/src/lib/stores/modals.svelte.ts
++++ b/src/lib/stores/modals.svelte.ts
+@@ -108,7 +108,7 @@ export function dismissTopModal() {
+     if (!modal) return;
+ 
+     if (modal.kind === "confirm") {
+-        modal.resolve(true);
++        modal.resolve(false);
+     }
+     else {
+         modal.resolve();
+diff --git a/src/lib/utils/debounce.ts b/src/lib/utils/debounce.ts
+index b6b956518..794442cde 100644
+--- a/src/lib/utils/debounce.ts
++++ b/src/lib/utils/debounce.ts
+@@ -19,7 +19,7 @@ export function debounce<Args extends unknown[]>(
+             if (trailing && (!leading || isCooldownActive)) fn(...args);
+         }, wait);
+ 
+-        if (leading) fn(...args);
++        if (leading && !isCooldownActive) fn(...args);
+     };
+ 
+     debounced.cancel = () => {
+diff --git a/src/lib/components/settings/Keybinds.svelte b/src/lib/components/settings/Keybinds.svelte
+index 63a09c9af..db40592dd 100644
+--- a/src/lib/components/settings/Keybinds.svelte
++++ b/src/lib/components/settings/Keybinds.svelte
+@@ -60,9 +60,10 @@
+     }
+ 
+     function remove() {
+-        for (const index of selected) {
+-            value.splice(index, 1);
+-        }
++        value = value.filter((v, i) => {
++            const shouldRemove = selected.includes(i);
++            return !shouldRemove;
++        });
+         selected = [];
+         success("Selected keybind(s) removed");
+     }
+diff --git a/src/lib/views/InteractiveTerminalDom.svelte b/src/lib/views/InteractiveTerminalDom.svelte
+index 51ecac47e..26aba90a9 100644
+--- a/src/lib/views/InteractiveTerminalDom.svelte
++++ b/src/lib/views/InteractiveTerminalDom.svelte
+@@ -135,7 +135,7 @@
+                 const snap = snapshot();
+                 const cmd = inputBuffer;
+                 if (cmd.trim()) {
+-                    cmdHistory.push(cmd);
++                    cmdHistory.unshift(cmd);
+                     if (cmdHistory.length > 100) cmdHistory.pop();
+                 }
+                 inputBuffer = "";
+diff --git a/src/lib/components/settings/RepeatableText.svelte b/src/lib/components/settings/RepeatableText.svelte
+index a94e3d82f..ffc82c0af 100644
+--- a/src/lib/components/settings/RepeatableText.svelte
++++ b/src/lib/components/settings/RepeatableText.svelte
+@@ -23,7 +23,7 @@
+     const hiddenCount = $derived(Math.max(normalizedValues.length - 1, 0));
+ 
+     function openEditor() {
+-        draftValues = value;
++        draftValues = [...value];
+         isEditorOpen = true;
+     }
+ 
+diff --git a/src/lib/stores/history.svelte.ts b/src/lib/stores/history.svelte.ts
+index 4ab126e10..80f6e705d 100644
+--- a/src/lib/stores/history.svelte.ts
++++ b/src/lib/stores/history.svelte.ts
+@@ -20,7 +20,7 @@ export function processNavigation(navEvent: OnNavigate) {
+             stack = [...stack, navEvent.to.url.pathname];
+         }
+         else {
+-            const substack = stack.slice(0, index);
++            const substack = stack.slice(0, index + 1);
+             stack = [...substack, navEvent.to.url.pathname];
+         }
+ 
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 07f3ebfbf..2234e459f 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -49,7 +49,7 @@
+         add("cursor-opacity", String(numberCodec.parse(config.cursorOpacity) ?? 1));
+ 
+         // Add the palette colors
+-        const paletteSize = 8; // colors.palette.length;
++        const paletteSize = 16; // colors.palette.length;
+         for (let c = 0; c < paletteSize; c++) add(`palette-${c}`, colors.palette[c]);
+ 
+         // TODO: consider honoring separate fonts for bold/italic and such in previews

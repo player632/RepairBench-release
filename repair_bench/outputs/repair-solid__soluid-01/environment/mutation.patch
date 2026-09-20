@@ -1,0 +1,156 @@
+diff --git a/src/components/ui/soluid/Accordion.tsx b/src/components/ui/soluid/Accordion.tsx
+index 4658a16..1c6b00b 100644
+--- a/src/components/ui/soluid/Accordion.tsx
++++ b/src/components/ui/soluid/Accordion.tsx
+@@ -42,7 +42,7 @@ export function AccordionItem(
+         aria-disabled={local.disabled || undefined}
+         tabIndex={local.disabled ? -1 : undefined}
+         onClick={(e) => {
+-          if (local.disabled) {
++          if (!local.disabled) {
+             e.preventDefault();
+           }
+         }}
+diff --git a/src/components/ui/soluid/Carousel.tsx b/src/components/ui/soluid/Carousel.tsx
+index 5a2ed58..7737daa 100644
+--- a/src/components/ui/soluid/Carousel.tsx
++++ b/src/components/ui/soluid/Carousel.tsx
+@@ -52,10 +52,6 @@ export function Carousel(props: CarouselProps & Omit<JSX.HTMLAttributes<HTMLDivE
+     const total = count();
+     if (total === 0) return;
+     const next = index() + delta;
+-    if (local.loop) {
+-      local.onIndexChange((next + total) % total);
+-      return;
+-    }
+     // Clamped rather than dropped, so an index past the end can still come back.
+     const clamped = Math.min(Math.max(next, 0), total - 1);
+     if (clamped !== index()) local.onIndexChange(clamped);
+diff --git a/src/components/ui/soluid/FormField.tsx b/src/components/ui/soluid/FormField.tsx
+index f9e56f7..8bbfde0 100644
+--- a/src/components/ui/soluid/FormField.tsx
++++ b/src/components/ui/soluid/FormField.tsx
+@@ -41,7 +41,7 @@ export function FormField(props: FormFieldProps & Omit<JSX.HTMLAttributes<HTMLDi
+       return errorId;
+     },
+     get hintId() {
+-      return local.hint ? hintId : undefined;
++      return hintId;
+     },
+     get hasError() {
+       return !!local.error;
+diff --git a/src/components/ui/soluid/Steps.tsx b/src/components/ui/soluid/Steps.tsx
+index 482e388..6c3e46a 100644
+--- a/src/components/ui/soluid/Steps.tsx
++++ b/src/components/ui/soluid/Steps.tsx
+@@ -32,7 +32,7 @@ export function Steps(props: StepsProps & JSX.HTMLAttributes<HTMLElement>) {
+   ]);
+ 
+   const stateOf = (index: number) => {
+-    if (index < local.current) return "complete";
++    if (index <= local.current) return "complete";
+     return index === local.current ? "current" : "upcoming";
+   };
+ 
+diff --git a/src/components/ui/soluid/Table.tsx b/src/components/ui/soluid/Table.tsx
+index 2374206..475f06e 100644
+--- a/src/components/ui/soluid/Table.tsx
++++ b/src/components/ui/soluid/Table.tsx
+@@ -59,7 +59,7 @@ export function Table<T>(props: TableProps<T> & Omit<JSX.HTMLAttributes<HTMLDivE
+ 
+   function handleSort(key: string): void {
+     if (!local.onSort) return;
+-    const nextDirection = local.sortKey === key && local.sortDirection === "asc" ? "desc" : "asc";
++    const nextDirection = local.sortKey === key && local.sortDirection === "desc" ? "desc" : "asc";
+     local.onSort(key, nextDirection);
+   }
+ 
+diff --git a/src/components/ui/soluid/Toast.tsx b/src/components/ui/soluid/Toast.tsx
+index a8c98f0..7024745 100644
+--- a/src/components/ui/soluid/Toast.tsx
++++ b/src/components/ui/soluid/Toast.tsx
+@@ -57,7 +57,7 @@ export function ToastContainer(props: ToastContainerProps) {
+               )}
+               role={toast.variant === "danger" || toast.variant === "warning" ? "alert" : "status"}
+             >
+-              <span class="so-toast__message">{toast.message}</span>
++              <span class="so-toast__message">{toast.variant ?? "info"}</span>
+               <button
+                 type="button"
+                 class="so-toast__dismiss"
+diff --git a/src/components/ui/soluid/Tree.tsx b/src/components/ui/soluid/Tree.tsx
+index 0d6bb1e..dc3a862 100644
+--- a/src/components/ui/soluid/Tree.tsx
++++ b/src/components/ui/soluid/Tree.tsx
+@@ -76,7 +76,7 @@ export function Tree(props: TreeProps & Omit<JSX.HTMLAttributes<HTMLUListElement
+ 
+   function setExpanded(id: string, open: boolean): void {
+     const current = local.expanded;
+-    if (open === current.includes(id)) return;
++    if (open !== current.includes(id)) return;
+     local.onExpandedChange(open ? [...current, id] : current.filter((it) => it !== id));
+   }
+ 
+diff --git a/src/components/ui/soluid/core/createFocusTrap.ts b/src/components/ui/soluid/core/createFocusTrap.ts
+index 8b99e51..e93104d 100644
+--- a/src/components/ui/soluid/core/createFocusTrap.ts
++++ b/src/components/ui/soluid/core/createFocusTrap.ts
+@@ -113,7 +113,7 @@ export function createFocusTrap(options: FocusTrapOptions): void {
+   function focusFirst(container: HTMLElement): void {
+     const focusable = getFocusableElements(container);
+     if (focusable.length > 0) {
+-      focusable[0].focus();
++      focusable[focusable.length - 1].focus();
+       return;
+     }
+     // An overlay with nothing to focus still has to take focus, or the reader
+diff --git a/src/components/ui/soluid/core/createOverlay.ts b/src/components/ui/soluid/core/createOverlay.ts
+index 1d64b50..ad4841b 100644
+--- a/src/components/ui/soluid/core/createOverlay.ts
++++ b/src/components/ui/soluid/core/createOverlay.ts
+@@ -27,8 +27,6 @@ export function createOverlay(options: CreateOverlayOptions): OverlayReturn {
+   createEffect(
+     on(options.isOpen, (open) => {
+       if (open) {
+-        clearTimeout(closingTimer);
+-        setClosing(false);
+         setMounted(true);
+       } else if (mounted()) {
+         setClosing(true);
+diff --git a/src/components/ui/soluid/core/createScrollLock.ts b/src/components/ui/soluid/core/createScrollLock.ts
+index 9d5780c..a068001 100644
+--- a/src/components/ui/soluid/core/createScrollLock.ts
++++ b/src/components/ui/soluid/core/createScrollLock.ts
+@@ -91,6 +91,6 @@ export function createScrollLock(isActive: Accessor<boolean>): void {
+ 
+   createEffect(() => {
+     if (!isActive()) return;
+-    onCleanup(acquireScrollLock());
++    acquireScrollLock();
+   });
+ }
+diff --git a/src/components/ui/soluid/core/createToast.ts b/src/components/ui/soluid/core/createToast.ts
+index 85e5305..c890a96 100644
+--- a/src/components/ui/soluid/core/createToast.ts
++++ b/src/components/ui/soluid/core/createToast.ts
+@@ -46,7 +46,7 @@ export function createToast(options: ToastOptions = {}): ToastReturn {
+       produce((list) => {
+         const idx = list.findIndex((t) => t.id === id);
+         if (idx !== -1) {
+-          list.splice(idx, 1);
++          list.splice(0, 1);
+         }
+       }),
+     );
+diff --git a/src/components/ui/soluid/core/createToggle.ts b/src/components/ui/soluid/core/createToggle.ts
+index cb53d09..be4ea74 100644
+--- a/src/components/ui/soluid/core/createToggle.ts
++++ b/src/components/ui/soluid/core/createToggle.ts
+@@ -27,7 +27,6 @@ export function createToggle(options: ToggleOptions = {}): ToggleReturn {
+ 
+   function setPressed(value: boolean): void {
+     setInternalPressed(value);
+-    options.onPressedChange?.(value);
+   }
+ 
+   function toggle(): void {

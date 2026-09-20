@@ -1,0 +1,150 @@
+diff --git a/src/components/Pagination/index.vue b/src/components/Pagination/index.vue
+--- a/src/components/Pagination/index.vue
++++ b/src/components/Pagination/index.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <div class="w-full">
+     <div class="flex justify-end mb-0" data-testid="rb-pagination">
+-      <el-pagination background layout="prev, pager, next" :total="30" />
++      <el-pagination background layout="prev, next" :total="30" />
+     </div>
+   </div>
+ </template>
+diff --git a/src/components/Sidebar/index.vue b/src/components/Sidebar/index.vue
+--- a/src/components/Sidebar/index.vue
++++ b/src/components/Sidebar/index.vue
+@@ -12,7 +12,7 @@
+       <small class="absolute pl-2 left-0 bottom-0 italic text-cyan-800" data-testid="rb-sidebar-version">v{{ version }}</small>
+       <div class="h-19.5 flex items-center relative">
+         <router-link
+-          v-if="(isSBOpen && !isSBPin) || isSBPin"
++          v-if="(isSBOpen && !isSBPin) && isSBPin"
+           :class="{ 'opacity-0': !isSBOpen && !isSBPin }"
+           class="transition-opacity duration-300 opacity-1 p-6 block"
+           :to="{ name: 'Dashboard' }"
+diff --git a/src/layouts/default-layout.vue b/src/layouts/default-layout.vue
+--- a/src/layouts/default-layout.vue
++++ b/src/layouts/default-layout.vue
+@@ -15,7 +15,7 @@
+       >
+         <div
+           class="flex items-center py-5 mb-0 px-3.75 pr-3.5 md:px-7.25 md:pl-7.5 pt-6"
+-          v-if="!route.meta.isDarkBackground"
++          v-if="route.meta.isDarkBackground"
+           data-testid="rb-page-header"
+         >
+           <div class="w-full flex flex-wrap flex-row">
+diff --git a/src/modules/auth/store/state.ts b/src/modules/auth/store/state.ts
+--- a/src/modules/auth/store/state.ts
++++ b/src/modules/auth/store/state.ts
+@@ -7,7 +7,7 @@
+   id: 'auth.state',
+   state: (): AuthState => {
+     return {
+-      isAuthenticated: !!localStorage.getItem(AUTH_TOKEN),
++      isAuthenticated: localStorage.getItem(AUTH_TOKEN) == null,
+     }
+   },
+ })
+diff --git a/src/modules/auth/views/login.vue b/src/modules/auth/views/login.vue
+--- a/src/modules/auth/views/login.vue
++++ b/src/modules/auth/views/login.vue
+@@ -70,7 +70,7 @@
+   setup() {
+     const store = useStore()
+     const isAuthenticated = computed<boolean>(() => store.auth.getAuthenticationState)
+-    const accounts: string[] = ['admin@argon.com', 'creator@argon.com', 'member@argon.com']
++    const accounts: string[] = ['admin@argon.com', 'creator@argon.com']
+     return {
+       isAuthenticated,
+       accounts,
+diff --git a/src/modules/dashboard/store/actions.ts b/src/modules/dashboard/store/actions.ts
+--- a/src/modules/dashboard/store/actions.ts
++++ b/src/modules/dashboard/store/actions.ts
+@@ -22,9 +22,9 @@
+   
+   const toggleMenu = () => {
+     if (window.innerWidth < 1024) {
+-      setIsSBOpen(!state.isSBOpen)
+-    } else {
+       setIsSBPin(!state.isSBPin)
++    } else {
++      setIsSBOpen(!state.isSBOpen)
+     }
+   }
+   
+diff --git a/src/modules/dashboard/views/components/PageVisitTable.vue b/src/modules/dashboard/views/components/PageVisitTable.vue
+--- a/src/modules/dashboard/views/components/PageVisitTable.vue
++++ b/src/modules/dashboard/views/components/PageVisitTable.vue
+@@ -48,7 +48,7 @@
+               <div class="flex items-center">
+                 <div class="px-4 flex justify-center gap-1">
+                   <div>
+-                    <ArrowNarrowUpIcon v-if="scope.row.rate > 45.0" class="w-4 h-4 text-success" />
++                    <ArrowNarrowUpIcon v-if="scope.row.rate > 50.0" class="w-4 h-4 text-success" />
+                     <ArrowNarrowDownIcon v-else class="w-4 h-4 text-warning" />
+                   </div>
+ 
+diff --git a/src/modules/dashboard/views/components/SocialTrafficTable.vue b/src/modules/dashboard/views/components/SocialTrafficTable.vue
+--- a/src/modules/dashboard/views/components/SocialTrafficTable.vue
++++ b/src/modules/dashboard/views/components/SocialTrafficTable.vue
+@@ -103,7 +103,7 @@
+     ])
+ 
+     const customColorMethod = (completion: number) => {
+-      return theme.value.find((el: any) => el.completion == completion)?.color ?? '#FB6340'
++      return theme.value.find((el: any) => el.completion >= completion)?.color ?? '#FB6340'
+     }
+ 
+     return {
+diff --git a/src/modules/icons/views/index.vue b/src/modules/icons/views/index.vue
+--- a/src/modules/icons/views/index.vue
++++ b/src/modules/icons/views/index.vue
+@@ -31,7 +31,7 @@
+ import * as Icons from '@heroicons/vue/solid'
+ export default defineComponent({
+   setup() {
+-    const icons = Object.keys(Icons).map((value: string) => ({
++    const icons = Object.keys(Icons).slice(0, 24).map((value: string) => ({
+       name: value,
+       icon: Icons[value as keyof typeof Icons],
+     }))
+diff --git a/src/modules/notification/views/components/Modals.vue b/src/modules/notification/views/components/Modals.vue
+--- a/src/modules/notification/views/components/Modals.vue
++++ b/src/modules/notification/views/components/Modals.vue
+@@ -6,7 +6,7 @@
+         <el-button type="primary" class="w-full" @click="openDefaultModal = !openDefaultModal"
+           >Default</el-button
+         >
+-        <DefaultModal :triggerModal="openDefaultModal" @close-modal="openDefaultModal = false" />
++        <DefaultModal :triggerModal="openDefaultModal" @close-modal="openDefaultModal = true" />
+       </div>
+ 
+       <!-- Modal - Danger -->
+diff --git a/src/modules/table/views/components/ProjectTable.vue b/src/modules/table/views/components/ProjectTable.vue
+--- a/src/modules/table/views/components/ProjectTable.vue
++++ b/src/modules/table/views/components/ProjectTable.vue
+@@ -34,9 +34,9 @@
+                 scope.row.status == 'on schedule'
+                   ? 'bg-info'
+                   : scope.row.status == 'delayed'
+-                  ? 'bg-danger'
+-                  : scope.row.status == 'pending'
+                   ? 'bg-warning'
++                  : scope.row.status == 'pending'
++                  ? 'bg-danger'
+                   : 'bg-success',
+               ]"
+             ></i>
+diff --git a/src/router/routes.ts b/src/router/routes.ts
+--- a/src/router/routes.ts
++++ b/src/router/routes.ts
+@@ -148,7 +148,7 @@
+   },
+ 
+   {
+-    path: '/profile',
++    path: '/user-profile',
+     component: Profile,
+     name: 'Profile',
+     meta: {

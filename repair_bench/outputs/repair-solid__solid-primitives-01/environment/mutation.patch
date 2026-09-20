@@ -1,0 +1,152 @@
+diff --git a/packages/flux-store/dev/index.tsx b/packages/flux-store/dev/index.tsx
+index f84bb67..42ef62e 100644
+--- a/packages/flux-store/dev/index.tsx
++++ b/packages/flux-store/dev/index.tsx
+@@ -23,7 +23,7 @@ const App: Component = () => {
+           <For each={getPeople()}>
+             {person => (
+               <li data-rb-count="fs-person">
+-                <span class="hover:text-green-400" data-rb-click="fs-birthday" onClick={() => person.actions.birthday()}>
++                <span class="hover:text-green-400" data-rb-click="fs-birthday" onClick={() => person.actions.birthday}>
+                   {person.state.name}
+                 </span>
+                 : {person.getters.yearsOld()}{" "}
+diff --git a/packages/flux-store/dev/stores/ages-store.ts b/packages/flux-store/dev/stores/ages-store.ts
+index 8d31838..7bc5151 100644
+--- a/packages/flux-store/dev/stores/ages-store.ts
++++ b/packages/flux-store/dev/stores/ages-store.ts
+@@ -10,7 +10,7 @@ const agesFluxFactory = createFluxStoreFactory(
+     getters: state => ({
+       days: () => state.age * 365,
+       yearsOld: () => `${state.age} years old`,
+-      isWizard: () => state.mana > 100 || state.age >= 50,
++      isWizard: () => state.mana > 100 && state.age >= 50,
+     }),
+     actions: (setState, state) => ({
+       birthday: () => setState("age", state.age + 1),
+diff --git a/packages/i18n/dev/index.tsx b/packages/i18n/dev/index.tsx
+index 524aa57..4b7c789 100644
+--- a/packages/i18n/dev/index.tsx
++++ b/packages/i18n/dev/index.tsx
+@@ -58,7 +58,7 @@ const App: Component = () => {
+                 </div>
+ 
+                 <div class="mb-8" />
+-                <button data-rb-click="i18n-name" onClick={() => setName(n => (n === "User" ? "Viewer" : "User"))}>
++                <button data-rb-click="i18n-name" onClick={() => setName("Viewer")}>
+                   Change Name
+                 </button>
+                 <h4 data-rb-text="i18n-hello">{t("hello", { name: name() })}</h4>
+diff --git a/packages/jsx-tokenizer/dev/index.tsx b/packages/jsx-tokenizer/dev/index.tsx
+index 0d193e4..e8a4fcf 100644
+--- a/packages/jsx-tokenizer/dev/index.tsx
++++ b/packages/jsx-tokenizer/dev/index.tsx
+@@ -13,7 +13,7 @@ const parser = createTokenizer<{
+ }>({ name: "calculator" });
+ 
+ const Calculator: ParentComponent = props => {
+-  const tokens = resolveTokens([parser, Subtract], () => props.children, {
++  const tokens = resolveTokens(parser, () => props.children, {
+     includeJSXElements: true,
+   });
+ 
+diff --git a/packages/keyboard/src/index.ts b/packages/keyboard/src/index.ts
+index 572e7b6..2892c79 100644
+--- a/packages/keyboard/src/index.ts
++++ b/packages/keyboard/src/index.ts
+@@ -347,7 +347,7 @@ export function createShortcut(
+     }
+     if (arrayEquals(last, keys)) {
+       const prev = sequence.at(-2);
+-      if (!prev || arrayEquals(prev, keys.slice(0, keys.length - 1))) {
++      if (!prev || arrayEquals(prev, keys.slice(1))) {
+         preventDefault && e && e.preventDefault();
+         callback(e);
+       }
+diff --git a/packages/keyed/src/index.ts b/packages/keyed/src/index.ts
+index b1f05f3..63fefea 100644
+--- a/packages/keyed/src/index.ts
++++ b/packages/keyed/src/index.ts
+@@ -156,7 +156,7 @@ export function Key<T>(props: {
+       () => props.each,
+       typeof by === "function" ? by : (v: T) => v[by],
+       props.children,
+-      "fallback" in props ? { fallback: () => props.fallback } : undefined,
++      undefined,
+     ),
+   ) as unknown as JSX.Element;
+ }
+diff --git a/packages/list/dev/index.tsx b/packages/list/dev/index.tsx
+index 7becf77..2527fc9 100644
+--- a/packages/list/dev/index.tsx
++++ b/packages/list/dev/index.tsx
+@@ -87,7 +87,7 @@ const App: Component = () => {
+                   onClick={() => {
+                     setSignal(x => {
+                       const n = [...x];
+-                      n.splice(i(), 0, nextValue());
++                      n.splice(i(), 1, nextValue());
+                       return n;
+                     });
+                   }}
+diff --git a/packages/marker/dev/index.tsx b/packages/marker/dev/index.tsx
+index 0324fba..c91f702 100644
+--- a/packages/marker/dev/index.tsx
++++ b/packages/marker/dev/index.tsx
+@@ -11,7 +11,8 @@ const App: Component = () => {
+   const [search, setSearch] = createSignal("");
+ 
+   const highlight = createMarker(text => <mark>{text()}</mark>);
+-  const regex = createMemo(() => makeSearchRegex(search()));
++  const searchTerm = search();
++  const regex = createMemo(() => makeSearchRegex(searchTerm));
+ 
+   return (
+     <div class="box-border flex min-h-screen w-full flex-col items-center justify-center space-y-4 bg-gray-800 p-24 text-white" data-rb-root="marker">
+diff --git a/packages/match/dev/index.tsx b/packages/match/dev/index.tsx
+index 2305f26..ab16fe5 100644
+--- a/packages/match/dev/index.tsx
++++ b/packages/match/dev/index.tsx
+@@ -108,7 +108,7 @@ const App: Component = () => {
+           <p class="mb-4 text-sm">Match on union literals</p>
+           <div class="flex min-h-[100px] items-center justify-center rounded border border-2 border-gray-500 p-4" data-rb-text="match-value-panel">
+             <MatchValue
+-              on={animal()?.type}
++              on={animal()}
+               case={{
+                 dog: () => <p>🐕</p>,
+                 cat: () => <p>🐱</p>,
+diff --git a/packages/state-machine/dev/index.tsx b/packages/state-machine/dev/index.tsx
+index 1f4a031..069baa0 100644
+--- a/packages/state-machine/dev/index.tsx
++++ b/packages/state-machine/dev/index.tsx
+@@ -34,7 +34,7 @@ const todo_states: MachineStates<{
+           class="px-2"
+           data-rb-dbl="sm-title"
+           style={{ "text-decoration": todo.done ? "line-through" : "none" }}
+-          onDblClick={() => next.Editing(props)}
++          onDblClick={() => next.Reading(props)}
+         >
+           {todo.title}
+         </div>
+@@ -47,7 +47,6 @@ const todo_states: MachineStates<{
+ 
+     function commit() {
+       onEdit(input.value);
+-      next.Reading(props);
+     }
+ 
+     let input!: HTMLInputElement;
+diff --git a/packages/timer/dev/index.tsx b/packages/timer/dev/index.tsx
+index 2d16ae7..81610b9 100644
+--- a/packages/timer/dev/index.tsx
++++ b/packages/timer/dev/index.tsx
+@@ -9,7 +9,7 @@ const Counter: Component<{ timer: typeof setTimeout | typeof setInterval }> = pr
+   const [paused, setPaused] = createSignal(false);
+   const increment = () => setCount(count() + 1);
+   createEffect(
+-    () => (key(), (setCount(0), createTimer(increment, () => !paused() && delay(), props.timer))),
++    () => (key(), (setCount(0), createTimer(increment, () => delay(), props.timer))),
+   );
+   return (
+     <div class="wrapper-v" data-rb-scope={"timer-" + props.timer.name}>

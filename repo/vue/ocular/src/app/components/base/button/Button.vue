@@ -1,0 +1,206 @@
+<template>
+  <button
+    v-tooltip="{ text: tooltip, position: tooltipPosition }"
+    :class="classes"
+    :data-testid="testId"
+    :disabled="disabled"
+    v-bind="dataAttributes"
+    :type="type"
+    @click="emit('click', $event)"
+  >
+    <ComponentTransition>
+      <component :is="icon" v-if="icon" :class="[$style.icon, iconClass]" />
+    </ComponentTransition>
+
+    <span v-if="text" :class="$style.text">{{ text }}</span>
+  </button>
+</template>
+
+<script lang="ts" setup>
+import ComponentTransition from '@components/misc/component-transition/ComponentTransition.vue';
+import { useThemeStyles } from '@composables/theme-styles/useThemeStyles.ts';
+import { computed, useCssModule } from 'vue';
+import type { Color } from '@composables/theme-styles/useThemeStyles.ts';
+import type { Placement } from '@directives/v-tooltip/vTooltip.ts';
+import type { ClassNames } from '@utils/types.ts';
+import type { Component } from 'vue';
+
+const emit = defineEmits<{
+  click: [v: MouseEvent];
+}>();
+
+const props = withDefaults(
+  defineProps<{
+    class?: ClassNames;
+    iconClass?: ClassNames;
+    icon?: Component;
+    text?: string;
+    tooltip?: string;
+    type?: 'button' | 'reset' | 'submit';
+    size?: 'xxs' | 'xs' | 's' | 'm' | 'l';
+    tooltipPosition?: Placement;
+    color?: Color;
+    textual?: boolean;
+    rounded?: boolean;
+    disabled?: boolean;
+    shadow?: boolean;
+    testId?: string;
+    data?: Record<string, string>;
+  }>(),
+  {
+    color: 'primary',
+    type: 'button',
+    size: 'm',
+    shadow: false,
+    textual: false,
+    rounded: false,
+    disabled: false
+  }
+);
+
+const styles = useCssModule();
+const theme = useThemeStyles(() => props.color);
+
+const dataAttributes = computed(() =>
+  props.data ? Object.fromEntries(Object.entries(props.data).map(([key, value]) => [`data-${key}`, value])) : {}
+);
+
+const classes = computed(() => [
+  styles.button,
+  styles[props.size],
+  {
+    [styles.hasIcon]: props.icon,
+    [styles.disabled]: props.disabled,
+    [styles.textual]: props.textual,
+    [styles.rounded]: props.rounded,
+    [styles.shadow]: props.shadow,
+    [styles.iconOnly]: props.icon && !props.text
+  },
+  props.class
+]);
+</script>
+
+<style lang="scss" module>
+@use '@styles/globals.scss';
+
+.button {
+  all: unset;
+  justify-self: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: v-bind('theme.color.base');
+  color: v-bind('theme.text.base');
+  border-radius: var(--border-radius-full);
+  transition: all var(--transition-s);
+  padding: 10px;
+
+  &.iconOnly {
+    padding: 3px;
+  }
+
+  &.hasIcon .text {
+    margin-left: 5px;
+  }
+
+  .icon {
+    width: 16px;
+    height: 16px;
+
+    @include globals.onMobileDevices {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .text {
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-l);
+    line-height: 1em;
+  }
+
+  &.xxs {
+    padding: 0;
+  }
+
+  &.xs {
+    padding: 4px 6px;
+
+    .text {
+      font-size: var(--font-size-xs);
+    }
+  }
+
+  &.s {
+    padding: 6px 8px;
+
+    .text {
+      font-size: var(--font-size-xs);
+    }
+  }
+
+  &.l {
+    .icon {
+      width: 20px;
+      height: 20px;
+
+      @include globals.onMobileDevices {
+        width: 24px;
+        height: 24px;
+      }
+    }
+
+    .text {
+      font-size: var(--font-size-m);
+    }
+  }
+
+  &:focus {
+    box-shadow: 0 0 0 2px v-bind('theme.focus');
+  }
+
+  &.rounded {
+    border-radius: 100px;
+  }
+
+  &.disabled {
+    cursor: not-allowed;
+  }
+
+  &.textual {
+    background: transparent;
+    color: v-bind('theme.pure.base');
+
+    &:focus {
+      box-shadow: none;
+    }
+
+    &.disabled,
+    &.disabled:hover {
+      color: v-bind('theme.pure.base');
+    }
+  }
+
+  &:not(.textual) {
+    &.disabled,
+    &.disabled:hover {
+      background: var(--c-dimmed);
+    }
+  }
+}
+
+@media (pointer: fine) {
+  .button {
+    &:hover {
+      background: v-bind('theme.color.hover');
+      color: v-bind('theme.text.hover');
+    }
+
+    &.textual:hover {
+      background: transparent;
+      color: v-bind('theme.pure.hover');
+    }
+  }
+}
+</style>

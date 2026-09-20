@@ -1,0 +1,585 @@
+diff --git a/src/app/core/auth/auth-service.spec.ts b/src/app/core/auth/auth-service.spec.ts
+deleted file mode 100644
+index ffe4053..0000000
+--- a/src/app/core/auth/auth-service.spec.ts
++++ /dev/null
+@@ -1,72 +0,0 @@
+-import { Component } from '@angular/core';
+-import { TestBed } from '@angular/core/testing';
+-import { provideRouter, Router } from '@angular/router';
+-import { LOCAL_STORAGE } from '@core/config/tokens';
+-import { User } from '@shared/models/user';
+-import { AuthService } from './auth-service';
+-
+-@Component({ selector: 'adm-login', template: '<h1>Login Page</h1>' })
+-class Login {}
+-
+-const mockUser: User = {
+-  id: '1',
+-  name: 'John',
+-  email: 'john@example.com',
+-  avatar: '',
+-  phoneNumber: '+123456789',
+-  role: 'admin',
+-  status: 'active',
+-  createdAt: new Date('2023-01-01'),
+-};
+-
+-describe('AuthService', () => {
+-  let service: AuthService;
+-  let router: Router;
+-  let storage: { removeItem: ReturnType<typeof vi.fn> };
+-
+-  beforeEach(() => {
+-    storage = {
+-      removeItem: vi.fn(),
+-    };
+-
+-    TestBed.configureTestingModule({
+-      providers: [
+-        AuthService,
+-        { provide: LOCAL_STORAGE, useValue: storage },
+-        provideRouter([{ path: 'login', component: Login }]),
+-      ],
+-    });
+-
+-    router = TestBed.inject(Router);
+-    service = TestBed.inject(AuthService);
+-  });
+-
+-  describe('initial state', () => {
+-    it('currentUser is null', () => {
+-      expect(service.currentUser()).toBeNull();
+-    });
+-
+-    it('isAuthenticated is false', () => {
+-      expect(service.isAuthenticated()).toBe(false);
+-    });
+-  });
+-
+-  it('setUser updates currentUser and isAuthenticated', () => {
+-    const user = mockUser;
+-    service.setUser(user);
+-
+-    expect(service.currentUser()).toEqual(user);
+-    expect(service.isAuthenticated()).toBe(true);
+-  });
+-
+-  it('logout clears user, removes token, and navigates to /login', async () => {
+-    service.setUser(mockUser);
+-
+-    await service.logout();
+-
+-    expect(service.currentUser()).toBeNull();
+-    expect(service.isAuthenticated()).toBe(false);
+-    expect(storage.removeItem).toHaveBeenCalledWith('token');
+-    expect(router.url).toBe('/login');
+-  });
+-});
+diff --git a/src/app/core/guards/auth.guard.spec.ts b/src/app/core/guards/auth.guard.spec.ts
+deleted file mode 100644
+index 65e3b01..0000000
+--- a/src/app/core/guards/auth.guard.spec.ts
++++ /dev/null
+@@ -1,69 +0,0 @@
+-import { Component } from '@angular/core';
+-import { TestBed } from '@angular/core/testing';
+-import { provideRouter, Router } from '@angular/router';
+-import { RouterTestingHarness } from '@angular/router/testing';
+-import { AuthService } from '@core/auth/auth-service';
+-import { LOCAL_STORAGE } from '@core/config/tokens';
+-import { Mocked } from 'vitest';
+-import { authGuard } from './auth-guard';
+-
+-
+-@Component({ template: '<h1>Protected Page</h1>' })
+-class Protected {}
+-@Component({ template: '<h1>Login Page</h1>' })
+-class Login {}
+-
+-describe('authGuard', () => {
+-  let authService: Mocked<AuthService>;
+-  let harness: RouterTestingHarness;
+-  let router: Router;
+-
+-  async function setup(isAuthenticated: boolean, token: string | null = null) {
+-    authService = {
+-      currentUser: vi.fn().mockReturnValue(isAuthenticated ? { id: '1' } : null),
+-      isAuthenticated: vi.fn().mockReturnValue(isAuthenticated),
+-      setUser: vi.fn(),
+-      logout: vi.fn(),
+-    } as unknown as Mocked<AuthService>;
+-
+-    TestBed.configureTestingModule({
+-      providers: [
+-        { provide: AuthService, useValue: authService },
+-        { provide: LOCAL_STORAGE, useValue: { getItem: vi.fn().mockReturnValue(token) } },
+-        provideRouter([
+-          { path: 'protected', component: Protected, canActivate: [authGuard] },
+-          { path: 'login', component: Login },
+-        ]),
+-      ],
+-    });
+-    router = TestBed.inject(Router);
+-    harness = await RouterTestingHarness.create();
+-  }
+-
+-  it('allows navigation when user is authenticated', async () => {
+-    await setup(true);
+-    await harness.navigateByUrl('/protected', Protected);
+-    expect(harness.routeNativeElement?.textContent).toContain('Protected Page');
+-    expect(router.url).toBe('/protected');
+-  });
+-
+-  it('redirects to login when user is not authenticated', async () => {
+-    await setup(false);
+-    await harness.navigateByUrl('/protected', Login);
+-    expect(harness.routeNativeElement?.textContent).toContain('Login Page');
+-    expect(router.url).toBe('/login');
+-  });
+-
+-  it('allows navigation when no user in memory but token exists', async () => {
+-    await setup(false, 'valid-token');
+-    await harness.navigateByUrl('/protected', Protected);
+-    expect(harness.routeNativeElement?.textContent).toContain('Protected Page');
+-    expect(authService.setUser).toHaveBeenCalledOnce();
+-  });
+-
+-  it('restores a user from token with the correct data shape', async () => {
+-    await setup(false, 'valid-token');
+-    await harness.navigateByUrl('/protected', Protected);
+-    expect(authService.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: '1', role: 'admin', status: 'active' }));
+-  });
+-});
+diff --git a/src/app/core/guards/no-auth.guard.spec.ts b/src/app/core/guards/no-auth.guard.spec.ts
+deleted file mode 100644
+index 8eb7ac2..0000000
+--- a/src/app/core/guards/no-auth.guard.spec.ts
++++ /dev/null
+@@ -1,79 +0,0 @@
+-import { Component } from '@angular/core';
+-import { TestBed } from '@angular/core/testing';
+-import { provideRouter, Router } from '@angular/router';
+-import { RouterTestingHarness } from '@angular/router/testing';
+-import { AuthService } from '@core/auth/auth-service';
+-import { LOCAL_STORAGE } from '@core/config/tokens';
+-import { Mocked } from 'vitest';
+-import { noAuthGuard } from './no-auth-guard';
+-
+-@Component({ template: '<h1>Home Page</h1>' })
+-class Home {}
+-@Component({ template: '<h1>Login Page</h1>' })
+-class Login {}
+-
+-describe('noAuthGuard', () => {
+-  let authService: Mocked<AuthService>;
+-  let harness: RouterTestingHarness;
+-  let router: Router;
+-
+-  async function setup(user: object | null = null, token: string | null = null) {
+-    authService = {
+-      currentUser: vi.fn().mockReturnValue(user),
+-      isAuthenticated: vi.fn().mockReturnValue(!!user),
+-      setUser: vi.fn(),
+-      logout: vi.fn(),
+-    } as unknown as Mocked<AuthService>;
+-
+-    TestBed.configureTestingModule({
+-      providers: [
+-        { provide: AuthService, useValue: authService },
+-        { provide: LOCAL_STORAGE, useValue: { getItem: vi.fn().mockReturnValue(token) } },
+-        provideRouter([
+-          { path: '', component: Home },
+-          { path: 'login', component: Login, canActivate: [noAuthGuard] },
+-        ]),
+-      ],
+-    });
+-
+-    router = TestBed.inject(Router);
+-    harness = await RouterTestingHarness.create();
+-  }
+-
+-  describe('when user is authenticated', () => {
+-    it('redirects away from login when user is in memory', async () => {
+-      await setup({ id: '1' });
+-      await harness.navigateByUrl('/login', Home);
+-      expect(harness.routeNativeElement?.textContent).toContain('Home Page');
+-      expect(router.url).toBe('/');
+-    });
+-
+-    it('redirects specifically to /', async () => {
+-      await setup({ id: '1' });
+-      await harness.navigateByUrl('/login', Home);
+-      expect(router.url).toBe('/');
+-    });
+-  });
+-
+-  describe('when no user in memory but token exists', () => {
+-    it('redirects away from login when token is in localStorage', async () => {
+-      await setup(null, 'valid-token');
+-      await harness.navigateByUrl('/login', Home);
+-      expect(harness.routeNativeElement?.textContent).toContain('Home Page');
+-    });
+-
+-    it('redirects specifically to /', async () => {
+-      await setup(null, 'valid-token');
+-      await harness.navigateByUrl('/login', Home);
+-      expect(router.url).toBe('/');
+-    });
+-  });
+-
+-  describe('when user is not authenticated', () => {
+-    it('allows navigation to login when no user and no token', async () => {
+-      await setup();
+-      await harness.navigateByUrl('/login', Login);
+-      expect(harness.routeNativeElement?.textContent).toContain('Login Page');
+-    });
+-  });
+-});
+diff --git a/src/app/shared/pipes/bytes/bytes.pipe.spec.ts b/src/app/shared/pipes/bytes/bytes.pipe.spec.ts
+deleted file mode 100644
+index 9623942..0000000
+--- a/src/app/shared/pipes/bytes/bytes.pipe.spec.ts
++++ /dev/null
+@@ -1,135 +0,0 @@
+-import { BytesPipe } from './bytes.pipe';
+-
+-describe('BytesPipe', () => {
+-  let pipe: BytesPipe;
+-
+-  beforeEach(() => {
+-    pipe = new BytesPipe();
+-  });
+-
+-  it('should create an instance', () => {
+-    expect(pipe).toBeTruthy();
+-  });
+-
+-  describe('Basic conversions', () => {
+-    it('should return 0 B for 0', () => {
+-      expect(pipe.transform(0)).toBe('0 B');
+-    });
+-
+-    it('should return 1 KB for 1024', () => {
+-      expect(pipe.transform(1024)).toBe('1.00 KB');
+-    });
+-
+-    it('should return 1 MB for 1024^2', () => {
+-      expect(pipe.transform(1048576)).toBe('1.00 MB');
+-    });
+-
+-    it('should return 1.50 KB for 1536', () => {
+-      expect(pipe.transform(1536)).toBe('1.50 KB');
+-    });
+-  });
+-
+-  describe('Decimals', () => {
+-    it('should use default decimals (2)', () => {
+-      expect(pipe.transform(1500)).toBe('1.46 KB');
+-    });
+-
+-    it('should use provided decimals', () => {
+-      expect(pipe.transform(1500, 0)).toBe('1 KB');
+-      expect(pipe.transform(1500, 1)).toBe('1.5 KB');
+-      expect(pipe.transform(1500, 3)).toBe('1.465 KB');
+-    });
+-
+-    it('should ignore decimals if negative', () => {
+-      expect(pipe.transform(1500, -1)).toBe('1.46484375 KB');
+-    });
+-  });
+-
+-  describe('Edge cases', () => {
+-    it('should handle empty string', () => {
+-      expect(pipe.transform('')).toBe('0 B');
+-    });
+-
+-    it('should handle NaN', () => {
+-      expect(pipe.transform('abc')).toBe('0 B');
+-    });
+-
+-    it('should handle null/undefined', () => {
+-      expect(pipe.transform(null)).toBe('0 B');
+-      expect(pipe.transform(undefined)).toBe('0 B');
+-    });
+-
+-    it('should handle negative numbers', () => {
+-      expect(pipe.transform(-1024)).toBe('-1.00 KB');
+-    });
+-
+-    it('should handle string inputs', () => {
+-      expect(pipe.transform('1024')).toBe('1.00 KB');
+-    });
+-
+-    it('should handle very large numbers (PB)', () => {
+-      const pb = Math.pow(1024, 5);
+-      expect(pipe.transform(pb)).toBe('1.00 PB');
+-    });
+-
+-    it('should handle numbers larger than max unit (cap at PB)', () => {
+-      const huge = Math.pow(1024, 6);
+-      expect(pipe.transform(huge)).toBe('1024.00 PB');
+-    });
+-  });
+-
+-  describe('Custom units', () => {
+-    it('should use custom units when provided', () => {
+-      const customUnits = ['b', 'kb', 'mb', 'gb', 'tb', 'pb'];
+-      expect(pipe.transform(1024, 2, customUnits)).toBe('1.00 kb');
+-    });
+-
+-    it('should use custom units for 0', () => {
+-      const customUnits = ['Bytes', 'Kilobytes', 'Megabytes'];
+-      expect(pipe.transform(0, 2, customUnits)).toBe('0 Bytes');
+-    });
+-
+-    it('should use custom units for negative numbers', () => {
+-      const customUnits = ['b', 'kb', 'mb'];
+-      expect(pipe.transform(-1024, 2, customUnits)).toBe('-1.00 kb');
+-    });
+-
+-    it('should handle custom units with fewer elements', () => {
+-      const shortUnits = ['B', 'KB']; // Max is KB
+-      const mbValue = 1024 * 1024;
+-      expect(pipe.transform(mbValue, 2, shortUnits)).toBe('1024.00 KB');
+-    });
+-  });
+-
+-  describe('SI units (base 1000)', () => {
+-    it('should use SI base (1000) when useSI is true', () => {
+-      expect(pipe.transform(1000, 2, null, true)).toBe('1.00 KB');
+-      expect(pipe.transform(1000000, 2, null, true)).toBe('1.00 MB');
+-      expect(pipe.transform(1000000000, 2, null, true)).toBe('1.00 GB');
+-    });
+-
+-    it('should use binary base (1024) when useSI is false (default)', () => {
+-      expect(pipe.transform(1024, 2, null, false)).toBe('1.00 KB');
+-      expect(pipe.transform(1000, 2, null, false)).toBe('1000.00 B');
+-    });
+-
+-    it('should handle SI with custom decimals', () => {
+-      expect(pipe.transform(1500, 0, null, true)).toBe('2 KB');
+-      expect(pipe.transform(1500, 3, null, true)).toBe('1.500 KB');
+-    });
+-
+-    it('should handle SI with custom units', () => {
+-      const customUnits = ['b', 'kb', 'mb'];
+-      expect(pipe.transform(1000, 2, customUnits, true)).toBe('1.00 kb');
+-    });
+-
+-    it('should handle SI with negative numbers', () => {
+-      expect(pipe.transform(-1000, 2, null, true)).toBe('-1.00 KB');
+-    });
+-
+-    it('should handle very large SI numbers', () => {
+-      const pb = Math.pow(1000, 5);
+-      expect(pipe.transform(pb, 2, null, true)).toBe('1.00 PB');
+-    });
+-  });
+-});
+diff --git a/src/app/shared/pipes/initials/initials.pipe.spec.ts b/src/app/shared/pipes/initials/initials.pipe.spec.ts
+deleted file mode 100644
+index fe728eb..0000000
+--- a/src/app/shared/pipes/initials/initials.pipe.spec.ts
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import { InitialsPipe } from './initials.pipe';
+-
+-describe('InitialsPipe', () => {
+-  let pipe: InitialsPipe;
+-
+-  beforeEach(() => {
+-    pipe = new InitialsPipe();
+-  });
+-
+-  it('should create an instance', () => {
+-    expect(pipe).toBeTruthy();
+-  });
+-
+-  it('should return two initials for a full name', () => {
+-    expect(pipe.transform('Oussmema Sahbeni')).toBe('OS');
+-  });
+-
+-  it('should return a single initial for a single name', () => {
+-    expect(pipe.transform('Cher')).toBe('C');
+-  });
+-
+-  it('should use only the first two words', () => {
+-    expect(pipe.transform('Ada M. Lovelace')).toBe('AM');
+-  });
+-
+-  it('should uppercase lowercase names', () => {
+-    expect(pipe.transform('jane doe')).toBe('JD');
+-  });
+-
+-  it('should ignore extra whitespace between words', () => {
+-    expect(pipe.transform('  Jane   Doe  ')).toBe('JD');
+-  });
+-
+-  it('should return an empty string for empty input', () => {
+-    expect(pipe.transform('')).toBe('');
+-  });
+-
+-  it('should return an empty string for null or undefined', () => {
+-    expect(pipe.transform(null)).toBe('');
+-    expect(pipe.transform(undefined)).toBe('');
+-  });
+-});
+diff --git a/src/app/shared/pipes/timeago/time-ago.spec.ts b/src/app/shared/pipes/timeago/time-ago.spec.ts
+deleted file mode 100644
+index a777e76..0000000
+--- a/src/app/shared/pipes/timeago/time-ago.spec.ts
++++ /dev/null
+@@ -1,152 +0,0 @@
+-import { signal, WritableSignal } from '@angular/core';
+-import { TestBed } from '@angular/core/testing';
+-import { TranslocoService } from '@jsverse/transloco';
+-import { TimeAgoPipe } from './time-ago.pipe';
+-
+-const SEC = 1_000;
+-const MIN = 60 * SEC;
+-const HOUR = 60 * MIN;
+-const DAY = 24 * HOUR;
+-const WEEK = 7 * DAY;
+-const MONTH = 30 * DAY;
+-const YEAR = 365 * DAY;
+-const BASE_NOW = new Date('2026-01-15T12:00:00.000Z');
+-
+-describe('TimeAgoPipe', () => {
+-  let pipe: TimeAgoPipe;
+-  let activeLang: WritableSignal<string>;
+-
+-  beforeEach(() => {
+-    vi.useFakeTimers();
+-    vi.setSystemTime(BASE_NOW);
+-    activeLang = signal('en');
+-
+-    TestBed.configureTestingModule({
+-      providers: [
+-        {
+-          provide: TranslocoService,
+-          useValue: {
+-            activeLang: vi.fn(() => activeLang()),
+-          },
+-        },
+-      ],
+-    });
+-
+-    pipe = TestBed.runInInjectionContext(() => new TimeAgoPipe());
+-  });
+-
+-  afterEach(() => {
+-    vi.useRealTimers();
+-    vi.restoreAllMocks();
+-  });
+-
+-  it('should create', () => {
+-    expect(pipe).toBeTruthy();
+-  });
+-
+-  // ── Null / invalid inputs
+-  it('returns empty string for nullish/invalid values', () => {
+-    expect(pipe.transform(null)).toBe('');
+-    expect(pipe.transform(undefined)).toBe('');
+-    expect(pipe.transform('')).toBe('');
+-  });
+-
+-  it('should handle invalid dates gracefully', () => {
+-    expect(pipe.transform('invalid-date')).toBe('');
+-  });
+-
+-  // ── "now" threshold (< 5 s)
+-  it('should return "now" for dates very close to the current time', () => {
+-    const nowTs = BASE_NOW.getTime();
+-    expect(pipe.transform(BASE_NOW)).toBe('now');
+-    expect(pipe.transform(new Date(nowTs - 3 * SEC))).toBe('now');
+-    expect(pipe.transform(new Date(nowTs + 4 * SEC))).toBe('now');
+-  });
+-
+-  // ── Past dates
+-
+-  it('formats seconds ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 30 * SEC));
+-    expect(result).toBe('30 seconds ago');
+-  });
+-
+-  it('formats 1 minute ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - MIN));
+-    expect(result).toBe('1 minute ago');
+-  });
+-
+-  it('formats minutes ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 45 * MIN));
+-    expect(result).toBe('45 minutes ago');
+-  });
+-
+-  it('formats hours ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 3 * HOUR));
+-    expect(result).toBe('3 hours ago');
+-  });
+-
+-  it('formats days ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 5 * DAY));
+-    expect(result).toBe('5 days ago');
+-  });
+-
+-  it('formats weeks ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 2 * WEEK));
+-    expect(result).toBe('2 weeks ago');
+-  });
+-
+-  it('formats months ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 3 * MONTH));
+-    expect(result).toBe('3 months ago');
+-  });
+-
+-  it('formats years ago', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() - 2 * YEAR));
+-    expect(result).toBe('2 years ago');
+-  });
+-
+-  // ── Future dates
+-
+-  it('formats seconds in the future', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() + 10 * SEC));
+-    expect(result).toBe('in 10 seconds');
+-  });
+-
+-  it('formats hours in the future', () => {
+-    const result = pipe.transform(new Date(BASE_NOW.getTime() + 2 * HOUR));
+-    expect(result).toBe('in 2 hours');
+-  });
+-
+-  // ── Accepts a date string
+-
+-  it('accepts an ISO date string', () => {
+-    const date = new Date(BASE_NOW.getTime() - HOUR);
+-    expect(pipe.transform(date.toISOString())).toBe('1 hour ago');
+-  });
+-
+-  // ── Language reactivity
+-
+-  it('re-formats in French when the active language signal changes', () => {
+-    const date = new Date(BASE_NOW.getTime() - 2 * HOUR);
+-
+-    const english = pipe.transform(date);
+-    expect(english).toBe('2 hours ago');
+-
+-    activeLang.set('fr');
+-
+-    const french = pipe.transform(date);
+-    expect(french).toBe('il y a 2 heures');
+-  });
+-
+-  it('re-formats in Arabic when the active language signal changes', () => {
+-    const date = new Date(BASE_NOW.getTime() - 2 * HOUR);
+-
+-    const english = pipe.transform(date);
+-    expect(english).toBe('2 hours ago');
+-
+-    activeLang.set('ar');
+-
+-    const arabic = pipe.transform(date);
+-    expect(arabic).toBe('قبل ساعتين');
+-  });
+-});

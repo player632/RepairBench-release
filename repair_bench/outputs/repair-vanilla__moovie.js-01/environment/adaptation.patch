@@ -1,0 +1,113 @@
+diff --git a/index.html b/index.html
+index 9c6bd74..a072fe9 100644
+--- a/index.html
++++ b/index.html
+@@ -16,8 +16,8 @@
+   <link rel="stylesheet" type="text/css" href="css/moovie.css">
+ 
+   <!-- GFonts -->
+-  <link rel="preconnect" href="https://fonts.gstatic.com">
+-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100&display=swap" rel="stylesheet"> 
++  <!-- offline harness: the remote font preconnect is gone; this tree must render with no network at all -->
++  <link href="rb-offline/inert.css" rel="stylesheet"> 
+ 
+ </head>
+ 
+@@ -34,24 +34,27 @@
+             </div>
+             
+             <div style='max-width: 800px; position: relative; margin: 0 auto; margin-top: 0px; margin-top: 64px;'>
+-                <video id="example" poster="https://raw.githubusercontent.com/BMSVieira/moovie.js/main/demo-template/images/poster.png">
+-                    <source src="https://mooviehosted.000webhostapp.com/trailer.mp4" type="video/mp4">
+-                    <track kind="captions" label="Portuguese" srclang="pt" src="https://raw.githubusercontent.com/BMSVieira/moovie.js/main/demo-template/subtitles/pt.vtt">
+-                    <track kind="captions" label="English" srclang="en" src="https://raw.githubusercontent.com/BMSVieira/moovie.js/main/demo-template/subtitles/en.vtt">
+-                    <track kind="captions" label="French" srclang="en" src="https://raw.githubusercontent.com/BMSVieira/moovie.js/main/demo-template/subtitles/french.srt">
++                <video id="example" poster="demo-template/images/poster.png">
++                    <!-- offline harness: the remote trailer is gone. rb-offline/boot.js generates a local silent PCM WAV blob of an exact duration (12 s) and attaches it to this element before the player is constructed, so every time-based reading is reproducible and nothing is fetched. -->
++                    <track kind="captions" label="Portuguese" srclang="pt" src="demo-template/subtitles/pt.vtt">
++                    <track kind="captions" label="English" srclang="en" src="demo-template/subtitles/en.vtt">
++                    <track kind="captions" label="French" srclang="en" src="demo-template/subtitles/french.srt">
+                     Your browser does not support the video tag.
+                 </video>
+-                <a class="btn btn-dark" href="https://github.com/BMSVieira/moovie.js" target="_blank" style="margin-top:50px; margin-bottom: 130px;">Download on GitHub</a>
++                <a class="btn btn-dark" href="#" style="margin-top:50px; margin-bottom: 130px;">Download on GitHub</a>
+             </div>
+       </div>
+     </div>
+   </div>
+   <!-- Moovie JS Core -->
++  <script src="rb-offline/boot.js"></script>
+   <script src="js/moovie.js"></script>
+   <script>
+     document.addEventListener("DOMContentLoaded", function() {
+-            var demo1 = new Moovie({
++            rbAttachMedia("example", 12);
++            window.rbPlayer = new Moovie({
+               selector: "#example",
++              moovie_internalID: "rbA",
+               dimensions: {
+                    width: "100%"
+               },
+diff --git a/rb-offline/boot.js b/rb-offline/boot.js
+new file mode 100644
+index 0000000..9c0c027
+--- /dev/null
++++ b/rb-offline/boot.js
+@@ -0,0 +1,45 @@
++/* Offline media stand-in - harness furniture, NOT part of the application under test.
++   The upstream demo page pointed its media element at a remote trailer file and its caption
++   tracks at a remote code-hosting origin. This tree has to run with no network at all, so the
++   media is generated locally instead: a silent PCM WAV blob whose duration is exactly the number
++   of seconds asked for, which makes every time-based reading in the checkpoints reproducible to
++   the millisecond and independent of any host, clock or bandwidth.
++   Two window members are added, both prefixed rb, and neither one touches the player's own code:
++   the player is constructed by the page exactly as upstream does it, from the same document, with
++   the same options, and reads the media source off the media element the way it always did. */
++(function () {
++  'use strict';
++  function wavUrl(seconds) {
++    var rate = 8000;
++    var frames = Math.round(rate * seconds);
++    var buffer = new ArrayBuffer(44 + frames * 2);
++    var view = new DataView(buffer);
++    function ascii(offset, text) {
++      for (var i = 0; i < text.length; i++) { view.setUint8(offset + i, text.charCodeAt(i)); }
++    }
++    ascii(0, 'RIFF');
++    view.setUint32(4, 36 + frames * 2, true);
++    ascii(8, 'WAVE');
++    ascii(12, 'fmt ');
++    view.setUint32(16, 16, true);
++    view.setUint16(20, 1, true);
++    view.setUint16(22, 1, true);
++    view.setUint32(24, rate, true);
++    view.setUint32(28, rate * 2, true);
++    view.setUint16(32, 2, true);
++    view.setUint16(34, 16, true);
++    ascii(36, 'data');
++    view.setUint32(40, frames * 2, true);
++    for (var k = 0; k < frames; k++) { view.setInt16(44 + k * 2, 0, true); }
++    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
++  }
++  window.rbMedia = wavUrl;
++  window.rbAttachMedia = function (id, seconds) {
++    var el = document.getElementById(id);
++    if (!el) { return null; }
++    el.muted = true;
++    el.setAttribute('playsinline', '');
++    el.src = wavUrl(seconds);
++    return el.src;
++  };
++})();
+diff --git a/rb-offline/inert.css b/rb-offline/inert.css
+new file mode 100644
+index 0000000..2ab2748
+--- /dev/null
++++ b/rb-offline/inert.css
+@@ -0,0 +1,6 @@
++/* Offline stand-in for the remote webfont stylesheet the upstream demo page linked.
++   The tree has to render with no network at all, so that request is replaced by this inert file:
++   the document keeps the same number of stylesheet links and the same cascade order, and the one
++   family that used to come from the network simply falls back to the generic stack the browser
++   already has. There is deliberately no rule in here - nothing on the tested surface depends on
++   which font is used, and adding a rule here would be an undeclared behaviour change. */

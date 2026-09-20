@@ -1,0 +1,173 @@
+/* rb-probe/1 - a neutral, read-only measurement probe.
+ *
+ * Added by environment/instrumentation.patch as src/rb-probe.js and imported as the FIRST line of
+ * src/main.js, so every wrapper below is installed before any application module body runs.
+ *
+ * What it does, exhaustively:
+ *   1. publishes boot and live scalars on window.__rb (every getter returns a STRING);
+ *   2. clears localStorage / sessionStorage once at boot, so a checkpoint can never inherit state
+ *      from a previous one (this seed persists the designer canvas under 'widget__list__backup'
+ *      and the form config under 'form__config__backup' on EVERY history step, and reads both
+ *      back in initHistoryData(), so without this reset the second checkpoint on a page would
+ *      start from the first checkpoint's canvas);
+ *   3. wraps window.fetch / XMLHttpRequest.prototype.open / navigator.sendBeacon / window.open and
+ *      the src setter of img / iframe / script / source, classifying every url as same-origin or
+ *      egress, and counts cross-origin entries in performance resource timing;
+ *   4. counts uncaught errors and unhandled rejections.
+ *
+ * What it never does: it renders nothing, creates no element, adds no data-testid, holds no
+ * selector / constant / expectation belonging to any defect, mutates no application state, and
+ * reads no form data. It cannot make a broken behaviour pass, and it cannot make a working
+ * behaviour fail: every scalar it publishes is a COUNT of traffic or errors the application itself
+ * produced.
+ *
+ * No service-worker / cache neutralisation here (unlike a PWA seed): this seed registers no
+ * service worker and opens no CacheStorage - `serviceWorker` and `caches` both have 0 hits in
+ * src/** - so there is nothing to neutralise and adding a stub would only be noise.
+ *
+ * Plain ES2018 JavaScript on purpose: this is a vite 2 / vue 3 seed with no TypeScript in the
+ * build (vite.config.js resolves .js/.vue/.json/.ts, and every source file under src/ is .js or
+ * .vue), so the probe is written in the same dialect as the code it lives in.
+ */
+
+const w = window;
+const nav = navigator;
+
+const state = {
+  egress: 0,
+  same: 0,
+  resourceEgress: 0,
+  errors: 0,
+  rejections: 0,
+};
+const hosts = [];
+
+function classify(raw) {
+  let text = '';
+  if (typeof raw === 'string') text = raw;
+  else if (raw && typeof raw.url === 'string') text = raw.url;
+  else return 'skip';
+  if (!text) return 'skip';
+  try {
+    const url = new URL(text, window.location.href);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'skip';
+    if (url.origin === window.location.origin) return 'same';
+    if (hosts.indexOf(url.host) < 0) hosts.push(url.host);
+    return 'egress';
+  } catch (e) {
+    return 'skip';
+  }
+}
+
+function note(raw) {
+  const kind = classify(raw);
+  if (kind === 'same') state.same += 1;
+  else if (kind === 'egress') state.egress += 1;
+}
+
+// ---- 3a. request APIs ------------------------------------------------------------------------
+if (typeof w.fetch === 'function') {
+  const nativeFetch = w.fetch.bind(window);
+  w.fetch = function (input, init) {
+    note(input);
+    return nativeFetch(input, init);
+  };
+}
+
+const xhrProto = w.XMLHttpRequest && w.XMLHttpRequest.prototype ? w.XMLHttpRequest.prototype : null;
+if (xhrProto && typeof xhrProto.open === 'function') {
+  const nativeOpen = xhrProto.open;
+  xhrProto.open = function (...args) {
+    note(args[1]);
+    return nativeOpen.apply(this, args);
+  };
+}
+
+if (typeof nav.sendBeacon === 'function') {
+  const nativeBeacon = nav.sendBeacon.bind(navigator);
+  nav.sendBeacon = function (url, data) {
+    note(url);
+    return nativeBeacon(url, data);
+  };
+}
+
+// window.open is counted and then refused: a probe that let the call through would itself create
+// the cross-origin navigation it is supposed to be measuring. The seed has zero live window.open
+// call sites (census: the only `window.open(` hit in src/** is form-designer/index.vue:219, and
+// that line is commented out), so this wrapper is inert.
+w.open = function (...args) {
+  note(args[0]);
+  return null;
+};
+
+// ---- 3b. subresource src setters (not covered by fetch/XHR) ----------------------------------
+// This seed has two: utils/util.js:119 loadRemoteScript() (js-beautify for the SFC dialog) and
+// widget-panel/index.vue:74,76 <img :src="ft.imgUrl"> for the eight form templates.
+function hookSrc(ctor) {
+  if (!ctor || !ctor.prototype) return;
+  const desc = Object.getOwnPropertyDescriptor(ctor.prototype, 'src');
+  if (!desc || typeof desc.set !== 'function') return;
+  const nativeSet = desc.set;
+  Object.defineProperty(ctor.prototype, 'src', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get: desc.get,
+    set(value) {
+      note(value);
+      nativeSet.call(this, value);
+    },
+  });
+}
+hookSrc(w.HTMLImageElement);
+hookSrc(w.HTMLIFrameElement);
+hookSrc(w.HTMLScriptElement);
+hookSrc(w.HTMLSourceElement);
+
+// ---- 3c. resource timing (catches anything the wrappers above cannot see, e.g. CSS fonts) -----
+function scanResources() {
+  let n = 0;
+  try {
+    const entries = performance.getEntriesByType('resource');
+    for (const entry of entries) if (classify(entry.name) === 'egress') n += 1;
+  } catch (e) {
+    n = 0;
+  }
+  state.resourceEgress = n;
+}
+
+// ---- 2. storage reset ------------------------------------------------------------------------
+try { w.localStorage.clear(); } catch (e) { /* storage may be blocked; the getter reports -1 */ }
+try { w.sessionStorage.clear(); } catch (e) { /* ditto */ }
+
+// ---- 4. error counters -----------------------------------------------------------------------
+w.addEventListener('error', function () { state.errors += 1; });
+w.addEventListener('unhandledrejection', function () { state.rejections += 1; });
+
+// ---- 1. published scalars (every getter returns a STRING) ------------------------------------
+const api = {
+  version: 'rb-probe/1',
+  ready: '0',
+  get egressCount() { return String(state.egress); },
+  get egressHosts() { return hosts.slice().sort().join('|'); },
+  get sameOriginCount() { return String(state.same); },
+  get egressResources() { scanResources(); return String(state.resourceEgress); },
+  get errorCount() { return String(state.errors); },
+  get rejectionCount() { return String(state.rejections); },
+  get storageKeys() {
+    let local = -1;
+    let session = -1;
+    try { local = w.localStorage.length; } catch (e) { local = -1; }
+    try { session = w.sessionStorage.length; } catch (e) { session = -1; }
+    return String(local) + '/' + String(session);
+  },
+  get href() { return String(window.location.href); },
+  get hash() { return String(window.location.hash); },
+  get search() { return String(window.location.search); },
+  get pathname() { return String(window.location.pathname); },
+};
+w.__rb = api;
+
+function markReady() { api.ready = '1'; }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markReady);
+else markReady();
+w.addEventListener('load', markReady);

@@ -1,0 +1,154 @@
+diff --git a/projects/angular-tiptap-editor/src/lib/components/table-of-contents/ate-table-of-contents.component.ts b/projects/angular-tiptap-editor/src/lib/components/table-of-contents/ate-table-of-contents.component.ts
+index 1f449d5..dd2a1ff 100644
+--- a/projects/angular-tiptap-editor/src/lib/components/table-of-contents/ate-table-of-contents.component.ts
++++ b/projects/angular-tiptap-editor/src/lib/components/table-of-contents/ate-table-of-contents.component.ts
+@@ -449,7 +449,7 @@
+       case 2:
+         return 12;
+       case 3:
+-        return 8;
++        return 18;
+       case 4:
+         return 6;
+       case 5:
+diff --git a/projects/angular-tiptap-editor/src/lib/components/toolbar/ate-toolbar.component.ts b/projects/angular-tiptap-editor/src/lib/components/toolbar/ate-toolbar.component.ts
+index 8ec4e56..26156f4 100644
+--- a/projects/angular-tiptap-editor/src/lib/components/toolbar/ate-toolbar.component.ts
++++ b/projects/angular-tiptap-editor/src/lib/components/toolbar/ate-toolbar.component.ts
+@@ -21,7 +21,7 @@
+           [title]="t().bold"
+           [active]="state().marks.bold"
+           [disabled]="!state().can.toggleBold"
+-          (buttonClick)="onCommand('toggleBold')" />
++          (buttonClick)="onCommand('toggleItalic')" />
+       }
+       @if (config().italic) {
+         <ate-button
+diff --git a/projects/angular-tiptap-editor/src/lib/config/ate-toc.config.ts b/projects/angular-tiptap-editor/src/lib/config/ate-toc.config.ts
+index 9e5b3a6..ef7a48c 100644
+--- a/projects/angular-tiptap-editor/src/lib/config/ate-toc.config.ts
++++ b/projects/angular-tiptap-editor/src/lib/config/ate-toc.config.ts
+@@ -11,5 +11,5 @@
+   variant: "minimal",
+   hoverExpand: true,
+   showTitle: true,
+-  maxDepth: 6,
++  maxDepth: 2,
+ };
+diff --git a/projects/angular-tiptap-editor/src/lib/services/ate-editor-commands.service.ts b/projects/angular-tiptap-editor/src/lib/services/ate-editor-commands.service.ts
+index 000fea0..471287d 100644
+--- a/projects/angular-tiptap-editor/src/lib/services/ate-editor-commands.service.ts
++++ b/projects/angular-tiptap-editor/src/lib/services/ate-editor-commands.service.ts
+@@ -404,7 +404,7 @@
+ 
+   // --- Table Commands ---
+ 
+-  insertTable(editor: Editor, rows = 3, cols = 3): void {
++  insertTable(editor: Editor, rows = 3, cols = 4): void {
+     if (!editor) {
+       return;
+     }
+diff --git a/projects/angular-tiptap-editor/src/lib/utils/ate-markdown.utils.ts b/projects/angular-tiptap-editor/src/lib/utils/ate-markdown.utils.ts
+index 57202ba..f0e7118 100644
+--- a/projects/angular-tiptap-editor/src/lib/utils/ate-markdown.utils.ts
++++ b/projects/angular-tiptap-editor/src/lib/utils/ate-markdown.utils.ts
+@@ -41,7 +41,7 @@
+ 
+   if (/^h[1-6]$/.test(tag)) {
+     const level = parseInt(tag[1], 10);
+-    const prefix = "#".repeat(level);
++    const prefix = "#".repeat(level + 1);
+     return `\n\n${prefix} ${inner().trim()}\n\n`;
+   }
+ 
+diff --git a/src/components/configuration-panel.component.ts b/src/components/configuration-panel.component.ts
+index 5f17417..69494fb 100644
+--- a/src/components/configuration-panel.component.ts
++++ b/src/components/configuration-panel.component.ts
+@@ -310,7 +310,7 @@
+ 
+   // Counters
+   readonly toolbarActiveCount = computed(
+-    () => this.toolbarItems().filter(item => this.isToolbarItemActive(item.key)).length
++    () => this.toolbarItems().filter(item => !this.isToolbarItemActive(item.key)).length
+   );
+   readonly bubbleMenuActiveCount = computed(
+     () => this.bubbleMenuItems().filter(item => this.isBubbleMenuItemActive(item.key)).length
+diff --git a/src/components/content-view.component.ts b/src/components/content-view.component.ts
+index bd23253..fc96c28 100644
+--- a/src/components/content-view.component.ts
++++ b/src/components/content-view.component.ts
+@@ -320,7 +320,7 @@
+   readonly ateI18n = inject(AteI18nService);
+   readonly appI18n = inject(AppI18nService);
+ 
+-  readonly activeTab = signal<ContentTab>("code");
++  readonly activeTab = signal<ContentTab>("html");
+   readonly isCopied = signal(false);
+ 
+   readonly currentContent = computed(() => {
+diff --git a/src/components/editor-actions.component.ts b/src/components/editor-actions.component.ts
+index 7248be6..336b1b1 100644
+--- a/src/components/editor-actions.component.ts
++++ b/src/components/editor-actions.component.ts
+@@ -26,7 +26,7 @@
+         <button
+           class="app-segmented-btn"
+           data-testid="mode-editor"
+-          [class.active]="!editorState().showCodeMode"
++          [class.active]="editorState().showCodeMode"
+           (click)="toggleCodeMode(false)"
+           [title]="appI18n.tooltips().switchToEditor">
+           <span class="material-symbols-outlined">edit</span>
+diff --git a/src/components/theme-customizer.component.ts b/src/components/theme-customizer.component.ts
+index c0fe715..67f1925 100644
+--- a/src/components/theme-customizer.component.ts
++++ b/src/components/theme-customizer.component.ts
+@@ -557,7 +557,7 @@
+     }
+ 
+     if (value.startsWith("#")) {
+-      return value.substring(0, 7); // Strip possible alpha
++      return value.substring(0, 4); // Strip possible alpha
+     }
+ 
+     // Fallback convert to hex and strip alpha
+diff --git a/src/services/code-generator.service.ts b/src/services/code-generator.service.ts
+index 53951b0..fcb4214 100644
+--- a/src/services/code-generator.service.ts
++++ b/src/services/code-generator.service.ts
+@@ -670,7 +670,7 @@
+   private generateSimpleSlashCommandsConfig(activeCommands: Set<AteSlashCommandKey>): string {
+     return ATE_SLASH_COMMAND_KEYS.map(key => {
+       const isActive = activeCommands.has(key);
+-      const comment = isActive ? "" : " // ";
++      const comment = isActive ? " // " : "";
+       return `${comment}    ${key}: ${isActive},`;
+     }).join("\n");
+   }
+diff --git a/src/services/editor-configuration.service.ts b/src/services/editor-configuration.service.ts
+index a5536e8..9320ae6 100644
+--- a/src/services/editor-configuration.service.ts
++++ b/src/services/editor-configuration.service.ts
+@@ -596,7 +596,7 @@
+     this._editorState.update(state => ({
+       ...state,
+       notionMode: isNotion,
+-      showToolbar: !isNotion,
++      showToolbar: isNotion,
+       showFooter: !isNotion,
+       showBubbleMenu: true,
+       showSlashCommandsMenu: true,
+diff --git a/src/services/toast.service.ts b/src/services/toast.service.ts
+index b39368f..f5624a6 100644
+--- a/src/services/toast.service.ts
++++ b/src/services/toast.service.ts
+@@ -15,7 +15,7 @@
+ 
+   readonly toasts = this._toasts.asReadonly();
+ 
+-  show(message: string, type: Toast["type"] = "info", duration = 3000) {
++  show(message: string, type: Toast["type"] = "info", duration = 30000) {
+     const id = this.nextId++;
+     const toast: Toast = { id, message, type };
+ 

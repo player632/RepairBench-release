@@ -1,0 +1,44 @@
+import { defineConfig } from 'vitest/config';
+import { playwright } from '@vitest/browser-playwright';
+import tailwindcss from '@tailwindcss/vite';
+import { sveltekit } from '@sveltejs/kit/vite';
+
+export default defineConfig({
+	plugins: [tailwindcss(), sveltekit()],
+	optimizeDeps: {
+		include: ['@lucide/svelte/icons/badge-check']
+	},
+	test: {
+		expect: { requireAssertions: true },
+		projects: [
+			{
+				extends: './vite.config.ts',
+				test: {
+					name: 'client',
+					testTimeout: 30_000,
+					setupFiles: ['vitest-browser-svelte'],
+					browser: {
+						enabled: true,
+						provider: playwright({
+							launchOptions: {
+								args: ['--no-sandbox', '--disable-setuid-sandbox']
+							}
+						}),
+						instances: [{ browser: 'chromium', headless: true }]
+					},
+					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
+					exclude: ['src/lib/server/**']
+				}
+			},
+			{
+				extends: './vite.config.ts',
+				test: {
+					name: 'server',
+					environment: 'node',
+					include: ['src/**/*.{test,spec}.{js,ts}'],
+					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+				}
+			}
+		]
+	}
+});

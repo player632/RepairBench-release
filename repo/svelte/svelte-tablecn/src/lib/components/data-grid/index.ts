@@ -1,0 +1,42 @@
+export { default as DataGrid } from './data-grid.svelte';
+export { default as DataGridCell } from './data-grid-cell.svelte';
+export { default as DataGridRow } from './data-grid-row.svelte';
+export { default as DataGridColumnHeader } from './data-grid-column-header.svelte';
+export { default as DataGridCellWrapper } from './data-grid-cell-wrapper.svelte';
+export { default as DataGridSearch } from './data-grid-search.svelte';
+export { default as DataGridContextMenu } from './data-grid-context-menu.svelte';
+export { default as DataGridPasteDialog } from './data-grid-paste-dialog.svelte';
+export { default as DataGridSkeleton } from './data-grid-skeleton.svelte';
+export { default as DataGridSkeletonToolbar } from './data-grid-skeleton-toolbar.svelte';
+export { default as DataGridSkeletonGrid } from './data-grid-skeleton-grid.svelte';
+export { getDataGridSelectColumn } from './data-grid-select-column';
+export type { GetDataGridSelectColumnOptions } from './data-grid-select-column';
+
+// Menu components
+export { default as DataGridFilterMenu } from './data-grid-filter-menu.svelte';
+export { default as DataGridSortMenu } from './data-grid-sort-menu.svelte';
+export { default as DataGridViewMenu } from './data-grid-view-menu.svelte';
+export { default as DataGridRowHeightMenu } from './data-grid-row-height-menu.svelte';
+
+// Utility components
+export { default as DataGridKeyboardShortcuts } from './data-grid-keyboard-shortcuts.svelte';
+export { default as DataGridActionBar } from './data-grid-action-bar.svelte';
+
+// Cell variants
+export * from './cells';
+
+// Re-export the hook
+export { useDataGrid } from '$lib/hooks/use-data-grid.svelte.js';
+export type { UseDataGridOptions, UseDataGridReturn } from '$lib/hooks/use-data-grid.svelte.js';
+export { useDataGridUndoRedo } from '$lib/hooks/use-data-grid-undo-redo.svelte.js';
+export type {
+	UseDataGridUndoRedoOptions,
+	UseDataGridUndoRedoReturn,
+	UndoRedoCellUpdate
+} from '$lib/hooks/use-data-grid-undo-redo.svelte.js';
+
+// Re-export types
+export * from '$lib/types/data-grid.js';
+
+// Re-export filter utilities
+export * from '$lib/data-grid-filters.js';

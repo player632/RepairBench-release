@@ -1,0 +1,205 @@
+diff --git a/fontawesome-inert.css b/fontawesome-inert.css
+new file mode 100644
+index 0000000..3036ecb
+--- /dev/null
++++ b/fontawesome-inert.css
+@@ -0,0 +1,55 @@
++/* Offline inert stand-in for the third-party icon webfont stylesheet the pristine entry document
++   pulled from a CDN (index.html:7, cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css,
++   removed by the same adaptation face that adds this file). Added by the harness
++   (environment/adaptation.patch), not by the author.
++
++   What this file deliberately does NOT contain:
++     - no @font-face rule, so the browser has nothing to fetch: the served face makes zero requests
++       to any host other than the loopback address it is served from (measurable through
++       window.__RB_SEED_FACE__.blocked / .same_origin_only, installed by js/rb/seed.js);
++     - no downloaded or vendored glyph artwork, and no invented artwork either;
++     - no rule that changes the geometry, colour, stacking or hit testing of anything the
++       application styles itself. Every declaration below is confined to the icon slots.
++
++   What it does contain is only the box-metrics half of the upstream icon rules, so the five icon
++   slots in this tree keep their inline-box geometry, their line box and their direction and stay
++   exactly where the page puts them. The five slots (a tree-wide census, 0 other uses):
++     index.html:79  <i class="fa-solid fa-bars">            the Activities button glyph
++     index.html:89  <button id="close-menu" class="fa-regular fa-circle-xmark">   the menu close box
++     js/libs.js:135 <i class="fa-solid fa-mars|fa-venus">   the gender glyph in a relationship row
++     js/menu.js:1134 <i class="fa-brands fa-youtube">       the social-media row glyph
++     js/menu.js:1135 <i class="fa-brands fa-instagram">     the social-media row glyph
++   The font stack is 'inherit' on purpose: each slot keeps whatever text the document already put
++   there (which is none - all five are empty elements whose only content was the ligature the
++   webfont supplied), so nothing had to be drawn or downloaded to replace it. Font size is
++   inherited rather than pinned so a slot does not blow up to icon-glyph size.
++
++   Consequence for verification, stated so nobody asserts on it later: glyph shape, glyph identity
++   and font family are NOT observable on this face and no checkpoint reads them. A tree-wide search
++   found 0 places where application JavaScript reads a computed font family, a glyph metric, an
++   ::before content string or an icon bounding box, so the icon stylesheet is decorative at
++   runtime: it cannot change any value, any branch or any control flow. Every assertion in
++   tests/dsl.json reads text, a number, a boolean, an element count, an inline style the page sets
++   itself, a computed display the page's own stylesheet sets, or a scalar returned by the
++   read-only probe. */
++
++.fa,
++.fas,
++.far,
++.fab,
++.fa-solid,
++.fa-regular,
++.fa-brands {
++    font-family: inherit;
++    font-weight: normal;
++    font-style: normal;
++    font-size: inherit;
++    display: inline-block;
++    line-height: 1;
++    letter-spacing: normal;
++    text-transform: none;
++    white-space: nowrap;
++    word-wrap: normal;
++    direction: ltr;
++    -webkit-font-smoothing: antialiased;
++}
+diff --git a/index.html b/index.html
+index b41575e..b985fa5 100644
+--- a/index.html
++++ b/index.html
+@@ -4,7 +4,7 @@
+     <meta charset="UTF-8">
+     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha512-MV7K8+y+gLIBoVD59lQIYicR65iaqukzvf/nwasF0nqhPay5w/9lJmVM2hMDcnK1OnMGCdVK+iQrJ7lzPJQd1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
++    <link rel="stylesheet" href="fontawesome-inert.css">
+     <!-- please dont look at the css file lol -->
+     <link rel="stylesheet" href="styles.css">
+     <title>Quicklife</title>
+@@ -100,6 +100,7 @@
+             </div>
+         </div>
+     </div>
++        <script src="js/rb/seed.js"></script>
+         <script src="js/items.js"></script>
+         <script src="js/countriesData.js"></script>
+         <script src="js/worldEvents.js"></script>
+diff --git a/js/rb/seed.js b/js/rb/seed.js
+new file mode 100644
+index 0000000..2af1241
+--- /dev/null
++++ b/js/rb/seed.js
+@@ -0,0 +1,117 @@
++/**
++ * RepairBench adaptation face - deterministic entropy source + same-origin network accounting.
++ *
++ *
++ * runtime network", and the determinism requirement behind 2.1.4 / 3.9.3 "flaky zero
++ * tolerance"): the pristine seed has NO seedable RNG. A tree-wide census counted 102 direct
++ * Math.random() consumption points across 10 classic scripts (js/careers.js 20, js/menu.js 28,
++ * js/items.js 10, js/characters.js 8, js/main.js 8, js/worldEvents.js 8, js/events.js 7,
++ * js/libs.js 7, js/interface.js 6) and 0 clock reads (no Date.now, no new Date, no
++ * performance.now), 0 timers (no setInterval / setTimeout / requestAnimationFrame), 0 storage
++ * reads and 0 network calls in application code. Math.random is therefore the seed's ONE AND
++ * ONLY nondeterministic input, and the very first thing the application does with it is pick the
++ * starting calendar year at script-parse time (js/interface.js:11
++ * `let year = Math.round(Math.random() * 20) + 2000;`), so without a reproducible stream not even
++ * the year shown in the life log is stable between two loads of the same page.
++ *
++ * This file installs ONE reproducible stream underneath all 102 consumers. It changes no game
++ * logic, no game data, no control flow and no call site: it replaces the entropy source and
++ * nothing else. mulberry32 is used (32-bit state, full period, no library, no dependency) rather
++ * than the 32-bit LCG of the delivered same-subject precedent
++ *
++ * one function and this seed has 102 spread over 10 files; mulberry32's better equidistribution
++ * keeps the derived values (a career picked out of 7, a death roll compared against a stat, a
++ * world event picked out of 3) away from short-cycle artefacts over a long draw sequence.
++ *
++ * It is loaded from index.html BEFORE js/items.js, which is the first application script, so the
++ * override is in place before any application script is evaluated - including the parse-time draw
++ * in js/interface.js:11.
++ *
++ * THE STREAM IS DELIBERATELY GLOBAL AND NEVER RESET. There is one state variable in this closure,
++ * advanced once per draw, and it is not re-seeded per character creation, per "Age" click, per
++ * "Start a new life" or per checkpoint. Consecutive lives therefore still differ from each other
++ * exactly as they did in the pristine seed - they are just the same lives on every run. Every
++ * checkpoint in tests/dsl.json runs in its own fresh browser context (dsl_runner.mjs
++ * runCheckpointOnce), which reloads the page and so restarts the stream from the same constant;
++ * that is what makes each checkpoint's expected value reproducible without any cross-checkpoint
++ * coordination.
++ *
++ * There is NO seed knob: no query parameter, no hash, no global setter and no reset function. The
++ * seed is the constant below and nothing on the page can change it, so it cannot be used as a
++ * cheat knob by an answering model and it cannot be perturbed by a repair.
++ *
++ * The second half of this file is the offline accounting. The pristine entry document pulled one
++ * third-party stylesheet from cdnjs.cloudflare.com (font-awesome 6.2.1, index.html:7); that link
++ * is removed by this same adaptation face and replaced by the local inert stand-in
++ * fontawesome-inert.css. Application code contains no fetch / XMLHttpRequest / WebSocket /
++ * sendBeacon / navigation call at all (census above), so the transports hooked here are hooked
++ * defensively: they COUNT same-origin traffic and REFUSE cross-origin traffic, which turns
++ * "the delivered face makes zero external requests" from a claim into a reading
++ * (window.__RB_SEED_FACE__.blocked must stay empty and .same_origin_only must stay true).
++ *
++ * 0 defect knowledge. 0 expected values. 0 writes to application state. 0 dispatched events.
++ * 0 reimplementation of any application logic.
++ */
++(function () {
++	'use strict';
++
++	var DEFAULT_SEED = 20260910;
++
++	/* mulberry32: 32-bit state, full-period, no library, no globals besides this closure */
++	var state = DEFAULT_SEED >>> 0;
++	function next() {
++		state = (state + 0x6D2B79F5) >>> 0;
++		var t = state;
++		t = Math.imul(t ^ (t >>> 15), t | 1);
++		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
++		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++	}
++
++	var rec = { seed: DEFAULT_SEED, draws: 0, same_origin: 0, blocked: [], same_origin_only: true };
++	var nativeRandom = Math.random;
++	Math.random = function () { rec.draws++; return next(); };
++	rec.native_random_replaced = Math.random !== nativeRandom;
++
++	function sameOrigin(url) {
++		try { return new URL(url, location.href).origin === location.origin; }
++		catch (e) { return false; }
++	}
++
++	function account(kind, url) {
++		if (sameOrigin(url)) { rec.same_origin++; return true; }
++		rec.blocked.push(kind + ':' + url);
++		rec.same_origin_only = false;
++		return false;
++	}
++
++	var xo = window.XMLHttpRequest && window.XMLHttpRequest.prototype.open;
++	if (xo) {
++		window.XMLHttpRequest.prototype.open = function (method, url) {
++			if (account('xhr', url)) return xo.apply(this, arguments);
++			throw new Error('[rb-seed] refused cross-origin XHR: ' + url);
++		};
++	}
++
++	var nf = window.fetch;
++	if (nf) {
++		window.fetch = function (input) {
++			var url = typeof input === 'string' ? input : (input && input.url) || String(input);
++			if (account('fetch', url)) return nf.apply(this, arguments);
++			return Promise.reject(new Error('[rb-seed] refused cross-origin fetch: ' + url));
++		};
++	}
++
++	var d = window.HTMLImageElement && Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
++	if (d && d.set) {
++		Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
++			configurable: true,
++			enumerable: d.enumerable,
++			get: d.get,
++			set: function (v) {
++				if (account('img', v)) return d.set.call(this, v);
++			}
++		});
++	}
++
++	window.__RB_SEED_FACE__ = rec;
++})();

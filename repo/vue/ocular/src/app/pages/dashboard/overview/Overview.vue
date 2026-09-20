@@ -1,0 +1,41 @@
+<template>
+  <div :class="$style.overview">
+    <SummaryPanels @hoveredPanel="highlight = $event" />
+    <AsyncComponent
+      :properties="{ highlight }"
+      :show="appSize !== 'mobile'"
+      :class="$style.chart"
+      :import="() => import('./widgets/charts/DistributionCharts.vue')"
+    />
+  </div>
+</template>
+
+<script lang="ts" setup>
+import SummaryPanels from './widgets/header-panels/SummaryPanels.vue';
+import AsyncComponent from '@components/misc/async-component/AsyncComponent.vue';
+import { useAppSize } from '@composables/app-size/useAppSize.ts';
+import { ref } from 'vue';
+
+const appSize = useAppSize();
+const highlight = ref<string>();
+</script>
+
+<style lang="scss" module>
+@use '@styles/globals.scss';
+
+.overview {
+  display: grid;
+  grid-template: auto 1fr / 1fr;
+  overflow: hidden;
+  height: 100%;
+  gap: 10px;
+
+  @include globals.onMobileDevices {
+    grid-template: 1fr / 1fr;
+
+    .chart {
+      display: none;
+    }
+  }
+}
+</style>

@@ -1,0 +1,138 @@
+diff --git a/src/components/ColorPicker/Palette.vue b/src/components/ColorPicker/Palette.vue
+--- a/src/components/ColorPicker/Palette.vue
++++ b/src/components/ColorPicker/Palette.vue
+@@ -33,7 +33,7 @@
+ 		return;
+ 	}
+ 
+-	const [r, g, b, a] = pickedColor.match(/[\d.]+/g)?.map(Number) ?? [];
++	const [r, g, b, a] = pickedColor.match(/\d+/g)?.map(Number) ?? [];
+ 	const rgba = { r, g, b, a };
+ 	const hsl = rgbToHsl(rgba);
+ 	const ctx = palette.value?.getContext("2d");
+diff --git a/src/components/Frames/index.vue b/src/components/Frames/index.vue
+--- a/src/components/Frames/index.vue
++++ b/src/components/Frames/index.vue
+@@ -82,7 +82,7 @@
+         class="flex flex-col items-center w-full h-full overflow-auto"
+       >
+         <div
+-          v-for='frameId of Object.keys(frames)'
++          v-for='frameId of Object.keys(frames).slice(0, 1)'
+           :ref="setCurrentFrameRef(frameId)"
+           :class='getFrameListCls(currentFrameId, frameId)'
+           :key='frameId'
+diff --git a/src/components/Toolbar/PixelSizeRange.vue b/src/components/Toolbar/PixelSizeRange.vue
+--- a/src/components/Toolbar/PixelSizeRange.vue
++++ b/src/components/Toolbar/PixelSizeRange.vue
+@@ -18,7 +18,7 @@
+ const onPixelSizeChange = (e: Event) => {
+ 	const pixelSize = Number((e.target as HTMLInputElement).value);
+ 	configStore.setPixelSize(pixelSize);
+-	storage.value = pixelSize;
++	storage.value = DEFAULT_PIXEL_SIZE;
+ };
+ </script>
+ <template>
+diff --git a/src/hooks/useShortcuts.ts b/src/hooks/useShortcuts.ts
+--- a/src/hooks/useShortcuts.ts
++++ b/src/hooks/useShortcuts.ts
+@@ -13,7 +13,7 @@
+ };
+ 
+ const isEllipsisCircle = (e: KeyboardEvent) => {
+-	return e.key.toLowerCase() === "c" && e.shiftKey;
++	return e.key.toLowerCase() === "c" || e.shiftKey;
+ };
+ 
+ export function useShortcuts() {
+diff --git a/src/store/colorPicker.ts b/src/store/colorPicker.ts
+--- a/src/store/colorPicker.ts
++++ b/src/store/colorPicker.ts
+@@ -45,7 +45,7 @@
+ 
+ 	const pickedColorHex = computed(() => {
+ 		const { r, g, b } = rgb.value;
+-		const _alpha = Math.round(alpha.value * 255);
++		const _alpha = Math.floor(alpha.value * 255);
+ 		const toHex = (n: number) => n.toString(16).padStart(2, "0");
+ 		const withoutAlpha = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+ 
+diff --git a/src/store/frames.ts b/src/store/frames.ts
+--- a/src/store/frames.ts
++++ b/src/store/frames.ts
+@@ -51,7 +51,7 @@
+ 	const getCurrentFrameId = () => currentFrameId.value;
+ 
+ 	const setIsFramesPlaying = (isPlaying: boolean) => {
+-		isFramesPlaying.value = isPlaying;
++		isFramesPlaying.value = !isPlaying;
+ 	};
+ 
+ 	const setFps = (_fps: number) => {
+diff --git a/src/utils/colorPicker.ts b/src/utils/colorPicker.ts
+--- a/src/utils/colorPicker.ts
++++ b/src/utils/colorPicker.ts
+@@ -117,7 +117,7 @@
+ 
+ export const calculateHue = (e: MouseEvent, el: HTMLDivElement) => {
+ 	const rect = el.getBoundingClientRect();
+-	const hue = Math.round((Math.abs(e.clientX - rect.left) / rect.width) * 360);
++	const hue = Math.round((Math.abs(e.clientX - rect.left) / rect.width) * 180);
+ 
+ 	const inLeftSide = e.clientX - rect.left < 0;
+ 	const inRightSide =
+@@ -204,7 +204,7 @@
+ 	const tintLightness = Math.min(l + (100 - l) * 0.2, 100);
+ 	const tint: HSL = { h, s, l: Math.round(tintLightness) };
+ 
+-	const shadeLightness = Math.max(l - l * 0.2, 0);
++	const shadeLightness = Math.min(l - l * 0.2, 0);
+ 	const shade: HSL = { h, s, l: Math.round(shadeLightness) };
+ 
+ 	return {
+@@ -261,7 +261,7 @@
+ 	const _r = Math.round(r * a + 255 * (1 - a));
+ 	const _g = Math.round(g * a + 255 * (1 - a));
+ 	const _b = Math.round(b * a + 255 * (1 - a));
+-	const brightness = 0.299 * _r + 0.587 * _g + 0.114 * _b;
++	const brightness = 0.299 * _r + 0.587 * _b + 0.114 * _g;
+ 
+ 	return brightness > 128 ? "black" : "white";
+ };
+diff --git a/src/utils/pixelBorder.js b/src/utils/pixelBorder.js
+--- a/src/utils/pixelBorder.js
++++ b/src/utils/pixelBorder.js
+@@ -195,7 +195,7 @@
+ 	const generatedCSS = `
+     .pixel-corners,
+     .pixel-corners--wrapper {
+-      clip-path: polygon(${outerPath});
++      clip-path: polygon(${innerPath});
+       position: relative;
+     }
+     .pixel-corners {
+diff --git a/src/worker/signals/frames.ts b/src/worker/signals/frames.ts
+--- a/src/worker/signals/frames.ts
++++ b/src/worker/signals/frames.ts
+@@ -251,7 +251,7 @@
+ 			};
+ 		}
+ 
+-		const targetIndex = sourceIndex + 1;
++		const targetIndex = sourceIndex;
+ 		reorderFrame(tabId, frameId, targetIndex);
+ 
+ 		return {
+diff --git a/src/worker/utils/frame.ts b/src/worker/utils/frame.ts
+--- a/src/worker/utils/frame.ts
++++ b/src/worker/utils/frame.ts
+@@ -43,7 +43,7 @@
+ export const createFrame = (payload: CreateFrameMessagePayload) => {
+ 	const { tabId } = payload;
+ 	const { frameId, prevFrameId } = _createFrame(tabId) ?? {};
+-	if (!frameId || !prevFrameId) return;
++	if (!frameId && !prevFrameId) return;
+ 
+ 	recordUtils.record({
+ 		tabId,

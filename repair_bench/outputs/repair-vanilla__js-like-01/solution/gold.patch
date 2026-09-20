@@ -1,0 +1,134 @@
+diff --git a/js/library/dungeon.js b/js/library/dungeon.js
+--- a/js/library/dungeon.js
++++ b/js/library/dungeon.js
+@@ -481,7 +481,7 @@
+ 	
+ 	/* showing tutorial for the first time? */
+ 	var first = true;
+-	for (var p in this._messages) { first = false; }
++	for (var p in this._visited) { first = false; }
+ 	
+ 	if (first) {
+ 		var text = this._messages[id];
+diff --git a/js/library/effects.js b/js/library/effects.js
+--- a/js/library/effects.js
++++ b/js/library/effects.js
+@@ -11,6 +11,7 @@
+ RPG.Effects.TurnCounter.prototype.go = function() {
+ 	this.parent();
+ 	this._turns++;
++	RPG.UI.status.updateRounds(this._turns); 
+ }
+ 
+ 
+diff --git a/js/rpg/Coords.js b/js/rpg/Coords.js
+--- a/js/rpg/Coords.js
++++ b/js/rpg/Coords.js
+@@ -19,7 +19,7 @@
+ RPG.Coords.prototype.distance = function(coords) {
+ 	var dx = Math.abs(this.x - coords.x);
+ 	var dy = Math.abs(this.y - coords.y);
+-	return Math.min(dx, dy);
++	return Math.max(dx, dy);
+ }
+ 
+ RPG.Coords.prototype.clone = function() {
+diff --git a/js/rpg/IProjectile.js b/js/rpg/IProjectile.js
+--- a/js/rpg/IProjectile.js
++++ b/js/rpg/IProjectile.js
+@@ -63,7 +63,7 @@
+ 	this._flying = true;
+ 	this._flight.index = 0; /* starting from first coords in line */
+ 	RPG.Game.getEngine().lock();
+-	var interval = 45000;
++	var interval = 75;
+ 	this._interval = setInterval(this.bind(this._step), interval);
+ }
+ 
+diff --git a/js/rpg/dungeon.js b/js/rpg/dungeon.js
+--- a/js/rpg/dungeon.js
++++ b/js/rpg/dungeon.js
+@@ -592,7 +592,7 @@
+ 		var minor = "y";
+ 		var majorstep = dx > 0 ? 1 : -1;
+ 		var minorstep = dy > 0 ? 1 : -1;
+-		var delta = Math.abs(dx/dy);
++		var delta = Math.abs(dy/dx);
+ 	} else {
+ 		var major = "y";
+ 		var minor = "x";
+diff --git a/js/rpg/format.js b/js/rpg/format.js
+--- a/js/rpg/format.js
++++ b/js/rpg/format.js
+@@ -26,5 +26,5 @@
+ }
+ 
+ RPG.Misc.verb = function(verb, who) {
+-	return (who == RPG.Game.pc ? verb+"s" : verb);
++	return (who == RPG.Game.pc ? verb : verb+"s");
+ }
+diff --git a/js/rpg/pc.js b/js/rpg/pc.js
+--- a/js/rpg/pc.js
++++ b/js/rpg/pc.js
+@@ -163,6 +163,7 @@
+ 			continue; 
+ 		}
+ 
++		delete memory[hash];
+ 		var visuals = this._getVisualsForCoords(visible[hash]);
+ 		RPG.UI.map.drawAtCoords(visible[hash], visuals, false);
+ 	}
+@@ -737,7 +738,7 @@
+ 		return RPG.ACTION_TIME;
+ 	}
+ 	
+-	door.close();
++	door.open();
+ 
+ 	var verb = RPG.Misc.verb("open", this);
+ 	var s = RPG.Misc.format("%A %s the door.", this, verb);
+diff --git a/js/ui/button.js b/js/ui/button.js
+--- a/js/ui/button.js
++++ b/js/ui/button.js
+@@ -145,7 +145,7 @@
+ 	if (this._input.disabled) { return; }
+ 	if (e.ctrlKey != this._ctrlKey) { return false; }
+ 	if (e.altKey != this._altKey) { return false; }
+-	if (this._charCodes.indexOf(charCode) != -1 && this._keyCodes.indexOf(keyCode) != -1) {
++	if (this._charCodes.indexOf(charCode) != -1 || this._keyCodes.indexOf(keyCode) != -1) {
+ 		OZ.Event.prevent(e);
+ 		this._callback(this);
+ 	}
+diff --git a/js/ui/commands.js b/js/ui/commands.js
+--- a/js/ui/commands.js
++++ b/js/ui/commands.js
+@@ -39,7 +39,7 @@
+ 	var center = RPG.Game.pc.getCoords();
+ 	var map = RPG.Game.pc.getMap();
+ 	
+-	var coords = map.getCoordsInCircle(center, 2, false);
++	var coords = map.getCoordsInCircle(center, 1, false);
+ 	for (var i=0;i<coords.length;i++) {
+ 		var f = map.getFeature(coords[i]);
+ 		if (f && f instanceof RPG.Features.Door && f.isClosed() == closed) {
+@@ -549,7 +549,7 @@
+ 	if (this._dir == RPG.CENTER) { return true; } /* standing on a spot is okay now */
+ 
+ 	/* now check neighbor status */
+-	var leftDir = (this._dir + 7) % 8;
++	var leftDir = (this._dir + 6) % 8;
+ 	var rightDir = (this._dir + 2) % 8;
+ 
+ 	var aheadCoords = coords.neighbor(this._dir);
+diff --git a/js/ui/mapswitch.js b/js/ui/mapswitch.js
+--- a/js/ui/mapswitch.js
++++ b/js/ui/mapswitch.js
+@@ -25,7 +25,7 @@
+ 		if (this._map[p] == def) { link = a; }
+ 	}
+ 	
+-	OZ.Event.add(this._content, "click", this._click);
++	OZ.Event.add(this._content, "click", this.bind(this._click));
+ 	this._use(link);
+ }
+ 

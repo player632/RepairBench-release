@@ -8,7 +8,7 @@ the source tree and repair them. Grading is fully automated: the verifier builds
 project, serves the build output, drives a headless browser through a fixed checkpoint
 script and scores the result.
 
-The suite contains **202 tasks** across six front-end technology stacks, each built on a
+The suite contains **300 tasks** across six front-end technology stacks, each built on a
 distinct front-end application. Every task is self-contained and can be graded
 independently.
 
@@ -16,16 +16,16 @@ independently.
 
 | Framework | Tasks |
 |---|---|
-| Vanilla (no framework) | 50 |
-| React | 39 |
-| Angular | 36 |
-| Vue | 34 |
-| Svelte | 26 |
-| Solid | 17 |
-| **Total** | **202** |
+| Vanilla (no framework) | 83 |
+| Vue | 56 |
+| React | 49 |
+| Angular | 46 |
+| Svelte | 41 |
+| Solid | 25 |
+| **Total** | **300** |
 
-Implementation language is TypeScript for 111 tasks and JavaScript for 91 tasks. Task
-statements are written in English for 143 tasks; the remaining 59 are written in Chinese
+Implementation language is TypeScript for 168 tasks and JavaScript for 132 tasks. Task
+statements are written in English for 183 tasks; the remaining 117 are written in Chinese
 or are bilingual. Applications span dashboards, editors, games, media tools and
 productivity utilities, and range from dependency-free static sites to monorepo builds.
 
@@ -35,13 +35,13 @@ productivity utilities, and range from dependency-free static sites to monorepo 
 |---|---|---|
 | Injected defects per task | 12 | 10 – 17 |
 | Reference repair, files touched | 9 | 1 – 13 |
-| Reference repair, changed lines | 27 | 18 – 139 |
-| Grading checkpoints per task | 31.5 | 21 – 87 |
-| Verifier timeout | 1140 s | 780 – 3600 s |
+| Reference repair, changed lines | 26 | 18 – 139 |
+| Grading checkpoints per task | 32 | 20 – 87 |
+| Verifier timeout | 1500 s | 600 – 3600 s |
 
-The suite records 2402 injected defects; 199 of the 202 tasks carry a defect ledger. Of the
-2037 defects labelled as reported or unreported, 55.0% are named in the fault report and
-45.0% are not. Per-task figures are recorded in `results/task-index.csv`.
+The suite records 3614 injected defects, and every task carries a defect ledger. Of the 3237
+defects labelled as reported or unreported, 55.4% are named in the fault report and 44.6% are
+not. Per-task figures are recorded in `results/task-index.csv`.
 
 Three properties define the difficulty of the suite:
 
@@ -56,8 +56,10 @@ Three properties define the difficulty of the suite:
 
 ## Reference results
 
-Two models were graded on the complete suite with the shipped verifier. The mean task score is
-`100 x F2P_rate x P2P_rate`; a build failure scores 0.
+Two models were graded on the 202 tasks that made up the first release of this suite, using the
+same verifier that ships here. The 98 tasks added since are part of the distribution but are
+unscored, so the figures below and in [docs/results.md](docs/results.md) describe that graded
+cohort of 202. The mean task score is `100 x F2P_rate x P2P_rate`; a build failure scores 0.
 
 | Model | Mean | Median | Submissions that built | Mean F2P rate | Mean P2P rate |
 |---|---|---|---|---|---|
@@ -78,9 +80,9 @@ Per-task scores, per-framework breakdowns and the score distribution are documen
 │   ├── quality-assurance.md      build-time requirements, measured results and deviations
 │   └── results.md                reference evaluation results
 ├── repair_bench/
-│   ├── outputs/<instance_id>/    202 task packages
+│   ├── outputs/<instance_id>/    300 task packages
 │   └── agent_template.py         minimal reference answering agent
-├── repo/                         202 seed source trees in their delivered (defective) state
+├── repo/                         300 seed source trees in their delivered (defective) state
 ├── evaluation/                   verifier runtime (static server and checkpoint runner)
 ├── results/                      reference results and derived indexes
 └── tools/                        dependency installation and offline-tier helpers
@@ -101,7 +103,7 @@ or framework build caches. Dependency installation is described in
 | Shell utilities | `bash`, `curl`, `tar`, `git` |
 | Verifier runtime | `playwright` with a Chromium build, installed in the quick start below |
 | Package managers | `npm`; `pnpm`, `yarn` or `bun` additionally for the seed trees whose lockfile requires them |
-| Disk | 2.6 GB for this distribution, plus dependency and build storage per task |
+| Disk | 3.4 GB for this distribution, plus dependency and build storage per task |
 | Network | Required to install dependencies. Grading runs offline once dependencies are present, with the exceptions listed in [docs/evaluation.md](docs/evaluation.md#offline-dependency-tiers) |
 
 ## Quick start
@@ -150,14 +152,14 @@ those upstream terms govern the corresponding code.
 
 | Licence information in the seed tree | Trees |
 |---|---|
-| Top-level `LICENSE`, `LICENCE` or `COPYING` file | 168 |
-| `license` field in `package.json`, or a licence file in a subdirectory | 12 |
-| No licence information present | 22 |
+| Top-level `LICENSE`, `LICENCE` or `COPYING` file | 238 |
+| `license` field in `package.json`, or a licence file in a subdirectory | 17 |
+| No licence information present | 45 |
 
-`results/seed-provenance.csv` records the upstream attribution of each tree: 184 trees carry an
-upstream repository reference, 40 of them with the exact upstream commit, and 18 have no
-recorded upstream. Attribution was established from the snapshot manifest (92 trees), from
-package metadata (47) or from project documentation (45).
+`results/seed-provenance.csv` records the upstream attribution of each tree: 282 trees carry an
+upstream repository reference, 69 of them with the exact upstream commit, and 18 have no
+recorded upstream. Attribution was established from the snapshot manifest (185 trees), from
+project documentation (49) or from package metadata (48).
 
 The task packages, the verifier runtime, the tooling and the documentation are provided by the
 benchmark authors. No licence has been declared for these components.

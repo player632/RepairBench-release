@@ -1,0 +1,494 @@
+diff --git a/index.html b/index.html
+index b985fa5..3786115 100644
+--- a/index.html
++++ b/index.html
+@@ -101,6 +101,7 @@
+         </div>
+     </div>
+         <script src="js/rb/seed.js"></script>
++        <script src="js/rb-probe.js"></script>
+         <script src="js/items.js"></script>
+         <script src="js/countriesData.js"></script>
+         <script src="js/worldEvents.js"></script>
+diff --git a/js/rb-probe.js b/js/rb-probe.js
+new file mode 100644
+index 0000000..d9b9882
+--- /dev/null
++++ b/js/rb-probe.js
+@@ -0,0 +1,476 @@
++/**
++ * RepairBench instrumentation probe - read-only measurement surface for the life-simulator seed
++ * (robert1811/life-simulator, "Quicklife", a vanilla-JS classic-script life simulator; ZERO-BUILD
++ * static tree, no package.json, no bundler, no transpiler, no framework).
++ *
++ * Added by environment/instrumentation.patch together with ONE `<script src="js/rb-probe.js">`
++ * line in index.html, placed immediately after the adaptation face's js/rb/seed.js and BEFORE the
++ * first application script js/items.js (index.html:103 in the pristine tree). Nothing in this file
++ * reads an application global at evaluation time - every model read happens inside a function, at
++ * call time, through an indirect eval - so loading first is safe and buys one thing that loading
++ * last could not: the window error hooks below are installed BEFORE the ten application scripts
++ * run, so a repair that breaks boot is counted instead of silently missed.
++ *
++ * It touches NO application logic and contains NO copy of any logic under test:
++ *   - it never reimplements annualChanges (js/interface.js:108), studyingProcess, statsBuffer,
++ *     statsChanges, statsLimit, skillLeveler, specificEvents, lifeStageDisplayer, skillListifier,
++ *     moneyFormat, moneyViewer, itemListifier, confirmSell, buy, useItem, apply, leave,
++ *     handleSwitch, chooseCareer, spendTime, jobAssigner or the Person constructor;
++ *   - every model value is read back from the seed's OWN objects (player, characters, year, jobs,
++ *     items, assets, universityCareers, worldEventsMethodArr) and every DOM value from the seed's
++ *     OWN elements, by id or by the data-* attributes the seed itself writes;
++ *   - every transition is produced by the seed's OWN code: a command either calls one of the
++ *     seed's own top-level functions or dispatches a real HTMLElement.click() on one of the seed's
++ *     own elements, which fires the seed's own inline onclick attribute or the seed's own
++ *     addEventListener handler. No rule is evaluated a second time and no state is written
++ *     directly.
++ *   - the only computation done here is AGGREGATION, NORMALISATION and SERIALISATION of values the
++ *     seed already computed (trimming and collapsing whitespace in a text node, counting matching
++ *     elements, joining a key list into a comparable string, freezing one scalar so a later read
++ *     can be compared against it).
++ *
++ * TWO GLOBALS ARE PUBLISHED, and they are the only two this file adds:
++ *   window.__QL__()      a snapshot object RECOMPUTED ON EVERY CALL. Every field is safe-wrapped
++ *                        and yields the sentinel "__rb_probe_error__" instead of throwing, so a
++ *                        half-booted or broken tree surfaces as a FAILED ASSERTION (behaviour
++ *                        evidence) and never as a page crash or a runner setup_failure.
++ *   window.__QL_CMD__    the driver commands listed at the bottom of this file. Each one is
++ *                        wrapped the same way: it records ok/error in last_cmd and returns null
++ *                        instead of throwing.
++ * Parameterised pure reads hang off the snapshot function itself (window.__QL__.contains(sel, s),
++ * .text_of(sel), .count_of(sel), .inline_style(sel, prop), .computed_style(sel, prop),
++ * .attr_of(sel, name), .inventory_index_at(type, i), .skill_row(label), .mark_value(key)) so an
++ * assertion can address one element of a repeated group without this file having to enumerate the
++ * group.
++ *
++ * The probe holds NO expectation, NO timer of its own and NO busy-wait. Two deliberate choices are
++ * recorded because both are load-bearing for the assertion disciplines:
++ *   1. every assertion is a PURE READ. All side effects (creating a character, clicking "Age",
++ *      opening a menu, buying, selling, hiring, toggling a free-time switch) live in setup
++ *      commands, because dsl_runner.mjs polls assertions until the per-checkpoint deadline and an
++ *      assertion with a side effect can flip itself false-green on the second poll.
++ *   2. the ONE two-phase reading (money_two_phase) freezes its first half in a SETUP command
++ *      (__QL_CMD__.mark_text) and only concatenates the frozen scalar with a fresh read at assert
++ *      time, so the assert stays a pure read while still proving that the value evolved across a
++ *      real harness wait and a real user tick rather than being a load-time snapshot.
++ *
++ * NO data-testid is injected anywhere in this tree. The seed already addresses every control by id
++ * (#age-btn, #activities-btn, #relation-button, #close-menu, #total-money, #balance,
++ * #head-container, #text-container, #event-title, #event-body, #menu-title, #menu-body,
++ * #menu-template, #modal-background, #create-character-screen, #death-screen, #obituary-container,
++ * #career-selector, #freetime-reading|-musicLessons|-parties|-gym, #inventory-container,
++ * #jobs-container, #cell-container, #health-bar and the other four stat bars) and every repeated
++ * row by a data-* attribute the seed writes itself (data-index / data-type / data-property /
++ * data-objname on shop and inventory rows, data-id on relationship rows, data-label on the career
++ * picker rows, data-item on the item action rows). A synthetic attribute surface would be
++ * redundant, and injecting one would add a second, parallel way to address the same element.
++ */
++(function () {
++	'use strict';
++
++	var W = window;
++	var SENTINEL = '__rb_probe_error__';
++	var DUNDER_WHITELIST = ['__QL__', '__QL_CMD__', '__RB_SEED_FACE__'];
++
++	/* ------------------------------------------------------------------ error hooks */
++	var pageErrorCount = 0;
++	var pageErrors = [];
++	function hook(name, fn) { try { W.addEventListener(name, fn); } catch (e) { /* never break the app */ } }
++	hook('error', function (e) {
++		pageErrorCount++;
++		if (pageErrors.length < 20) pageErrors.push(String((e && e.message) || 'error').slice(0, 200));
++	});
++	hook('unhandledrejection', function (e) {
++		pageErrorCount++;
++		if (pageErrors.length < 20) pageErrors.push('rejection:' + String((e && e.reason) || '').slice(0, 180));
++	});
++
++	/* ------------------------------------------------------------------ safe helpers */
++	function safe(fn) { try { var v = fn(); return v === undefined ? null : v; } catch (e) { return SENTINEL; } }
++
++	/** Read one of the seed's own top-level lexical globals by name, at call time.
++	 *  All ten application scripts are CLASSIC scripts, so their top-level const/let/class
++	 *  bindings live in the global lexical environment and are NOT window properties; an indirect
++	 *  eval resolves them exactly as a bare reference in the console would, and returns the
++	 *  sentinel instead of throwing when a repair has removed or renamed one. */
++	function gv(expr) { return safe(function () { return (0, eval)(expr); }); }
++
++	function norm(v) { return v === null || v === undefined ? '' : String(v).replace(/\s+/g, ' ').trim(); }
++	function el(sel) { try { return document.querySelector(sel); } catch (e) { return null; } }
++	function els(sel) { try { var n = document.querySelectorAll(sel); return Array.prototype.slice.call(n); } catch (e) { return []; } }
++	function byId(id) { return document.getElementById(id); }
++	function textOf(sel) { var e = el(sel); return e ? norm(e.textContent) : null; }
++	function inlineStyle(sel, prop) { var e = el(sel); return e ? norm(e.style[prop]) : null; }
++	function computedStyle(sel, prop) { var e = el(sel); return e ? norm(W.getComputedStyle(e)[prop]) : null; }
++	function attrOf(sel, name) { var e = el(sel); return e ? norm(e.getAttribute(name)) : null; }
++	function countOf(sel) { return els(sel).length; }
++	function num(v) { return typeof v === 'number' && isFinite(v) ? v : (v === null || v === undefined ? null : SENTINEL); }
++	function bool(v) { return v === true || v === false ? v : (v === null || v === undefined ? null : SENTINEL); }
++
++	/* ------------------------------------------------------------------ frozen marks */
++	var marks = {};
++	var cmdLog = [];
++	var lastCmd = { ok: null, error: null, count: 0 };
++
++	function command(name, fn) {
++		lastCmd.count++;
++		try {
++			var out = fn();
++			lastCmd.ok = true; lastCmd.error = null;
++			cmdLog.push({ name: name, ok: true });
++			if (cmdLog.length > 40) cmdLog.shift();
++			return out === undefined ? true : out;
++		} catch (e) {
++			lastCmd.ok = false; lastCmd.error = String((e && e.message) || e).slice(0, 300);
++			cmdLog.push({ name: name, ok: false, error: lastCmd.error });
++			if (cmdLog.length > 40) cmdLog.shift();
++			return null;
++		}
++	}
++
++	/** Click the seed's own element. A real HTMLElement.click() runs the seed's own inline onclick
++	 *  attribute and the seed's own addEventListener handlers, bubbling exactly as a user click on
++	 *  that element would (it does NOT perform hit testing - that is deliberate and is why no
++	 *  checkpoint in this task depends on pointer geometry). */
++	function clickEl(e) {
++		if (!e) throw new Error('element not found');
++		e.click();
++		return true;
++	}
++	function pickByText(sel, text, mode) {
++		var want = norm(text);
++		var list = els(sel);
++		for (var i = 0; i < list.length; i++) {
++			var got = norm(list[i].textContent);
++			if (mode === 'contains' ? got.indexOf(want) !== -1 : got === want) return list[i];
++		}
++		throw new Error('no element matching "' + want + '" (' + mode + ') under ' + sel + ' of ' + list.length);
++	}
++
++	/* ------------------------------------------------------------------ snapshot */
++	function snapshot() {
++		var p = gv('player');
++		var P = (p && typeof p === 'object') ? p : null;
++		function pf(expr) { return P ? gv('player.' + expr) : null; }
++		var s = {
++			ready: true,
++			sentinel: SENTINEL,
++
++			/* --- boot face: did the ten classic scripts all evaluate? --- */
++			boot_completed: bool(gv("typeof annualChanges === 'function' && typeof menu === 'object' && typeof windows === 'object' && typeof Person === 'function' && typeof skillListifier === 'function'")),
++			boot_symbols: safe(function () {
++				var names = ['annualChanges', 'menu', 'windows', 'Person', 'player', 'characters', 'year', 'jobs', 'items', 'assets', 'skillListifier', 'lifeStageDisplayer', 'statsBuffer', 'skillLeveler', 'specificEvents', 'moneyViewer', 'randomCharacter', 'customCharacter', 'displayCustomization'];
++				var missing = [];
++				for (var i = 0; i < names.length; i++) if (gv('typeof ' + names[i]) === 'undefined') missing.push(names[i]);
++				return missing.join(',');
++			}),
++
++			/* --- model: the player --- */
++			has_player: bool(P !== null),
++			player_name: P ? norm(pf('name')) : null,
++			player_surname: P ? norm(pf('surname')) : null,
++			player_full_name: P ? norm(pf('fullName')) : null,
++			player_age: P ? num(pf('age')) : null,
++			player_gender: P ? norm(pf('gender')) : null,
++			player_nationality: P ? norm(pf('nationality')) : null,
++			player_location: P ? norm(pf('location')) : null,
++			player_life_stage: P ? (pf('lifeStage') === undefined ? null : norm(pf('lifeStage'))) : null,
++			player_driver_license: P ? bool(pf('driverLicense')) : null,
++			player_alive: P ? bool(pf('alive')) : null,
++			current_education: P ? (pf('currentEducation') === undefined ? null : norm(pf('currentEducation'))) : null,
++			current_career_studying: P ? bool(pf('currentCareer.studying')) : null,
++			current_career_label: P ? (pf('currentCareer.label') === undefined ? null : norm(pf('currentCareer.label'))) : null,
++			current_career_years_studied: P ? num(pf('currentCareer.yearsStudied')) : null,
++			characters_length: num(gv('characters.length')),
++			year_value: num(gv('year')),
++
++			/* --- model: money --- */
++			money_total: P ? num(pf('money.total')) : null,
++			money_income: P ? num(pf('money.income')) : null,
++			money_expenses: P ? num(pf('money.expenses')) : null,
++			money_balance: P ? num(safe(function () { return p.money.income - p.money.expenses; })) : null,
++
++			/* --- model: job and cv --- */
++			job_is_none: P ? bool(pf("job === 'none'")) : null,
++			job_label: P ? (pf('job.label') === undefined ? null : norm(pf('job.label'))) : null,
++			job_since: P ? num(pf('job.since')) : null,
++			job_salary: P ? num(pf('job.salary')) : null,
++			cv_length: P ? num(pf('cv.length')) : null,
++			cv0_label: P ? (pf('cv[0].label') === undefined ? null : norm(pf('cv[0].label'))) : null,
++			cv0_since: P ? num(pf('cv[0].since')) : null,
++			cv0_until: P ? num(pf('cv[0].until')) : null,
++			cv0_since_equals_job_since: P ? bool(safe(function () { return p.cv.length > 0 && p.job !== 'none' && p.cv[0].since === p.job.since; })) : null,
++			cv0_is_job_object: P ? bool(safe(function () { return p.cv.length > 0 && p.job !== 'none' && p.cv[0] === p.job; })) : null,
++			catalogue_job0_since_defined: bool(safe(function () { return gv('jobs[0]').since !== undefined; })),
++
++			/* --- model: skills and free time --- */
++			skills_music_level: P ? num(pf('skills.music.level')) : null,
++			skills_music_xp: P ? num(pf('skills.music.xp')) : null,
++			skills_music_xp_needed: P ? num(pf('skills.music.xpNeeded')) : null,
++			skills_programming_level: P ? num(pf('skills.programming.level')) : null,
++			skills_programming_xp: P ? num(pf('skills.programming.xp')) : null,
++			freetime_is_reading: P ? bool(pf('freetime.isReading')) : null,
++			freetime_is_parties: P ? bool(pf('freetime.isAttendingParties')) : null,
++			freetime_is_music: P ? bool(pf('freetime.isTakingMusicLessons')) : null,
++			freetime_is_gym: P ? bool(pf('freetime.goesToGym')) : null,
++
++			/* --- model: per-year action quota --- */
++			actions_friendly: P ? num(pf('actions.friendlyActions')) : null,
++			actions_mean: P ? num(pf('actions.meanActions')) : null,
++			actions_romantic: P ? num(pf('actions.romanticActions')) : null,
++			actions_music: P ? num(pf('actions.music')) : null,
++			actions_programming: P ? num(pf('actions.programming')) : null,
++
++			/* --- model: inventory --- */
++			inventory_instruments_count: P ? num(pf('inventory.instruments.length')) : null,
++			inventory_electronics_count: P ? num(pf('inventory.electronics.length')) : null,
++			inventory_total_count: P ? num(safe(function () {
++				var n = 0, inv = p.inventory;
++				for (var k in inv) if (Object.prototype.hasOwnProperty.call(inv, k) && Array.isArray(inv[k])) n += inv[k].length;
++				return n;
++			})) : null,
++
++			/* --- model: relations --- */
++			parents_count: P ? num(pf('relationships.parents.length')) : null,
++			siblings_count: P ? num(pf('relationships.siblings.length')) : null,
++			parent0_opinion: P ? num(pf('relationships.parents[0].stats.relationWithPlayer')) : null,
++			prison_jailed: P ? bool(pf('prison.jailed')) : null,
++
++			/* --- DOM: navbar money readout --- */
++			total_money_text: textOf('#total-money'),
++			balance_text: textOf('#balance'),
++			balance_has_green: bool(safe(function () { var e = byId('balance'); return !!e && !!e.querySelector('.green'); })),
++			balance_has_red: bool(safe(function () { var e = byId('balance'); return !!e && !!e.querySelector('.red'); })),
++
++			/* --- DOM: life log --- */
++			head_text: textOf('#head-container'),
++			tale_line_count: countOf('#text-container p'),
++			tale_last_text: textOf('#text-container p:last-child'),
++			story_event_count: countOf('#events-container > div'),
++
++			/* --- DOM: stat bars (the page sets these inline styles itself) --- */
++			health_bar_width: inlineStyle('#health-bar', 'width'),
++			happiness_bar_width: inlineStyle('#happiness-bar', 'width'),
++			smartness_bar_width: inlineStyle('#smartness-bar', 'width'),
++			appearance_bar_width: inlineStyle('#appearance-bar', 'width'),
++			fitness_bar_width: inlineStyle('#fitness-bar', 'width'),
++			health_bar_matches_model: bool(safe(function () {
++				var e = byId('health-bar');
++				return !!e && e.style.width === p.stats.health + '%';
++			})),
++
++			/* --- DOM: overlays and menus --- */
++			create_screen_computed_display: computedStyle('#create-character-screen', 'display'),
++			menu_template_computed_display: computedStyle('#menu-template', 'display'),
++			menu_template_inline_display: inlineStyle('#menu-template', 'display'),
++			modal_computed_display: computedStyle('#modal-background', 'display'),
++			modal_inline_display: inlineStyle('#modal-background', 'display'),
++			event_container_computed_display: computedStyle('#event-container', 'display'),
++			death_screen_computed_display: computedStyle('#death-screen', 'display'),
++			menu_title_text: textOf('#menu-title'),
++			menu_body_option_count: countOf('#menu-body .option'),
++			menu_body_cell_count: countOf('#menu-body .cell'),
++			event_title_text: textOf('#event-title'),
++			event_body_text: textOf('#event-body'),
++			event_body_li_count: countOf('#event-body li'),
++			event_body_p_count: countOf('#event-body p'),
++			event_body_option_count: countOf('#event-body .option'),
++
++			/* --- DOM: career picker --- */
++			career_selector_present: bool(!!byId('career-selector')),
++			career_selector_option_count: countOf('#career-selector option'),
++			career_selector_value: safe(function () { var e = byId("career-selector"); return e ? norm(e.value) : null; }),
++			career_picker_option_count: countOf('#event-body .option[data-label]'),
++
++			/* --- DOM: free-time switches --- */
++			freetime_reading_float: inlineStyle('#freetime-reading', 'float'),
++			freetime_music_float: inlineStyle('#freetime-musicLessons', 'float'),
++			freetime_parties_float: inlineStyle('#freetime-parties', 'float'),
++			freetime_gym_float: inlineStyle('#freetime-gym', 'float'),
++			freetime_row_count: countOf('#menu-body .switch'),
++
++			/* --- DOM: inventory, shops, jobs, relations --- */
++			inventory_item_count: countOf('#inventory-container .item-container'),
++			first_inventory_item_index: attrOf('#inventory-container .item-container', 'data-index'),
++			first_inventory_item_type: attrOf('#inventory-container .item-container', 'data-type'),
++			no_items_present: bool(!!byId('no-items')),
++			jobs_cell_count: countOf('#jobs-container .cell'),
++			current_job_option_text: textOf('#job-wrapper .option'),
++			relation_container_count: countOf('.relationship-container'),
++			relation_bar_count: countOf('.relation'),
++
++			/* --- DOM: close box --- */
++			close_menu_present: bool(!!byId('close-menu')),
++			close_menu_computed_pointer_events: computedStyle('#close-menu', 'pointerEvents'),
++
++			/* --- isolation channels (pillar 4) --- */
++			local_storage_keys_length: num(safe(function () { return W.localStorage.length; })),
++			session_storage_keys_length: num(safe(function () { return W.sessionStorage.length; })),
++			cookie_string: safe(function () { return norm(document.cookie); }),
++			location_search: safe(function () { return norm(location.search); }),
++			location_hash: safe(function () { return norm(location.hash); }),
++			location_pathname_is_entry: bool(safe(function () { return /\/index\.html?$/.test(location.pathname) || location.pathname === '/'; })),
++			window_dunder_keys: safe(function () {
++				var out = [];
++				for (var k in W) if (Object.prototype.hasOwnProperty.call(W, k) && k.indexOf('__') === 0) out.push(k);
++				return out.concat(Object.getOwnPropertyNames(W).filter(function (n) { return n.indexOf('__') === 0 && out.indexOf(n) === -1; })).sort().join(',');
++			}),
++			window_dunder_keys_outside_whitelist: safe(function () {
++				var all = Object.getOwnPropertyNames(W).filter(function (n) { return n.indexOf('__') === 0; });
++				return all.filter(function (n) { return DUNDER_WHITELIST.indexOf(n) === -1; }).sort().join(',');
++			}),
++
++			/* --- adaptation face accounting --- */
++			seed_face_present: bool(!!W.__RB_SEED_FACE__),
++			seed_face_draws: num(safe(function () { return W.__RB_SEED_FACE__.draws; })),
++			seed_face_blocked_count: num(safe(function () { return W.__RB_SEED_FACE__.blocked.length; })),
++			seed_face_same_origin_only: bool(safe(function () { return W.__RB_SEED_FACE__.same_origin_only; })),
++			external_stylesheet_link_count: num(safe(function () {
++				return Array.prototype.slice.call(document.querySelectorAll('link[rel="stylesheet"]')).filter(function (l) {
++					return /^https?:\/\//.test(l.getAttribute('href') || '');
++				}).length;
++			})),
++
++			/* --- error hooks --- */
++			page_error_count: pageErrorCount,
++			page_errors_last: pageErrors.slice(-3).join(' | '),
++
++			/* --- frozen two-phase reading --- */
++			money_two_phase: safe(function () { return (marks.money_text === undefined ? SENTINEL : marks.money_text) + '|' + norm((byId('total-money') || {}).textContent); }),
++			mark_count: Object.keys(marks).length
++		};
++		return s;
++	}
++
++	/* ------------------------------------------------- parameterised PURE reads */
++	snapshot.contains = function (sel, needle) { return bool(safe(function () { var t = textOf(sel); return t === null ? null : t.indexOf(norm(needle)) !== -1; })); };
++	snapshot.text_of = function (sel) { return textOf(sel); };
++	snapshot.count_of = function (sel) { return countOf(sel); };
++	snapshot.inline_style = function (sel, prop) { return inlineStyle(sel, prop); };
++	snapshot.computed_style = function (sel, prop) { return computedStyle(sel, prop); };
++	snapshot.attr_of = function (sel, name) { return attrOf(sel, name); };
++	snapshot.model = function (expr) { return gv(expr); };
++	snapshot.inventory_index_at = function (type, i) { return num(gv('player.inventory["' + String(type) + '"][' + Number(i) + '].inventoryIndex')); };
++	snapshot.inventory_label_at = function (type, i) { return norm(gv('player.inventory["' + String(type) + '"][' + Number(i) + '].label')); };
++	snapshot.inventory_listed_indexes = function () {
++		return safe(function () {
++			return els('#inventory-container .item-container').map(function (e) { return norm(e.getAttribute('data-index')); }).join(',');
++		});
++	};
++	snapshot.skill_row = function (label) {
++		return safe(function () {
++			var rows = els('#event-body li');
++			for (var i = 0; i < rows.length; i++) {
++				var h = rows[i].querySelector('h3');
++				if (h && norm(h.textContent) === norm(label)) {
++					var p = rows[i].querySelector('p');
++					return p ? norm(p.textContent) : null;
++				}
++			}
++			return null;
++		});
++	};
++	snapshot.asset_cell_text_at = function (i) { return safe(function () { var list = els('#cell-container .cell'); var e = list[Number(i)]; return e ? norm(e.textContent) : null; }); };
++	snapshot.shop_row_text = function (id) { return textOf('#' + String(id)); };
++	snapshot.mark_value = function (key) { return marks[key] === undefined ? null : marks[key]; };
++	snapshot.last_cmd = function () { return { ok: lastCmd.ok, error: lastCmd.error, count: lastCmd.count, log_last5: cmdLog.slice(-5) }; };
++
++	/* ------------------------------------------------------------------ commands */
++	var commands = {
++		ping: function () { return command('ping', function () { return { ok: true, boot: snapshot().boot_completed }; }); },
++
++		/**
++		 * Create a character through the seed's OWN custom form: click the seed's own "Custom"
++		 * button (index.html:18 onclick="displayCustomization()"), write the four input values the
++		 * seed's own customCharacter() reads (js/main.js:252-264), then click the seed's own
++		 * "Create" button (the onclick="customCharacter()" button that displayCustomization()
++		 * renders at js/interface.js:42). The two <select> elements are left at their own defaults
++		 * on purpose: js/main.js:262-263 reads .value from them and the first option of each is
++		 * deterministic (gender "male" from js/interface.js:31, nationality from
++		 * nationalityList()'s first countriesData row).
++		 * Name and surname are BOTH always written because js/main.js:266 derives the surname
++		 * argument from `name !== undefined` (a seed quirk this task neither repairs nor exploits).
++		 * The inputs' own 'input' listeners (js/interface.js:47-54) strip non-letters, so values are
++		 * written to .value directly and no 'input' event is dispatched - customCharacter() reads
++		 * .value, which is exactly what a user's typing would have left there for an alphabetic name.
++		 */
++		create_custom: function (name, surname, age, money) {
++			return command('create_custom', function () {
++				clickEl(pickByText('#create-character-screen .create-btn', 'Custom', 'exact'));
++				function set(id, v) { var e = byId(id); if (!e) throw new Error('missing input #' + id); e.value = String(v); }
++				set('name', name);
++				set('surname', surname);
++				set('age', age);
++				set('money', money);
++				clickEl(pickByText('#create-character-screen .create-btn', 'Create', 'exact'));
++				return snapshot().has_player;
++			});
++		},
++
++		/** The seed's own Random button (index.html:17 onclick="randomCharacter()"). */
++		create_random: function () {
++			return command('create_random', function () {
++				clickEl(pickByText('#create-character-screen .create-btn', 'Random', 'exact'));
++				return snapshot().has_player;
++			});
++		},
++
++		/**
++		 * Click the seed's own Age button n times (index.html:76 onclick="annualChanges()",
++		 * re-rendered with the same inline handler by js/interface.js:71 after a death). One click
++		 * is one full yearly tick through the seed's own choke point.
++		 */
++		age: function (n) {
++			return command('age', function () {
++				var times = Number(n) || 1;
++				for (var i = 0; i < times; i++) {
++					var b = byId('age-btn');
++					if (!b) throw new Error('no #age-btn on click ' + (i + 1));
++					b.click();
++				}
++				return times;
++			});
++		},
++
++		/** Click one of the seed's own elements, addressed by a CSS selector the seed's own markup
++		 *  supports (an id, or one of the data-* attributes the seed writes). */
++		click_selector: function (sel) { return command('click_selector:' + sel, function () { return clickEl(el(sel)); }); },
++
++		/** Click the seed's own element whose normalised text is (mode 'exact') or contains
++		 *  (mode 'contains') `text`. Fires the seed's own inline onclick. */
++		click_text: function (sel, text, mode) {
++			return command('click_text:' + sel + ':' + text, function () { return clickEl(pickByText(sel, text, mode === 'contains' ? 'contains' : 'exact')); });
++		},
++
++		/** Set a form control's value and dispatch the 'change' event the seed's own listeners use. */
++		set_value: function (sel, value) {
++			return command('set_value:' + sel, function () {
++				var e = el(sel);
++				if (!e) throw new Error('no element ' + sel);
++				e.value = String(value);
++				e.dispatchEvent(new Event('change', { bubbles: true }));
++				return norm(e.value);
++			});
++		},
++
++		/** Freeze one scalar now so a later assertion can prove the value EVOLVED. Setup only. */
++		mark_text: function (key, sel) {
++			return command('mark_text:' + key, function () { marks[String(key)] = textOf(sel); return marks[String(key)]; });
++		},
++		mark_field: function (key, field) {
++			return command('mark_field:' + key, function () { marks[String(key)] = snapshot()[String(field)]; return marks[String(key)]; });
++		},
++		clear_marks: function () { return command('clear_marks', function () { marks = {}; return 0; }); },
++
++		capture_page_errors: function () { return command('capture_page_errors', function () { return pageErrorCount; }); },
++		reset_page_errors: function () { return command('reset_page_errors', function () { pageErrorCount = 0; pageErrors = []; return 0; }) },
++		last_cmd: function () { return { ok: lastCmd.ok, error: lastCmd.error, count: lastCmd.count, log_last5: cmdLog.slice(-5) }; }
++	};
++
++	try {
++		W.__QL__ = snapshot;
++		W.__QL_CMD__ = commands;
++	} catch (e) {
++		/* the probe must never break the application */
++	}
++})();

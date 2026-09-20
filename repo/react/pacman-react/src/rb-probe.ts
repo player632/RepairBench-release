@@ -1,0 +1,472 @@
+// rb-probe.ts - RepairBench measurement probe for repair-react__pacman-react-01. INSTRUMENTATION ONLY.
+//
+// Shipped by environment/instrumentation.patch as ONE new file plus ONE import inserted as line 1 of
+// src/index.tsx, i.e. above `import React from 'react'`. ES module bodies evaluate in import order, so
+// every statement below runs before any application module body: the boot storage reset therefore
+// precedes the first render, which is what makes every checkpoint boot from the same persisted state
+// no matter what an earlier checkpoint in the same browser context left behind.
+//
+// THIS SEED SHIPS NO adaptation.patch, and that omission is measured, not assumed: `rg -n
+// "localStorage|sessionStorage|fetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|window\.open|
+// document\.cookie|serviceWorker|import\.meta\.env" src -g '*.ts' -g '*.tsx'` returns ZERO hits, there
+// are zero http(s) literals in src, `vite build` exits 0 with npm_config_offline=true, and the recon
+// pass over / , /maze , /way-finding and /sprites recorded 0 external requests and 0 console
+// errors/warnings. There is no Tauri/Electron/native bridge and no remote endpoint to mock, so there is
+// nothing for an adaptation layer to shim. The storage reset below is kept anyway as a cheap
+// state-isolation guarantee for the checkpoints, NOT as a fix for observed leakage (the app persists
+// nothing - storageKeys() reads empty on a fresh boot).
+//
+// WHAT IT PUBLISHES - window.__rb, zero-argument functions that each return a STRING scalar (never an
+// object: evaluation/dsl_runner.mjs compares a js_eval result against the dsl's expected with a loose
+// ==, so a non-scalar would silently compare false): version/ready/frameReady/loadFired/hookCount/
+// classifySelfTest/egressCount/egressHosts/domResourceEgressCount/sameOriginCount/testidCount/
+// swCount/errorCount/storageKeys/storageKeyCount/sessionStorageKeys/cookieCount/unexpectedGlobals/
+// storageResetAtBoot/mountChildCount.
+//   version()        this probe's own literal, asserted verbatim so a stale or absent instrumentation
+//                    can never turn a sentinel into a "no probe" pass.
+//   hookCount()      how many wrappers installed - THE instrument-alive control (10 on this seed:
+//                    fetch, XHR, sendBeacon, window.open, img.src, iframe.src, script.src, link.href,
+//                    EventSource, WebSocket).
+//   egressCount()    requests whose origin classifier says 'external'. Expected 0 on this seed for the
+//                    reasons measured above; a non-zero reading means the delivered tree reached out.
+//   testidCount()    data-testid elements in the document; this probe adds none and renders nothing.
+//
+// WHAT IT DOES NOT DO: it changes no behaviour. Every wrapper calls through to the original with the
+// original arguments and returns its result; counters increment before the call, never after a
+// condition. It holds NO selector, constant or expected value belonging to any injected defect - the
+// clean and delivered readings live in tests/dsl.json's expected + derivation fields, so a solver who
+// reads the instrumentation learns nothing about the twelve defects. In particular it does not wrap
+// requestAnimationFrame (src/model/useAnimationLoop.ts drives the game clock through it): wrapping the
+// frame loop would make the instrument part of the timing it is supposed to measure.
+export {};
+
+(() => {
+  const W = window as unknown as Record<string, any>;
+  const D = document;
+  const VERSION = 'rb-probe/pacman-react-01/v1';
+
+  let bootComplete = false;
+  let loadFired = false;
+  let errorCount = 0;
+  let hookCount = 0;
+  let egressCount = 0;
+  let sameOriginCount = 0;
+  let domResourceEgressCount = 0;
+  let swRegistrations = 0;
+  let storageResetOk = false;
+  const egressHosts: Record<string, number> = {};
+
+  // ---------------------------------------------------------------- origin classifier
+  // 'external' | 'same' | 'inline' | 'empty' - a pure function of the url string and the served origin.
+  function classify(rawUrl: unknown): 'external' | 'same' | 'inline' | 'empty' {
+    const u = rawUrl === undefined || rawUrl === null ? '' : String(rawUrl).trim();
+    if (u === '') return 'empty';
+    if (/^(data|blob|filesystem):/i.test(u)) return 'inline';
+    if (/^about:/i.test(u)) return 'inline';
+    try {
+      const abs = new URL(u, window.location.href);
+      if (abs.origin === window.location.origin) return 'same';
+      if (abs.protocol === 'data:' || abs.protocol === 'blob:') return 'inline';
+      return 'external';
+    } catch {
+      // An unparseable url cannot reach the network from a browser context; treat it as inline and let
+      // the wrapped call produce whatever error it would have produced anyway.
+      return 'inline';
+    }
+  }
+
+  function classifySelfTest(): string {
+    const cases: Array<[string, string]> = [
+      ['https://example.test/a.png', 'external'],
+      ['//cdn.example.test/lib.js', 'external'],
+      [window.location.origin + '/x', 'same'],
+      ['/assets/y.js', 'same'],
+      ['data:image/png;base64,AAAA', 'inline'],
+      ['blob:' + window.location.origin + '/zz', 'inline'],
+      ['', 'empty'],
+    ];
+    for (let i = 0; i < cases.length; i += 1) {
+      if (classify(cases[i][0]) !== cases[i][1]) return 'mismatch@' + i + ':' + classify(cases[i][0]);
+    }
+    return 'ok';
+  }
+
+  function hostOf(rawUrl: unknown): string {
+    try {
+      return new URL(String(rawUrl), window.location.href).host;
+    } catch {
+      return 'unparseable';
+    }
+  }
+
+  // via: 'fetch' | 'xhr' | 'beacon' | 'window.open' | 'EventSource' | 'WebSocket' | 'dom'
+  function tally(rawUrl: unknown, via: string): void {
+    const kind = classify(rawUrl);
+    if (kind === 'external') {
+      egressCount += 1;
+      const h = hostOf(rawUrl);
+      egressHosts[h] = (egressHosts[h] || 0) + 1;
+      if (via === 'dom') domResourceEgressCount += 1;
+    } else if (kind === 'same') {
+      if (via === 'fetch' || via === 'xhr' || via === 'beacon' || via === 'window.open') sameOriginCount += 1;
+    }
+  }
+
+  // ---------------------------------------------------------------- boot storage reset
+  function resetStorage(): void {
+    let ok = true;
+    try {
+      window.localStorage.clear();
+    } catch {
+      ok = false;
+    }
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      ok = false;
+    }
+    storageResetOk = ok;
+  }
+
+  function dropServiceWorkers(): void {
+    try {
+      const nav = window.navigator as Navigator | undefined;
+      if (nav && nav.serviceWorker && typeof nav.serviceWorker.getRegistrations === 'function') {
+        nav.serviceWorker.getRegistrations().then(
+          (regs) => {
+            swRegistrations = regs ? regs.length : 0;
+            for (let i = 0; i < (regs ? regs.length : 0); i += 1) {
+              try {
+                regs[i].unregister();
+              } catch {
+                /* one failed unregister */
+              }
+            }
+          },
+          () => {
+            /* getRegistrations rejected */
+          }
+        );
+      }
+      if (W.caches && typeof W.caches.keys === 'function') {
+        Promise.resolve(W.caches.keys()).then(
+          (ks: string[]) => {
+            for (let i = 0; i < (ks ? ks.length : 0); i += 1) {
+              try {
+                W.caches.delete(ks[i]);
+              } catch {
+                /* one failed delete */
+              }
+            }
+          },
+          () => {
+            /* Cache Storage unsupported */
+          }
+        );
+      }
+    } catch {
+      /* Cache Storage unsupported */
+    }
+  }
+
+  // ---------------------------------------------------------------- wrappers (count, never change)
+  function wrapFetch(): boolean {
+    try {
+      const original = window.fetch;
+      if (typeof original !== 'function') return false;
+      W.fetch = function (this: any, input: any) {
+        try {
+          tally(typeof input === 'string' ? input : input && input.url ? input.url : input, 'fetch');
+        } catch {
+          /* tally never blocks the call */
+        }
+        return original.apply(this, arguments as any);
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function wrapXhr(): boolean {
+    try {
+      const proto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+      if (!proto || typeof proto.open !== 'function') return false;
+      const original = proto.open;
+      (proto as any).open = function (this: XMLHttpRequest, _method: any, url: any) {
+        try {
+          tally(url, 'xhr');
+        } catch {
+          /* tally never blocks the call */
+        }
+        return (original as any).apply(this, arguments as any);
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function wrapSendBeacon(): boolean {
+    try {
+      const nav = window.navigator as any;
+      if (!nav || typeof nav.sendBeacon !== 'function') return false;
+      const original = nav.sendBeacon;
+      nav.sendBeacon = function (url: any) {
+        try {
+          tally(url, 'beacon');
+        } catch {
+          /* tally never blocks the call */
+        }
+        return original.apply(this, arguments as any);
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function wrapWindowOpen(): boolean {
+    try {
+      const original = window.open;
+      if (typeof original !== 'function') return false;
+      W.open = function (this: any, url?: any) {
+        try {
+          tally(url, 'window.open');
+        } catch {
+          /* tally never blocks the call */
+        }
+        return original.apply(this, arguments as any);
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function wrapPropSetter(ctor: any, prop: string): boolean {
+    try {
+      if (!ctor || !ctor.prototype) return false;
+      const descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, prop);
+      if (!descriptor || typeof descriptor.set !== 'function') return false;
+      const originalSet = descriptor.set;
+      const originalGet = descriptor.get;
+      Object.defineProperty(ctor.prototype, prop, {
+        configurable: true,
+        enumerable: descriptor.enumerable,
+        get: originalGet,
+        set(this: unknown, value: unknown) {
+          try {
+            tally(value, 'dom');
+          } catch {
+            /* tally never blocks the call */
+          }
+          // A setter must not return a value (eslint 9 no-setter-return); the platform ignores it anyway.
+          originalSet.call(this, value as any);
+        },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function wrapCtor(name: string): boolean {
+    try {
+      const Original = W[name];
+      if (typeof Original !== 'function') return false;
+      const wrapped = function (this: any, url: any, protocols?: any) {
+        try {
+          tally(url, name);
+        } catch {
+          /* tally never blocks the call */
+        }
+        return protocols === undefined ? new Original(url) : new Original(url, protocols);
+      };
+      wrapped.prototype = Original.prototype;
+      (wrapped as any).__rbOriginal = Original;
+      W[name] = wrapped;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------- listeners
+  function watchErrors(): void {
+    try {
+      window.addEventListener(
+        'error',
+        () => {
+          errorCount += 1;
+        },
+        true
+      );
+      window.addEventListener('unhandledrejection', () => {
+        errorCount += 1;
+      });
+    } catch {
+      /* listener installation is best effort */
+    }
+  }
+
+  function watchLoad(): void {
+    try {
+      if (D.readyState === 'complete') loadFired = true;
+      window.addEventListener('load', () => {
+        loadFired = true;
+      });
+    } catch {
+      /* listener installation is best effort */
+    }
+  }
+
+  // ---------------------------------------------------------------- surface
+  function storageLength(): number {
+    // No `let n = 0` here: eslint 9's no-useless-assignment is right - that value is never read,
+    // because the catch returns -1 and the try overwrites n before any read.
+    try {
+      return window.localStorage.length;
+    } catch {
+      return -1;
+    }
+  }
+
+  function storageKeyList(): string[] {
+    const out: string[] = [];
+    try {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const k = window.localStorage.key(i);
+        if (k !== null) out.push(k);
+      }
+    } catch {
+      return [];
+    }
+    out.sort();
+    return out;
+  }
+
+  function sessionKeyList(): string[] {
+    const out: string[] = [];
+    try {
+      for (let i = 0; i < window.sessionStorage.length; i += 1) {
+        const k = window.sessionStorage.key(i);
+        if (k !== null) out.push(k);
+      }
+    } catch {
+      return [];
+    }
+    out.sort();
+    return out;
+  }
+
+  const surface = {
+    version: (): string => VERSION,
+    ready: (): string => (bootComplete ? 'true' : 'false'),
+    frameReady: (): string => {
+      try {
+        const host = D.getElementById('root');
+        return host && host.childElementCount > 0 ? 'true' : 'false';
+      } catch {
+        return 'ERR';
+      }
+    },
+    loadFired: (): string => (loadFired ? 'true' : 'false'),
+    navLang: (): string => {
+      try {
+        return String((D.documentElement && D.documentElement.lang) || '');
+      } catch {
+        return 'ERR';
+      }
+    },
+    hookCount: (): string => String(hookCount),
+    classifySelfTest: (): string => {
+      try {
+        return classifySelfTest();
+      } catch {
+        return 'ERR';
+      }
+    },
+    egressCount: (): string => String(egressCount),
+    egressHosts: (): string => {
+      const out: string[] = [];
+      for (const k in egressHosts) {
+        if (Object.prototype.hasOwnProperty.call(egressHosts, k)) out.push(k);
+      }
+      out.sort();
+      return out.join(',');
+    },
+    sameOriginCount: (): string => String(sameOriginCount),
+    domResourceEgressCount: (): string => String(domResourceEgressCount),
+    testidCount: (): string => {
+      try {
+        return String(D.querySelectorAll('[data-testid]').length);
+      } catch {
+        return 'ERR';
+      }
+    },
+    swCount: (): string => {
+      let n = swRegistrations;
+      try {
+        const nav = window.navigator as any;
+        if (nav && nav.serviceWorker && nav.serviceWorker.controller) n += 1;
+      } catch {
+        /* unsupported */
+      }
+      return String(n);
+    },
+    errorCount: (): string => String(errorCount),
+    storageKeys: (): string => storageKeyList().join(','),
+    storageKeyCount: (): string => String(storageLength()),
+    sessionStorageKeys: (): string => sessionKeyList().join(','),
+    cookieCount: (): string => {
+      try {
+        const c = String(D.cookie || '');
+        return c === '' ? '0' : String(c.split(';').filter((x) => x.trim() !== '').length);
+      } catch {
+        return 'ERR';
+      }
+    },
+    unexpectedGlobals: (): string => {
+      try {
+        return Object.getOwnPropertyNames(window)
+          .filter((k) => k.indexOf('__') === 0 && k !== '__rb')
+          .sort()
+          .join(',');
+      } catch {
+        return 'ERR';
+      }
+    },
+    storageResetAtBoot: (): string => (storageResetOk ? 'true' : 'false'),
+    mountChildCount: (): string => {
+      try {
+        const host = D.getElementById('root');
+        return host ? String(host.childElementCount) : '-1';
+      } catch {
+        return 'ERR';
+      }
+    },
+  };
+
+  watchErrors();
+  watchLoad();
+  resetStorage();
+  dropServiceWorkers();
+  if (wrapFetch()) hookCount += 1;
+  if (wrapXhr()) hookCount += 1;
+  if (wrapSendBeacon()) hookCount += 1;
+  if (wrapWindowOpen()) hookCount += 1;
+  if (wrapPropSetter(W.HTMLImageElement, 'src')) hookCount += 1;
+  if (wrapPropSetter(W.HTMLIFrameElement, 'src')) hookCount += 1;
+  if (wrapPropSetter(W.HTMLScriptElement, 'src')) hookCount += 1;
+  if (wrapPropSetter(W.HTMLLinkElement, 'href')) hookCount += 1;
+  if (wrapCtor('EventSource')) hookCount += 1;
+  if (wrapCtor('WebSocket')) hookCount += 1;
+
+  try {
+    Object.defineProperty(W, '__rb', { value: surface, writable: true, configurable: true, enumerable: true });
+  } catch {
+    W.__rb = surface;
+  }
+  bootComplete = true;
+})();

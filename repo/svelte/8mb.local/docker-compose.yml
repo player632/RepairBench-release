@@ -1,0 +1,49 @@
+# GPU is enabled by default (`gpus: all`). Requires NVIDIA Container Toolkit on the host.
+# If `docker compose up` fails because no GPU is available, use `docker-compose.cpu.yml` instead.
+#
+# BEFORE FIRST RUN: make sure `.env` is a FILE on the host, not a directory:
+#   cp .env.example .env     # or: touch .env
+# Otherwise Docker will auto-create an empty `.env` directory and settings
+# persistence will silently break. `create_host_path: false` below makes
+# Docker fail loudly instead of silently creating a directory if the file is
+# missing; the entrypoint also detects+recovers an empty directory.
+# `./uploads` remains the disk fallback and TMPDIR backing volume; keep it on
+# a disk with enough free space for the largest input.
+services:
+  8mblocal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_VERSION: "${APP_VERSION:-142.0.0.0}"
+    image: jms1717/8mblocal:latest
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./state:/app/state
+      - ./redis-data:/var/lib/redis
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        bind:
+          create_host_path: false
+    gpus: all
+    # Size limit for the container's RAM-backed temporary upload area. This
+    # is not preallocated; MEDIA_STORAGE=auto still falls back to disk when
+    # the shared-memory admission checks cannot safely fit a job.
+    shm_size: "${MEDIA_SHM_SIZE:-10g}"
+    environment:
+      - REDIS_URL=redis://127.0.0.1:6379/0
+      - ENV_FILE=/app/.env
+      - SETTINGS_FILE=/app/state/settings.json
+      - MEDIA_STORAGE=${MEDIA_STORAGE:-auto}
+      - MEDIA_MEMORY_LIMIT_GB=${MEDIA_MEMORY_LIMIT_GB:-10}
+      - HISTORY_FILE=/app/state/history.json
+      - TMPDIR=/app/uploads/.tmp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+      # Parallel encode jobs (each runs FFmpeg). Raise to use more CPU/RAM; watch GPU VRAM if using NVENC.
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-auto}
+    restart: unless-stopped

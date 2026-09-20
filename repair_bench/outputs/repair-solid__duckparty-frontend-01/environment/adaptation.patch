@@ -1,0 +1,871 @@
+diff --git a/index.html b/index.html
+index b84307b..0ba0299 100644
+--- a/index.html
++++ b/index.html
+@@ -4,9 +4,6 @@
+     <meta charset="UTF-8" />
+     <link rel="icon" type="image/png" href="/favicon.png" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-    <link rel="preconnect" href="https://fonts.googleapis.com">
+-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+-    <link href="https://fonts.googleapis.com/css2?family=Modak&family=Carter+One&&display=swap" rel="stylesheet">
+     <title>DuckParty — Build Ducks. Bully Humans</title>
+ 
+     <meta name="title" content="DuckParty — Build Ducks. Bully Humans">
+diff --git a/src/helpers/analytics.helper.ts b/src/helpers/analytics.helper.ts
+index 46ba453..8c2b46b 100644
+--- a/src/helpers/analytics.helper.ts
++++ b/src/helpers/analytics.helper.ts
+@@ -1,10 +1,10 @@
+ export const loadAnalytics = () => {
+-  if (import.meta.env.PROD) {
+-    const script = document.createElement("script");
+-    script.defer = true;
+-    script.src = "https://umami.apps.omid.toys/script.js";
+-    script.setAttribute("data-website-id", "ed88636a-1a64-429c-bbf4-34e26a564da3");
+-    document.head.appendChild(script);
+-  }
++  // rb-offline adaptation: the umami beacon is gated on import.meta.env.PROD,
++  // which every `vite build` sets, so the seed would inject a cross-origin
++  // <script src="https://umami.apps.omid.toys/script.js"> into the graded face.
++  // The grading environment has allow_internet=false; the beacon is analytics
++  // only, no checkpoint observes it, and src/rb-offline.ts counts any egress it
++  // would have caused. Neutered to a no-op, signature and export kept intact so
++  // src/index.tsx:6 and src/helpers/index.ts:1 still resolve unchanged.
++  return;
+ };
+-
+diff --git a/src/index.tsx b/src/index.tsx
+index e54a772..9ecd832 100644
+--- a/src/index.tsx
++++ b/src/index.tsx
+@@ -1,5 +1,6 @@
+ /* @refresh reload */
+ 
++import "./rb-offline";
+ import { QueryClientProvider } from "@tanstack/solid-query";
+ import { render } from "solid-js/web";
+ import App from "./App.tsx";
+diff --git a/src/rb-fixtures.ts b/src/rb-fixtures.ts
+new file mode 100644
+index 0000000..4955e04
+--- /dev/null
++++ b/src/rb-fixtures.ts
+@@ -0,0 +1,199 @@
++/**
++ * rb-fixtures.ts - the offline data desk for the RepairBench face of
++ * omidnikrah/duckparty-frontend.
++ *
++ * WHY THIS FILE EXISTS
++ * --------------------
++ * The seed is a pure client for a remote Go backend (`.env.example` points
++ * VITE_API_URL / VITE_WS_URL at localhost:4030) plus three cross-origin bytes in
++ * index.html (fonts.googleapis.com preconnect x2 + the Modak/Carter One
++ * stylesheet), an umami beacon (src/helpers/analytics.helper.ts, live in every
++ * `vite build` because it is gated on import.meta.env.PROD), a GitHub star
++ * counter that calls api.github.com, and a WebSocket that reconnects five times.
++ * The grading environment has allow_internet=false, so without a desk the app
++ * boots into an empty yard: /party renders NOTHING because
++ * src/pages/Party/index.tsx:110 gates the whole canvas behind
++ * `!getDucks.isError && !getDucks.isLoading`.
++ *
++ * This module is DATA ONLY. It holds no routing, no assertion and no knowledge
++ * of any defect; the request desk that serves it lives in rb-offline.ts and the
++ * read-only observation bridge lives in rb-probe.ts (instrumentation).
++ *
++ * 🔴 THE DESK IS NOT THE SURFACE UNDER TEST. All twelve defects injected by
++ * environment/mutation.patch land in the app's own modules (hooks, helpers,
++ * stores, canvas hooks, pages, components); rb-fixtures.ts and rb-offline.ts
++ * carry none, and the gold patch restores every one of them.
++ */
++
++export interface RbOwner {
++  id: number;
++  display_name: string;
++  created_at: string;
++  updated_at: string;
++}
++
++export interface RbAppearance {
++  skin?: string | null;
++  accessories?: string[];
++}
++
++/** Field-for-field `src/api/generated/schemas/duckResponse.ts`. */
++export interface RbDuck {
++  appearance?: RbAppearance;
++  created_at: string;
++  dislikes_count: number;
++  id: number;
++  image: string;
++  likes_count: number;
++  name: string;
++  owner: RbOwner;
++  owner_id: number;
++  rank: number;
++  updated_at: string;
++}
++
++/** Field-for-field `src/api/generated/schemas/userResponse.ts`. */
++export interface RbUser {
++  CreatedAt: string;
++  ID: number;
++  UpdatedAt: string;
++  display_name: string;
++  email?: string;
++}
++
++/** Field-for-field `src/api/generated/schemas/authenticateResponse.ts`. */
++export interface RbAuthenticateResponse {
++  token: string;
++  user: RbUser;
++}
++
++// ---------------------------------------------------------------------------
++// constants the checkpoints read back through window.__rb
++// ---------------------------------------------------------------------------
++
++export const RB_SIGNED_IN_USER_ID = 42;
++export const RB_SIGNED_IN_DISPLAY_NAME = "Quackmaster";
++export const RB_ANON_TOKEN = "rb-anonymous-token-0001";
++export const RB_OTP_TOKEN = "rb-otp-token-0002";
++/** Any non-empty code is accepted; this one is what the probe seeds. */
++export const RB_OTP = "424242";
++export const RB_GITHUB_STARS = 1234;
++export const RB_OTP_SENT_MESSAGE = "OTP sent to your email";
++export const RB_DELETE_MESSAGE = "Duck deleted";
++export const RB_UNAUTHORIZED = "Unauthorized";
++
++/**
++ * `created_at` is computed RELATIVE TO PAGE LOAD, never baked as a literal
++ * timestamp: src/helpers/date.helper.ts formats it through
++ * Intl.RelativeTimeFormat, so a frozen date would silently drift from
++ * "3 days ago" to "4 days ago" as the corpus ages and the F07 witness would
++ * decay into a false red. Duck 1 is the Birthday witness (3 days).
++ */
++const DAY_MS = 86_400_000;
++
++const isoDaysAgo = (days: number): string =>
++  new Date(Date.now() - days * DAY_MS).toISOString();
++
++interface RbSeedRow {
++  id: number;
++  name: string;
++  skin: string;
++  ownerId: number;
++  ownerName: string;
++  daysAgo: number;
++  likes: number;
++  dislikes: number;
++  rank: number;
++}
++
++const SEED_ROWS: RbSeedRow[] = [
++  { id: 1, name: "Waddles", skin: "giraffe", ownerId: 101, ownerName: "Pond Pilot", daysAgo: 3, likes: 128, dislikes: 7, rank: 1 },
++  { id: 2, name: "Sir Quacks", skin: "superman", ownerId: 102, ownerName: "Bread Baron", daysAgo: 5, likes: 96, dislikes: 12, rank: 2 },
++  { id: 3, name: "Bread", skin: "barbie", ownerId: 103, ownerName: "Marsh Marshal", daysAgo: 11, likes: 74, dislikes: 3, rank: 3 },
++  { id: 4, name: "Colonel Feathers", skin: "astronaut", ownerId: 104, ownerName: "Nestor", daysAgo: 40, likes: 51, dislikes: 20, rank: 4 },
++  { id: 5, name: "Puddles", skin: "pirate", ownerId: 105, ownerName: "Quackula", daysAgo: 2, likes: 33, dislikes: 2, rank: 5 },
++  { id: 6, name: "Duck Norris", skin: "artiste", ownerId: 106, ownerName: "Featherstone", daysAgo: 90, likes: 12, dislikes: 1, rank: 6 },
++];
++
++const skinImage = (skin: string): string => `/skins/original/${skin}.png`;
++
++const ownerOf = (row: RbSeedRow): RbOwner => ({
++  id: row.ownerId,
++  display_name: row.ownerName,
++  created_at: isoDaysAgo(row.daysAgo + 30),
++  updated_at: isoDaysAgo(row.daysAgo),
++});
++
++const duckOf = (row: RbSeedRow): RbDuck => ({
++  id: row.id,
++  name: row.name,
++  image: skinImage(row.skin),
++  owner_id: row.ownerId,
++  owner: ownerOf(row),
++  created_at: isoDaysAgo(row.daysAgo),
++  updated_at: isoDaysAgo(row.daysAgo),
++  likes_count: row.likes,
++  dislikes_count: row.dislikes,
++  rank: row.rank,
++  appearance: { skin: row.skin, accessories: [] },
++});
++
++/** A fresh copy on every call: the desk mutates its own list (POST/DELETE). */
++export const rbDucks = (): RbDuck[] => SEED_ROWS.map(duckOf);
++
++/** `GET /leaderboard` - the yard ordered by rank, top five only. */
++export const rbLeaderboard = (): RbDuck[] =>
++  rbDucks()
++    .filter((duck) => duck.rank > 0 && duck.rank <= 5)
++    .sort((a, b) => a.rank - b.rank);
++
++/** `GET /user/:userId/ducks`. */
++export const rbUserDucks = (userId: number, all: RbDuck[]): RbDuck[] =>
++  all.filter((duck) => duck.owner_id === userId);
++
++export const rbSignedInUser = (email?: string): RbUser => ({
++  ID: RB_SIGNED_IN_USER_ID,
++  CreatedAt: isoDaysAgo(120),
++  UpdatedAt: isoDaysAgo(1),
++  display_name: RB_SIGNED_IN_DISPLAY_NAME,
++  ...(email ? { email } : {}),
++});
++
++/**
++ * The identity `window.__rbHost.seedAuth()` writes into localStorage before a
++ * reload. `email` is deliberately ABSENT: src/pages/Party/index.tsx:98-107
++ * shows the "wanna save this duck with your email?" nudge exactly when the
++ * signed-in user has no email, and src/helpers/auth.helper.ts:20-23 round-trips
++ * this object through USER_DATA_KEY unchanged.
++ */
++export const rbStoredUser = (): RbUser => rbSignedInUser();
++
++/** A newly created duck, as `POST /duck` would echo it back. */
++export const rbCreatedDuck = (
++  id: number,
++  name: string,
++  appearance: RbAppearance,
++): RbDuck => ({
++  id,
++  name,
++  image: `/skins/original/${String(appearance.skin ?? "giraffe").replace(/_/g, "-")}.png`,
++  owner_id: RB_SIGNED_IN_USER_ID,
++  owner: {
++    id: RB_SIGNED_IN_USER_ID,
++    display_name: RB_SIGNED_IN_DISPLAY_NAME,
++    created_at: isoDaysAgo(120),
++    updated_at: isoDaysAgo(0),
++  },
++  created_at: isoDaysAgo(0),
++  updated_at: isoDaysAgo(0),
++  likes_count: 0,
++  dislikes_count: 0,
++  rank: 0,
++  appearance,
++});
++
++/** `https://api.github.com/repos/omidnikrah/duckparty-frontend` (stars badge). */
++export const rbGithubRepo = (): { stargazers_count: number; name: string } => ({
++  stargazers_count: RB_GITHUB_STARS,
++  name: "duckparty-frontend",
++});
+diff --git a/src/rb-offline.ts b/src/rb-offline.ts
+new file mode 100644
+index 0000000..0b5120d
+--- /dev/null
++++ b/src/rb-offline.ts
+@@ -0,0 +1,612 @@
++/**
++ * rb-offline.ts - the same-origin request desk for the RepairBench face of
++ * omidnikrah/duckparty-frontend. Installed as the FIRST import of src/index.tsx
++ * by environment/adaptation.patch, so it runs before src/api/axios-instance.ts
++ * calls axios.create(...) and before any component mounts.
++ *
++ * WHAT IT DOES (four things, all same-origin)
++ *  1. axios adapter. axios.defaults.adapter is replaced, and axios v1's
++ *     mergeConfig.js:79 lists `adapter: defaultToConfig2`, so every instance
++ *     created afterwards (src/api/axios-instance.ts) inherits it. One desk
++ *     therefore answers BOTH the orval-generated client (relative paths with a
++ *     baseURL of the literal string "undefined", because
++ *     `${import.meta.env.VITE_API_URL}` is unset offline) AND the direct
++ *     axios.get("https://api.github.com/...") in GithubStarButton.tsx:53.
++ *     Data comes from rb-fixtures.ts. Unknown paths are answered 404 AND
++ *     recorded, so a missing fixture can never masquerade as a green run.
++ *  2. WebSocket shim. src/hooks/useSocket.hook.ts:95-96 does
++ *     `new WebSocket(import.meta.env.VITE_WS_URL)` - offline that is
++ *     `new WebSocket(undefined)`, i.e. a real connection attempt to
++ *     ws://127.0.0.1:<port>/undefined followed by five 1 s reconnects. The shim
++ *     opens instantly, never touches the network, and exposes a message bus the
++ *     probe can drive, so the app's own socket merge logic stays reachable.
++ *  3. egress containment. fetch / XMLHttpRequest.open / navigator.sendBeacon /
++ *     window.open are wrapped: same-origin passes through, anything else is
++ *     BLOCKED AND COUNTED. The count is the evidence for the offline sentinel;
++ *     it is measured at the REQUEST layer, never by counting DOM
++ *     link/script/img declarations (that shape is origin-blind and would
++ *     falsely match the app's own same-origin loopback assets).
++ *  4. index.html de-linking. adaptation.patch drops the three cross-origin
++ *     <link> lines (fonts.googleapis.com preconnect x2 + the Modak/Carter One
++ *     stylesheet) that render-blocked mounting; the two families fall back to
++ *     the generic sans-serif and no checkpoint asserts on font metrics.
++ *     src/helpers/analytics.helper.ts is neutered to a no-op by the same patch
++ *     (it is gated on import.meta.env.PROD, which every `vite build` sets, so
++ *     the umami beacon at umami.apps.omid.to/script.js WOULD be injected).
++ *
++ * 🔴 THE DESK IS NOT THE SURFACE UNDER TEST. It owns no routing decision the
++ * checkpoints grade, no assertion, and no defect: all twelve mutation sites are
++ * the app's own modules. The one behavioural policy it enforces - POST /duck and
++ * the other write endpoints require a bearer token - mirrors the real backend
++ * (src/api/axios-instance.ts:11-16 attaches Authorization from localStorage),
++ * and it is what makes the app's own anonymous-bootstrap step observable.
++ */
++
++import axios, { AxiosError } from "axios";
++import type {
++  AxiosAdapter,
++  AxiosResponse,
++  InternalAxiosRequestConfig,
++} from "axios";
++import {
++  RB_ANON_TOKEN,
++  RB_DELETE_MESSAGE,
++  RB_GITHUB_STARS,
++  RB_OTP_TOKEN,
++  RB_SIGNED_IN_DISPLAY_NAME,
++  RB_SIGNED_IN_USER_ID,
++  RB_UNAUTHORIZED,
++  rbCreatedDuck,
++  rbDucks,
++  rbGithubRepo,
++  rbLeaderboard,
++  rbSignedInUser,
++  rbUserDucks,
++  type RbAppearance,
++  type RbDuck,
++} from "./rb-fixtures";
++
++// ---------------------------------------------------------------------------
++// ledger (published on window.__rbDesk; rb-probe.ts reads it, never writes it)
++// ---------------------------------------------------------------------------
++
++interface RbCreateRecord {
++  name: string;
++  appearance: string;
++  imageType: string;
++  imageSize: number;
++  imageWidth: number;
++  imageHeight: number;
++  status: number;
++}
++
++interface RbDeskState {
++  blocked: number;
++  blockedUrls: string[];
++  unknown: string[];
++  log: string[];
++  ducks: RbDuck[];
++  nextDuckId: number;
++  lastCreate: RbCreateRecord | null;
++  openedWindows: string[];
++  sockets: RbWebSocket[];
++  socketMessages: string[];
++}
++
++const state: RbDeskState = {
++  blocked: 0,
++  blockedUrls: [],
++  unknown: [],
++  log: [],
++  ducks: rbDucks(),
++  nextDuckId: 7,
++  lastCreate: null,
++  openedWindows: [],
++  sockets: [],
++  socketMessages: [],
++};
++
++const isSameOrigin = (raw: string): boolean => {
++  const value = String(raw ?? "");
++  if (!value) return true;
++  if (/^(blob:|data:|about:)/i.test(value)) return true;
++  if (value.startsWith("/")) return true;
++  try {
++    return new URL(value, window.location.href).origin === window.location.origin;
++  } catch {
++    // An unparseable absolute reference cannot be proven same-origin: count it
++    // (fail closed) rather than waving it through.
++    return false;
++  }
++};
++
++const block = (kind: string, url: string): void => {
++  state.blocked += 1;
++  state.blockedUrls.push(`${kind} ${url}`.slice(0, 300));
++};
++
++// ---------------------------------------------------------------------------
++// 2. WebSocket shim
++// ---------------------------------------------------------------------------
++
++type RbSocketListener = (event: { data: string; type: string; target: RbWebSocket }) => void;
++
++class RbWebSocket {
++  static readonly CONNECTING = 0;
++  static readonly OPEN = 1;
++  static readonly CLOSING = 2;
++  static readonly CLOSED = 3;
++
++  readonly CONNECTING = 0;
++  readonly OPEN = 1;
++  readonly CLOSING = 2;
++  readonly CLOSED = 3;
++
++  url: string;
++  readyState: number = RbWebSocket.CONNECTING;
++  protocol = "";
++  bufferedAmount = 0;
++  extensions = "";
++  binaryType: "blob" | "arraybuffer" = "blob";
++  sent: string[] = [];
++
++  onopen: RbSocketListener | null = null;
++  onmessage: RbSocketListener | null = null;
++  onclose: ((event: { code: number; reason: string; type: string; target: RbWebSocket }) => void) | null = null;
++  onerror: RbSocketListener | null = null;
++
++  constructor(url: string | URL, _protocols?: string | string[]) {
++    // Recorded verbatim so the face can prove the app asked for the unset
++    // VITE_WS_URL rather than silently swallowing it.
++    this.url = String(url);
++    state.sockets.push(this);
++    setTimeout(() => {
++      if (this.readyState !== RbWebSocket.CONNECTING) return;
++      this.readyState = RbWebSocket.OPEN;
++      this.onopen?.({ data: "", type: "open", target: this });
++    }, 0);
++  }
++
++  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
++    this.sent.push(String(data));
++  }
++
++  /** code 1000 keeps src/hooks/useSocket.hook.ts:109-117 out of its retry loop. */
++  close(code = 1000, reason = ""): void {
++    if (this.readyState === RbWebSocket.CLOSED) return;
++    this.readyState = RbWebSocket.CLOSED;
++    this.onclose?.({ code, reason, type: "close", target: this });
++  }
++
++  addEventListener(type: string, listener: RbSocketListener): void {
++    if (type === "open") this.onopen = listener;
++    else if (type === "message") this.onmessage = listener;
++    else if (type === "error") this.onerror = listener;
++  }
++
++  removeEventListener(): void {
++    /* the shim holds a single listener slot per type; the app never removes */
++  }
++
++  dispatchEvent(): boolean {
++    return true;
++  }
++
++  /** Test hook: deliver one server frame to this socket. */
++  __emit(payload: unknown): void {
++    const data = typeof payload === "string" ? payload : JSON.stringify(payload);
++    state.socketMessages.push(data);
++    this.onmessage?.({ data, type: "message", target: this });
++  }
++}
++
++// ---------------------------------------------------------------------------
++// 3. egress containment
++// ---------------------------------------------------------------------------
++
++const installEgressGuards = (): void => {
++  const nativeFetch = window.fetch?.bind(window);
++  if (nativeFetch) {
++    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
++      const url =
++        typeof input === "string"
++          ? input
++          : input instanceof URL
++            ? input.href
++            : input.url;
++      if (!isSameOrigin(url)) {
++        block("fetch", url);
++        return Promise.reject(new TypeError(`rb-offline: blocked cross-origin fetch to ${url}`));
++      }
++      return nativeFetch(input as RequestInfo, init);
++    }) as typeof window.fetch;
++  }
++
++  const nativeOpen = XMLHttpRequest.prototype.open;
++  XMLHttpRequest.prototype.open = function patchedOpen(
++    this: XMLHttpRequest,
++    method: string,
++    url: string | URL,
++    ...rest: unknown[]
++  ) {
++    const target = String(url);
++    if (!isSameOrigin(target)) {
++      block("xhr", target);
++      throw new Error(`rb-offline: blocked cross-origin XHR to ${target}`);
++    }
++    return (nativeOpen as unknown as (...args: unknown[]) => void).apply(this, [
++      method,
++      target,
++      ...rest,
++    ]);
++  } as typeof XMLHttpRequest.prototype.open;
++
++  if (navigator.sendBeacon) {
++    const nativeBeacon = navigator.sendBeacon.bind(navigator);
++    navigator.sendBeacon = ((url: string | URL, data?: BodyInit | null) => {
++      const target = String(url);
++      if (!isSameOrigin(target)) {
++        block("beacon", target);
++        return false;
++      }
++      return nativeBeacon(target, data);
++    }) as typeof navigator.sendBeacon;
++  }
++
++  const nativeOpenWindow = window.open?.bind(window);
++  window.open = ((url?: string | URL, ...rest: unknown[]) => {
++    const target = String(url ?? "");
++    state.openedWindows.push(target);
++    if (!isSameOrigin(target)) block("window.open", target);
++    // Never actually open a tab: the grading browser has no popup affordance
++    // and a real popup would escape the checkpoint's own context.
++    void nativeOpenWindow;
++    void rest;
++    return null;
++  }) as typeof window.open;
++};
++
++// ---------------------------------------------------------------------------
++// 1. axios adapter
++// ---------------------------------------------------------------------------
++
++const headerValue = (config: InternalAxiosRequestConfig, name: string): string => {
++  const headers = config.headers as unknown as Record<string, unknown> | undefined;
++  if (!headers) return "";
++  for (const key of Object.keys(headers)) {
++    if (key.toLowerCase() === name.toLowerCase()) return String(headers[key] ?? "");
++  }
++  return "";
++};
++
++/**
++ * Normalises whatever axios hands the adapter into a route key.
++ * `${import.meta.env.VITE_API_URL}` is the literal string "undefined" offline,
++ * so the generated client's URLs arrive as "undefined/ducks"; the GitHub call
++ * arrives absolute. Both are reduced to a stable "host/path" or "/path" key.
++ */
++const routeKey = (config: InternalAxiosRequestConfig): string => {
++  let raw = String(config.url ?? "");
++  const base = config.baseURL == null ? "" : String(config.baseURL);
++  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && base) {
++    raw = `${base.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}`;
++  }
++  raw = raw.replace(/^undefined\/?/, "/");
++  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
++    try {
++      const parsed = new URL(raw);
++      raw = `${parsed.host}${parsed.pathname}`;
++    } catch {
++      /* keep the raw form so it lands in the unknown ledger */
++    }
++  }
++  return raw.replace(/\/+$/, "") || "/";
++};
++
++const decodeImage = async (blob: Blob): Promise<{ width: number; height: number }> => {
++  const url = URL.createObjectURL(blob);
++  try {
++    return await new Promise((resolve) => {
++      const img = new Image();
++      img.onload = () => {
++        resolve({ width: img.naturalWidth, height: img.naturalHeight });
++        URL.revokeObjectURL(url);
++      };
++      img.onerror = () => {
++        resolve({ width: 0, height: 0 });
++        URL.revokeObjectURL(url);
++      };
++      img.src = url;
++    });
++  } catch {
++    URL.revokeObjectURL(url);
++    return { width: 0, height: 0 };
++  }
++};
++
++interface RbBody {
++  json: Record<string, unknown>;
++  image: { type: string; size: number; width: number; height: number } | null;
++}
++
++const readBody = async (config: InternalAxiosRequestConfig): Promise<RbBody> => {
++  const data: unknown = config.data;
++  if (data == null) return { json: {}, image: null };
++  // src/api/generated/endpoints.ts:340-352 builds POST /duck as multipart
++  // FormData (image Blob + name + appearance), so the adapter sees FormData
++  // rather than a JSON string. Walk it entry by entry; the Blob is decoded to
++  // its natural size so the merged-image pipeline stays observable offline.
++  if (typeof FormData !== "undefined" && data instanceof FormData) {
++    const fields: Record<string, unknown> = {};
++    let image: RbBody["image"] = null;
++    for (const [key, value] of Array.from(data.entries())) {
++      if (typeof Blob !== "undefined" && value instanceof Blob) {
++        const dims = await decodeImage(value);
++        image = {
++          type: value.type,
++          size: value.size,
++          width: dims.width,
++          height: dims.height,
++        };
++        fields[key] = `[blob ${value.type} ${value.size}B]`;
++      } else {
++        fields[key] = String(value);
++      }
++    }
++    return { json: fields, image };
++  }
++  if (typeof Blob !== "undefined" && data instanceof Blob) {
++    const dims = await decodeImage(data);
++    return {
++      json: {},
++      image: { type: data.type, size: data.size, width: dims.width, height: dims.height },
++    };
++  }
++  if (typeof data === "string") {
++    try {
++      const parsed: unknown = JSON.parse(data);
++      return {
++        json: (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>,
++        image: null,
++      };
++    } catch {
++      return { json: {}, image: null };
++    }
++  }
++  if (typeof data === "object") {
++    return { json: data as Record<string, unknown>, image: null };
++  }
++  return { json: {}, image: null };
++};
++
++type RbOutcome = { status: number; data: unknown };
++
++const unauthorized = (): RbOutcome => ({ status: 401, data: { error: RB_UNAUTHORIZED } });
++
++const str = (value: unknown): string => (typeof value === "string" ? value : "");
++const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
++
++const route = async (config: InternalAxiosRequestConfig): Promise<RbOutcome> => {
++  const method = String(config.method ?? "get").toUpperCase();
++  const path = routeKey(config);
++  const authed = /^Bearer\s+\S+/.test(headerValue(config, "Authorization"));
++  const body = await readBody(config);
++
++  // --- the one third-party host the seed really calls -----------------------
++  if (path === "api.github.com/repos/omidnikrah/duckparty-frontend") {
++    return { status: 200, data: rbGithubRepo() };
++  }
++
++  // --- any other off-origin host: blocked, counted, never answered ----------
++  if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?\//i.test(path)) {
++    block("axios", path);
++    return { status: 200, data: { stargazers_count: RB_GITHUB_STARS, rbBlocked: true } };
++  }
++
++  const segments = path.split("/").filter(Boolean);
++
++  if (method === "GET" && path === "/ducks") {
++    return { status: 200, data: state.ducks.map((duck) => ({ ...duck })) };
++  }
++
++  if (method === "GET" && path === "/leaderboard") {
++    const ranked = rbLeaderboard().map((duck) => {
++      const live = state.ducks.find((candidate) => candidate.id === duck.id);
++      return live ? { ...live } : duck;
++    });
++    return { status: 200, data: ranked };
++  }
++
++  if (method === "GET" && path === "/user") {
++    if (!authed) return unauthorized();
++    return { status: 200, data: { user: rbSignedInUser() } };
++  }
++
++  if (method === "GET" && segments[0] === "user" && segments[2] === "ducks") {
++    const userId = num(segments[1]);
++    return { status: 200, data: rbUserDucks(userId, state.ducks).map((duck) => ({ ...duck })) };
++  }
++
++  if (method === "POST" && path === "/auth/anonymous") {
++    const name = str(body.json.name) || "Anonymous Ducker";
++    return {
++      status: 200,
++      data: {
++        token: RB_ANON_TOKEN,
++        user: { ...rbSignedInUser(), display_name: name },
++      },
++    };
++  }
++
++  if (method === "POST" && path === "/auth") {
++    return { status: 200, data: { message: "OTP sent to your email", email: str(body.json.email) } };
++  }
++
++  if (method === "POST" && path === "/auth/verify") {
++    const email = str(body.json.email);
++    if (!str(body.json.otp)) return { status: 400, data: { error: "Invalid code" } };
++    return {
++      status: 200,
++      data: { token: RB_OTP_TOKEN, user: rbSignedInUser(email || "quackmaster@example.com") },
++    };
++  }
++
++  if (method === "POST" && path === "/user/set-email") {
++    if (!authed) return unauthorized();
++    return { status: 200, data: { message: "OTP sent to your email" } };
++  }
++
++  if (method === "POST" && path === "/user/verify-set-email") {
++    if (!authed) return unauthorized();
++    if (!str(body.json.otp)) return { status: 400, data: { error: "Invalid code" } };
++    return {
++      status: 200,
++      data: {
++        token: RB_OTP_TOKEN,
++        user: rbSignedInUser(str(body.json.email) || "quackmaster@example.com"),
++      },
++    };
++  }
++
++  if (method === "PUT" && path === "/user/change-name") {
++    if (!authed) return unauthorized();
++    return { status: 200, data: { message: "Name updated", display_name: str(body.json.name) } };
++  }
++
++  if (method === "POST" && path === "/duck") {
++    // Bearer required - this is the desk's only policy, and it mirrors the real
++    // backend: src/api/axios-instance.ts:11-16 attaches the token from
++    // localStorage, and src/components/CreateDuckFormSection/CreateDuckFormSection.tsx:111-113
++    // bootstraps an anonymous identity first when the visitor has none.
++    const record: RbCreateRecord = {
++      name: str(body.json.name),
++      appearance: str(body.json.appearance),
++      imageType: body.image?.type ?? "",
++      imageSize: body.image?.size ?? 0,
++      imageWidth: body.image?.width ?? 0,
++      imageHeight: body.image?.height ?? 0,
++      status: authed ? 201 : 401,
++    };
++    state.lastCreate = record;
++    if (!authed) return unauthorized();
++    let appearance: RbAppearance = {};
++    try {
++      const parsed: unknown = JSON.parse(str(body.json.appearance) || "{}");
++      if (parsed && typeof parsed === "object") appearance = parsed as RbAppearance;
++    } catch {
++      appearance = {};
++    }
++    const created = rbCreatedDuck(state.nextDuckId, record.name || "Nameless Duck", appearance);
++    state.nextDuckId += 1;
++    state.ducks = [created, ...state.ducks];
++    return { status: 201, data: { ...created } };
++  }
++
++  if (method === "PUT" && segments[0] === "duck" && segments[2] === "reaction") {
++    if (!authed) return unauthorized();
++    const duckId = num(segments[1]);
++    const reaction = str(segments[3]);
++    const target = state.ducks.find((duck) => duck.id === duckId);
++    if (!target) return { status: 404, data: { error: "Duck not found" } };
++    if (reaction === "like") target.likes_count += 1;
++    else if (reaction === "dislike") target.dislikes_count += 1;
++    else return { status: 400, data: { error: "Unknown reaction" } };
++    return {
++      status: 200,
++      data: {
++        duck: { ...target },
++        duck_id: duckId,
++        reaction,
++        user_id: RB_SIGNED_IN_USER_ID,
++        created_at: new Date().toISOString(),
++        user: { id: RB_SIGNED_IN_USER_ID, display_name: RB_SIGNED_IN_DISPLAY_NAME },
++      },
++    };
++  }
++
++  if (method === "DELETE" && segments[0] === "duck" && segments.length === 2) {
++    if (!authed) return unauthorized();
++    const duckId = num(segments[1]);
++    const before = state.ducks.length;
++    state.ducks = state.ducks.filter((duck) => duck.id !== duckId);
++    if (state.ducks.length === before) return { status: 404, data: { error: "Duck not found" } };
++    return { status: 200, data: { message: RB_DELETE_MESSAGE } };
++  }
++
++  if (method === "GET" && path === "/ws") {
++    return { status: 200, data: { url: "offline-desk", note: "the desk serves the socket in-process" } };
++  }
++
++  state.unknown.push(`${method} ${path}`);
++  return { status: 404, data: { error: `rb-offline: no fixture for ${method} ${path}` } };
++};
++
++const rbAdapter: AxiosAdapter = async (config) => {
++  const method = String(config.method ?? "get").toUpperCase();
++  const path = routeKey(config);
++  const started = Date.now();
++  let outcome: RbOutcome;
++  try {
++    outcome = await route(config);
++  } catch (error) {
++    outcome = {
++      status: 500,
++      data: { error: `rb-offline desk threw: ${String((error as Error)?.message ?? error)}` },
++    };
++  }
++  state.log.push(`${method} ${path} -> ${outcome.status} (${Date.now() - started}ms)`);
++
++  const response: AxiosResponse = {
++    data: outcome.data,
++    status: outcome.status,
++    statusText: outcome.status === 200 ? "OK" : outcome.status === 201 ? "Created" : "Error",
++    headers: { "content-type": "application/json" },
++    config,
++    request: { rbOfflineDesk: true },
++  };
++
++  if (outcome.status >= 400) {
++    throw new AxiosError(
++      `Request failed with status code ${outcome.status}`,
++      String(outcome.status),
++      config,
++      response.request,
++      response,
++    );
++  }
++  return response;
++};
++
++// ---------------------------------------------------------------------------
++// install
++// ---------------------------------------------------------------------------
++
++const install = (): void => {
++  const win = window as unknown as Record<string, unknown>;
++
++  installEgressGuards();
++
++  axios.defaults.adapter = rbAdapter;
++  win.WebSocket = RbWebSocket;
++  win.__rbDesk = {
++    version: "rb-offline/1",
++    blockedCount: () => state.blocked,
++    blockedUrls: () => state.blockedUrls.join(" | "),
++    unknownPaths: () => state.unknown.join(" | "),
++    apiLog: () => state.log.join(" | "),
++    duckCount: () => state.ducks.length,
++    duckNames: () => state.ducks.map((duck) => duck.name).join(","),
++    lastCreate: () => state.lastCreate,
++    openedWindows: () => state.openedWindows.join(" | "),
++    socketCount: () => state.sockets.length,
++    socketUrls: () => state.sockets.map((socket) => socket.url).join(" | "),
++    socketMessages: () => state.socketMessages.join(" | "),
++    emitSocket: (payload: unknown) => {
++      const open = state.sockets.filter((socket) => socket.readyState === RbWebSocket.OPEN);
++      for (const socket of open) socket.__emit(payload);
++      return open.length;
++    },
++  };
++};
++
++install();

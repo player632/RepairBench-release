@@ -1,0 +1,85 @@
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -18,6 +18,7 @@
+ 				"@internationalized/date": "^3.8.1",
+ 				"@lucide/svelte": "^0.546.0",
+ 				"@sveltejs/adapter-auto": "^7.0.0",
++				"@sveltejs/adapter-static": "^3.0.10",
+ 				"@sveltejs/kit": "^2.22.0",
+ 				"@sveltejs/vite-plugin-svelte": "^6.0.0",
+ 				"@tailwindcss/vite": "^4.0.0",
+@@ -1088,6 +1089,16 @@
+ 				"@sveltejs/kit": "^2.4.0"
+ 			}
+ 		},
++		"node_modules/@sveltejs/adapter-static": {
++			"version": "3.0.10",
++			"resolved": "https://registry.npmjs.org/@sveltejs/adapter-static/-/adapter-static-3.0.10.tgz",
++			"integrity": "sha512-7D9lYFWJmB7zxZyTE/qxjksvMqzMuYrrsyh1f4AlZqeZeACPRySjbC3aFiY55wb1tWUaKOQG9PVbm74JcN2Iew==",
++			"dev": true,
++			"license": "MIT",
++			"peerDependencies": {
++				"@sveltejs/kit": "^2.0.0"
++			}
++		},
+ 		"node_modules/@sveltejs/kit": {
+ 			"version": "2.47.3",
+ 			"resolved": "https://registry.npmjs.org/@sveltejs/kit/-/kit-2.47.3.tgz",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -18,6 +18,7 @@
+ 		"@internationalized/date": "^3.8.1",
+ 		"@lucide/svelte": "^0.546.0",
+ 		"@sveltejs/adapter-auto": "^7.0.0",
++		"@sveltejs/adapter-static": "^3.0.10",
+ 		"@sveltejs/kit": "^2.22.0",
+ 		"@sveltejs/vite-plugin-svelte": "^6.0.0",
+ 		"@tailwindcss/vite": "^4.0.0",
+diff --git a/src/lib/components/ui/selector/language-selector.svelte b/src/lib/components/ui/selector/language-selector.svelte
+--- a/src/lib/components/ui/selector/language-selector.svelte
++++ b/src/lib/components/ui/selector/language-selector.svelte
+@@ -18,15 +18,15 @@
+ 	}
+ 
+ 	function regionToTwemojiSvg(region?: string): string | null {
+-		if (!region) return null;
+-		const letters = region
+-			.toUpperCase()
+-			.replace(/[^A-Z]/g, '')
+-			.split('');
+-		if (letters.length !== 2) return null;
+-		const cps = letters.map((c) => (0x1f1e6 + (c.charCodeAt(0) - 65)).toString(16));
+-		const filename = `${cps[0]}-${cps[1]}.svg`;
+-		return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${filename}`;
++		// RepairBench environment adaptation (offline face). The seed returned a REMOTE sprite URL
++		// (https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/<codepoints>.svg), which this seat
++		// measured as the only non-same-origin request the application makes
++		//
++		// Returning null is the seed's OWN "no sprite" branch: {#if flagSrc} renders the <img>, {:else}
++		// renders the Unicode regional-indicator emoji built by toFlag() above, so the selector shows the
++		// same information with zero remote hosts. No other behaviour is touched.
++		void region;
++		return null;
+ 	}
+ 
+ 	function getRegionFromLocale(tag: string): string | undefined {
+diff --git a/svelte.config.js b/svelte.config.js
+--- a/svelte.config.js
++++ b/svelte.config.js
+@@ -1,4 +1,4 @@
+-import adapter from '@sveltejs/adapter-auto';
++import adapter from '@sveltejs/adapter-static';
+ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+ 
+ /** @type {import('@sveltejs/kit').Config} */
+@@ -8,7 +8,7 @@ const config = {
+ 	preprocess: vitePreprocess(),
+ 	kit: {
+ 		adapter: adapter({
+-			out: 'build'
++			out: 'build', strict: false, fallback: 'index.html'
+ 		})
+ 	}
+ };

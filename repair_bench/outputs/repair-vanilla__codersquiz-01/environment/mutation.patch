@@ -1,0 +1,115 @@
+diff --git a/js/core.js b/js/core.js
+index dacbb30..c1cfb50 100644
+--- a/js/core.js
++++ b/js/core.js
+@@ -57,7 +57,7 @@ getNewQuestion = () => {
+     // check if questions are completed
+     if (availableQuestions.length === 0 || questionCounter >= MAX_QUESTIONS) {
+ 
+-        localStorage.setItem('mostRecentScore', score);
++        sessionStorage.setItem('mostRecentScore', score);
+         // localStorage.setItem('answeredQuestions', answeredQuestions);
+         //go to the end page
+         return window.location.assign('/end.html');
+@@ -70,7 +70,7 @@ getNewQuestion = () => {
+     progress_bar.style.width = `${progress_bar_width}%`
+     if(availableQuestions.length > 0){
+         const questionIndex = Math.floor(Math.random() * availableQuestions.length)
+-        currentQuestion = availableQuestions[questionIndex]
++        currentQuestion = Object.assign(currentQuestion, availableQuestions[questionIndex])
+ 
+         // console.log(answeredQuestions);
+         question.innerHTML = currentQuestion.question;
+@@ -88,7 +88,7 @@ choices.forEach(choice =>{
+     choice.addEventListener("click", (e) =>{
+         if(!acceptingAnswers) return;
+ 
+-        acceptingAnswers = false;
++        acceptingAnswers = true;
+         const selectedChoice = e.target;
+         const selectedAnswer = parseInt(selectedChoice.dataset['number']);
+         // console.log(selectedAnswer);
+@@ -106,14 +106,16 @@ choices.forEach(choice =>{
+         // storeing answred questions and choice selected
+         localStorage.setItem('AnsweredQuestions', JSON.stringify(answeredQuestions));
+         selectedChoice.parentElement.classList.add(classToApply)
++        const renderedCounter = questionCounter;
+         setTimeout(() => {
+             selectedChoice.parentElement.classList.remove(classToApply)
+-            getNewQuestion();   
++            getNewQuestion();
++            questionCount.innerText = `${renderedCounter}/${MAX_QUESTIONS}`;
+         }, 1000);
+     })
+ })
+ incrementScore = (num) =>{
+     score +=num;
+-    scoreText.innerText = score
++    scoreText.innerText = num
+ }
+ // startGame();
+\ No newline at end of file
+diff --git a/js/end.js b/js/end.js
+index 9b45932..c1b3e81 100644
+--- a/js/end.js
++++ b/js/end.js
+@@ -21,7 +21,6 @@ if(user !=null){
+     saveScoreBtn.disabled =false;
+ }
+ saveHighScore = (e) =>{
+-    e.preventDefault();
+ 
+     const score = {
+         score:mostRecentScore,
+@@ -29,7 +28,7 @@ saveHighScore = (e) =>{
+         cat: category
+     }
+     highScores.push(score)
+-    highScores.sort((a,b) => b.score - a.score)
++    highScores.sort((a,b) => (b.score < a.score ? -1 : 1))
+     highScores.splice(5)
+ 
+     localStorage.setItem("highscores", JSON.stringify(highScores));
+diff --git a/js/highScores.js b/js/highScores.js
+index 65f3460..c69c73a 100644
+--- a/js/highScores.js
++++ b/js/highScores.js
+@@ -1,5 +1,5 @@
+ const highScoresList = document.getElementById('highScoresList');
+-const highScores = JSON.parse(localStorage.getItem("highscores")) || [];
++const highScores = JSON.parse(localStorage.getItem("highscores"));
+ if(highScores.length <=0){
+     highScoresList.innerHTML =  `<li class = "high-score text-center"><span>High scores list is empty</span></li>`;
+ }
+diff --git a/js/review.js b/js/review.js
+index af31f2c..b611080 100644
+--- a/js/review.js
++++ b/js/review.js
+@@ -11,7 +11,7 @@ else{
+       // let answer = slide.question.choice+slide.question.answer
+       // let choice = slide.question.choice+slide.choice
+       var answer, choice;
+-      switch(slide.question.answer)
++      switch(slide.choice)
+       {
+         case 1:
+           answer = slide.question.choice1
+@@ -111,15 +111,15 @@ function showSlides(n) {
+   // slides.length = 10
+   // slides.length.length = 10
+   // alert(slides.length)
+-  if (n > slides.length) {slideIndex = 1}
++  if (n > slides.length) {slideIndex = slides.length}
+   if (n < 1) {slideIndex = slides.length}
+   for (i = 0; i < slides.length; i++) {
+     slides[i].style.display = "none";
+   }
+   for (i = 0; i < dots.length; i++) {
+-    dots[i].className = dots[i].className.replace(" active", "");
++    dots[i].className.replace(" active", "");
+   }
+-  slides[slideIndex-1].style.display = "block";
++  slides[slideIndex % slides.length].style.display = "block";
+   dots[slideIndex-1].className += " active";
+   captionText.innerHTML = dots[slideIndex-1].getAttribute('data-item');
+ }

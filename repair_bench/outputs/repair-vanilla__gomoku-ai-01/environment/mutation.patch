@@ -1,0 +1,213 @@
+diff --git a/index.html b/index.html
+index c6e464d..1b13cd6 100644
+--- a/index.html
++++ b/index.html
+@@ -3,6 +3,47 @@
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <!-- 新增脚本：关于作者弹窗控制，不修改原有脚本逻辑 -->
++    <script>
++        // 关于作者弹窗逻辑（独立于原有script，不冲突）
++        (function() {
++            const authorBtn = document.getElementById('authorBtn');
++            const authorOverlay = document.getElementById('authorOverlay');
++            const closeAuthorBtn = document.getElementById('closeAuthorBtn');
++            
++            function openAuthorModal() {
++                if (authorOverlay) {
++                    authorOverlay.classList.add('show');
++                    // 播放点击声音（如果存在且需要）
++                    const clickSound = document.getElementById('clickSound');
++                    if (clickSound && typeof clickSound.play === 'function') {
++                        clickSound.currentTime = 0;
++                        clickSound.play().catch(() => {});
++                    }
++                }
++            }
++            
++            function closeAuthorModal() {
++                if (authorOverlay) {
++                    authorOverlay.classList.remove('show');
++                }
++            }
++            
++            if (authorBtn) {
++                authorBtn.addEventListener('click', openAuthorModal);
++            }
++            if (closeAuthorBtn) {
++                closeAuthorBtn.addEventListener('click', closeAuthorModal);
++            }
++            if (authorOverlay) {
++                authorOverlay.addEventListener('click', function(e) {
++                    if (e.target === authorOverlay) {
++                        closeAuthorModal();
++                    }
++                });
++            }
++        })();
++    </script>
+     <title>五子棋挑战 · 万层地狱</title>
+     <!-- RB-ADAPT-1 (runtime zero-network): the Font Awesome 6.4.0 CDN
+          stylesheet was removed. This package is scored with allow_internet = false, so that
+@@ -186,8 +227,8 @@
+                             <i class="fas fa-cogs"></i> AI模型
+                         </div>
+                         <div class="model-buttons">
+-                            <button class="model-btn active" data-model="normal" data-testid="rb-model-normal">正常版</button>
+-                            <button class="model-btn fullpower" data-model="fullpower" data-testid="rb-model-fullpower">满血版</button>
++                            <button class="model-btn" data-model="normal" data-testid="rb-model-normal">正常版</button>
++                            <button class="model-btn fullpower active" data-model="fullpower" data-testid="rb-model-fullpower">满血版</button>
+                         </div>
+                         <div class="difficulty-info">
+                             <p><strong>满血版特点：</strong></p>
+@@ -243,7 +284,7 @@
+                             </div>
+                             <div class="stat-item">
+                                 <div>胜率预测</div>
+-                                <div class="stat-value" id="winChance" data-testid="rb-win-chance">0%</div>
++                                <div class="stat-value" id="winChance" data-testid="rb-win-chance">100%</div>
+                             </div>
+                         </div>
+                     </div>
+@@ -319,47 +360,6 @@
+     <audio id="winSound" data-testid="rb-sound-win" src="data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA=="></audio>
+     <audio id="clickSound" data-testid="rb-sound-click" src="data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA=="></audio>
+     
+-    <!-- 新增脚本：关于作者弹窗控制，不修改原有脚本逻辑 -->
+-    <script>
+-        // 关于作者弹窗逻辑（独立于原有script，不冲突）
+-        (function() {
+-            const authorBtn = document.getElementById('authorBtn');
+-            const authorOverlay = document.getElementById('authorOverlay');
+-            const closeAuthorBtn = document.getElementById('closeAuthorBtn');
+-            
+-            function openAuthorModal() {
+-                if (authorOverlay) {
+-                    authorOverlay.classList.add('show');
+-                    // 播放点击声音（如果存在且需要）
+-                    const clickSound = document.getElementById('clickSound');
+-                    if (clickSound && typeof clickSound.play === 'function') {
+-                        clickSound.currentTime = 0;
+-                        clickSound.play().catch(() => {});
+-                    }
+-                }
+-            }
+-            
+-            function closeAuthorModal() {
+-                if (authorOverlay) {
+-                    authorOverlay.classList.remove('show');
+-                }
+-            }
+-            
+-            if (authorBtn) {
+-                authorBtn.addEventListener('click', openAuthorModal);
+-            }
+-            if (closeAuthorBtn) {
+-                closeAuthorBtn.addEventListener('click', closeAuthorModal);
+-            }
+-            if (authorOverlay) {
+-                authorOverlay.addEventListener('click', function(e) {
+-                    if (e.target === authorOverlay) {
+-                        closeAuthorModal();
+-                    }
+-                });
+-            }
+-        })();
+-    </script>
+     
+     <!-- 补充作者弹窗的样式（不修改原有style.css，仅添加内联样式保证可见） -->
+     <style>
+diff --git a/script.js b/script.js
+index af3bb6e..46e1848 100644
+--- a/script.js
++++ b/script.js
+@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
+         document.querySelectorAll('.rank-item').forEach((el, idx) => el.classList.toggle('current', idx === rankSystem.indexOf(cur)));
+     }
+ 
+-    function saveEloRating() { localStorage.setItem('gomokuEloRating', gameState.eloRating.toString()); }
++    function saveEloRating() { sessionStorage.setItem('gomokuEloRating', gameState.eloRating.toString()); }
+     function addWinPoints() {
+         let pts = gameState.model === 'fullpower' ? 300 : 100;
+         gameState.eloRating += pts;
+@@ -206,14 +206,14 @@ document.addEventListener('DOMContentLoaded', () => {
+             stone.className = `stone ${gameState.board[r][c] === 1 ? 'black' : 'red'}`;
+             stone.dataset.testid = 'rb-stone-' + r + '-' + c;
+             if(gameState.moves.length) {
+-                const last = gameState.moves[gameState.moves.length-1];
++                const last = gameState.moves[0];
+                 if(last.row === r && last.col === c) stone.classList.add('last-move');
+             }
+             cell.appendChild(stone);
+         }
+     }
+ 
+-    const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
++    const DIRS = [[1,0],[0,1],[1,1]];
+     function checkWin(row, col) {
+         const p = gameState.board[row][col];
+         for(let [dx,dy] of DIRS) {
+@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
+         playerRed.classList.toggle('active', gameState.currentPlayer === 2);
+         turnIndicator.textContent = gameState.currentPlayer === 1 ? '黑方回合' : (gameState.mode === 'ai' ? 'AI (红) 回合' : '红方回合');
+         turnIndicator.style.backgroundColor = gameState.currentPlayer === 1 ? '#333' : '#cc0000';
+-        if(gameState.mode === 'ai' && gameState.currentPlayer === 2 && !gameState.gameOver) {
++        if(gameState.mode === 'ai' && gameState.currentPlayer === 1 && !gameState.gameOver) {
+             updateGameStatus('ai');
+             setTimeout(makeAIMove, 100);
+         } else {
+@@ -555,7 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
+         if(gameState.moves.length===0||gameState.gameOver) return;
+         playSound(clickSound);
+         const last=gameState.moves.pop();
+-        gameState.board=last.prevBoard; gameState.currentPlayer=last.player; gameState.gameOver=false;
++        gameState.board=last.prevBoard; gameState.currentPlayer=last.player === 1 ? 2 : 1; gameState.gameOver=false;
+         gameState.stats.moves--; moveCount.textContent=gameState.stats.moves;
+         playerBlack.classList.toggle('active', gameState.currentPlayer===1);
+         playerRed.classList.toggle('active', gameState.currentPlayer===2);
+@@ -593,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
+     supportBtn.addEventListener('click', (e) => { e.preventDefault(); showAgreement(); });
+     agreementAgree.addEventListener('click', () => { hideAgreement(); openRewardPage(); });
+     agreementDisagree.addEventListener('click', hideAgreement);
+-    agreementOverlay.addEventListener('click', (e) => { if(e.target === agreementOverlay) hideAgreement(); });
++    agreementOverlay.addEventListener('click', (e) => { if(e.target !== agreementOverlay) hideAgreement(); });
+ 
+     restartBtn.addEventListener('click', restartGame);
+     playAgainBtn.addEventListener('click', () => { playSound(clickSound); winMessage.classList.remove('show'); restartGame(); });
+diff --git a/style.css b/style.css
+index eed7972..03f0cf5 100644
+--- a/style.css
++++ b/style.css
+@@ -144,7 +144,7 @@ h1::after {
+ 
+ .board {
+     display: grid;
+-    grid-template-columns: repeat(15, 30px);
++    grid-template-columns: repeat(14, 30px);
+     grid-template-rows: repeat(15, 30px);
+     background: #e8c48a;
+     border: 3px solid #8b4513;
+@@ -207,12 +207,12 @@ h1::after {
+ }
+ 
+ .stone.black {
+-    background: radial-gradient(circle at 30% 30%, #444, #000);
++    background: radial-gradient(circle at 30% 30%, #ff6b6b, #cc0000);
+     border: 1px solid #333;
+ }
+ 
+ .stone.red {
+-    background: radial-gradient(circle at 30% 30%, #ff6b6b, #cc0000);
++    background: radial-gradient(circle at 30% 30%, #444, #000);
+     border: 1px solid #990000;
+ }
+ 
+@@ -585,7 +585,6 @@ h1::after {
+ }
+ 
+ .win-message.show {
+-    opacity: 1;
+     pointer-events: all;
+ }
+ 

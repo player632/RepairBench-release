@@ -1,0 +1,2033 @@
+<script lang="ts">
+  import '../app.css';
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { uploadWithProgress, startCompress, openProgressStream, downloadUrl, getJobStatus, getAvailableCodecs, getSystemCapabilities, getPresetProfiles, getSizeButtons, cancelJob, getEncoderTestResults, getVersion, getBatchStatus, batchZipDownloadUrl } from '$lib/api';
+  import { autoDownloadOnce, clearActiveJobId, downloadFile, getActiveJobId, setActiveJobId } from '$lib/activeJob';
+  import { stagePendingBatchFiles } from '$lib/pendingBatch';
+  import { FPS_CAP_VALUES, maxFpsFromProfile, parseStoredFpsCap, type FpsCap } from '$lib/fpsCap';
+  import { availableCodecOptions, classifyEncoder, codecColor, codecIcon, encoderDisplayName, type CodecOption } from '$lib/codecs';
+  import { APP_VERSION } from '$lib/generated-version';
+
+  let file: File | null = null;
+  let uploadInput: HTMLInputElement | null = null; // reference to clear file input
+  let isAnalyzing: boolean = false; // Track analysis state for UI feedback
+  let targetMB = 19.7;
+  /** 'size' = target output file size (MB); 'bitrate' = fixed video bitrate (kbps). */
+  let targetMode: 'size' | 'bitrate' = 'size';
+  let targetVideoKbps = 2500;
+  let videoCodec: string = 'av1_nvenc';
+  let audioCodec: 'libopus' | 'aac' | 'none' = 'libopus';
+  let preset: 'p1'|'p2'|'p3'|'p4'|'p5'|'p6'|'p7'|'extraquality' = 'p4';
+  let audioKbps: 32|48|64|96|128|160|192|256 = 128;
+  // Auto audio bitrate control: downshift audio for extreme compressions
+  let autoAudioBitrate: boolean = true;
+  // User's preferred audio bitrate (used as an upper bound when auto is ON)
+  let baseAudioKbps: 32|48|64|96|128|160|192|256 = 128;
+  let fileSizeLabel: string | null = null;
+  let container: 'mp4' | 'mkv' = 'mp4';
+  let tune: 'hq'|'ll'|'ull'|'lossless' = 'hq';
+  // Decoder preference
+  let preferHwDecode: boolean = true; // Prefer hardware decoding when available
+  // MP4 finalize preference - default OFF for broader compatibility
+  let fastMp4Finalize: boolean = false;
+  // New resolution and trim controls
+  let maxWidth: number | null = null;
+  let maxHeight: number | null = null;
+  // Auto resolution options
+  let autoResolution: boolean = false; // default OFF; will show recommendations instead
+  let minAutoHeight: 240|360|480|720 = 240; // do not go below unless user changes
+  let explicitHeight: 2160|1440|1080|720|480|360|240|null = null; // explicit override
+  let audioOnly: boolean = false; // Audio-only conversion
+  /** '' = no cap; otherwise max output fps when source is faster (persisted). */
+  let maxFpsCap: FpsCap = '';
+  let startTime: string = '';
+  let endTime: string = '';
+  // New UI options
+  let playSoundWhenDone = true; // default ON
+  let autoDownload = true;
+  let warnText: string | null = null;
+  let resolutionSuggestText: string | null = null;
+  let resolutionSuggestHeight: 2160|1440|1080|720|480|360|240|null = null;
+  
+  // Helper function to parse time string to seconds
+  function parseTimeToSeconds(timeStr: string): number | null {
+    if (!timeStr || timeStr.trim() === '') return null;
+    const str = timeStr.trim();
+    
+    // Try HH:MM:SS or MM:SS format
+    if (str.includes(':')) {
+      const parts = str.split(':').map(p => parseFloat(p));
+      if (parts.length === 3) {
+        // HH:MM:SS
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      } else if (parts.length === 2) {
+        // MM:SS
+        return parts[0] * 60 + parts[1];
+      }
+    }
+    
+    // Try plain number (seconds)
+    const num = parseFloat(str);
+    return isNaN(num) ? null : num;
+  }
+
+  function parseExplicitHeight(value: string): 2160|1440|1080|720|480|360|240|null {
+    const parsed = Number(value);
+    if (parsed === 2160 || parsed === 1440 || parsed === 1080 || parsed === 720 || parsed === 480 || parsed === 360 || parsed === 240) {
+      return parsed;
+    }
+    return null;
+  }
+
+  // Calculate effective duration based on trim settings
+  $: effectiveDuration = (() => {
+    if (!jobInfo) return 0;
+    
+    const fullDuration = jobInfo.duration_s;
+    const startSec = parseTimeToSeconds(startTime);
+    const endSec = parseTimeToSeconds(endTime);
+    
+    const effectiveStart = startSec !== null ? startSec : 0;
+    const effectiveEnd = endSec !== null ? endSec : fullDuration;
+    
+    // Calculate trimmed duration
+    const trimmedDuration = Math.max(0, effectiveEnd - effectiveStart);
+    
+    return trimmedDuration > 0 ? trimmedDuration : fullDuration;
+  })();
+
+  $: containerNote = (container === 'mp4' && audioCodec === 'libopus' && !audioOnly) ? 'MP4 does not support Opus; audio will be encoded as AAC automatically.' : null;
+  /** NVENC exposes a separate `-tune` (HQ vs latency); CPU paths use preset only. */
+  $: nvencTuneApplies = videoCodec.endsWith('_nvenc');
+  $: estimated = jobInfo ? {
+    duration_s: effectiveDuration,
+    total_kbps: effectiveDuration > 0
+      ? (targetMode === 'bitrate'
+          ? (targetVideoKbps + (audioCodec === 'none' ? 0 : audioKbps))
+          : (targetMB * 8192.0) / effectiveDuration)
+      : 0,
+    video_kbps: targetMode === 'bitrate'
+      ? targetVideoKbps
+      : (effectiveDuration > 0 ? Math.max(((targetMB * 8192.0) / effectiveDuration) - (audioCodec === 'none' ? 0 : audioKbps), 0) : 0),
+    final_mb: targetMode === 'bitrate' && effectiveDuration > 0
+      ? ((targetVideoKbps + (audioCodec === 'none' ? 0 : audioKbps)) * effectiveDuration) / 8192.0
+      : targetMB
+  } : null;
+  // Update warning dynamically based on current estimate (no need to re-upload)
+  $: warnText = estimated && estimated.video_kbps < 100 ? `Warning: Very low video bitrate (${Math.round(estimated.video_kbps)} kbps)` : null;
+  // Resolution recommendation banner when Auto is OFF: suggest a lower height if bitrate density is low
+  $: (() => {
+    resolutionSuggestText = null;
+    resolutionSuggestHeight = null;
+    if (!jobInfo || !estimated) return;
+    if (audioOnly) return;
+    if (autoResolution) return; // Auto handles this
+    const ow = jobInfo.original_width || 0;
+    const oh = jobInfo.original_height || 0;
+    if (!ow || !oh) return;
+    const currentH = explicitHeight || oh;
+    // Compute kbps per megapixel at the current selected height
+    const mpAt = (h:number) => (ow * (h/oh) * h) / 1_000_000.0;
+    const mp = mpAt(currentH);
+    if (mp <= 0) return;
+    const kv = estimated.video_kbps || 0;
+    if (kv <= 0) return;
+    const kbpsPerMpix = kv / mp;
+    // Softer thresholds than backend to avoid aggressive prompts
+    const LADDER: Array<2160|1440|1080|720|480|360|240> = [2160,1440,1080,720,480,360,240];
+    // Only warn if density below 600 kbps/mpix
+    const MIN_OK = 600;
+    const MIN_FALLBACK = 380; // if really starved, accept this floor
+    if (kbpsPerMpix >= MIN_OK) return; // no suggestion
+    // Find first height meeting MIN_OK; else MIN_FALLBACK; else min rung
+    const cappedOrigH = LADDER.find(h => h <= oh) ?? oh;
+    let rec: any = null;
+    for (const h of LADDER) {
+      if (h > oh) continue;
+      const d = kv / mpAt(h);
+      if (d >= MIN_OK) { rec = h; break; }
+    }
+    if (!rec) {
+      for (const h of LADDER) {
+        if (h > oh) continue;
+        const d = kv / mpAt(h);
+        if (d >= MIN_FALLBACK) { rec = h; break; }
+      }
+    }
+    if (!rec) rec = LADDER[LADDER.length-1];
+    // If currently already at or below recommendation, no suggestion
+    if (currentH <= rec) return;
+    // Prefer 1080p when original >= 1440 and 1080p meets MIN_FALLBACK
+    if (oh >= 1440 && kv / mpAt(1080) >= MIN_FALLBACK) {
+      rec = 1080;
+    }
+    resolutionSuggestHeight = rec;
+    const label = rec === 2160 ? '2160p (4K)' : rec === 1440 ? '1440p' : rec === 1080 ? '1080p' : `${rec}p`;
+    resolutionSuggestText = `Recommended: lower resolution to ${label} for better quality at this size.`;
+  })();
+  
+  // Removed auto-reupload on settings changes. Analysis is now separate from upload.
+  // Changing target size or audio bitrate only updates client-side estimates.
+
+  let jobInfo: any = null;
+  // A successful upload creates a temporary server-side input. Keep its
+  // validity explicit because the worker removes transient inputs after every
+  // terminal job state. The browser File remains reusable for a later upload.
+  let stagedFile: File | null = null;
+  let stagedInputToken: string | null = null;
+  let stagedInputValid = false;
+  let taskId: string | null = null;
+  let progress = 0;
+  let displayedProgress = 0;
+  let logLines: string[] = [];
+  let doneStats: any = null;
+  let encoderTelemetry: any = null;
+  let isCompressing = false;
+  let esRef: EventSource | null = null;
+  // Incremented whenever a stream is closed or replaced. Late SSE callbacks
+  // from an older task must never update the current job's UI.
+  let streamGeneration = 0;
+  let errorText: string | null = null;
+  let isUploading = false;
+  let uploadProgress = 0;
+  let isCancelling = false;
+  // Download readiness
+  let isReady: boolean = false;
+  let readyFilename: string | null = null;
+  let showTryDownload: boolean = false;
+  let readyTimer: any = null;
+  let tryDownloading: boolean = false; // UI state for Try Download button
+  // ETA / status helpers
+  let startedAt: number | null = null;
+  let etaSeconds: number | null = null;
+  let etaLabel: string | null = null;
+  let currentSpeedX: number | null = null;
+  let hasProgress = false;
+  let decodeMethod: string | null = null;
+  let encodeMethod: string | null = null;
+  let isFinalizing = false; // Track if we're in the finalization phase
+  let isRetrying = false; // Track if we're in automatic retry mode
+  let retryMessage = ''; // Retry details to display
+  let finalizePoller: any = null; // interval id for readiness polling during finalizing
+  // Support widget state
+  let showSupport = false;
+  function toggleSupport(){ showSupport = !showSupport; }
+  function closeSupport(){ showSupport = false; }
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSupport(); };
+  // App version (subtle badge); starts at release default, then replaced by API if different
+  let appVersion: string = APP_VERSION;
+
+  // Available codecs from backend
+  let availableCodecs: CodecOption[] = [];
+  let codecNotice: string | null = null;
+  let hardwareType = 'cpu';
+  let sysCaps: any = null;
+  let sysCapsError: string | null = null;
+  // Encoder tests summary
+  let encoderTests: Array<{ 
+    codec: string; 
+    actual_encoder: string; 
+    passed: boolean | null;
+    encode_passed: boolean | null;
+    encode_message?: string;
+    decode_passed?: boolean;
+    decode_message?: string;
+  }>|null = null;
+  let encoderTestsOpen = false;
+  let gpuOk: boolean = false;
+  // Presets and size buttons
+  let presetProfiles: Array<any> = [];
+  let selectedPreset: string | null = null;
+  let sizeButtons: number[] = [4,5,8,9.7,19.7,50,100];
+  // Recent history
+  let history: any[] = [];
+  let historyEnabled = false;
+  // Batch progress tracker (shared with /batch page)
+  const ACTIVE_BATCH_KEY = 'activeBatchId';
+  let activeBatchId: string | null = null;
+  let activeBatchStatus: any = null;
+  let activeBatchError: string | null = null;
+  let activeBatchPoller: any = null;
+
+  // Load default presets and available codecs on mount
+  onMount(async () => {
+    // Restore UI preferences
+    try {
+      const ps = localStorage.getItem('playSoundWhenDone');
+      if (ps !== null) playSoundWhenDone = (ps === 'true');
+      const ad = localStorage.getItem('autoDownload');
+      if (ad !== null) autoDownload = (ad === 'true');
+      // If not present in localStorage, default to true and set it
+      if (ad === null) localStorage.setItem('autoDownload', 'true');
+      const aab = localStorage.getItem('autoAudioBitrate');
+      if (aab !== null) autoAudioBitrate = (aab === 'true');
+      if (aab === null) localStorage.setItem('autoAudioBitrate', 'true');
+      const parsedFps = parseStoredFpsCap(localStorage.getItem('maxOutputFpsCap'));
+      if (parsedFps !== null) maxFpsCap = parsedFps;
+    } catch {}
+    try {
+      const res = await fetch('/api/settings/presets');
+      if (res.ok) {
+        const presets = await res.json();
+        targetMB = presets.target_mb;
+        videoCodec = presets.video_codec;
+        audioCodec = presets.audio_codec;
+        preset = presets.preset;
+        audioKbps = presets.audio_kbps;
+        container = presets.container;
+        tune = presets.tune;
+      }
+    } catch (err) {
+      console.warn('Failed to load default presets, using hardcoded defaults');
+    }
+
+    // Load available codecs
+    try {
+      const codecData = await getAvailableCodecs();
+      // Tentatively set hardware based on worker-reported type; we'll refine after sysCaps
+      hardwareType = codecData.hardware_type || 'cpu';
+      availableCodecs = buildCodecList(codecData);
+      if (!availableCodecs.length) {
+        availableCodecs = availableCodecOptions(['libx264', 'libx265']);
+      }
+    } catch (err) {
+      console.warn('Failed to load available codecs, using fallback');
+      // A failed capability request must not expose hardware options that
+      // cannot be verified. CPU codecs are the reliable local fallback.
+      availableCodecs = availableCodecOptions(['libx264', 'libx265']);
+    }
+
+    ensureSelectedCodec();
+
+    // Load system capabilities (CPU, memory, GPUs)
+    try {
+      sysCaps = await getSystemCapabilities();
+      // Use the worker-reported hardware type without forcing overrides
+      const hw = sysCaps?.hardware?.type;
+      if (hw) hardwareType = hw;
+    } catch (e:any) {
+      sysCapsError = e?.message || 'Failed to fetch system capabilities';
+    }
+
+    // Load encoder startup tests to report GPU availability
+    try {
+      const tests = await getEncoderTestResults();
+      gpuOk = !!tests?.any_hardware_passed;
+      encoderTests = (tests?.results || []);
+    } catch {}
+
+    // Fetch app version (e.g. Docker ENV APP_VERSION / settings.APP_VERSION)
+    try {
+      const v = await getVersion();
+      appVersion = (v?.version && String(v.version).trim()) || APP_VERSION;
+    } catch {
+      appVersion = APP_VERSION;
+    }
+
+    // Load preset profiles and size buttons
+    try {
+      const pp = await getPresetProfiles();
+      const availableValues = new Set(availableCodecs.map((codec) => codec.value));
+      presetProfiles = (pp.profiles || []).filter((profile: any) =>
+        availableValues.has(String(profile.video_codec)),
+      );
+      const requestedDefault = pp.default || null;
+      selectedPreset = presetProfiles.some((profile) => profile.name === requestedDefault)
+        ? requestedDefault
+        : (presetProfiles[0]?.name ?? null);
+      if (selectedPreset) applyPreset(selectedPreset);
+    } catch {}
+    try {
+      const sb = await getSizeButtons();
+      if (sb?.buttons?.length) sizeButtons = sb.buttons;
+    } catch {}
+
+    await refreshRecentHistory();
+
+    // Restore the currently tracked batch from the batch page
+    try {
+      const tracked = localStorage.getItem(ACTIVE_BATCH_KEY);
+      if (tracked) {
+        activeBatchId = tracked;
+        await refreshActiveBatchStatus();
+      }
+    } catch {}
+
+    // Single-file jobs belong to the backend, not this page component. Restore
+    // and reconnect when the user returns from Queue, Settings, or History.
+    const trackedJob = getActiveJobId();
+    if (trackedJob) {
+      await restoreTrackedJob(trackedJob);
+    }
+  });
+
+  async function restoreTrackedJob(candidate: string): Promise<void> {
+    try {
+      const status = await getJobStatus(candidate);
+      const state = String(status?.state || '').toUpperCase();
+      const activeStates = new Set(['PENDING', 'RECEIVED', 'STARTED', 'PROGRESS', 'RUNNING', 'QUEUED', 'WAITING']);
+      if (activeStates.has(state)) {
+        taskId = candidate;
+        applyJobStatus(status);
+        logLines = ['Reconnected to the active background job.', ...logLines];
+        reconnectStream();
+        return;
+      }
+    } catch {
+      // A missing task after a container/Redis restart is stale local state,
+      // not an active compression job.
+    }
+    clearActiveJobId(candidate);
+    taskId = null;
+    isCompressing = false;
+    isCancelling = false;
+    isFinalizing = false;
+    logLines = ['Previous job state was no longer available; ready for a new upload.', ...logLines];
+  }
+
+  async function refreshRecentHistory(): Promise<void> {
+    try {
+      const res = await fetch('/api/history', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      historyEnabled = !!data.enabled;
+      history = (data.entries || []).slice(0, 5);
+    } catch {
+      // History is best-effort and must not interfere with compression.
+    }
+  }
+
+  function applyPreset(name: string){
+    const p = presetProfiles.find(x => x.name === name);
+    if (!p) return;
+    selectedPreset = name;
+    targetMB = p.target_mb;
+    videoCodec = p.video_codec;
+    audioCodec = p.audio_codec;
+    preset = p.preset;
+    audioKbps = p.audio_kbps;
+    container = p.container;
+    tune = p.tune;
+    maxFpsCap = maxFpsFromProfile(p.max_output_fps);
+    ensureSelectedCodec();
+  }
+
+  function ensureSelectedCodec() {
+    if (!availableCodecs.length) return;
+    if (availableCodecs.some((codec) => codec.value === videoCodec)) return;
+    const previous = videoCodec;
+    videoCodec = availableCodecs[0].value;
+    codecNotice = `The selected encoder (${previous}) is not available on this worker. Switched to ${availableCodecs[0].label}.`;
+  }
+
+  function formatDurationTime(seconds: number): string {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    } else {
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+  }
+
+  function buildCodecList(codecData: any): CodecOption[] {
+    return availableCodecOptions(codecData?.enabled_codecs);
+  }
+
+  // Auto-adjust audio bitrate for extreme compressions:
+  // Ensure at least minVideoKbps is left for video; lower audio down to a floor of 32 kbps if needed.
+  $: (async () => {
+    try {
+      if (!autoAudioBitrate) return;
+      if (audioCodec === 'none') return;
+      const dur = effectiveDuration;
+      if (!dur || dur <= 0) return;
+      const totalKbps = (targetMB * 8192.0) / dur;
+      if (!isFinite(totalKbps) || totalKbps <= 0) return;
+      const minVideoKbps = 100; // keep at least ~100 kbps for video to avoid severe degradation
+      const allowed: Array<32|48|64|96|128|160|192|256> = [256,192,160,128,96,64,48,32];
+      const base = baseAudioKbps;
+      let newAudio: 32|48|64|96|128|160|192|256 = base as any;
+      if ((totalKbps - base) < minVideoKbps) {
+        const maxAudio = Math.max(32, Math.floor(totalKbps - minVideoKbps));
+        // Find the largest allowed bitrate not exceeding maxAudio and the user's base preference
+        let chosen: 32|48|64|96|128|160|192|256 = 32;
+        for (const v of allowed) {
+          if (v <= maxAudio && v <= base) { chosen = v; break; }
+        }
+        newAudio = chosen;
+      }
+      if (newAudio !== audioKbps) {
+        audioKbps = newAudio as any;
+      }
+    } catch {}
+  })();
+
+  // Smooth progress animation - gradually update displayedProgress towards actual progress
+  $: (() => {
+    // Direct update for significant changes or completion
+    if (progress >= 100 || Math.abs(progress - displayedProgress) > 10) {
+      displayedProgress = progress;
+    } else if (progress > displayedProgress) {
+      // Only animate forward, not backward
+      const diff = progress - displayedProgress;
+      if (diff > 0.1) {
+        const step = Math.min(diff / 5, 1);
+        displayedProgress = Math.min(displayedProgress + step, progress);
+      } else {
+        displayedProgress = progress;
+      }
+    }
+  })();
+
+  function getCodecColor(group: string): string {
+    return codecColor(group);
+  }
+
+  function getCodecIcon(group: string): string {
+    return codecIcon(group as any);
+  }
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(2)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(2)} GB`;
+  }
+
+  function formatBatchState(state?: string): string {
+    if (!state) return 'Unknown';
+    if (state === 'completed_with_errors') return 'Completed with errors';
+    return state.charAt(0).toUpperCase() + state.slice(1);
+  }
+
+  function isBatchTerminal(state?: string): boolean {
+    return state === 'completed' || state === 'completed_with_errors' || state === 'failed';
+  }
+
+  function stopActiveBatchPolling() {
+    if (activeBatchPoller) {
+      clearInterval(activeBatchPoller);
+      activeBatchPoller = null;
+    }
+  }
+
+  function clearActiveBatchTracker() {
+    activeBatchId = null;
+    activeBatchStatus = null;
+    activeBatchError = null;
+    stopActiveBatchPolling();
+    try { localStorage.removeItem(ACTIVE_BATCH_KEY); } catch {}
+  }
+
+  async function refreshActiveBatchStatus(silent = false) {
+    if (!activeBatchId) return;
+    try {
+      const status = await getBatchStatus(activeBatchId);
+      activeBatchStatus = status;
+      activeBatchError = null;
+      if (isBatchTerminal(status?.state)) {
+        stopActiveBatchPolling();
+      } else if (!activeBatchPoller) {
+        activeBatchPoller = setInterval(() => {
+          refreshActiveBatchStatus(true).catch(() => {});
+        }, 3000);
+      }
+    } catch (e: any) {
+      const msg = e?.message || 'Failed to load active batch status';
+      if (!silent) activeBatchError = msg;
+      const low = String(msg).toLowerCase();
+      if (low.includes('404') || low.includes('batch not found')) {
+        clearActiveBatchTracker();
+      }
+    }
+  }
+
+  function formatEta(sec: number): string {
+    if (!isFinite(sec) || sec < 0) return '';
+    const s = Math.round(sec);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${r}s`;
+    return `${r}s`;
+  }
+
+  /** Keep the pipeline badge accurate across normal and reconnecting streams. */
+  function updatePipelineFromLog(message: unknown): void {
+    if (typeof message !== 'string') return;
+    const msg = message.trim();
+
+    const decoder = msg.match(/^Decoder:\s*(?:using|forcing)\s+([\w-]+)(?:\s+\((h264|hevc|av1)\))?/i);
+    if (decoder) {
+      decodeMethod = decoder[2]
+        ? `${decoder[1]} (${decoder[2].toLowerCase()})`
+        : decoder[1];
+    } else {
+      const softwareDecoder = msg.match(/^Decoder:\s*Software\s*\(([^)]+)\)/i);
+      if (softwareDecoder) {
+        decodeMethod = `${softwareDecoder[1]} (software)`;
+      }
+      const av1Software = msg.match(/^Decoder:\s*(libdav1d)\b.*\bAV1\b/i);
+      if (!softwareDecoder && av1Software) {
+        decodeMethod = `${av1Software[1]} (av1)`;
+      } else if (!softwareDecoder && !av1Software) {
+        const fallbackDecoder = msg.match(/^Decoder:\s*([\w-]+)/i);
+        if (fallbackDecoder) decodeMethod = fallbackDecoder[1];
+      }
+    }
+
+    // Text logs are only a compatibility/display fallback. Once structured
+    // telemetry has resolved an encoder, a late log from the same or an old
+    // stream must not overwrite it.
+    const structuredEncoder = encoderTelemetry?.actual_encoder
+      || encoderTelemetry?.resolved_encoder
+      || encoderTelemetry?.requested_encoder;
+    if (!structuredEncoder) {
+      const usingEncoder = msg.match(/Using\s+encoder:\s*([\w-]+)/i);
+      if (usingEncoder) encodeMethod = usingEncoder[1];
+
+      const encoder = msg.match(/Encoder:\s*[^()]+\(([^)]+)\)/i)
+        || msg.match(/Encoder:\s*CPU\s*\(([^)]+)\)/i)
+        || msg.match(/Encoder:\s*([\w-]+)/i);
+      if (encoder) encodeMethod = encoder[1];
+    }
+  }
+
+  /** Apply durable status/SSE telemetry; non-null fields merge monotonically. */
+  function applyStructuredTelemetry(source: any): void {
+    const incoming = source?.telemetry || source?.stats || source;
+    if (!incoming || typeof incoming !== 'object') return;
+    const fields = [
+      'requested_encoder', 'resolved_encoder', 'actual_encoder',
+      'hardware_used', 'hardware_type', 'hardware_device', 'render_device',
+      'fallback_occurred', 'fallback_stage', 'fallback_reason', 'decoder',
+    ];
+    if (!fields.some((key) => incoming[key] !== undefined && incoming[key] !== null)) return;
+    const merged = { ...(encoderTelemetry || {}) };
+    for (const key of fields) {
+      if (incoming[key] !== undefined && incoming[key] !== null) merged[key] = incoming[key];
+    }
+    encoderTelemetry = merged;
+    const displayedEncoder = merged.actual_encoder || merged.resolved_encoder || merged.requested_encoder;
+    if (displayedEncoder) encodeMethod = String(displayedEncoder);
+    const decoder = merged.decoder;
+    if (decoder && typeof decoder === 'object' && decoder.name) {
+      decodeMethod = `${decoder.name}${decoder.hardware_used ? ' (hardware)' : ' (software)'}`;
+    }
+  }
+
+  function applyJobStatus(status: any): void {
+    if (!status || typeof status !== 'object') return;
+    if (typeof status.progress === 'number') {
+      progress = status.progress;
+      displayedProgress = status.progress;
+    }
+    if (status.phase === 'finalizing') isFinalizing = true;
+    applyStructuredTelemetry(status);
+  }
+
+  function setPresetMB(mb:number){ targetMB = mb; }
+  // "10MB (Discord)" option: pick slightly under to ensure final stays below 10MB
+  function setPresetMBSafe10(){ targetMB = 9.7; }
+
+  function invalidateStagedInput(): void {
+    stagedInputValid = false;
+    stagedInputToken = null;
+  }
+
+  function closeProgressStream(): void {
+    streamGeneration += 1;
+    try { esRef?.close(); } catch {}
+    esRef = null;
+  }
+
+  function selectFile(next: File | null): void {
+    file = next;
+    fileSizeLabel = next ? formatSize(next.size) : null;
+    stagedFile = null;
+    invalidateStagedInput();
+    jobInfo = null;
+    errorText = null;
+    if (!next) warnText = null;
+  }
+
+  function isMissingStagedInputError(error: unknown): boolean {
+    const message = String((error as any)?.message ?? error ?? '');
+    return /input\s+not\s+found/i.test(message);
+  }
+
+  async function onDrop(e: DragEvent){
+    e.preventDefault();
+    if (!e.dataTransfer) return;
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length > 1) {
+      stagePendingBatchFiles(droppedFiles);
+      await goto('/batch');
+      return;
+    }
+    const f = droppedFiles[0];
+    if (f) {
+      selectFile(f);
+      // Auto-analyze on drop
+      setTimeout(() => doUpload(), 100);
+    }
+  }
+  function allowDrop(e: DragEvent){ e.preventDefault(); }
+
+  async function onFilesPicked(e: Event): Promise<void> {
+    const input = e.target as HTMLInputElement;
+    const pickedFiles = Array.from(input.files || []);
+    if (pickedFiles.length > 2) {
+      stagePendingBatchFiles(pickedFiles);
+      await goto('/batch');
+      return;
+    }
+    const picked = pickedFiles[0] || null;
+    selectFile(picked);
+    if (picked) setTimeout(() => doUpload(), 100);
+  }
+
+  async function doUpload(force = false): Promise<boolean> {
+    const selectedFile = file;
+    if (!selectedFile) return false;
+    if (isUploading || isAnalyzing) return false;
+    // Reuse a staged input only when it is explicitly known to be valid and
+    // belongs to the exact browser File object currently selected. A filename
+    // alone is not proof that the server-side temporary input still exists.
+    if (!force && stagedInputValid && stagedFile === selectedFile && stagedInputToken && jobInfo?.job_id && jobInfo?.filename) {
+      warnText = (estimated && estimated.video_kbps < 100) ? `Warning: Very low video bitrate (${Math.round(estimated.video_kbps)} kbps)` : null;
+      return true;
+    }
+    if (force && jobInfo) {
+      logLines = ['Re-uploading the selected file for a new compression…', ...logLines].slice(0, 500);
+    }
+    isAnalyzing = true;
+    isUploading = true;
+    uploadProgress = 0;
+    errorText = null;
+    try {
+      const uploaded = await uploadWithProgress(selectedFile, targetMB, audioKbps, {
+        onProgress: (p:number)=>{ uploadProgress = p; },
+        onUploadComplete: () => {
+          uploadProgress = 100;
+          logLines = ['Upload complete; analyzing on the server…', ...logLines].slice(0, 500);
+        },
+      });
+      // Do not let a late response from an old selection replace the current
+      // file's analysis or staged-input token.
+      if (file !== selectedFile) return false;
+      jobInfo = uploaded;
+      stagedFile = selectedFile;
+      stagedInputToken = uploaded?.job_id && uploaded?.filename
+        ? `${uploaded.job_id}:${uploaded.filename}`
+        : null;
+      stagedInputValid = Boolean(stagedInputToken);
+      // Set warn based on current client-side estimate
+      warnText = (estimated && estimated.video_kbps < 100) ? `Warning: Very low video bitrate (${Math.round(estimated.video_kbps)} kbps)` : null;
+      return stagedInputValid;
+    } catch (err: any) {
+      console.error('Analysis failed:', err);
+      errorText = `Analysis failed: ${err.message || err}`;
+      invalidateStagedInput();
+      return false;
+    } finally {
+      isUploading = false;
+      isAnalyzing = false;
+    }
+  }
+
+  async function doCompress(){
+    if (isCompressing) return; // prevent double submission
+    if (!file) { errorText = 'Please select a file first.'; return; }
+
+    // A new compression run gets a clean presentation state. Keep the
+    // browser File so a canceled/completed/failed transient upload can be
+    // re-staged on demand, but never carry its old logs or stream forward.
+    closeProgressStream();
+    logLines = [];
+    doneStats = null;
+    encoderTelemetry = null;
+    decodeMethod = null;
+    encodeMethod = null;
+    progress = 0;
+    displayedProgress = 0;
+    currentSpeedX = null;
+    etaSeconds = null;
+    etaLabel = null;
+    hasProgress = false;
+    isReady = false;
+    isFinalizing = false;
+    isRetrying = false;
+    retryMessage = '';
+    if (taskId) clearActiveJobId(taskId);
+    taskId = null;
+
+    // The worker deletes transient inputs after success, failure, and
+    // cancellation. Re-stage the retained browser File on demand instead of
+    // asking the user to click Re-analyze manually.
+    const hasValidStagedInput = stagedInputValid
+      && stagedFile === file
+      && Boolean(stagedInputToken)
+      && Boolean(jobInfo?.job_id && jobInfo?.filename);
+    if (!hasValidStagedInput) {
+      const uploaded = await doUpload(true);
+      if (!uploaded || !jobInfo || !stagedInputValid) return;
+    }
+
+    errorText = null;
+    try {
+      isCompressing = true;
+      isReady = false;
+      readyFilename = null;
+      hasProgress = false;
+      isFinalizing = false;
+      startedAt = Date.now();
+      etaSeconds = null;
+      etaLabel = null;
+      currentSpeedX = null;
+      // Do not carry the previous job's decoder/encoder or FFmpeg logs into
+      // this job. The upload/analyze messages below now belong only to it.
+      logLines = ['Starting compression…'];
+      const estMb =
+        targetMode === 'bitrate' && effectiveDuration > 0
+          ? ((targetVideoKbps + (audioCodec === 'none' ? 0 : audioKbps)) * effectiveDuration) / 8192.0
+          : targetMB;
+      const payload = {
+        job_id: jobInfo.job_id,
+        filename: jobInfo.filename,
+        target_size_mb: estMb,
+        target_video_bitrate_kbps: targetMode === 'bitrate' ? targetVideoKbps : undefined,
+        video_codec: videoCodec,
+        audio_codec: audioCodec,
+        audio_bitrate_kbps: audioKbps,
+        preset,
+        container,
+        tune,
+        force_hw_decode: preferHwDecode,
+  fast_mp4_finalize: fastMp4Finalize,
+        // Optional resolution and trim parameters
+        max_width: (autoResolution || explicitHeight) ? undefined : (maxWidth || undefined),
+        max_height: (autoResolution && !explicitHeight) ? undefined : (explicitHeight || maxHeight || undefined),
+        auto_resolution: autoResolution,
+        min_auto_resolution: minAutoHeight,
+        target_resolution: explicitHeight || undefined,
+        audio_only: audioOnly,
+        max_output_fps: maxFpsCap === '' ? undefined : Number(maxFpsCap),
+        start_time: startTime.trim() || undefined,
+        end_time: endTime.trim() || undefined,
+      };
+      let startResponse: any;
+      let recoveryUsed = false;
+      try {
+        startResponse = await startCompress(payload);
+      } catch (startError: any) {
+        if (recoveryUsed || !file || !isMissingStagedInputError(startError)) throw startError;
+        recoveryUsed = true;
+        invalidateStagedInput();
+        logLines = ['Staged source expired; re-uploading and analyzing once…', ...logLines].slice(0, 500);
+        const recovered = await doUpload(true);
+        if (!recovered || !jobInfo || !stagedInputValid) {
+          throw new Error('Automatic re-upload failed; the selected file could not be analyzed.');
+        }
+        payload.job_id = jobInfo.job_id;
+        payload.filename = jobInfo.filename;
+        try {
+          startResponse = await startCompress(payload);
+        } catch (retryError: any) {
+          throw new Error(`Compression start failed after automatic re-upload: ${retryError?.message || retryError}`);
+        }
+      }
+      const { task_id } = startResponse;
+      taskId = task_id;
+      setActiveJobId(task_id);
+      
+      // Open SSE progress stream
+      logLines = ['✓ Job started. Opening progress stream...', ...logLines].slice(0, 500);
+      
+      const currentStreamGeneration = ++streamGeneration;
+      const es = openProgressStream(task_id);
+      esRef = es;
+      void getJobStatus(task_id).then((status) => {
+        if (streamGeneration !== currentStreamGeneration || taskId !== task_id) return;
+        applyJobStatus(status);
+      }).catch(() => {});
+      
+      es.onopen = () => {
+        if (streamGeneration !== currentStreamGeneration || taskId !== task_id) return;
+        logLines = ['✅ Connected to progress stream', ...logLines].slice(0, 500);
+      };
+      
+      es.onmessage = (ev) => {
+        if (streamGeneration !== currentStreamGeneration || taskId !== task_id) return;
+        try {
+          const data = JSON.parse(ev.data);
+          
+          // Handle connection confirmation
+          if (data.type === 'connected') {
+            return; // Just log, don't show to user
+          }
+          
+          // Handle pings
+          if (data.type === 'ping') {
+            return; // Silent heartbeat
+          }
+          
+          // Handle progress updates
+          if (data.type === 'progress') {
+            applyStructuredTelemetry(data);
+            progress = data.progress;
+            
+            // ETA from server if present; otherwise hide (no client-side guess)
+            if (typeof data.eta_seconds === 'number' && isFinite(data.eta_seconds) && data.eta_seconds > 0) {
+              etaSeconds = data.eta_seconds;
+              const s = Math.round(etaSeconds);
+              const h = Math.floor(s / 3600);
+              const m = Math.floor((s % 3600) / 60);
+              const r = s % 60;
+              etaLabel = h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m ${r}s` : `${r}s`);
+            } else {
+              etaSeconds = null;
+              etaLabel = null;
+            }
+
+            // Update current speed if provided
+            if (typeof data.speed_x === 'number' && isFinite(data.speed_x) && data.speed_x > 0) {
+              currentSpeedX = data.speed_x;
+            }
+
+            // If we hit 100%, mark as complete
+            if (data.progress >= 100 || data.phase === 'done') {
+              progress = 100;
+              displayedProgress = 100;
+              // 100% progress means FFmpeg finished writing frames, not that
+              // history/output finalization and the durable done event landed.
+              isFinalizing = true;
+              logLines = ['✅ 100% - Waiting for final confirmation...', ...logLines].slice(0, 500);
+            }
+            
+            // Mark that we've received at least one progress update
+            else if (!hasProgress && data.progress > 0) {
+              hasProgress = true;
+            }
+            
+            // Detect finalization phase (95-100%)
+            if (data.phase === 'finalizing' || (data.progress >= 95 && data.progress < 100)) {
+              isFinalizing = true;
+            } else if (data.phase === 'encoding') {
+              isFinalizing = false;
+            }
+          }
+
+          if (data.type === 'telemetry') {
+            applyStructuredTelemetry(data);
+          }
+          
+          // Handle log messages
+          if (data.type === 'log' && data.message) {
+            logLines = [data.message, ...logLines].slice(0, 500);
+            
+            // Extract encoding speed
+            const speedMatch = data.message.match(/speed=([\d.]+)x/);
+            if (speedMatch) {
+              currentSpeedX = parseFloat(speedMatch[1]);
+            }
+            
+            updatePipelineFromLog(data.message);
+          }
+          
+          // Do not handle early 'ready' events; download is enabled only after 'done'
+          
+          // Handle completion
+          if (data.type === 'done') {
+            doneStats = data.stats;
+            applyStructuredTelemetry(data.stats || {});
+            invalidateStagedInput();
+            progress = 100;
+            displayedProgress = 100;
+            isCompressing = false;
+            isFinalizing = false;
+            isRetrying = false;
+            isCancelling = false;
+            retryMessage = '';
+            isReady = true;
+            hasProgress = false;
+            
+            logLines = ['✅ Compression complete!', ...logLines].slice(0, 500);
+            
+            closeProgressStream();
+            clearActiveJobId(task_id);
+            setTimeout(() => refreshRecentHistory(), 100);
+            
+            // Play sound if enabled (gentle success chime)
+            if (playSoundWhenDone) {
+              // Pleasant ascending chime (C-E-G major chord)
+              const audio = new Audio('data:audio/wav;base64,UklGRiQFAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAFAAB/goSGiIqMjo+RkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=');
+              audio.volume = 0.4;
+              audio.play().catch(() => {});
+            }
+            
+            // Auto-download if enabled
+            if (autoDownload && taskId) {
+              setTimeout(() => {
+                void autoDownloadOnce(task_id, downloadUrl(task_id));
+              }, 500);
+            }
+          }
+          
+          // Handle errors
+          if (data.type === 'error') {
+            logLines = [`❌ Error: ${data.message}`, ...logLines];
+            errorText = data.message;
+            invalidateStagedInput();
+            isCompressing = false;
+            isFinalizing = false;
+            isCancelling = false;
+            clearActiveJobId(task_id);
+            closeProgressStream();
+          }
+          
+          // Handle retry
+          if (data.type === 'retry') {
+            isRetrying = true;
+            retryMessage = `File was ${data.overage_percent?.toFixed(1)}% over target - Re-encoding with optimized bitrate`;
+            
+            logLines = [`🔄 RETRY: ${data.message}`, ...logLines].slice(0, 500);
+            
+            // Show prominent notification banner
+            const retryMsg = `⚠️ File too large (${data.overage_percent?.toFixed(1)}% over target) - Re-encoding with adjusted bitrate...`;
+            logLines = [
+              '═══════════════════════════════════════════════════',
+              `🔄 AUTOMATIC RETRY IN PROGRESS`,
+              retryMsg,
+              'This is normal - the system will automatically optimize the output.',
+              '═══════════════════════════════════════════════════',
+              ...logLines
+            ].slice(0, 500);
+            
+            // Play distinct "retry" sound (warning tone - lower pitched)
+            try {
+              // Lower warning tone (F note) - distinct from success chime
+              const audio = new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQADAAB/fn18e3p5eHd2dXRzcnFwb25tbGtqaWhnZmVkY2JhYF9eXVxbWllYV1ZVVFNSUVBPTk1MS0pJSEdGRURDQkFAPz49PDo6OTg3NjU0MzIxMC8uLSwrKikoJyYlJCMiISAfHh0cGxoZGBcWFRQTEhEQDw4NDAsKCQgHBgUEAwIBAACAgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=');
+              audio.volume = 0.3;
+              audio.play().catch(() => {});
+              // Play second tone after brief pause
+              setTimeout(() => {
+                const audio2 = new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQADAAB/fn18e3p5eHd2dXRzcnFwb25tbGtqaWhnZmVkY2JhYF9eXVxbWllYV1ZVVFNSUVBPTk1MS0pJSEdGRURDQkFAPz49PDo6OTg3NjU0MzIxMC8uLSwrKikoJyYlJCMiISAfHh0cGxoZGBcWFRQTEhEQDw4NDAsKCQgHBgUEAwIBAACAgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=');
+                audio2.volume = 0.3;
+                audio2.play().catch(() => {});
+              }, 250);
+            } catch {}
+            
+            // Reset progress for retry
+            displayedProgress = 1;
+            progress = 1;
+          }
+          
+          // Handle cancellation
+          if (data.type === 'canceled') {
+            logLines = ['🚫 Job canceled', ...logLines];
+            invalidateStagedInput();
+            isCompressing = false;
+            isFinalizing = false;
+            isCancelling = false;
+            clearActiveJobId(task_id);
+            closeProgressStream();
+          }
+          
+        } catch (e) {
+          console.error('Failed to parse SSE message:', e);
+        }
+      };
+      
+      es.onerror = (err) => {
+        if (streamGeneration !== currentStreamGeneration || taskId !== task_id) return;
+        console.error('SSE error:', err);
+
+        // Keep the EventSource open. Native EventSource reconnects
+        // automatically after transient network/backend failures; closing it
+        // here made a completed job appear stuck until the user opened Queue.
+        // Do not clear isCompressing because the server job may still be live.
+        logLines = ['⚠️ Progress stream connection issue. Checking queue for updates...', ...logLines].slice(0, 500);
+
+        // Suggest checking queue page
+        if (!doneStats && taskId) {
+          logLines = [
+            `💡 View live progress at: <a href="/queue" class="text-blue-400 underline">/queue</a>`,
+            `Task ID: ${taskId}`,
+            ...logLines
+          ].slice(0, 500);
+        }
+      };
+      
+    } catch (err: any) {
+      console.error('Compress failed:', err);
+      errorText = `Compression failed: ${err.message || err}`;
+      isCompressing = false;
+    }
+  }
+
+  // Try Download handler: attempt download immediately via server's wait parameter
+  async function tryDownloadNow(){
+    if (!taskId) return;
+    tryDownloading = true;
+    const url = downloadUrl(taskId);
+    try {
+      await downloadFile(`${url}?wait=2`);
+      errorText = '';
+    } catch (err: any) {
+      errorText = err?.message || 'Download failed. Try again when the job is ready.';
+    } finally {
+      setTimeout(() => { tryDownloading = false; }, 1000);
+    }
+  }
+
+  // Finalization watchdog: start/stop a short poller if we hit 100% but 'ready' hasn't arrived
+  $: (async () => {
+    // CRITICAL: Only trigger watchdog at EXACTLY 100%, not at high progress like 98%
+    // This prevents "zombie stream" bug where client resets while server still encoding
+    const shouldPoll = !!taskId && displayedProgress >= 99.9 && !isReady && !doneStats && isCompressing;
+    if (shouldPoll && !finalizePoller) {
+      finalizePoller = setInterval(async () => {
+        if (!taskId) return;
+        try {
+          const status = await getJobStatus(taskId);
+          const state = String(status?.state || '').toUpperCase();
+          if (state === 'SUCCESS') {
+            clearInterval(finalizePoller);
+            finalizePoller = null;
+            reconnectStream();
+          } else if (state === 'FAILURE' || state === 'REVOKED' || state === 'CANCELED') {
+            clearInterval(finalizePoller);
+            finalizePoller = null;
+            reconnectStream();
+          }
+        } catch {
+        }
+      }, 1000);
+    } else if (!shouldPoll && finalizePoller) {
+      clearInterval(finalizePoller);
+      finalizePoller = null;
+    }
+  })();
+
+  function reconnectStream(){
+    if (!taskId) return;
+    const reconnectTaskId = taskId;
+    errorText = null;
+    closeProgressStream();
+    const reconnectGeneration = ++streamGeneration;
+    const es = openProgressStream(reconnectTaskId);
+    esRef = es;
+    isCompressing = true;
+    void getJobStatus(reconnectTaskId).then((status) => {
+      if (streamGeneration !== reconnectGeneration || taskId !== reconnectTaskId) return;
+      applyJobStatus(status);
+    }).catch(() => {});
+    es.onmessage = (ev) => {
+      if (streamGeneration !== reconnectGeneration || taskId !== reconnectTaskId) return;
+      try { const data = JSON.parse(ev.data);
+        if (data.type === 'progress') {
+          applyStructuredTelemetry(data);
+          progress = Number(data.progress || 0);
+          displayedProgress = progress;
+          isFinalizing = data.phase === 'finalizing';
+        }
+        if (data.type === 'telemetry') {
+          applyStructuredTelemetry(data);
+        }
+        if (data.type === 'log' && data.message) {
+          logLines = [data.message, ...logLines].slice(0, 500);
+          updatePipelineFromLog(data.message);
+        }
+        if (data.type === 'done') {
+          doneStats = data.stats;
+          applyStructuredTelemetry(data.stats || {});
+          invalidateStagedInput();
+          progress = 100;
+          displayedProgress = 100;
+          isCompressing = false;
+          isFinalizing = false;
+          isCancelling = false;
+          isReady = true;
+          clearActiveJobId(reconnectTaskId);
+          closeProgressStream();
+          setTimeout(() => refreshRecentHistory(), 100);
+          if (autoDownload) setTimeout(() => { void autoDownloadOnce(reconnectTaskId, downloadUrl(reconnectTaskId)); }, 500);
+        }
+        if (data.type === 'error') {
+          errorText = String(data.message || 'Compression failed');
+          logLines = [`Error: ${errorText}`, ...logLines];
+          invalidateStagedInput();
+          isCompressing = false;
+          isFinalizing = false;
+          isCancelling = false;
+          clearActiveJobId(reconnectTaskId);
+          closeProgressStream();
+        }
+        if (data.type === 'canceled') {
+          logLines = ['Job canceled', ...logLines];
+          invalidateStagedInput();
+          isCompressing = false;
+          isFinalizing = false;
+          isCancelling = false;
+          clearActiveJobId(reconnectTaskId);
+          closeProgressStream();
+        }
+      } catch {}
+    }
+    es.onerror = () => {
+      if (streamGeneration !== reconnectGeneration || taskId !== reconnectTaskId) return;
+      logLines = ['Progress connection interrupted; reconnecting automatically...', ...logLines].slice(0, 500);
+    }
+  }
+
+  // Remove older reset; replace with one that clears readiness flags too
+  
+  function reset(){
+    // Clear all job-related state but keep the selected file loaded so it can be reused
+    stagedFile = null;
+    invalidateStagedInput();
+    jobInfo = null;
+    taskId = null;
+    progress = 0;
+    displayedProgress = 0;
+    logLines = [];
+    doneStats = null;
+    encoderTelemetry = null;
+    warnText = null;
+    errorText = null;
+    isUploading = false;
+    isCompressing = false;
+    isFinalizing = false;
+    decodeMethod = null;
+    encodeMethod = null;
+    isReady = false;
+    readyFilename = null;
+    showTryDownload = false;
+    if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+    if (finalizePoller) { clearInterval(finalizePoller); finalizePoller = null; }
+    closeProgressStream();
+    // Note: we intentionally do NOT clear `file` or `fileSizeLabel` here
+  }
+
+  function clearSelectedFile(){
+    // Clear the chosen file and related analysis state
+    file = null;
+    fileSizeLabel = null;
+    stagedFile = null;
+    invalidateStagedInput();
+    jobInfo = null;
+    warnText = null;
+    errorText = null;
+    // Reset the input element so the same file can be selected again
+    try { if (uploadInput) uploadInput.value = ''; } catch {}
+  }
+  $: (() => { /* clear ETA when not compressing */ if (!isCompressing) { startedAt = null; etaSeconds = null; etaLabel = null; currentSpeedX = null; hasProgress = false; isFinalizing = false; } })();
+
+  async function onCancel(){
+    if (!taskId || isCancelling) return;
+    isCancelling = true;
+    logLines = ['Cancellation requested; waiting for the encoder to stop…', ...logLines].slice(0, 500);
+    try {
+      await cancelJob(taskId);
+      if (!esRef) reconnectStream();
+    } catch (e:any) {
+      errorText = e?.message || 'Failed to cancel';
+      isCancelling = false;
+    }
+  }
+
+  onDestroy(() => {
+    stopActiveBatchPolling();
+    closeProgressStream();
+    esRef = null;
+    if (finalizePoller) { clearInterval(finalizePoller); finalizePoller = null; }
+    if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+  });
+
+  // Persist UI preferences
+  $: (() => { try { localStorage.setItem('playSoundWhenDone', String(playSoundWhenDone)); } catch {} })();
+  $: (() => { try { localStorage.setItem('autoDownload', String(autoDownload)); } catch {} })();
+  $: (() => { try { localStorage.setItem('autoAudioBitrate', String(autoAudioBitrate)); } catch {} })();
+  $: (() => { try { localStorage.setItem('maxOutputFpsCap', maxFpsCap); } catch {} })();
+</script>
+
+<div class="max-w-3xl mx-auto mt-8 space-y-6">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-bold">8mb.local {#if appVersion}<span class="align-middle text-xs ml-2 px-2 py-0.5 rounded border border-gray-700 text-gray-400">v{appVersion}</span>{/if}</h1>
+    <div class="flex gap-2">
+      <a href="/batch" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg transition-colors text-sm">
+        🗂 Batch
+      </a>
+      <a href="/queue" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm">
+        📋 Queue
+      </a>
+      <a href="/settings" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm">
+        ⚙️ Settings
+      </a>
+    </div>
+  </div>
+
+  {#if activeBatchId}
+    <div class="card border border-emerald-700/40">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 class="font-semibold">Batch Tracker</h3>
+          <p class="text-xs text-gray-400">Batch ID: {activeBatchId}</p>
+        </div>
+        <div class="flex gap-2">
+          <a href="/batch" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-sm">Open</a>
+          {#if activeBatchStatus?.completed_count > 0}
+            <button on:click={async () => { try { await downloadFile(batchZipDownloadUrl(activeBatchId), `8mblocal_batch_${activeBatchId.slice(0, 8)}.zip`); } catch (err: any) { errorText = err?.message || 'Batch ZIP download failed. Try again.'; } }} class="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-sm">ZIP</button>
+          {/if}
+          <button class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm" on:click={() => refreshActiveBatchStatus(false)}>Refresh</button>
+          <button class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-sm" on:click={clearActiveBatchTracker}>Clear</button>
+        </div>
+      </div>
+
+      {#if activeBatchStatus}
+        <div class="mt-3">
+          <div class="flex items-center justify-between text-sm mb-1">
+            <span>{formatBatchState(activeBatchStatus.state)}</span>
+            <span>{Number(activeBatchStatus.overall_progress || 0).toFixed(1)}%</span>
+          </div>
+          <div class="h-2 bg-gray-800 rounded overflow-hidden">
+            <div class="h-2 bg-emerald-500" style={`width:${Math.max(0, Math.min(100, Number(activeBatchStatus.overall_progress || 0)))}%`}></div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mt-2">
+            <div class="bg-gray-950 border border-gray-800 rounded px-2 py-1">Queued: {activeBatchStatus.queued_count}</div>
+            <div class="bg-gray-950 border border-gray-800 rounded px-2 py-1">Running: {activeBatchStatus.running_count}</div>
+            <div class="bg-gray-950 border border-gray-800 rounded px-2 py-1">Done: {activeBatchStatus.completed_count}</div>
+            <div class="bg-gray-950 border border-gray-800 rounded px-2 py-1">Failed: {activeBatchStatus.failed_count}</div>
+          </div>
+        </div>
+      {:else if activeBatchError}
+        <p class="text-sm text-amber-300 mt-2">{activeBatchError}</p>
+      {:else}
+        <p class="text-sm opacity-70 mt-2">Loading active batch status…</p>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- System capabilities -->
+  <div class="card">
+    <div class="grid sm:grid-cols-2 gap-4">
+      <div>
+        <h3 class="font-semibold mb-2">System</h3>
+        {#if sysCaps}
+          <p class="text-sm">CPU: {sysCaps.cpu?.model || 'Unknown'} ({sysCaps.cpu?.cores_physical}C/{sysCaps.cpu?.cores_logical}T)</p>
+          <p class="text-sm">Memory: {sysCaps.memory?.available_gb} GB free / {sysCaps.memory?.total_gb} GB</p>
+          <p class="text-sm">Hardware: <span class="inline-flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style={`background-color:${getCodecColor(hardwareType)}`}></span>{hardwareType.toUpperCase()}</span></p>
+          <p class="text-sm mt-1">
+            {#if hardwareType !== 'cpu'}
+              {#if gpuOk}
+                <span class="inline-flex items-center gap-2 text-green-300">
+                  <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                  GPU encoding available
+                </span>
+              {:else}
+                <span class="inline-flex items-center gap-2 text-amber-300" title="Hardware encoder tests did not pass; encoding may fall back to CPU.">
+                  <span class="w-2 h-2 bg-amber-500 rounded-full"></span>
+                  GPU encoding unavailable — falling back to CPU
+                </span>
+              {/if}
+            {:else}
+              <span class="text-gray-400">CPU-only environment</span>
+            {/if}
+          </p>
+        {:else if sysCapsError}
+          <p class="text-sm text-amber-400">{sysCapsError}</p>
+        {:else}
+          <p class="text-sm opacity-70">Detecting system capabilities…</p>
+        {/if}
+      </div>
+      <div>
+        <h3 class="font-semibold mb-2">GPUs</h3>
+        {#if sysCaps?.gpus?.length}
+          <ul class="text-sm space-y-1">
+            {#each sysCaps.gpus as g}
+              <li>#{g.index} {g.name} — {g.memory_used_gb}/{g.memory_total_gb} GB</li>
+            {/each}
+          </ul>
+          {#if sysCaps.nvidia_driver}
+            <p class="text-xs opacity-70 mt-1">NVIDIA Driver: {sysCaps.nvidia_driver}</p>
+          {/if}
+        {:else}
+          <p class="text-sm opacity-70">No dedicated GPUs detected</p>
+        {/if}
+        {#if encoderTests}
+          <div class="mt-3 overflow-hidden rounded-lg border border-gray-700/80 bg-gray-950/40">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-800/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              aria-expanded={encoderTestsOpen}
+              aria-controls="encoder-test-results"
+              on:click={() => encoderTestsOpen = !encoderTestsOpen}
+            >
+              <span class="flex min-w-0 items-center gap-2">
+                <span class={`h-2 w-2 shrink-0 rounded-full ${gpuOk ? 'bg-green-400' : 'bg-amber-400'}`}></span>
+                <span class="font-medium">Encoder tests</span>
+                <span class="truncate text-xs text-gray-400">
+                  {encoderTests.filter((test) => test.passed === true).length}/{encoderTests.length} available
+                </span>
+              </span>
+              <span class="flex shrink-0 items-center gap-1 text-xs text-gray-300">
+                {encoderTestsOpen ? 'Hide' : 'Show'}
+                <svg class={`h-4 w-4 transition-transform ${encoderTestsOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+                </svg>
+              </span>
+            </button>
+            {#if encoderTestsOpen}
+            <div id="encoder-test-results" class="border-t border-gray-700/80 p-2.5">
+            <ul class="grid max-h-96 gap-2 overflow-y-auto pr-1 text-xs lg:grid-cols-2">
+              {#each encoderTests as t}
+                <li class="flex flex-col rounded-md border border-gray-800 bg-gray-900/70 p-2.5">
+                  <div class="flex items-start justify-between gap-2">
+                    <span class="min-w-0 font-medium">{encoderDisplayName(t.codec)}{#if t.actual_encoder !== t.codec} <span class="text-gray-500">({t.actual_encoder})</span>{/if}</span>
+                    {#if t.passed === true}
+                      <span class="rounded bg-green-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-green-300">PASS</span>
+                    {:else if t.passed === null}
+                      <span class="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-400">N/A</span>
+                    {:else}
+                      <span class="rounded bg-red-900/30 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">FAIL</span>
+                    {/if}
+                  </div>
+                  {#if t.decode_passed !== null && t.decode_passed !== undefined}
+                    <div class="mt-2 flex items-center justify-between gap-3 text-gray-400">
+                      <span>Decode</span>
+                      {#if t.decode_passed === true}
+                        <span class="truncate text-green-400" title={t.decode_message || 'OK'}>✓ {t.decode_message || 'OK'}</span>
+                      {:else}
+                        <span class="truncate text-red-400" title={t.decode_message || 'Failed'}>✕ {t.decode_message || 'Failed'}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                  <div class="mt-1 flex items-center justify-between gap-3 text-gray-400">
+                    <span>Encode</span>
+                    {#if t.encode_passed === true}
+                      <span class="truncate text-green-400" title={t.encode_message || 'OK'}>✓ {t.encode_message || 'OK'}</span>
+                    {:else if t.encode_passed === null}
+                      <span class="truncate text-gray-400" title={t.encode_message || 'Not tested'}>— {t.encode_message || 'Not tested'}</span>
+                    {:else}
+                      <span class="truncate text-red-400" title={t.encode_message || 'Failed'}>✕ {t.encode_message || 'Failed'}</span>
+                    {/if}
+                  </div>
+                </li>
+              {/each}
+            </ul>
+            {#if !gpuOk && hardwareType !== 'cpu'}
+              <div class="mt-3 text-xs text-amber-300 bg-amber-900/20 border border-amber-700/30 rounded p-2">
+                GPU present but encoders failed. Common causes:
+                <ul class="list-disc ml-4 mt-1 opacity-90">
+                  <li>Container not started with GPU access (Compose gpus: all)</li>
+                  <li>Docker Desktop (Windows): enable WSL2 GPU support and set Resources → GPU</li>
+                  <li>Outdated or missing NVIDIA driver</li>
+                  <li>Permissions: NVENC init "Operation not permitted" inside container</li>
+                </ul>
+              </div>
+            {/if}
+            </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="border-2 border-dashed border-gray-700 rounded p-8 text-center"
+         role="region" aria-label="Video upload drop zone"
+         on:drop={onDrop} on:dragover={allowDrop}>
+      <p class="mb-2">Drag & drop a video here</p>
+  <input bind:this={uploadInput} type="file" multiple accept="video/*" on:change={onFilesPicked} />
+      {#if file}
+        <div class="mt-2 flex items-center gap-2">
+          <p class="text-sm text-gray-400">{file.name} {#if fileSizeLabel}<span class="opacity-70">• {fileSizeLabel}</span>{/if}</p>
+          <button class="btn" on:click={clearSelectedFile} title="Clear selected file">Clear</button>
+        </div>
+      {/if}
+      {#if isUploading}
+        <div class="mt-4">
+          <p class="text-xs text-gray-400 mb-1">Analyzing video… {uploadProgress}%</p>
+          <div class="h-2 bg-gray-800 rounded">
+            <div class="h-2 bg-blue-600 rounded" style={`width:${uploadProgress}%`}></div>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Reading file properties and calculating optimal bitrates...</p>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="card grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="space-y-2">
+      <div class="flex flex-wrap gap-3 text-sm items-center">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="targetMode" value="size" bind:group={targetMode} disabled={audioOnly} />
+          Target file size
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="targetMode" value="bitrate" bind:group={targetMode} disabled={audioOnly} />
+          Target video bitrate
+        </label>
+      </div>
+      {#if targetMode === 'size'}
+        <div class="space-x-2 flex flex-wrap gap-2">
+          {#each sizeButtons as b}
+            <button class="btn" type="button" on:click={()=>setPresetMB(b)}>{b}MB</button>
+          {/each}
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="text-sm" for="target-mb">Custom size (MB)</label>
+          <input id="target-mb" class="input w-28" type="number" bind:value={targetMB} min="1" disabled={audioOnly} />
+        </div>
+      {:else}
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="text-sm" for="target-video-kbps">Video bitrate (kbps)</label>
+          <input id="target-video-kbps" class="input w-32" type="number" bind:value={targetVideoKbps} min="50" max="200000" step="50" disabled={audioOnly} />
+        </div>
+        <p class="text-xs text-gray-500">Audio is still set separately below; total size is not capped in this mode.</p>
+      {/if}
+    </div>
+    <div class="text-sm text-gray-400 sm:text-right">
+      {#if estimated && targetMode === 'bitrate' && effectiveDuration > 0}
+        <p>≈ {estimated.final_mb.toFixed(2)} MB at this bitrate for the selected duration (estimate).</p>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Primary controls: Codec and Speed/Quality preset (visible without expanding) -->
+  <div class="card grid sm:grid-cols-3 gap-4">
+    <div>
+      <label class="block mb-1 text-sm" for="video-codec">Video Codec</label>
+      <select id="video-codec" class="input w-full codec-select" bind:value={videoCodec} on:change={() => { codecNotice = null; }}>
+        {#each availableCodecs as codec}
+          <option value={codec.value} data-group={codec.group}>
+            {getCodecIcon(codec.group)} {codec.label}
+          </option>
+        {/each}
+      </select>
+      {#if hardwareType !== 'cpu'}
+        <p class="text-xs text-gray-400 mt-1">
+          <span class="inline-block w-2 h-2 rounded-full mr-1" style="background-color: {getCodecColor(hardwareType)}"></span>
+          Detected: {hardwareType.toUpperCase()} acceleration
+        </p>
+      {:else}
+        <p class="text-xs text-gray-400 mt-1">
+          <span class="inline-block w-2 h-2 rounded-full bg-gray-500 mr-1"></span>
+          CPU encoding (no GPU detected)
+        </p>
+      {/if}
+      {#if codecNotice}
+        <p class="text-xs text-amber-300 mt-1" role="status">{codecNotice}</p>
+      {/if}
+      <!-- Audio-only toggle moved here (out of Advanced) -->
+      <div class="mt-2">
+        <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" bind:checked={audioOnly} /><span>Extract audio only (.m4a)</span></label>
+      </div>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm" for="resolution-select">Resolution</label>
+      <div class="flex items-center gap-2">
+        <select id="resolution-select" class="input w-full" disabled={audioOnly || autoResolution}
+          on:change={(e:any)=>{ const v = e.target.value; explicitHeight = parseExplicitHeight(v); }}>
+          <option value="">Original</option>
+          <option value="2160">2160p (4K)</option>
+          <option value="1440">1440p</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+          <option value="240">240p</option>
+        </select>
+      </div>
+      
+      <div class="mt-2 flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs cursor-pointer">
+          <input type="checkbox" bind:checked={autoResolution} disabled={audioOnly} />
+          <span>Auto (won’t go below</span>
+          <select class="input h-7 py-0 px-2 text-xs w-20" bind:value={minAutoHeight} disabled={audioOnly || !autoResolution}>
+            <option value={240}>240p</option>
+            <option value={360}>360p</option>
+            <option value={480}>480p</option>
+            <option value={720}>720p</option>
+          </select>
+          <span>)</span>
+        </label>
+      </div>
+      {#if jobInfo?.original_width && jobInfo?.original_height}
+        <p class="text-xs opacity-70 mt-1">Input: {jobInfo.original_width}×{jobInfo.original_height}{#if jobInfo.original_video_fps != null && jobInfo.original_video_fps > 0}&nbsp;· ~{Number(jobInfo.original_video_fps).toFixed(2).replace(/\.?0+$/, '')} fps{/if} → Output: {explicitHeight ? `${explicitHeight}p (max height)` : (autoResolution ? `auto (≥${minAutoHeight}p)` : (maxHeight || 'original'))}{#if maxFpsCap} · max {maxFpsCap} fps{/if}</p>
+      {/if}
+    </div>
+    <div>
+      <label class="block mb-1 text-sm" for="encoder-preset">Encoder preset (speed ↔ quality)</label>
+      <select id="encoder-preset" class="input w-full" bind:value={preset} title="Encoder effort: faster presets spend less time per frame; slower presets often look better at the same file size.">
+        <option value="p1">Fastest (P1)</option>
+        <option value="p2">Faster (P2)</option>
+        <option value="p3">Fast (P3)</option>
+        <option value="p4">Balanced (P4)</option>
+        <option value="p5">Better (P5)</option>
+        <option value="p6">High Quality (P6)</option>
+        <option value="p7">Best Quality (P7)</option>
+        <option value="extraquality">Extra Quality (constant quality — CQ)</option>
+      </select>
+      {#if preset === 'extraquality' && targetMode === 'bitrate'}
+        <p class="text-xs text-amber-200/95 mt-1 rounded border border-amber-700/40 bg-amber-950/35 px-2 py-1.5">
+          Extra Quality uses <strong>constant quality</strong>, which does not match <strong>fixed video bitrate</strong>. The encoder will use <strong>P6</strong> instead (same as the server log: Extra Quality is not applied in bitrate mode).
+        </p>
+      {:else if preset === 'extraquality'}
+        <p class="text-xs text-sky-100/90 mt-1 rounded border border-sky-800/50 bg-sky-950/30 px-2 py-1.5">
+          <strong>Extra Quality</strong> switches to <strong>constant quality</strong> (CRF/CQ): the output is encoded at a fixed visual-quality level, so <strong>file size is not guaranteed to match your target MB</strong> — it varies with content. Encoding is slower than P7 (e.g. NVENC <code class="text-[11px]">-cq:v</code>, x264/x265 <code class="text-[11px]">-crf</code> at veryslow-style settings).
+        </p>
+      {:else}
+        <p class="text-xs opacity-70 mt-1">How much work the encoder does per frame at your target size (or bitrate). P1–P7 aim at your target; this is independent of “NVENC tuning” in Advanced Options.</p>
+      {/if}
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary class="cursor-pointer">Advanced Options</summary>
+      <div class="mt-4 grid sm:grid-cols-4 gap-4">
+        <!-- Moved Speed/Quality to primary controls; remove here -->
+        <!-- Audio Only moved to primary controls -->
+        <div>
+          <label class="block mb-1 text-sm" for="audio-codec">Audio Codec</label>
+          <select id="audio-codec" class="input w-full" bind:value={audioCodec}>
+            <option value="libopus">Opus (Default)</option>
+            <option value="aac">AAC</option>
+            <option value="none">🔇 None (Mute)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block mb-1 text-sm" for="container">Container</label>
+          <select id="container" class="input w-full" bind:value={container}>
+            <option value="mp4">MP4 (Most compatible)</option>
+            <option value="mkv">MKV (Best with Opus)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block mb-1 text-sm" for="audio-bitrate">Audio Bitrate (kbps)</label>
+          <select id="audio-bitrate" class="input w-full" bind:value={audioKbps} disabled={audioCodec === 'none' || autoAudioBitrate} on:change={(e:any)=>{ const v = parseInt(e.target.value); if (!Number.isNaN(v)) baseAudioKbps = v as any; }}>
+            <option value={32}>32</option>
+            <option value={48}>48</option>
+            <option value={64}>64</option>
+            <option value={96}>96</option>
+            <option value={128}>128</option>
+            <option value={160}>160</option>
+            <option value={192}>192</option>
+            <option value={256}>256</option>
+          </select>
+          {#if audioCodec === 'none'}
+            <p class="text-xs text-gray-400 mt-1">Disabled (audio muted)</p>
+          {:else if autoAudioBitrate}
+            <p class="text-xs text-gray-400 mt-1">Auto audio bitrate is ON (will downshift for extreme compression)</p>
+          {/if}
+        </div>
+        <div>
+          {#if nvencTuneApplies}
+          <label class="block mb-1 text-sm flex items-center gap-1" for="nvenc-tune">
+            NVENC tuning <span class="text-[11px] opacity-70">(NVIDIA only)</span>
+          </label>
+            <select
+              id="nvenc-tune"
+              class="input w-full"
+              bind:value={tune}
+              title="NVIDIA NVENC: HQ for normal files; low latency for screen/live; lossless ignores small size targets."
+            >
+              <option value="hq">High quality (default for files)</option>
+              <option value="ll">Low latency (screen / live)</option>
+              <option value="ull">Ultra-low latency</option>
+              <option value="lossless">Lossless (very large files)</option>
+            </select>
+            <p class="mt-1 text-xs opacity-70">
+              Separate from the P-preset above: chooses quality vs turnaround for NVENC. For typical uploads, leave on High quality.
+            </p>
+          {:else}
+            <div class="block mb-1 text-sm flex items-center gap-1">
+              NVENC tuning <span class="text-[11px] opacity-70">(NVIDIA only)</span>
+            </div>
+            <p class="text-xs opacity-70 rounded border border-gray-700 bg-gray-900/50 px-2 py-2">
+              Not used for this codec. CPU / software encoders follow the encoder preset only (no separate NVENC tune).
+            </p>
+          {/if}
+        </div>
+        <div class="sm:col-span-2 lg:col-span-4">
+          <label class="block mb-1 text-sm" for="max-fps-cap">Max frame rate</label>
+          <select id="max-fps-cap" class="input w-full max-w-md" bind:value={maxFpsCap} disabled={audioOnly}>
+            <option value="">Same as input (default)</option>
+            {#each FPS_CAP_VALUES as v}
+              <option value={v}>{v} fps (cap)</option>
+            {/each}
+          </select>
+          <p class="text-xs opacity-70 mt-1">Default keeps the same frame rate as the input. If you pick a cap and the source is faster, the output is reduced. Slower sources stay unchanged. Saved in this browser.</p>
+        </div>
+      </div>
+      <!-- Preset Profiles moved here (smaller) -->
+      {#if presetProfiles?.length}
+        <div class="mt-4 pt-4 border-t border-gray-700">
+          <h4 class="text-sm font-medium mb-2">Profiles</h4>
+          <div class="max-w-sm">
+            <label class="block mb-1 text-xs" for="selected-profile">Select profile</label>
+            <select id="selected-profile" class="input w-full text-xs py-1 h-8" bind:value={selectedPreset} on:change={(e:any)=>applyPreset(e.target.value)}>
+              {#each presetProfiles as p}
+                <option value={p.name}>{p.name}</option>
+              {/each}
+            </select>
+            <p class="mt-1 text-xs opacity-70">Profiles adjust target size, audio, and container. Applying one may also load its saved encoder preset and NVENC tuning.</p>
+          </div>
+        </div>
+      {/if}
+      
+      <!-- Resolution and Trim Controls (explicit pixel fields when auto off) -->
+      <div class="mt-4 pt-4 border-t border-gray-700">
+        <h4 class="text-sm font-medium mb-3">Resolution & Trimming</h4>
+        <div class="grid sm:grid-cols-4 gap-4">
+          <div>
+            <label class="block mb-1 text-sm" for="max-width">Max Width (px)</label>
+            <input id="max-width" class="input w-full" type="number" bind:value={maxWidth} placeholder="Original" min="1" disabled={autoResolution || !!explicitHeight} />
+          </div>
+          <div>
+            <label class="block mb-1 text-sm" for="max-height">Max Height (px)</label>
+            <input id="max-height" class="input w-full" type="number" bind:value={maxHeight} placeholder="Original" min="1" disabled={autoResolution || !!explicitHeight} />
+          </div>
+          <div>
+            <label class="block mb-1 text-sm" for="start-time">Start Time</label>
+            <input id="start-time" class="input w-full" type="text" bind:value={startTime} placeholder="0 or 00:00:00" />
+            <p class="mt-1 text-xs opacity-70">Format: seconds or HH:MM:SS</p>
+          </div>
+          <div>
+            <label class="block mb-1 text-sm" for="end-time">End Time</label>
+            <input id="end-time" class="input w-full" type="text" bind:value={endTime} placeholder="Full duration" />
+            <p class="mt-1 text-xs opacity-70">Format: seconds or HH:MM:SS</p>
+          </div>
+        </div>
+        <p class="mt-2 text-xs opacity-70">
+          Leave resolution blank to keep original. Aspect ratio is maintained.
+          Leave times blank to use full duration.
+        </p>
+      </div>
+      
+      <!-- UI Options -->
+      <div class="mt-4 pt-4 border-t border-gray-700">
+        <h4 class="text-sm font-medium mb-3">UI Options</h4>
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" bind:checked={playSoundWhenDone} class="w-4 h-4" />
+            <span class="text-sm">🔔 Play sound when done</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" bind:checked={autoDownload} class="w-4 h-4" />
+            <span class="text-sm">⬇️ Auto-download when done</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer" title="Automatically reduce audio bitrate when target size is tight to preserve minimum video quality.">
+            <input type="checkbox" bind:checked={autoAudioBitrate} class="w-4 h-4" />
+            <span class="text-sm">🎚️ Auto audio bitrate</span>
+          </label>
+          {#if container === 'mp4'}
+          <label class="flex items-center gap-2 cursor-pointer" title="Fragmented MP4 eliminates the long 'finalizing' step (99%->100%). Works with all modern players and Discord. Recommended!">
+            <input type="checkbox" bind:checked={fastMp4Finalize} class="w-4 h-4" />
+            <span class="text-sm">🚀 Fast finalize (recommended)</span>
+          </label>
+          {/if}
+          <label class="flex items-center gap-2 cursor-pointer" title="When enabled, the decoder will try to use GPU hardware decoding whenever possible.">
+            <input type="checkbox" bind:checked={preferHwDecode} class="w-4 h-4" />
+            <span class="text-sm">⚡ Force hardware decoding</span>
+          </label>
+        </div>
+      </div>
+      
+      {#if containerNote}
+        <p class="mt-2 text-xs text-amber-400">{containerNote}</p>
+      {/if}
+    </details>
+  </div>
+
+  {#if jobInfo}
+    <div class="card">
+      <p class="text-sm">
+        {#if effectiveDuration !== jobInfo.duration_s}
+          <span class="text-blue-400">Duration: {formatDurationTime(effectiveDuration)} (trimmed from {formatDurationTime(jobInfo.duration_s)})</span>
+          <br />
+        {/if}
+        Original: {Math.round((jobInfo.original_video_bitrate_kbps||0)+(jobInfo.original_audio_bitrate_kbps||0))} kbps
+        Target: {estimated ? Math.round(estimated.total_kbps) : Math.round(jobInfo.estimate_total_kbps)} kbps -> Video ~{estimated ? Math.round(estimated.video_kbps) : Math.round(jobInfo.estimate_video_kbps)} kbps
+      </p>
+      {#if estimated}
+        <p class="text-xs opacity-80">Estimated final size: ~{estimated.final_mb.toFixed(2)} MB</p>
+      {/if}
+      {#if warnText}<p class="text-amber-400 text-sm mt-1">{warnText}</p>{/if}
+      {#if resolutionSuggestText}
+        <div class="mt-2 p-3 border border-amber-700/40 bg-amber-900/20 rounded">
+          <div class="text-sm text-amber-200">{resolutionSuggestText}</div>
+          {#if resolutionSuggestHeight}
+            <button class="btn mt-2 text-xs" on:click={() => { explicitHeight = resolutionSuggestHeight; }}>
+              Apply {resolutionSuggestHeight}p
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if errorText}
+    <div class="card border-red-500">
+      <p class="text-red-400">{errorText}</p>
+      {#if taskId && !doneStats}
+        <div class="mt-2 flex gap-2 items-center">
+          <button class="btn" on:click={reconnectStream}>Reconnect to progress</button>
+          <span class="text-xs opacity-70">This just reopens the live log/progress stream; the job may still be running on the server.</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if file && jobInfo && !stagedInputValid && !isUploading && !isAnalyzing}
+    <p class="text-xs text-gray-400">The previous server copy was released. Compress will re-upload this selected file automatically.</p>
+  {/if}
+
+  <div class="flex gap-2">
+    <button class="btn" on:click={() => doUpload()} disabled={!file || isUploading || isAnalyzing}>
+      {#if jobInfo}
+        Re-analyze
+      {:else}
+        Analyze
+      {/if}
+    </button>
+  <button class="btn" on:click={doCompress} disabled={!file || isCompressing || isUploading || isAnalyzing}>
+      {#if isCompressing}
+        {#if hasProgress}
+          Compressing… {progress}%{#if etaLabel} — ~{etaLabel} left{/if}
+        {:else}
+          Starting…
+        {/if}
+      {:else}
+        Compress
+      {/if}
+    </button>
+    {#if taskId && isCompressing}
+      <button class="btn" on:click={onCancel} disabled={isCancelling}>{isCancelling ? 'Canceling…' : 'Cancel'}</button>
+    {/if}
+    <button class="btn" on:click={reset} disabled={isCompressing || isCancelling || (!file && !taskId)}>Reset</button>
+  </div>
+
+  <!-- Download Ready Card - Prominent when file is ready -->
+  {#if taskId && doneStats}
+    <div class="card bg-gradient-to-r from-green-900/30 to-blue-900/30 border-2 border-green-500/50">
+      <div class="flex items-center justify-between gap-4 flex-wrap">
+        <div class="flex-1">
+          <h3 class="text-lg font-bold text-green-400 mb-1">✓ Compression Complete!</h3>
+          {#if doneStats}
+            <p class="text-sm text-gray-300">Final size: <span class="font-semibold text-white">{doneStats.final_size_mb} MB</span></p>
+          {:else}
+            <p class="text-sm text-gray-300">Your file is ready to download</p>
+          {/if}
+        </div>
+          <button
+          class="btn bg-green-600 hover:bg-green-700 text-white font-bold px-8 py-3 text-lg shadow-lg"
+          on:click={async () => { try { await downloadFile(downloadUrl(taskId)); errorText = ''; } catch (err: any) { errorText = err?.message || 'Download failed. Try again.'; } }}
+        >
+          ⬇️ Download
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if taskId}
+    <div class="card">
+      <div class="flex items-center justify-between mb-2">
+        {#if decodeMethod || encodeMethod}
+          <div class="text-sm text-gray-300">
+            Pipeline: {decodeMethod || 'auto'} → {encodeMethod || (videoCodec || 'auto')}
+          </div>
+        {/if}
+        {#if encodeMethod}
+          {@const displayedEncoder = encoderTelemetry?.actual_encoder || encoderTelemetry?.resolved_encoder || encoderTelemetry?.requested_encoder || encodeMethod}
+          {@const requestedOnly = !!encoderTelemetry?.requested_encoder && !encoderTelemetry?.resolved_encoder && !encoderTelemetry?.actual_encoder}
+          {@const encoderInfo = classifyEncoder(encodeMethod)}
+          {#if requestedOnly}
+            <span class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-600/40">Encoder requested: {displayedEncoder}</span>
+          {:else if encoderInfo.hardware}
+            <span class="text-xs px-2 py-1 rounded bg-green-900/40 text-green-300 border border-green-700/40">Encoder: {encoderInfo.label} ({displayedEncoder})</span>
+          {:else}
+            <span class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-600/40">Encoder: CPU/software ({displayedEncoder})</span>
+          {/if}
+          {#if encoderTelemetry?.fallback_occurred}
+            <div class="text-xs text-amber-300 mt-1">
+              Requested: {encoderTelemetry.requested_encoder || videoCodec} → CPU fallback: {encoderTelemetry.actual_encoder || displayedEncoder}
+              {#if encoderTelemetry.fallback_reason}<span class="text-gray-400"> ({encoderTelemetry.fallback_reason})</span>{/if}
+            </div>
+          {/if}
+        {:else}
+          <span class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-600/40">Encoder: detecting…</span>
+        {/if}
+      </div>
+      {#if encoderTelemetry?.fallback_occurred}
+        <div class="text-xs text-amber-300 mt-1">Hardware encoder unavailable for this job — using CPU fallback.</div>
+      {/if}
+      
+      {#if isRetrying}
+        <div class="mb-3 p-3 bg-amber-900/30 border-2 border-amber-500 rounded-lg animate-pulse">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">🔄</span>
+            <div class="flex-1">
+              <div class="font-bold text-amber-300 text-lg">AUTOMATIC RETRY IN PROGRESS</div>
+              <div class="text-sm text-amber-200 mt-1">{retryMessage}</div>
+              <div class="text-xs text-gray-400 mt-1">This is normal - optimizing output to meet target size</div>
+            </div>
+          </div>
+        </div>
+      {/if}
+      
+      <div class="h-3 bg-gray-800 rounded">
+        <div class="h-3 bg-indigo-600 rounded" style={`width:${displayedProgress}%`}></div>
+      </div>
+      <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+        <span>
+          {displayedProgress.toFixed(1)}%
+          {#if isCompressing && isFinalizing && !doneStats} 
+            <span class="text-blue-300">(finalizing…)</span>
+          {:else if currentSpeedX && displayedProgress < 95}
+            <span class="text-green-300">• {currentSpeedX.toFixed(2)}x</span>
+          {/if}
+        </span>
+        {#if isCompressing && displayedProgress<99 && etaLabel}
+          <span>~{etaLabel} remaining</span>
+        {:else if isCompressing && isFinalizing && !doneStats}
+          <span class="text-gray-400">Saving metadata...</span>
+        {/if}
+      </div>
+
+      {#if !isReady && !doneStats && showTryDownload}
+        <div class="mt-4 text-sm bg-amber-900/20 border border-amber-600/30 rounded p-3">
+          <p class="text-amber-300">Finalizing… You can try downloading now.</p>
+          <button class="btn inline-block mt-2" on:click={tryDownloadNow} disabled={tryDownloading}>
+            {tryDownloading ? 'Trying…' : 'Try Download'}
+          </button>
+        </div>
+      {/if}
+
+      <details class="mt-3">
+        <summary class="cursor-pointer">FFmpeg log</summary>
+        <pre class="mt-2 text-xs whitespace-pre-wrap">{logLines.join('\n')}</pre>
+      </details>
+    </div>
+  {/if}
+
+  <!-- Recent history on main screen -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-semibold">Recent History</h3>
+      <a href="/history" class="text-sm text-blue-400 underline">View all →</a>
+    </div>
+    {#if !historyEnabled}
+      <p class="text-sm opacity-70">History tracking is disabled. Enable it in Settings.</p>
+    {:else if history.length === 0}
+      <p class="text-sm opacity-70">No history yet.</p>
+    {:else}
+      <ul class="text-sm space-y-2">
+        {#each history as item}
+          <li class="flex items-center justify-between gap-2">
+            <span class="truncate">{item.filename}</span>
+            <div class="flex items-center gap-3">
+              <span class="opacity-70">{item.compressed_size_mb.toFixed(2)} MB</span>
+              <button class="text-blue-400 underline" on:click={async () => { try { await downloadFile(`/api/jobs/${encodeURIComponent(item.task_id)}/download`); } catch (err: any) { errorText = err?.message || 'Download failed. Try again.'; } }} title="Download">⬇️</button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+
+  <!-- Support badge moved to corner (smaller, unobtrusive) -->
+</div>
+
+<!-- Floating support widget -->
+<button
+  class="fixed bottom-4 right-4 bg-gray-800/90 hover:bg-gray-700 text-xs px-3 py-1.5 rounded-full shadow-lg border border-gray-700 backdrop-blur-sm flex items-center gap-1 z-50"
+  on:click={toggleSupport}
+  aria-expanded={showSupport}
+  aria-controls="support-popover"
+  title="Support the project"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-rose-400">
+    <path d="M11.645 20.91l-.007-.003-.022-.01a15.247 15.247 0 01-.383-.184 25.18 25.18 0 01-4.244-2.62C4.688 16.197 2.25 13.614 2.25 10.5 2.25 8.014 4.237 6 6.75 6c1.56 0 2.927.802 3.75 2.016C11.323 6.802 12.69 6 14.25 6 16.763 6 18.75 8.014 18.75 10.5c0 3.114-2.438 5.697-4.739 7.593a25.175 25.175 0 01-4.244 2.62 15.247 15.247 0 01-.383.184l-.022.01-.007.003-.003.001a.75.75 0 01-.614 0l-.003-.001z" />
+  </svg>
+  <span>Support</span>
+  <span class="sr-only">the project</span>
+</button>
+
+{#if showSupport}
+  <div
+    id="support-popover"
+    class="fixed bottom-16 right-4 w-64 bg-gray-900/95 text-gray-100 border border-gray-700 rounded-lg shadow-xl p-3 z-50"
+    role="dialog"
+    tabindex="-1"
+    aria-label="Support the project"
+    on:keydown={onKey}
+  >
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-xs leading-relaxed">
+        Thanks for using <span class="font-semibold">8mb.local</span>! If this saved you time and you'd like to chip in, tips are appreciated (never expected).
+      </p>
+      <button class="text-gray-400 hover:text-gray-200 text-sm" on:click={closeSupport} title="Close" aria-label="Close">×</button>
+    </div>
+    <div class="mt-2">
+      <a class="underline text-xs hover:text-rose-300" href="https://paypal.me/jasonselsley" target="_blank" rel="noopener noreferrer">paypal.me/jasonselsley</a>
+    </div>
+  </div>
+{/if}
+
+{#if isUploading || isCompressing}
+  <!-- Non-blocking mini status panel in bottom-right -->
+  <div class="fixed bottom-20 right-4 z-40 pointer-events-none">
+    <div class="pointer-events-auto bg-gray-900/95 border border-gray-700 rounded-lg p-3 shadow-xl flex items-center gap-3">
+      <div class="h-5 w-5 rounded-full border-2 border-gray-600 border-t-indigo-500 animate-spin"></div>
+      <div class="text-sm">
+        {#if isUploading}
+          <div>Uploading… {uploadProgress}%</div>
+        {:else if isCompressing}
+          {#if hasProgress}
+            <div>
+              Compressing… {displayedProgress.toFixed(1)}%
+              {#if displayedProgress<99 && etaLabel}
+                — ~{etaLabel} left
+              {:else if displayedProgress>=99}
+                — finalizing…
+              {/if}
+            </div>
+          {:else}
+            <div>Starting…</div>
+          {/if}
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  /* Color-code codec options based on hardware type */
+  .codec-select option[data-group="nvidia"] {
+    color: #22c55e;
+    font-weight: 500;
+  }
+  .codec-select option[data-group="intel"] {
+    color: #60a5fa;
+    font-weight: 500;
+  }
+  .codec-select option[data-group="vaapi"] {
+    color: #c084fc;
+    font-weight: 500;
+  }
+  .codec-select option[data-group="cpu"] {
+    color: #9ca3af;
+  }
+</style>

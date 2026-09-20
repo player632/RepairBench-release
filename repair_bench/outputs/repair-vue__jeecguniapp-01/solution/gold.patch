@@ -1,0 +1,153 @@
+diff --git a/src/common/uitls.ts b/src/common/uitls.ts
+index a840a31..6fa2252 100644
+--- a/src/common/uitls.ts
++++ b/src/common/uitls.ts
+@@ -77,7 +77,7 @@ export const hasRoute = ({ name, path, routeList }: hasRouteType) => {
+     return !!routeList.find((item) => item.path === path)
+   }
+   if (name) {
+-    return !!routeList.find((item) => item.path === name)
++    return !!routeList.find((item) => item.path.split('/').pop() === name)
+   }
+ }
+ 
+@@ -102,7 +102,7 @@ export function beautifyTime(datetime = '') {
+   }
+ 
+   if (time.getFullYear() != outTime.getFullYear()) {
+-    return parseTime(outTime, '{m}/{d}')
++    return parseTime(outTime, '{y}/{m}/{d}')
+   }
+ 
+   if (time.getMonth() != outTime.getMonth()) {
+diff --git a/src/interceptors/request.ts b/src/interceptors/request.ts
+index 0b439e5..b5f41ca 100644
+--- a/src/interceptors/request.ts
++++ b/src/interceptors/request.ts
+@@ -23,7 +23,7 @@ const httpInterceptor = {
+       if (options.url.includes('?')) {
+         options.url += `&${queryStr}`
+       } else {
+-        options.url += `&${queryStr}`
++        options.url += `?${queryStr}`
+       }
+     }
+     // 非 http 开头需拼接地址
+diff --git a/src/pages/demo/form.vue b/src/pages/demo/form.vue
+index b751a0a..ab93b7d 100644
+--- a/src/pages/demo/form.vue
++++ b/src/pages/demo/form.vue
+@@ -23,7 +23,7 @@
+           clearable
+           v-model="model.value1"
+           placeholder="姓名"
+-          :rules="[{ required: false, message: '请填写姓名' }]"
++          :rules="[{ required: true, message: '请填写姓名' }]"
+         />
+         <wd-picker
+             label="性别"
+diff --git a/src/pages/demo/indexBar.vue b/src/pages/demo/indexBar.vue
+index f5e25b3..31f343f 100644
+--- a/src/pages/demo/indexBar.vue
++++ b/src/pages/demo/indexBar.vue
+@@ -182,7 +182,7 @@ function handleSearch() {
+   nextTick(() => {
+     if (keyword.value) {
+       showList.value = indexList.filter((item) => {
+-        return item.data.every((city) => {
++        return item.data.some((city) => {
+           return city.includes(keyword.value)
+         })
+       })
+diff --git a/src/pages/demo/tree.vue b/src/pages/demo/tree.vue
+index 48f1496..41f5784 100644
+--- a/src/pages/demo/tree.vue
++++ b/src/pages/demo/tree.vue
+@@ -204,7 +204,7 @@ function doExpandTree(keys, expand) {
+   console.log('当前已展开的KEY ==>', gek)
+ }
+ function doCheckedTree(keys, checked) {
+-  DaTreeRef.value?.setCheckedKeys(keys, !checked)
++  DaTreeRef.value?.setCheckedKeys(keys, checked)
+ 
+   const gek = DaTreeRef.value?.getCheckedKeys()
+   console.log('当前已选中的KEY ==>', gek)
+diff --git a/src/pages/index/index.vue b/src/pages/index/index.vue
+index e81f43c..0766c50 100644
+--- a/src/pages/index/index.vue
++++ b/src/pages/index/index.vue
+@@ -210,7 +210,7 @@ if (isLocalConfig) {
+     img: item.icon,
+     itemKey: item.routeIndex,
+   }))
+-  osList.value = us.data.map((item) => ({
++  osList.value = os.data.map((item) => ({
+     ...item,
+     text: item.title,
+     img: item.icon,
+diff --git a/src/pages/message/components/addressBookList.vue b/src/pages/message/components/addressBookList.vue
+index c54885a..2164bde 100644
+--- a/src/pages/message/components/addressBookList.vue
++++ b/src/pages/message/components/addressBookList.vue
+@@ -52,7 +52,7 @@ const queryList = () => {
+             path: 'tenant',
+           }
+         })
+-        result = [...result, ...dataSource]
++        result = [...dataSource, ...result]
+         paging.value.complete(result)
+         cache(TENANT_LIST, list)
+       } else {
+diff --git a/src/pages/message/components/chatList.vue b/src/pages/message/components/chatList.vue
+index c230e9e..0a2a1dc 100644
+--- a/src/pages/message/components/chatList.vue
++++ b/src/pages/message/components/chatList.vue
+@@ -201,9 +201,9 @@ const queryList = () => {
+ const sortByIzTop = (arr) => {
+   return arr.sort((a, b) => {
+     if (a.izTop && !b.izTop) {
+-      return 1 // a 排在 b 前面
++      return -1 // a 排在 b 前面
+     } else if (!a.izTop && b.izTop) {
+-      return -1 // b 排在 a 前面
++      return 1 // b 排在 a 前面
+     } else {
+       return 0 // 保持原有顺序
+     }
+@@ -225,7 +225,7 @@ const getChatType = (item) => {
+     case 'systemNotice':
+       return '[系统消息]'
+     case 'friend':
+-      return item.status == 'offline' ? '[在线]' : '[离线]'
++      return item.status == 'offline' ? '[离线]' : '[在线]'
+     case 'group':
+       return '[群消息]'
+     default:
+diff --git a/src/pages/message/message.vue b/src/pages/message/message.vue
+index c611343..eafbbc7 100644
+--- a/src/pages/message/message.vue
++++ b/src/pages/message/message.vue
+@@ -25,8 +25,8 @@
+         <template v-for="(item, index) in tabList" :key="index">
+           <wd-tab :title="item.title" :name="item.key">
+             <view class="mainContent">
+-              <chatList v-if="item.key === 'chat'"></chatList>
+-              <addressBookList v-if="item.key === 'contacts'"></addressBookList>
++              <chatList v-if="item.key === '1'"></chatList>
++              <addressBookList v-if="item.key === '2'"></addressBookList>
+             </view>
+           </wd-tab>
+         </template>
+diff --git a/src/store/user.ts b/src/store/user.ts
+index b79741d..583ea5c 100644
+--- a/src/store/user.ts
++++ b/src/store/user.ts
+@@ -49,7 +49,7 @@ export const useUserStore = defineStore(
+     const reset = () => {
+       userInfo.value = { ...initState }
+     }
+-    const isLogined = computed(() => !!userInfo.value.username)
++    const isLogined = computed(() => !!userInfo.value.token)
+     return {
+       userInfo,
+       setUserInfo,

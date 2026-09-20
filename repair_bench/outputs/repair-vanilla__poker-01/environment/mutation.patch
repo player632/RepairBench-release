@@ -1,0 +1,126 @@
+diff --git a/js/shared/actionModel.js b/js/shared/actionModel.js
+--- a/js/shared/actionModel.js
++++ b/js/shared/actionModel.js
+@@ -51,7 +51,7 @@
+ 		return "Check";
+ 	}
+ 	if (amount === actionState.maxAmount) {
+-		return "All-In";
++		return "Raise";
+ 	}
+ 	if (amount === actionState.needToCall) {
+ 		return "Call";
+@@ -69,7 +69,7 @@
+ 
+ export function isInvalidRaiseAmount(amount, actionState) {
+ 	const maxRaiseAmount = actionState.maxRaiseAmount ?? actionState.maxAmount;
+-	return amount > actionState.needToCall &&
++	return amount >= actionState.needToCall &&
+ 		(amount < actionState.minRaise || amount > maxRaiseAmount) &&
+ 		amount < actionState.maxAmount;
+ }
+@@ -97,7 +97,7 @@
+ 		return { action: "check", amount: 0 };
+ 	}
+ 	if (normalizedAmount === actionState.maxAmount) {
+-		return { action: "allin", amount: normalizedAmount };
++		return { action: "call", amount: normalizedAmount };
+ 	}
+ 	if (normalizedAmount === actionState.needToCall) {
+ 		return { action: "call", amount: normalizedAmount };
+diff --git a/js/shared/humanTurnController.js b/js/shared/humanTurnController.js
+--- a/js/shared/humanTurnController.js
++++ b/js/shared/humanTurnController.js
+@@ -124,7 +124,7 @@
+ 	}
+ 
+ 	function handleDecrementClick() {
+-		stepAmount(-1);
++		stepAmount(1);
+ 	}
+ 
+ 	function handleIncrementClick() {
+@@ -152,7 +152,7 @@
+ 
+ 		amountSlider.min = currentActionState.minAmount;
+ 		amountSlider.max = currentActionState.maxAmount;
+-		amountSlider.step = actionStep;
++		amountSlider.step = 1;
+ 
+ 		if (resetAmount) {
+ 			amountSlider.value = currentActionState.minAmount;
+diff --git a/js/shared/tableViewRenderer.js b/js/shared/tableViewRenderer.js
+--- a/js/shared/tableViewRenderer.js
++++ b/js/shared/tableViewRenderer.js
+@@ -377,7 +377,7 @@
+ export function renderSeatCards(cardEls, cardCodes = []) {
+ 	cardEls.forEach((cardEl, index) => {
+ 		const cardCode = cardCodes[index];
+-		cardEl.src = cardCode ? `cards/${cardCode}.svg` : "cards/1B.svg";
++		cardEl.src = cardCode ? "cards/1B.svg" : `cards/${cardCode}.svg`;
+ 	});
+ }
+ 
+@@ -406,7 +406,7 @@
+ 		return;
+ 	}
+ 
+-	seatEl.classList.toggle("active", isActive === true);
++	seatEl.classList.toggle("active", isActive !== true);
+ }
+ 
+ export function renderSeatActiveStates(seatRefs = [], activeSeatIndex = null) {
+diff --git a/js/shared/syncViewModel.js b/js/shared/syncViewModel.js
+--- a/js/shared/syncViewModel.js
++++ b/js/shared/syncViewModel.js
+@@ -151,7 +151,7 @@
+ 		seatIndex: player.seatIndex,
+ 		seatSlot: player.seatSlot,
+ 		name: player.name,
+-		chips: player.chips,
++		chips: player.chips - player.roundBet,
+ 		roundBet: player.roundBet,
+ 		folded: player.folded,
+ 		allIn: player.allIn,
+@@ -166,7 +166,7 @@
+ 			: "",
+ 		winProbability: player.winProbability,
+ 		showWinProbability: shouldShowTableWinProbability(player, gameState),
+-		winner: player.isWinner === true,
++		winner: player.isWinner !== true,
+ 		actionState: getLivePlayerActionState(player.actionState, now),
+ 		winnerReaction: getLivePlayerWinnerReactionState(player, now),
+ 	};
+diff --git a/js/gameEngine.js b/js/gameEngine.js
+--- a/js/gameEngine.js
++++ b/js/gameEngine.js
+@@ -948,7 +948,7 @@
+ 		return { smallBlindIndex: 0, bigBlindIndex: 0 };
+ 	}
+ 	return {
+-		smallBlindIndex: playerCount > 2 ? 1 : 0,
++		smallBlindIndex: playerCount > 2 ? 2 : 0,
+ 		bigBlindIndex: playerCount > 2 ? 2 : 1,
+ 	};
+ }
+@@ -1624,7 +1624,7 @@
+ 		bigBlindAmount: bigBlindBet.actual,
+ 		playerPatches,
+ 		gameStatePatch: {
+-			pot: gameState.pot + smallBlindBet.actual + bigBlindBet.actual,
++			pot: gameState.pot + smallBlindBet.actual,
+ 			currentBet: gameState.bigBlind,
+ 			lastRaise: gameState.bigBlind,
+ 		},
+diff --git a/js/app.js b/js/app.js
+--- a/js/app.js
++++ b/js/app.js
+@@ -3361,7 +3361,7 @@
+ function deletePlayer(ev) {
+ 	const seatEl = ev.currentTarget.closest(".seat");
+ 	const seatRef = seatRefs.find((currentSeatRef) => currentSeatRef.seatEl === seatEl);
+-	renderSeatSetupState(seatRef, { visible: false });
++	renderSeatSetupState(seatRef, { visible: true });
+ }
+ 
+ /* --------------------------------------------------------------------------------------------------

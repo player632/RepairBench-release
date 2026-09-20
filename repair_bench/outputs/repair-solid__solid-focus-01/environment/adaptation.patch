@@ -1,0 +1,2660 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+deleted file mode 100644
+index 2661882..0000000
+--- a/.github/workflows/ci.yml
++++ /dev/null
+@@ -1,28 +0,0 @@
+-name: CI
+-
+-on: [push, pull_request]
+-
+-jobs:
+-    ci:
+-        runs-on: ubuntu-latest
+-        steps:
+-            - uses: actions/checkout@v4
+-            - uses: pnpm/action-setup@v4
+-              with:
+-                  version: 10
+-                  run_install: false
+-            - uses: actions/setup-node@v4
+-              with:
+-                  node-version-file: '.nvmrc'
+-                  cache: 'pnpm'
+-            - run: pnpm install
+-            - run: npm run build
+-            - run: npm run lint
+-            - run: npm run test:ci
+-            - run: npm run cy:test
+-            - name: Upload Cypress screenshots
+-              uses: actions/upload-artifact@v4
+-              if: ${{ failure() }}
+-              with:
+-                  name: cypress_screenshots
+-                  path: cypress/screenshots
+diff --git a/cypress/cypress.config.ts b/cypress/cypress.config.ts
+deleted file mode 100644
+index 9b5c16e..0000000
+--- a/cypress/cypress.config.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-import { setupAerogelNodeEvents } from '@aerogel/cypress/config';
+-import { defineConfig } from 'cypress';
+-
+-export default defineConfig({
+-    e2e: {
+-        baseUrl: 'http://localhost:5001',
+-        video: false,
+-        scrollBehavior: false,
+-        retries: {
+-            runMode: 3,
+-            openMode: 0,
+-        },
+-        setupNodeEvents: setupAerogelNodeEvents,
+-    },
+-});
+diff --git a/cypress/e2e/all.cy.ts b/cypress/e2e/all.cy.ts
+deleted file mode 100644
+index c8ab91d..0000000
+--- a/cypress/e2e/all.cy.ts
++++ /dev/null
+@@ -1,11 +0,0 @@
+-// This file is a stub to run all the specs during development, which was removed in Cypress 10.
+-// See https://github.com/cypress-io/cypress/discussions/21628
+-
+-// If you want to use it, just uncomment these lines:
+-// import './animations.cy';
+-// import './cloud.cy';
+-// import './interoperability.cy';
+-// import './navigation.cy';
+-// import './onboarding.cy';
+-// import './tasks.cy';
+-// import './workspaces.cy';
+diff --git a/cypress/e2e/animations.cy.ts b/cypress/e2e/animations.cy.ts
+deleted file mode 100644
+index 52be945..0000000
+--- a/cypress/e2e/animations.cy.ts
++++ /dev/null
+@@ -1,79 +0,0 @@
+-describe.skip('Animations', () => {
+-    beforeEach(() => {
+-        cy.visit('/');
+-        cy.createStubs();
+-    });
+-
+-    it('Tasks collapse/expand (long)', () => {
+-        cy.visit('/household/groceries');
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Bananas').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.contains('li', 'Orange juice').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-    });
+-
+-    it('Tasks collapse/expand (short)', () => {
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Clean room').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Clean room').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-    });
+-
+-    it('Tasks toggle', () => {
+-        cy.visit('/household/groceries');
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Bananas').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Orange juice').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-
+-        cy.press('Completed');
+-        cy.wait(1000);
+-
+-        cy.contains('li', 'Orange juice').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.wait(1000);
+-    });
+-
+-    it('Tasks create', () => {
+-        cy.ariaInput('Task name').type('One{enter}');
+-        cy.wait(1000);
+-
+-        cy.ariaInput('Task name').type('Two{enter}');
+-        cy.wait(1000);
+-
+-        cy.ariaInput('Task name').type('Three{enter}');
+-        cy.wait(1000);
+-
+-        cy.ariaInput('Task name').type('Four{enter}');
+-        cy.wait(1000);
+-    });
+-});
+diff --git a/cypress/e2e/cloud.cy.ts b/cypress/e2e/cloud.cy.ts
+deleted file mode 100644
+index 76ec678..0000000
+--- a/cypress/e2e/cloud.cy.ts
++++ /dev/null
+@@ -1,417 +0,0 @@
+-import { escapeRegexText } from '@noeldemartin/utils';
+-import { podUrl, webId } from '@aerogel/cypress';
+-
+-import type Task from '@/models/Task';
+-
+-describe('Cloud', () => {
+-
+-    beforeEach(() => {
+-        cy.solidReset();
+-        cy.visit('/');
+-    });
+-
+-    it('Syncs updates', () => {
+-        // Arrange
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('Sync updates{enter}');
+-        cy.waitSync();
+-
+-        cy.intercept('PATCH', podUrl('/tasks/main/*')).as('updateTask');
+-
+-        // Act - toggle important and set due date
+-        cy.ariaLabel('Select task \\"Sync updates\\"').click();
+-        cy.ariaLabel('Make important').click();
+-        cy.ariaLabel('Edit due date').click();
+-        cy.get(':focus').then((element) => {
+-            const input = element[0] as HTMLInputElement;
+-
+-            input.valueAsDate = new Date();
+-            input.dispatchEvent(new Event('input'));
+-        });
+-        cy.press('Save');
+-        cy.waitSync();
+-
+-        // Act - toggle task
+-        cy.contains('li', 'Sync updates').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.waitSync();
+-
+-        // Assert
+-        cy.get('@updateTask.all').should('have.length', 2);
+-
+-        cy.fixture('sparql/sync-task-updates-1.sparql').then((sparql) => {
+-            cy.get('@updateTask.1').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.1').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixture('sparql/sync-task-updates-2.sparql').then((sparql) => {
+-            cy.get('@updateTask.2').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.2').its('request.body').should('be.sparql', sparql);
+-        });
+-    });
+-
+-    it('Syncs deleted tasks', () => {
+-        // Arrange
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('To delete{enter}');
+-        cy.waitSync();
+-
+-        cy.model('Workspace').then(async (Workspace) => {
+-            const main = await Workspace.find(podUrl('/tasks/main/'));
+-            const tasks = await main?.loadRelation<Task[]>('tasks');
+-            const task = tasks?.[0];
+-
+-            if (task) {
+-                const turtle = await task.toTurtle();
+-
+-                cy.wrap(turtle.replace(new RegExp(escapeRegexText(task.url), 'g'), '#it')).as('taskTurtle');
+-            }
+-        });
+-        cy.intercept('PATCH', podUrl('/tasks/main/*')).as('updateTask');
+-
+-        // Act
+-        cy.ariaLabel('Select task \\"To delete\\"').click();
+-        cy.ariaLabel('Delete').click();
+-        cy.press('Delete');
+-        cy.waitSync();
+-
+-        // Assert
+-        cy.get('@taskTurtle').then((taskTurtle) => {
+-            cy.get('@updateTask')
+-                .its('request.body')
+-                .should(
+-                    'be.sparql',
+-                    `
+-                        DELETE DATA { ${taskTurtle} } ;
+-                        INSERT DATA {
+-                            @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-                            @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-                            <#it-metadata>
+-                                a crdt:Tombstone ;
+-                                crdt:resource <#it> ;
+-                                crdt:deletedAt  "[[.*]]"^^xsd:dateTime .
+-                        } .
+-                    `,
+-                );
+-        });
+-    });
+-
+-    it('Syncs new workspaces and lists', () => {
+-        // Arrange
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('Sync updates{enter}');
+-        cy.waitSync();
+-
+-        cy.intercept('PUT', podUrl('/tasks/work/')).as('createWorkContainer');
+-        cy.intercept('PATCH', podUrl('/tasks/work/.meta')).as('createWorkContainerMeta');
+-        cy.intercept('PUT', podUrl('/tasks/work/learning/')).as('createLearningContainer');
+-        cy.intercept('PATCH', podUrl('/tasks/work/learning/.meta')).as('createLearningContainerMeta');
+-        cy.intercept('PUT', podUrl('/study/')).as('createStudyContainer');
+-        cy.intercept('PATCH', podUrl('/study/.meta')).as('createStudyContainerMeta');
+-
+-        // Act
+-        cy.ariaLabel('Show lists').click();
+-        cy.switchWorkspace('New workspace');
+-        cy.ariaInput('Name').type('Work{enter}');
+-        cy.waitSync();
+-
+-        cy.press('New list');
+-        cy.ariaInput('Name').type('Learning{enter}');
+-        cy.waitSync();
+-
+-        cy.switchWorkspace('New workspace');
+-        cy.get('[role="dialog"]').within(() => {
+-            cy.press('Advanced options', 'summary');
+-            cy.press('Create container url automatically');
+-            cy.ariaInput('Name').type('Study');
+-            cy.ariaInput('Url').clear().type(podUrl('/study/'));
+-            cy.press('Create', 'button');
+-        });
+-
+-        // Assert
+-        cy.get('@createWorkContainer.all').should('have.length', 1);
+-        cy.get('@createWorkContainerMeta.all').should('have.length', 1);
+-        cy.get('@createLearningContainer.all').should('have.length', 1);
+-        cy.get('@createLearningContainerMeta.all').should('have.length', 1);
+-        cy.get('@createStudyContainer.all').should('have.length', 1);
+-        cy.get('@createStudyContainerMeta.all').should('have.length', 1);
+-    });
+-
+-    it('Syncs list updates', () => {
+-        // Arrange
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('Hello{enter}');
+-        cy.waitSync();
+-
+-        cy.intercept('PATCH', podUrl('/tasks/main/testing/.meta')).as('updateList');
+-        cy.intercept('PATCH', '*').as('otherUpdates');
+-
+-        // Act
+-        cy.ariaLabel('Show lists').click();
+-        cy.press('New list');
+-        cy.ariaInput('Name').type('Testing{enter}');
+-        cy.waitSync();
+-
+-        cy.ariaInput('Task name').type('A simple task{enter}');
+-        cy.waitSync();
+-
+-        cy.ariaLabel('Testing list settings').click({ force: true });
+-        cy.ariaInput('Name').clear().type('Renamed list{enter}');
+-        cy.waitSync();
+-
+-        // Assert
+-        cy.get('@updateList.all').should('have.length', 2);
+-        cy.get('@otherUpdates.all').should('have.length', 1);
+-
+-        cy.fixtureWithReplacements('sparql/sync-list-updates-1.sparql', { url: podUrl('/tasks/main/testing/') }).then(
+-            (sparql) => {
+-                cy.get('@updateList.1').its('response.statusCode').should('eq', 205);
+-                cy.get('@updateList.1').its('request.body').should('be.sparql', sparql);
+-            },
+-        );
+-
+-        cy.fixtureWithReplacements('sparql/sync-list-updates-2.sparql', { url: podUrl('/tasks/main/testing/') }).then(
+-            (sparql) => {
+-                cy.get('@updateList.2').its('response.statusCode').should('eq', 205);
+-                cy.get('@updateList.2').its('request.body').should('be.sparql', sparql);
+-            },
+-        );
+-    });
+-
+-    it('Backs up simple local data', () => {
+-        // Arrange
+-        cy.intercept('PUT', podUrl('/tasks/main/')).as('createContainer');
+-        cy.intercept('PATCH', podUrl('/tasks/main/.meta')).as('createContainerMeta');
+-        cy.intercept('PATCH', podUrl('/tasks/main/*')).as('createTask');
+-
+-        cy.press('Get started');
+-        cy.ariaInput('Task name').type('Onboarding task{enter}');
+-        cy.ariaLabel('Configuration').click();
+-        cy.press('Connect account');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Act
+-        cy.see('All your eggs are in the same basket');
+-        cy.press('Back up');
+-        cy.see('Backing up');
+-        cy.dontSee('Backing up');
+-
+-        // Assert
+-        cy.ariaLabel('Show lists').click();
+-        cy.seeActiveWorkspace('Main');
+-        cy.see('Onboarding task');
+-        cy.seeActiveList('Inbox');
+-
+-        cy.get('@createContainer.all').should('have.length', 1);
+-        cy.get('@createContainerMeta.all').should('have.length', 1);
+-        cy.get('@createTask.all').should('have.length', 1);
+-
+-        cy.fixtureWithReplacements('sparql/create-container-meta.sparql', {
+-            url: podUrl('/tasks/main/'),
+-            name: 'Main',
+-        }).then((sparql) => {
+-            cy.get('@createContainerMeta').its('response.statusCode').should('eq', 205);
+-            cy.get('@createContainerMeta').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixtureWithReplacements('sparql/create-task.sparql', { name: 'Onboarding task' }).then((sparql) => {
+-            cy.get('@createTask').its('response.statusCode').should('eq', 201);
+-            cy.get('@createTask').its('request.body').should('be.sparql', sparql);
+-        });
+-    });
+-
+-    it('Backs up complex local data', () => {
+-        // Arrange
+-        cy.intercept('PUT', podUrl('/tasks/')).as('createMainContainer');
+-        cy.intercept('PUT', podUrl('/shared/')).as('createHouseholdContainer');
+-        cy.intercept('PUT', podUrl('/shared/groceries/')).as('createGroceriesContainer');
+-        cy.intercept('PUT', podUrl('/shared/recipes/')).as('createRecipesContainer');
+-        cy.intercept('PUT', podUrl('/languages/japanese/')).as('createJapaneseContainer');
+-        cy.intercept('PUT', podUrl('/languages/japanese/manga/')).as('createMangaContainer');
+-        cy.intercept('PATCH', podUrl('/tasks/*')).as('createMainTask');
+-        cy.intercept('PATCH', podUrl('/shared/*')).as('createHouseholdTask');
+-        cy.intercept('PATCH', podUrl('/shared/groceries/*')).as('createGroceriesTask');
+-        cy.intercept('PATCH', podUrl('/shared/recipes/*')).as('createRecipesTask');
+-        cy.intercept('PATCH', podUrl('/languages/japanese/*')).as('createJapaneseTask');
+-        cy.intercept('PATCH', podUrl('/languages/japanese/manga/*')).as('createMangaTask');
+-
+-        cy.createStubs();
+-        cy.ariaLabel('Configuration').click();
+-        cy.press('Connect account');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Act
+-        cy.see('All your eggs are in the same basket');
+-        cy.press('Advanced options', 'summary');
+-        cy.ariaInput('Household url').scrollIntoView().clear().type(podUrl('/shared/'));
+-        cy.ariaInput('Japanese url').scrollIntoView().clear().type(podUrl('/languages/japanese/'));
+-        cy.ariaInput('Main url').scrollIntoView().clear().type(podUrl('/tasks/'));
+-        cy.press('Back up');
+-        cy.see('Backing up');
+-        cy.dontSee('Backing up', { timeout: 60000 });
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/shared`);
+-
+-        cy.get('@createMainContainer.all').should('have.length', 1);
+-        cy.get('@createHouseholdContainer.all').should('have.length', 1);
+-        cy.get('@createGroceriesContainer.all').should('have.length', 1);
+-        cy.get('@createRecipesContainer.all').should('have.length', 1);
+-        cy.get('@createJapaneseContainer.all').should('have.length', 1);
+-        cy.get('@createMangaContainer.all').should('have.length', 1);
+-        cy.get('@createMainTask.all').should('have.length', 4);
+-        cy.get('@createHouseholdTask.all').should('have.length', 2);
+-        cy.get('@createGroceriesTask.all').should('have.length', 30);
+-        cy.get('@createRecipesTask.all').should('have.length', 3);
+-        cy.get('@createJapaneseTask.all').should('have.length', 3);
+-        cy.get('@createMangaTask.all').should('have.length', 2);
+-    });
+-
+-    it('Backs up to existing containers', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/main/', 'Main');
+-        cy.solidCreateContainer('/tasks/japanese/', 'Japanese');
+-        cy.solidCreateDocument('/tasks/main/hello', 'turtle/task.ttl', { name: 'Hello World' });
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/main/'),
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-
+-        cy.createStubs();
+-        cy.ariaLabel('Configuration').click();
+-        cy.press('Connect account');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Act
+-        cy.see('All your eggs are in the same basket');
+-        cy.press('Back up');
+-        cy.see('Backing up');
+-        cy.dontSee('Backing up', { timeout: 60000 });
+-
+-        // Assert
+-        cy.ariaLabel('Show lists').click();
+-        cy.switchWorkspace('Main');
+-        cy.see('Learn Aerogel');
+-        cy.see('Hello World');
+-    });
+-
+-    it('Postpones backing up local data', () => {
+-        // Arrange
+-        cy.press('Get started');
+-        cy.ariaInput('Task name').type('Onboarding task{enter}');
+-        cy.ariaLabel('Configuration').click();
+-        cy.press('Connect account');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Act
+-        cy.see('All your eggs are in the same basket');
+-        cy.press('not yet');
+-        cy.ariaLabel('Open account').click();
+-        cy.press('Advanced options', 'summary');
+-        cy.press('Reconnect on startup');
+-        cy.get('body').type('{esc}');
+-
+-        // Assert
+-        cy.dontSee('All your eggs are in the same basket');
+-        cy.see('Onboarding task');
+-        cy.ariaLabel('Open account').click();
+-        cy.see('Your data is not backed up yet');
+-
+-        cy.reload();
+-        cy.dontSee('All your eggs are in the same basket');
+-        cy.see('Onboarding task');
+-    });
+-
+-    it('Creates lists with unicode characters', () => {
+-        // Arrange
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Ideally, we'd test task names with unicode characters as well, but the following causes an
+-        // issue in CSS using in-memory storage.
+-        // See https://github.com/CommunitySolidServer/CommunitySolidServer/issues/1907
+-        // cy.ariaInput('Task name').type('行くぞ{enter}'); // TODO this causes 401 response :/
+-        cy.ariaInput('Task name').type('Testing{enter}');
+-
+-        cy.waitSync();
+-        cy.ariaLabel('Show lists').click();
+-
+-        cy.intercept('PUT', podUrl('/tasks/main/*')).as('createContainer');
+-
+-        // Act
+-        cy.press('New list');
+-
+-        cy.ariaInput('Name').type('勉強{enter}');
+-        cy.waitSync();
+-        cy.reload();
+-        cy.solidAuthorize();
+-        cy.waitSync();
+-        cy.seeActiveWorkspace('勉強');
+-
+-        // Assert
+-        cy.get('@createContainer.all').should('have.length', 1);
+-
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main/${encodeURIComponent('勉強')}`);
+-    });
+-
+-    it('Wipes data on log out', () => {
+-        // Arrange.
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('Testing{enter}');
+-        cy.waitSync();
+-
+-        // Act
+-        cy.ariaLabel('Open account').click();
+-        cy.press('Log out');
+-        cy.see('Log out from this device?');
+-        cy.press('Log out');
+-
+-        // Assert
+-        cy.see('Forget with confidence');
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/`);
+-        cy.model('Workspace').then(async (Workspace) => {
+-            const workspaces = await Workspace.all();
+-
+-            cy.wrap(workspaces.length).should('eq', 0);
+-        });
+-    });
+-
+-    it('Logs in from not found page', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/main/', 'Main');
+-        cy.solidCreateDocument('/tasks/main/hello', 'turtle/task.ttl', { name: 'Hello World' });
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/main/'),
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-
+-        cy.visit('/main');
+-
+-        // Act
+-        cy.press('Need to log in?');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main`);
+-        cy.see('Hello World');
+-    });
+-
+-});
+diff --git a/cypress/e2e/interoperability.cy.ts b/cypress/e2e/interoperability.cy.ts
+deleted file mode 100644
+index da3c7ae..0000000
+--- a/cypress/e2e/interoperability.cy.ts
++++ /dev/null
+@@ -1,294 +0,0 @@
+-import { podUrl, webId } from '@aerogel/cypress';
+-
+-describe('Interoperability', () => {
+-
+-    beforeEach(() => {
+-        cy.visit('/');
+-        cy.solidReset();
+-    });
+-
+-    it('Works with legacy schemas', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidUpdateDocument('/tasks/.meta', 'sparql/prepare-legacy-container.sparql', { url: podUrl('/tasks/') });
+-        cy.solidCreateDocument('/tasks/legacy-task', 'turtle/legacy-task.ttl');
+-        cy.solidUpdateDocument('/profile/card', 'sparql/prepare-legacy-profile.sparql');
+-
+-        cy.intercept('PATCH', podUrl('/tasks/legacy-task')).as('updateTask');
+-        cy.intercept('PATCH', podUrl('/tasks/!(legacy-task*)')).as('createTask');
+-        cy.intercept('PATCH', podUrl('/settings/privateTypeIndex')).as('registerWorkspace');
+-
+-        // Act - Log in & postpone migration
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.waitSync();
+-
+-        cy.press('not yet');
+-        cy.press('Ok');
+-
+-        // Assert - Log in
+-        cy.press('Completed');
+-        cy.see('Learn Solid');
+-        cy.contains('Important').should('exist');
+-        cy.ariaLabel('Select task \\"Learn Solid\\"').click();
+-        cy.contains('This was created a long time ago').should('exist');
+-        cy.contains('Due on Jan 1, 2019').should('exist');
+-        cy.contains('Completed on Dec 25, 2018').should('exist');
+-
+-        cy.get('@updateTask.all').should('have.length', 1);
+-        cy.fixture('sparql/update-legacy-task-1.sparql').then((sparql) => {
+-            cy.get('@updateTask.1').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.1').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.get('@registerWorkspace.all').should('have.length', 1);
+-        cy.fixtureWithReplacements('sparql/register-workspace.sparql', {
+-            resourceHash: '[[.*]]',
+-            forClass: '<http://purl.org/vocab/lifecycle/schema#Task>',
+-            containerUrl: podUrl('/tasks/'),
+-        }).then((sparql) => {
+-            cy.get('@registerWorkspace.1').its('response.statusCode').should('eq', 205);
+-            cy.get('@registerWorkspace.1').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        // Act - Toggle important
+-        cy.ariaLabel('Remove important').click();
+-        cy.waitSync();
+-
+-        // Assert - Toggle important
+-        cy.get('@updateTask.all').should('have.length', 2);
+-        cy.fixture('sparql/update-legacy-task-2.sparql').then((sparql) => {
+-            cy.get('@updateTask.2').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.2').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        // Act - Create task
+-        cy.ariaInput('Task name').type('Rebuild app{enter}');
+-        cy.waitSync();
+-
+-        // Assert - Create task
+-        cy.get('@createTask.all').should('have.length', 1);
+-        cy.fixture('sparql/create-legacy-task.sparql').then((sparql) => {
+-            cy.get('@createTask.1').its('response.statusCode').should('eq', 201);
+-            cy.get('@createTask.1').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        // Act - Reload
+-        cy.ariaLabel('Open account').click();
+-        cy.press('Advanced options', 'summary');
+-        cy.press('Reconnect on startup');
+-        cy.get('body').type('{esc}');
+-        cy.reload();
+-
+-        // Assert - Reload
+-        cy.see('Learn Solid');
+-        cy.see('Rebuild app');
+-        cy.contains('Important').should('not.exist');
+-    });
+-
+-    it('Updates in legacy schema are propagated', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidUpdateDocument('/tasks/.meta', 'sparql/prepare-legacy-container.sparql', { url: podUrl('/tasks/') });
+-        cy.solidCreateDocument('/tasks/legacy-task', 'turtle/legacy-task.ttl');
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            forClass: '<http://purl.org/vocab/lifecycle/schema#Task>',
+-            containerUrl: podUrl('/tasks/'),
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/prepare-legacy-profile.sparql');
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-
+-        cy.intercept('PATCH', podUrl('/settings/privateTypeIndex')).as('registerWorkspace');
+-
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.waitSync();
+-
+-        cy.press('not yet');
+-        cy.press('Ok');
+-
+-        // Act - Pull changes
+-        cy.solidUpdateDocument('/tasks/legacy-task', 'sparql/undo-legacy-task.sparql');
+-
+-        cy.intercept('PATCH', podUrl('/tasks/legacy-task')).as('updateTask');
+-
+-        cy.ariaLabel('Open account').click();
+-        cy.press('Synchronize', 'button');
+-        cy.get('body').type('{esc}');
+-        cy.waitSync();
+-
+-        // Assert - Pull changes
+-        cy.dontSee('Completed');
+-
+-        // Act - Push changes
+-        cy.ariaLabel('Open account').click();
+-        cy.press('Synchronize', 'button');
+-        cy.get('body').type('{esc}');
+-        cy.waitSync();
+-
+-        // Assert - Push changes
+-        cy.get('@registerWorkspace.all').should('have.length', 0);
+-
+-        cy.get('@updateTask.all').should('have.length', 1);
+-        cy.fixture('sparql/reconcile-legacy-task.sparql').then((sparql) => {
+-            cy.get('@updateTask.1').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.1').its('request.body').should('be.sparql', sparql);
+-        });
+-    });
+-
+-    it('Works with exclusive schema.org tasks', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/'),
+-            forClass: '<https://schema.org/Action>',
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-        cy.solidCreateDocument(
+-            '/tasks/hello',
+-            `
+-                <#it>
+-                    a <https://schema.org/Action> ;
+-                    <https://schema.org/name> "Hello for schema.org".
+-            `,
+-        );
+-
+-        // Act
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Assert
+-        cy.see('Synchronization in progress');
+-        cy.see('Hello for schema.org');
+-    });
+-
+-    it('Works with exclusive ical tasks', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/'),
+-            forClass: '<http://www.w3.org/2002/12/cal/ical#Vtodo>',
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-        cy.solidCreateDocument(
+-            '/tasks/hello',
+-            `
+-                <#it>
+-                    a <http://www.w3.org/2002/12/cal/ical#Vtodo> ;
+-                    <http://www.w3.org/2002/12/cal/ical#summary> "Hello for ical".
+-            `,
+-        );
+-
+-        // Act
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Assert
+-        cy.see('Synchronization in progress');
+-        cy.see('Hello for ical');
+-    });
+-
+-    it('Migrates schemas', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidUpdateDocument('/tasks/.meta', 'sparql/prepare-legacy-container.sparql', { url: podUrl('/tasks/') });
+-        cy.solidCreateDocument('/tasks/legacy-task', 'turtle/legacy-task.ttl');
+-        cy.solidUpdateDocument('/profile/card', 'sparql/prepare-legacy-profile.sparql');
+-
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.waitSync();
+-
+-        cy.intercept('PATCH', podUrl('/tasks/legacy-task')).as('updateTask');
+-
+-        // Act
+-        cy.see('Your data is using an old schema');
+-        cy.press('Migrate now');
+-        cy.see('Migrating');
+-        cy.dontSee('Migrating');
+-
+-        // Assert
+-        cy.get('@updateTask.all').should('have.length', 1);
+-
+-        cy.fixture('turtle/migrated-task.ttl').then((expected) => {
+-            cy.solidReadDocument('/tasks/legacy-task').then((actual) => {
+-                cy.wrap(actual).should('be.turtle', expected);
+-            });
+-        });
+-
+-        cy.fixture('jsonld/migrated-task.jsonld').then((expected) => {
+-            cy.soukaiIndexedDBDocument(podUrl('/tasks/legacy-task')).then((actual) => {
+-                cy.assertJsonLD(expected, actual);
+-            });
+-        });
+-    });
+-
+-    it('Migrates postponed schemas', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/', 'Tasks');
+-        cy.solidUpdateDocument('/tasks/.meta', 'sparql/prepare-legacy-container.sparql', { url: podUrl('/tasks/') });
+-        cy.solidCreateDocument('/tasks/legacy-task', 'turtle/legacy-task.ttl');
+-        cy.solidUpdateDocument('/profile/card', 'sparql/prepare-legacy-profile.sparql');
+-
+-        // Arrange - Log in
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.waitSync();
+-
+-        cy.press('not yet');
+-        cy.press('Ok');
+-
+-        // Arrange - Update
+-        cy.press('Completed');
+-        cy.ariaLabel('Select task \\"Learn Solid\\"').click();
+-        cy.ariaLabel('Remove important').click();
+-        cy.waitSync();
+-
+-        cy.intercept('PATCH', podUrl('/tasks/legacy-task')).as('updateTask');
+-
+-        // Act - Migrate
+-        cy.ariaLabel('Open account').click();
+-        cy.ariaLabel('Settings').click();
+-        cy.press('Migrate');
+-        cy.see('Migrating');
+-        cy.dontSee('Migrating');
+-
+-        // Assert - Migrate
+-        cy.get('@updateTask.all').should('have.length', 1);
+-
+-        cy.fixture('turtle/migrated-postponed-task.ttl').then((expected) => {
+-            cy.solidReadDocument('/tasks/legacy-task').then((actual) => {
+-                cy.wrap(actual).should('be.turtle', expected);
+-            });
+-        });
+-
+-        cy.fixture('jsonld/migrated-postponed-task.jsonld').then((expected) => {
+-            cy.soukaiIndexedDBDocument(podUrl('/tasks/legacy-task')).then((actual) => {
+-                cy.assertJsonLD(expected, actual);
+-            });
+-        });
+-
+-        // Act - Update
+-        cy.ariaLabel('Select task \\"Learn Solid\\"').click();
+-        cy.press('Not important');
+-        cy.waitSync();
+-
+-        // Assert - Update
+-        cy.get('@updateTask.all').should('have.length', 2);
+-
+-        cy.fixture('sparql/update-migrated-task.sparql').then((sparql) => {
+-            cy.get('@updateTask.2').its('response.statusCode').should('eq', 205);
+-            cy.get('@updateTask.2').its('request.body').should('be.sparql', sparql);
+-        });
+-    });
+-
+-});
+diff --git a/cypress/e2e/navigation.cy.ts b/cypress/e2e/navigation.cy.ts
+deleted file mode 100644
+index 89d89c2..0000000
+--- a/cypress/e2e/navigation.cy.ts
++++ /dev/null
+@@ -1,143 +0,0 @@
+-describe('Navigation', () => {
+-
+-    beforeEach(() => {
+-        cy.visit('/');
+-        cy.createStubs();
+-        cy.clearLocalStorage();
+-        cy.ariaLabel('Show lists').click();
+-    });
+-
+-    it('Navigates across workspaces and lists', () => {
+-        cy.press('Groceries');
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Groceries');
+-        cy.see('Bananas');
+-        cy.see('Orange juice');
+-
+-        cy.press('Recipes');
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Recipes');
+-        cy.see('Ramen');
+-
+-        cy.press('Inbox');
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Inbox');
+-        cy.see('Clean room');
+-
+-        cy.switchWorkspace('Japanese');
+-        cy.seeActiveWorkspace('Japanese');
+-        cy.seeActiveList('Inbox');
+-        cy.see('Learn Heisig Kanji');
+-
+-        cy.press('Manga');
+-        cy.seeActiveWorkspace('Japanese');
+-        cy.seeActiveList('Manga');
+-        cy.see('Read One Piece');
+-
+-        cy.switchWorkspace('Main');
+-        cy.seeActiveWorkspace('Main');
+-        cy.seeActiveList('Inbox');
+-        cy.see('Learn Aerogel');
+-    });
+-
+-    it('Opens the default workspace', () => {
+-        // Act
+-        cy.visit('/');
+-        cy.ariaLabel('Show lists').click();
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/household`);
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Inbox');
+-    });
+-
+-    it('Opens the last visited workspace', () => {
+-        // Arrange
+-        cy.visit('/household/groceries');
+-        cy.ariaLabel('Show lists').click();
+-        cy.seeActiveWorkspace('Groceries');
+-
+-        // Act
+-        cy.visit('/');
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/household/groceries`);
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Groceries');
+-    });
+-
+-    it('Opens lists', () => {
+-        // Act
+-        cy.visit('/household/groceries');
+-        cy.ariaLabel('Show lists').click();
+-
+-        // Assert
+-        cy.seeActiveList('Groceries');
+-    });
+-
+-    it('Changes workspaces', () => {
+-        // Act
+-        cy.switchWorkspace('Japanese');
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/japanese`);
+-        cy.seeActiveWorkspace('Japanese');
+-    });
+-
+-    it('Changes lists', () => {
+-        // Open Groceries - Act
+-        cy.press('Groceries');
+-
+-        // Open Groceries - Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/household/groceries`);
+-        cy.seeActiveList('Groceries');
+-
+-        // Open Inbox - Act
+-        cy.press('Inbox');
+-
+-        // Open Inbox - Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/household`);
+-        cy.seeActiveList('Inbox');
+-    });
+-
+-    it('Searches across workspaces and lists', () => {
+-        // Search workspace
+-        cy.ariaLabel('Press \\"s\\" to search').click();
+-        cy.get('input[role="combobox"]').type('Japanese{enter}');
+-        cy.seeActiveWorkspace('Japanese');
+-        cy.seeActiveList('Inbox');
+-
+-        // Search list
+-        cy.ariaLabel('Press \\"s\\" to search').click();
+-        cy.get('input[role="combobox"]').type('Manga{enter}');
+-        cy.seeActiveWorkspace('Japanese');
+-        cy.seeActiveList('Manga');
+-
+-        // Search completed tasks
+-        cy.ariaLabel('Press \\"s\\" to search').click();
+-        cy.get('input[role="combobox"]').type('Read Yotsubato{enter}');
+-        cy.see('Read Yotsubato', 'h2', { srOnly: true });
+-
+-        // Search pending tasks
+-        cy.ariaLabel('Press \\"s\\" to search').click();
+-        cy.get('input[role="combobox"]').type('Learn Heisig Kanji{enter}');
+-        cy.see('Learn Heisig Kanji', 'h2', { srOnly: true });
+-    });
+-
+-    it('Shows missing workspaces notice', () => {
+-        // Act
+-        cy.visit('/this-does-not-exist');
+-
+-        // Assert
+-        cy.see('We couldn\'t find the this-does-not-exist workspace');
+-    });
+-
+-    it('Shows missing lists notice', () => {
+-        // Act
+-        cy.visit('/main/this-does-not-exist');
+-
+-        // Assert
+-        cy.see('We couldn\'t find the this-does-not-exist list');
+-    });
+-
+-});
+diff --git a/cypress/e2e/onboarding.cy.ts b/cypress/e2e/onboarding.cy.ts
+deleted file mode 100644
+index 1a4733c..0000000
+--- a/cypress/e2e/onboarding.cy.ts
++++ /dev/null
+@@ -1,164 +0,0 @@
+-import { podUrl, webId } from '@aerogel/cypress';
+-
+-describe('Onboarding', () => {
+-
+-    beforeEach(() => {
+-        cy.solidReset();
+-        cy.visit('/');
+-    });
+-
+-    it('Starts offline', () => {
+-        // Arrange
+-        cy.see('Forget with confidence');
+-
+-        // Act
+-        cy.press('Get started');
+-        cy.ariaInput('Task name').type('Start being more focused{enter}');
+-        cy.ariaLabel('Show lists').click();
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main`);
+-        cy.see('Start being more focused');
+-        cy.seeActiveWorkspace('Main');
+-        cy.seeActiveList('Inbox');
+-    });
+-
+-    it('Signs up', () => {
+-        // Arrange
+-        cy.intercept('PUT', podUrl('/tasks/main/')).as('createContainer');
+-        cy.intercept('PATCH', podUrl('/tasks/main/.meta')).as('createContainerMeta');
+-        cy.intercept('PATCH', podUrl('/tasks/main/*')).as('createTask');
+-
+-        // Act
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.waitSync();
+-        cy.ariaLabel('Show lists').click();
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main`);
+-        cy.seeActiveWorkspace('Main');
+-        cy.see('Cook Ramen');
+-        cy.seeActiveList('Inbox');
+-
+-        cy.reload();
+-        cy.solidAuthorize();
+-        cy.seeActiveWorkspace('Main');
+-        cy.see('Cook Ramen');
+-        cy.seeActiveList('Inbox');
+-
+-        cy.get('@createContainer.all').should('have.length', 1);
+-        cy.get('@createContainerMeta.all').should('have.length', 1);
+-        cy.get('@createTask.all').should('have.length', 1);
+-
+-        cy.fixtureWithReplacements('sparql/create-container-meta.sparql', {
+-            url: podUrl('/tasks/main/'),
+-            name: 'Main',
+-        }).then((sparql) => {
+-            cy.get('@createContainerMeta').its('response.statusCode').should('eq', 205);
+-            cy.get('@createContainerMeta').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixtureWithReplacements('sparql/create-task.sparql', { name: 'Cook Ramen' }).then((sparql) => {
+-            cy.get('@createTask').its('response.statusCode').should('eq', 201);
+-            cy.get('@createTask').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixtureWithReplacements('turtle/type-index.ttl', { containerUrl: '../tasks/main/' }).then((expected) => {
+-            cy.solidReadDocument('/settings/privateTypeIndex').then((actual) => {
+-                cy.wrap(actual).should('be.turtle', expected);
+-            });
+-        });
+-    });
+-
+-    it('Signs up using advanced options', () => {
+-        // Arrange
+-        cy.intercept('PUT', podUrl('/work/')).as('createContainer');
+-        cy.intercept('PATCH', podUrl('/work/.meta')).as('createContainerMeta');
+-        cy.intercept('PATCH', podUrl('/work/*')).as('createTask');
+-
+-        // Act
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-        cy.press('Advanced options', 'summary');
+-        cy.ariaInput('Task name').type('Reply to support emails');
+-        cy.ariaInput('Workspace name').clear().type('Work');
+-        cy.ariaInput('Workspace url').clear().type(podUrl('/work/'));
+-        cy.press('Continue');
+-        cy.waitSync();
+-        cy.ariaLabel('Show lists').click();
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/work`);
+-        cy.seeActiveWorkspace('Work');
+-        cy.see('Reply to support emails');
+-        cy.seeActiveList('Inbox');
+-
+-        cy.reload();
+-        cy.solidAuthorize();
+-        cy.seeActiveWorkspace('Work');
+-        cy.see('Reply to support emails');
+-        cy.seeActiveList('Inbox');
+-
+-        cy.get('@createContainer.all').should('have.length', 1);
+-        cy.get('@createContainerMeta.all').should('have.length', 1);
+-        cy.get('@createTask.all').should('have.length', 1);
+-
+-        cy.fixtureWithReplacements('sparql/create-container-meta.sparql', {
+-            url: podUrl('/work/'),
+-            name: 'Work',
+-        }).then((sparql) => {
+-            cy.get('@createContainerMeta').its('response.statusCode').should('eq', 205);
+-            cy.get('@createContainerMeta').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixtureWithReplacements('sparql/create-task.sparql', { name: 'Reply to support emails' }).then((sparql) => {
+-            cy.get('@createTask').its('response.statusCode').should('eq', 201);
+-            cy.get('@createTask').its('request.body').should('be.sparql', sparql);
+-        });
+-
+-        cy.fixtureWithReplacements('turtle/type-index.ttl', { containerUrl: '../work/' }).then((expected) => {
+-            cy.solidReadDocument('/settings/privateTypeIndex').then((actual) => {
+-                cy.wrap(actual).should('be.turtle', expected);
+-            });
+-        });
+-    });
+-
+-    it('Logs in', () => {
+-        // Arrange
+-        cy.solidCreateContainer('/tasks/work/', 'Work');
+-        cy.solidCreateContainer('/tasks/household/', 'Household');
+-        cy.solidCreateContainer('/tasks/household/groceries/', 'Groceries');
+-        cy.solidCreateDocument('/settings/privateTypeIndex', '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .');
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/work/'),
+-        });
+-        cy.solidUpdateDocument('/settings/privateTypeIndex', 'sparql/register-workspace.sparql', {
+-            containerUrl: podUrl('/tasks/household/'),
+-        });
+-        cy.solidUpdateDocument('/profile/card', 'sparql/declare-type-index.sparql');
+-        cy.solidCreateDocument('/tasks/household/tomatoes', 'turtle/task.ttl', { name: 'Tomatoes' });
+-
+-        // Act
+-        cy.press('Log in');
+-        cy.ariaInput('Login url').type(`${webId()}{enter}`);
+-        cy.solidLogin();
+-
+-        // Assert
+-        cy.see('Synchronization in progress');
+-        cy.ariaLabel('Show lists').click();
+-
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/household`);
+-        cy.seeActiveWorkspace('Household');
+-        cy.seeActiveList('Inbox');
+-        cy.see('Tomatoes');
+-        cy.see('Groceries');
+-
+-        cy.press('Household');
+-        cy.see('Work');
+-    });
+-
+-});
+diff --git a/cypress/e2e/tasks.cy.ts b/cypress/e2e/tasks.cy.ts
+deleted file mode 100644
+index 057527a..0000000
+--- a/cypress/e2e/tasks.cy.ts
++++ /dev/null
+@@ -1,158 +0,0 @@
+-describe('Tasks', () => {
+-
+-    beforeEach(() => {
+-        cy.visit('/');
+-
+-        // Initialize workspace
+-        cy.press('Get started');
+-        cy.ariaInput('Task name').type('Onboarding task{enter}');
+-        cy.dontSee('Loading...');
+-    });
+-
+-    it('Creates tasks', () => {
+-        // Create first task - Act
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-
+-        // Create first task - Assert
+-        cy.see('Cook Ramen', 'li');
+-
+-        // Create second task - Act
+-        cy.ariaInput('Task name').type('Eat Ramen{enter}');
+-
+-        // Create second task - Assert
+-        cy.see('Eat Ramen', 'li');
+-    });
+-
+-    it('Updates tasks', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-
+-        // Act
+-        cy.ariaLabel('Select task \\"Cook Ramen\\"').click();
+-        cy.ariaLabel('Edit description').click();
+-        cy.ariaLabel('Name').type('!');
+-        cy.ariaLabel('Description').type('Ramen is good for your soul.');
+-        cy.press('Save');
+-
+-        // Assert
+-        cy.see('Cook Ramen!', { srOnly: true });
+-        cy.see('Ramen is good for your soul.', { srOnly: true });
+-    });
+-
+-    it('Toggles important tasks', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-
+-        // Act - Make important
+-        cy.ariaLabel('Select task \\"Cook Ramen\\"').click();
+-        cy.ariaLabel('Make important').click();
+-
+-        // Assert - Make important
+-        cy.see('Cook Ramen (Important)');
+-
+-        // Act - Remove important
+-        cy.ariaLabel('Remove important').click();
+-
+-        // Assert - Remove important
+-        cy.dontSee('Cook Ramen (Important)');
+-    });
+-
+-    it('Edits due dates', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-
+-        // Act - Set due date
+-        cy.ariaLabel('Select task \\"Cook Ramen\\"').click();
+-        cy.ariaLabel('Edit due date').click();
+-        cy.get(':focus').then((element) => {
+-            const input = element[0] as HTMLInputElement;
+-
+-            input.valueAsDate = new Date();
+-            input.dispatchEvent(new Event('input'));
+-        });
+-        cy.press('Save');
+-
+-        // Assert - Set due date
+-        cy.see('Today');
+-
+-        // Act - Remove due date
+-        cy.ariaLabel('Edit due date').click();
+-        cy.get(':focus').then((element) => {
+-            const input = element[0] as HTMLInputElement;
+-
+-            input.value = '';
+-            input.dispatchEvent(new Event('input'));
+-        });
+-        cy.press('Save');
+-
+-        // Assert - Remove due date
+-        cy.dontSee('Today');
+-    });
+-
+-    it('Completes tasks', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-        cy.ariaInput('Task name').type('Eat Ramen{enter}');
+-        cy.see('Eat Ramen');
+-
+-        // Act
+-        cy.contains('li', 'Cook Ramen').within(() => cy.get('input[type="checkbox"]').click());
+-
+-        // Assert
+-        cy.dontSee('Cook Ramen');
+-        cy.ariaLabel('Show completed').click();
+-        cy.see('Cook Ramen');
+-    });
+-
+-    it('Undoes tasks', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-        cy.ariaInput('Task name').type('Eat Ramen{enter}');
+-        cy.see('Eat Ramen');
+-        cy.contains('li', 'Cook Ramen').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.contains('li', 'Eat Ramen').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.ariaLabel('Show completed').click();
+-
+-        // Act
+-        cy.contains('li', 'Cook Ramen').within(() => cy.get('input[type="checkbox"]').click());
+-        cy.ariaLabel('Hide completed').click();
+-
+-        // Assert
+-        cy.dontSee('Eat Ramen');
+-        cy.see('Cook Ramen');
+-    });
+-
+-    it('Deletes tasks', () => {
+-        // Arrange
+-        cy.ariaInput('Task name').type('Cook Ramen{enter}');
+-        cy.see('Cook Ramen');
+-
+-        // Act
+-        cy.ariaLabel('Select task \\"Cook Ramen\\"').click();
+-        cy.ariaLabel('Delete').click();
+-        cy.see('This will delete your task Cook Ramen');
+-        cy.press('Delete');
+-
+-        // Assert
+-        cy.dontSee('Cook Ramen');
+-    });
+-
+-    it('Intercepts back navigation on mobile', () => {
+-        // Arrange
+-        cy.viewport('samsung-s10');
+-        cy.ariaLabel('Select task \\"Onboarding task\\"').click();
+-        cy.wait(500); // Wait panel to open
+-
+-        // Act
+-        cy.go('back');
+-
+-        // Assert
+-        cy.dontSee('Created on');
+-    });
+-
+-});
+diff --git a/cypress/e2e/workspaces.cy.ts b/cypress/e2e/workspaces.cy.ts
+deleted file mode 100644
+index b8dae1a..0000000
+--- a/cypress/e2e/workspaces.cy.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-describe('Workspaces', () => {
+-
+-    beforeEach(() => {
+-        cy.visit('/');
+-
+-        // Initialize workspace
+-        cy.press('Get started');
+-        cy.ariaInput('Task name').type('Onboarding task{enter}');
+-        cy.ariaLabel('Show lists').click();
+-    });
+-
+-    it('Creates workspaces', () => {
+-        // Act
+-        cy.switchWorkspace('New workspace');
+-        cy.ariaInput('Name').type('Study{enter}');
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/study`);
+-        cy.seeActiveWorkspace('Study');
+-        cy.seeActiveList('Inbox');
+-    });
+-
+-    it('Edits workspaces', () => {
+-        // Act
+-        cy.ariaLabel('Workspace settings').click({ force: true });
+-        cy.ariaInput('Name').clear().type('Work{enter}');
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main`);
+-        cy.seeActiveWorkspace('Work');
+-        cy.dontSee('Main');
+-    });
+-
+-    it('Creates lists', () => {
+-        // Act
+-        cy.press('New list');
+-        cy.ariaInput('Name').type('Groceries{enter}');
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main/groceries`);
+-        cy.seeActiveList('Groceries');
+-    });
+-
+-    it('Edits lists', () => {
+-        // Arrange
+-        cy.press('New list');
+-        cy.ariaInput('Name').type('Groceries{enter}');
+-        cy.wait(500);
+-
+-        // Act
+-        cy.ariaLabel('Groceries list settings').click({ force: true });
+-        cy.ariaInput('Name').clear().type('Learning{enter}');
+-        cy.wait(500);
+-
+-        // Assert
+-        cy.url().should('equal', `${Cypress.config('baseUrl')}/main/groceries`);
+-        cy.seeActiveList('Learning');
+-        cy.dontSee('Groceries');
+-    });
+-
+-});
+diff --git a/cypress/fixtures/jsonld/migrated-postponed-task.jsonld b/cypress/fixtures/jsonld/migrated-postponed-task.jsonld
+deleted file mode 100644
+index 2af91b2..0000000
+--- a/cypress/fixtures/jsonld/migrated-postponed-task.jsonld
++++ /dev/null
+@@ -1,198 +0,0 @@
+-{
+-    "@graph": [
+-        {
+-            "@context": {
+-                "@vocab": "https://schema.org/",
+-                "ical": "http://www.w3.org/2002/12/cal/ical#"
+-            },
+-            "@type": [
+-                "Action",
+-                "ical:Vtodo"
+-            ],
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#it",
+-            "name": "Learn Solid",
+-            "description": "This was created a long time ago",
+-            "ical:due": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2019-01-01T00:00:00.000Z"
+-            },
+-            "ical:completed": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2018-12-25T00:00:00.000Z"
+-            },
+-            "actionStatus": {
+-                "@id": "https://schema.org/CompletedActionStatus"
+-            },
+-            "ical:summary": "Learn Solid"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "Metadata",
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "createdAt": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "updatedAt": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[updatedAt][.*]]"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#metadata"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "https://schema.org/name"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "value": "Learn Solid",
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "https://schema.org/description"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "value": "This was created a long time ago",
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "http://www.w3.org/2002/12/cal/ical#priority"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "value": 1,
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "http://www.w3.org/2002/12/cal/ical#due"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "value": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2019-01-01T00:00:00.000Z"
+-            },
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "http://www.w3.org/2002/12/cal/ical#completed"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[createdAt][.*]]"
+-            },
+-            "value": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2018-12-25T00:00:00.000Z"
+-            },
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "UnsetPropertyOperation",
+-            "property": {
+-                "@id": "http://www.w3.org/2002/12/cal/ical#priority"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[updatedAt][.*]]"
+-            },
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "http://www.w3.org/2002/12/cal/ical#summary"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[updatedAt][.*]]"
+-            },
+-            "value": "Learn Solid",
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#it-operation-[[.*]]"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "SetPropertyOperation",
+-            "property": {
+-                "@id": "https://schema.org/actionStatus"
+-            },
+-            "date": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "[[updatedAt][.*]]"
+-            },
+-            "value": {
+-                "@id": "https://schema.org/CompletedActionStatus"
+-            },
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#it-operation-[[.*]]"
+-        }
+-    ]
+-}
+diff --git a/cypress/fixtures/jsonld/migrated-task.jsonld b/cypress/fixtures/jsonld/migrated-task.jsonld
+deleted file mode 100644
+index 8528354..0000000
+--- a/cypress/fixtures/jsonld/migrated-task.jsonld
++++ /dev/null
+@@ -1,45 +0,0 @@
+-{
+-    "@graph": [
+-        {
+-            "@context": {
+-                "@vocab": "https://schema.org/",
+-                "ical": "http://www.w3.org/2002/12/cal/ical#"
+-            },
+-            "@type": ["Action", "ical:Vtodo"],
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#it",
+-            "name": "Learn Solid",
+-            "description": "This was created a long time ago",
+-            "ical:priority": 1,
+-            "ical:due": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2019-01-01T00:00:00.000Z"
+-            },
+-            "ical:completed": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2018-12-25T00:00:00.000Z"
+-            },
+-            "actionStatus": {
+-                "@id": "https://schema.org/CompletedActionStatus"
+-            },
+-            "ical:summary": "Learn Solid"
+-        },
+-        {
+-            "@context": {
+-                "@vocab": "https://vocab.noeldemartin.com/crdt/"
+-            },
+-            "@type": "Metadata",
+-            "resource": {
+-                "@id": "http://localhost:3000/alice/tasks/legacy-task#it"
+-            },
+-            "createdAt": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2018-11-13T00:00:00.000Z"
+-            },
+-            "updatedAt": {
+-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+-                "@value": "2018-11-14T00:00:00.000Z"
+-            },
+-            "@id": "http://localhost:3000/alice/tasks/legacy-task#metadata"
+-        }
+-    ]
+-}
+diff --git a/cypress/fixtures/sparql/create-container-meta.sparql b/cypress/fixtures/sparql/create-container-meta.sparql
+deleted file mode 100644
+index 866b565..0000000
+--- a/cypress/fixtures/sparql/create-container-meta.sparql
++++ /dev/null
+@@ -1,16 +0,0 @@
+-INSERT DATA {
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-    @prefix schema: <https://schema.org/> .
+-
+-    <{{ url }}>
+-        rdfs:label "{{ name }}" ;
+-        schema:color "oklch(58.8% 0.158 241.966)" .
+-
+-    <{{ url }}#metadata>
+-        a crdt:Metadata ;
+-        crdt:resource <{{ url }}> ;
+-        crdt:createdAt "[[.*]]"^^xsd:dateTime ;
+-        crdt:updatedAt "[[.*]]"^^xsd:dateTime .
+-}
+diff --git a/cypress/fixtures/sparql/create-legacy-task.sparql b/cypress/fixtures/sparql/create-legacy-task.sparql
+deleted file mode 100644
+index ed4a3af..0000000
+--- a/cypress/fixtures/sparql/create-legacy-task.sparql
++++ /dev/null
+@@ -1,21 +0,0 @@
+-INSERT DATA {
+-
+-    @prefix lifecycle: <http://purl.org/vocab/lifecycle/schema#>.
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-
+-    <>
+-        a lifecycle:Task;
+-        rdfs:label "Rebuild app";
+-        purl:created "[[createdAt][.*]]"^^xsd:dateTime;
+-        purl:modified "[[createdAt][.*]]"^^xsd:dateTime.
+-
+-    <#metadata>
+-        a crdt:Metadata ;
+-        crdt:resource <> ;
+-        crdt:createdAt "[[createdAt][.*]]"^^xsd:dateTime ;
+-        crdt:updatedAt "[[createdAt][.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/create-task.sparql b/cypress/fixtures/sparql/create-task.sparql
+deleted file mode 100644
+index 489cde4..0000000
+--- a/cypress/fixtures/sparql/create-task.sparql
++++ /dev/null
+@@ -1,20 +0,0 @@
+-INSERT DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#it>
+-        a schema:Action, ical:Vtodo ;
+-        schema:actionStatus schema:PotentialActionStatus ;
+-        schema:name "{{ name }}" ;
+-        ical:summary "{{ name }}" .
+-
+-    <#it-metadata>
+-        a crdt:Metadata ;
+-        crdt:resource <#it> ;
+-        crdt:createdAt "[[.*]]"^^xsd:dateTime ;
+-        crdt:updatedAt "[[.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/declare-type-index.sparql b/cypress/fixtures/sparql/declare-type-index.sparql
+deleted file mode 100644
+index 8828516..0000000
+--- a/cypress/fixtures/sparql/declare-type-index.sparql
++++ /dev/null
+@@ -1,5 +0,0 @@
+-INSERT DATA {
+-    <http://localhost:3000/alice/profile/card#me>
+-        <http://www.w3.org/ns/solid/terms#privateTypeIndex>
+-        <http://localhost:3000/alice/settings/privateTypeIndex> .
+-}
+diff --git a/cypress/fixtures/sparql/prepare-legacy-container.sparql b/cypress/fixtures/sparql/prepare-legacy-container.sparql
+deleted file mode 100644
+index 30b4117..0000000
+--- a/cypress/fixtures/sparql/prepare-legacy-container.sparql
++++ /dev/null
+@@ -1,7 +0,0 @@
+-INSERT DATA {
+-    @prefix lifecycle: <http://purl.org/vocab/lifecycle/schema#> .
+-
+-    <{{ url }}>
+-        a lifecycle:TaskGroup;
+-        lifecycle:task <legacy-task>.
+-}
+diff --git a/cypress/fixtures/sparql/prepare-legacy-profile.sparql b/cypress/fixtures/sparql/prepare-legacy-profile.sparql
+deleted file mode 100644
+index 8422f34..0000000
+--- a/cypress/fixtures/sparql/prepare-legacy-profile.sparql
++++ /dev/null
+@@ -1,9 +0,0 @@
+-INSERT DATA {
+-    @prefix acl: <http://www.w3.org/ns/auth/acl#> .
+-
+-    <#me>
+-        acl:trustedApp [
+-            acl:mode acl:Append, acl:Read, acl:Write;
+-            acl:origin <https://noeldemartin.github.io>
+-        ].
+-}
+diff --git a/cypress/fixtures/sparql/reconcile-legacy-task.sparql b/cypress/fixtures/sparql/reconcile-legacy-task.sparql
+deleted file mode 100644
+index e4aab18..0000000
+--- a/cypress/fixtures/sparql/reconcile-legacy-task.sparql
++++ /dev/null
+@@ -1,81 +0,0 @@
+-DELETE DATA {
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-
+-    <#metadata> crdt:updatedAt "[[.*]]"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+-
+-    <#metadata> crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-    <#operation-[[operation-1][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property rdfs:label ;
+-        crdt:value "Learn Solid".
+-
+-    <#operation-[[operation-2][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property rdfs:comment ;
+-        crdt:value "This was created a long time ago".
+-
+-    <#operation-[[operation-3][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:priority ;
+-        crdt:value 1 .
+-
+-    <#operation-[[operation-4][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:due ;
+-        crdt:value "2019-01-01T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-5][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property purl:created ;
+-        crdt:value "2018-11-13T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-6][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property purl:modified ;
+-        crdt:value "2018-11-14T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-7][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:completed ;
+-        crdt:value "2018-12-25T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-8][.*]]>
+-        a crdt:UnsetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:completed .
+-
+-    <#operation-[[operation-9][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property purl:modified ;
+-        crdt:value "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/register-workspace.sparql b/cypress/fixtures/sparql/register-workspace.sparql
+deleted file mode 100644
+index cc9eda2..0000000
+--- a/cypress/fixtures/sparql/register-workspace.sparql
++++ /dev/null
+@@ -1,6 +0,0 @@
+-INSERT DATA {
+-    <#{{ resourceHash ?? uuid() }}>
+-        a <http://www.w3.org/ns/solid/terms#TypeRegistration> ;
+-        <http://www.w3.org/ns/solid/terms#forClass> {{ forClass ?? '<https://schema.org/Action>, <http://www.w3.org/2002/12/cal/ical#Vtodo>' }}  ;
+-        <http://www.w3.org/ns/solid/terms#instanceContainer> <{{ containerUrl }}> .
+-}
+diff --git a/cypress/fixtures/sparql/sync-list-updates-1.sparql b/cypress/fixtures/sparql/sync-list-updates-1.sparql
+deleted file mode 100644
+index 8b9ec50..0000000
+--- a/cypress/fixtures/sparql/sync-list-updates-1.sparql
++++ /dev/null
+@@ -1,16 +0,0 @@
+-INSERT DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <{{ url }}> rdfs:label "Testing" .
+-
+-    <{{ url }}#metadata>
+-        a crdt:Metadata ;
+-        crdt:resource <{{ url }}> ;
+-        crdt:createdAt "[[.*]]"^^xsd:dateTime ;
+-        crdt:updatedAt "[[.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/sync-list-updates-2.sparql b/cypress/fixtures/sparql/sync-list-updates-2.sparql
+deleted file mode 100644
+index f87fabf..0000000
+--- a/cypress/fixtures/sparql/sync-list-updates-2.sparql
++++ /dev/null
+@@ -1,39 +0,0 @@
+-DELETE DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <{{ url }}> rdfs:label "Testing" .
+-
+-    <{{ url }}#metadata> crdt:updatedAt "[[createdAt][.*]]"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <{{ url }}> rdfs:label "Renamed list" .
+-
+-    <{{ url }}#metadata> crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-    <{{ url }}#operation-[[operation-1][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <{{ url }}> ;
+-        crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-        crdt:property rdfs:label ;
+-        crdt:value "Testing" .
+-
+-    <{{ url }}#operation-[[operation-2][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <{{ url }}> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property rdfs:label ;
+-        crdt:value "Renamed list" .
+-
+-}
+diff --git a/cypress/fixtures/sparql/sync-task-updates-1.sparql b/cypress/fixtures/sparql/sync-task-updates-1.sparql
+deleted file mode 100644
+index c52340b..0000000
+--- a/cypress/fixtures/sparql/sync-task-updates-1.sparql
++++ /dev/null
+@@ -1,60 +0,0 @@
+-DELETE DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#it-metadata> crdt:updatedAt "[[createdAt][.*]]"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#it>
+-        ical:due "[[dueDate][.*]]"^^xsd:dateTime ;
+-        ical:priority 1 .
+-
+-    <#it-metadata>
+-        crdt:updatedAt "[[secondUpdate][.*]]"^^xsd:dateTime .
+-
+-    <#it-operation-[[operation-1][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-        crdt:property schema:name ;
+-        crdt:value "Sync updates" .
+-
+-    <#it-operation-[[operation-2][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:summary ;
+-        crdt:value "Sync updates" .
+-
+-    <#it-operation-[[operation-3][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-        crdt:property schema:actionStatus ;
+-        crdt:value schema:PotentialActionStatus .
+-
+-    <#it-operation-[[operation-4][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[firstUpate][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:priority ;
+-        crdt:value 1 .
+-
+-    <#it-operation-[[operation-5][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[secondUpdate][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:due ;
+-        crdt:value "[[dueDate][.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/sync-task-updates-2.sparql b/cypress/fixtures/sparql/sync-task-updates-2.sparql
+deleted file mode 100644
+index 643fe2e..0000000
+--- a/cypress/fixtures/sparql/sync-task-updates-2.sparql
++++ /dev/null
+@@ -1,40 +0,0 @@
+-DELETE DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#it> schema:actionStatus schema:PotentialActionStatus .
+-    <#it-metadata> crdt:updatedAt "[[previousUpdate][.*]]"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix schema: <https://schema.org/> .
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#it>
+-        schema:actionStatus schema:CompletedActionStatus ;
+-        ical:completed "[[newUpdate][.*]]"^^xsd:dateTime .
+-
+-    <#it-metadata>
+-        crdt:updatedAt "[[newUpdate][.*]]"^^xsd:dateTime .
+-
+-    <#it-operation-[[operation-1][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[newUpdate][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:completed ;
+-        crdt:value "[[newUpdate][.*]]"^^xsd:dateTime .
+-
+-    <#it-operation-[[operation-2][%uuid%]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[newUpdate][.*]]"^^xsd:dateTime ;
+-        crdt:property schema:actionStatus ;
+-        crdt:value schema:CompletedActionStatus .
+-
+-}
+diff --git a/cypress/fixtures/sparql/undo-legacy-task.sparql b/cypress/fixtures/sparql/undo-legacy-task.sparql
+deleted file mode 100644
+index d064a67..0000000
+--- a/cypress/fixtures/sparql/undo-legacy-task.sparql
++++ /dev/null
+@@ -1,17 +0,0 @@
+-DELETE DATA {
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix xml: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-
+-    <>
+-        purl:modified "2018-11-14T00:00:00Z"^^xml:dateTime ;
+-        ical:completed "2018-12-25T00:00:00Z"^^xml:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix xml: <http://www.w3.org/2001/XMLSchema#>.
+-
+-    <> purl:modified "2025-02-19T08:21:13Z"^^xml:dateTime .
+-}.
+diff --git a/cypress/fixtures/sparql/update-legacy-task-1.sparql b/cypress/fixtures/sparql/update-legacy-task-1.sparql
+deleted file mode 100644
+index 4f2c4ab..0000000
+--- a/cypress/fixtures/sparql/update-legacy-task-1.sparql
++++ /dev/null
+@@ -1,12 +0,0 @@
+-INSERT DATA {
+-
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-    <#metadata>
+-        a crdt:Metadata ;
+-        crdt:resource <> ;
+-        crdt:createdAt "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:updatedAt "2018-11-14T00:00:00Z"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/update-legacy-task-2.sparql b/cypress/fixtures/sparql/update-legacy-task-2.sparql
+deleted file mode 100644
+index a6b68d3..0000000
+--- a/cypress/fixtures/sparql/update-legacy-task-2.sparql
++++ /dev/null
+@@ -1,89 +0,0 @@
+-DELETE DATA {
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-
+-    <>
+-        ical:priority 1;
+-        purl:modified "2018-11-14T00:00:00Z"^^xsd:dateTime .
+-
+-    <#metadata> crdt:updatedAt "2018-11-14T00:00:00Z"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix purl: <http://purl.org/dc/terms/>.
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+-
+-    <> purl:modified "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-    <#metadata> crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-    <#operation-[[operation-1][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property rdfs:label ;
+-        crdt:value "Learn Solid".
+-
+-    <#operation-[[operation-2][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property rdfs:comment ;
+-        crdt:value "This was created a long time ago".
+-
+-    <#operation-[[operation-3][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:priority ;
+-        crdt:value 1 .
+-
+-    <#operation-[[operation-4][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:due ;
+-        crdt:value "2019-01-01T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-5][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property purl:created ;
+-        crdt:value "2018-11-13T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-6][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property purl:modified ;
+-        crdt:value "2018-11-14T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-7][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "2018-11-13T00:00:00Z"^^xsd:dateTime ;
+-        crdt:property ical:completed ;
+-        crdt:value "2018-12-25T00:00:00Z"^^xsd:dateTime.
+-
+-    <#operation-[[operation-8][.*]]>
+-        a crdt:UnsetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:priority .
+-
+-    <#operation-[[operation-9][.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property purl:modified ;
+-        crdt:value "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-}
+diff --git a/cypress/fixtures/sparql/update-migrated-task.sparql b/cypress/fixtures/sparql/update-migrated-task.sparql
+deleted file mode 100644
+index e1d8fef..0000000
+--- a/cypress/fixtures/sparql/update-migrated-task.sparql
++++ /dev/null
+@@ -1,26 +0,0 @@
+-DELETE DATA {
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-
+-    <#metadata> crdt:updatedAt "[[.*]]"^^xsd:dateTime .
+-
+-};
+-
+-INSERT DATA {
+-
+-    @prefix crdt: <https://vocab.noeldemartin.com/crdt/>.
+-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+-    @prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-
+-    <#it> ical:priority 1 .
+-
+-    <#metadata> crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-    <#it-operation-[[.*]]>
+-        a crdt:SetPropertyOperation ;
+-        crdt:resource <#it> ;
+-        crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-        crdt:property ical:priority ;
+-        crdt:value 1 .
+-
+-}
+diff --git a/cypress/fixtures/turtle/legacy-task.ttl b/cypress/fixtures/turtle/legacy-task.ttl
+deleted file mode 100644
+index f4a2f05..0000000
+--- a/cypress/fixtures/turtle/legacy-task.ttl
++++ /dev/null
+@@ -1,16 +0,0 @@
+-@prefix lifecycle: <http://purl.org/vocab/lifecycle/schema#>.
+-@prefix ldp: <http://www.w3.org/ns/ldp#>.
+-@prefix purl: <http://purl.org/dc/terms/>.
+-@prefix xml: <http://www.w3.org/2001/XMLSchema#>.
+-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+-@prefix ical: <http://www.w3.org/2002/12/cal/ical#>.
+-
+-<>
+-    a lifecycle:Task, ldp:Resource;
+-    rdfs:label "Learn Solid";
+-    rdfs:comment "This was created a long time ago";
+-    ical:priority 1;
+-    ical:due "2019-01-01T00:00:00Z"^^xml:dateTime;
+-    purl:created "2018-11-13T00:00:00Z"^^xml:dateTime;
+-    purl:modified "2018-11-14T00:00:00Z"^^xml:dateTime;
+-    ical:completed "2018-12-25T00:00:00Z"^^xml:dateTime.
+diff --git a/cypress/fixtures/turtle/migrated-postponed-task.ttl b/cypress/fixtures/turtle/migrated-postponed-task.ttl
+deleted file mode 100644
+index d70c778..0000000
+--- a/cypress/fixtures/turtle/migrated-postponed-task.ttl
++++ /dev/null
+@@ -1,74 +0,0 @@
+-@prefix schema: <https://schema.org/> .
+-@prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-@prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-<#it>
+-    a schema:Action, ical:Vtodo;
+-    schema:name "Learn Solid";
+-    ical:summary  "Learn Solid";
+-    schema:description "This was created a long time ago";
+-    schema:actionStatus schema:CompletedActionStatus;
+-    ical:due "2019-01-01T00:00:00.000Z"^^xsd:dateTime;
+-    ical:completed "2018-12-25T00:00:00.000Z"^^xsd:dateTime.
+-
+-<#metadata>
+-    a crdt:Metadata ;
+-    crdt:resource <#it> ;
+-    crdt:createdAt "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+-
+-<#operation-[[operation-1][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:property schema:name ;
+-    crdt:value "Learn Solid".
+-
+-<#operation-[[operation-2][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:property schema:description ;
+-    crdt:value "This was created a long time ago".
+-
+-<#operation-[[operation-3][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:property ical:due ;
+-    crdt:value "2019-01-01T00:00:00Z"^^xsd:dateTime.
+-
+-<#operation-[[operation-4][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:property ical:completed ;
+-    crdt:value "2018-12-25T00:00:00Z"^^xsd:dateTime.
+-
+-<#operation-[[operation-5][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:property ical:priority ;
+-    crdt:value 1.
+-
+-<#operation-[[operation-6][.*]]>
+-    a crdt:UnsetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-    crdt:property ical:priority .
+-
+-<#it-operation-[[operation-7][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-    crdt:property ical:summary ;
+-    crdt:value "Learn Solid".
+-
+-<#it-operation-[[operation-8][.*]]>
+-    a crdt:SetPropertyOperation ;
+-    crdt:resource <#it> ;
+-    crdt:date "[[updatedAt][.*]]"^^xsd:dateTime ;
+-    crdt:property schema:actionStatus ;
+-    crdt:value schema:CompletedActionStatus.
+diff --git a/cypress/fixtures/turtle/migrated-task.ttl b/cypress/fixtures/turtle/migrated-task.ttl
+deleted file mode 100644
+index 7ddb4af..0000000
+--- a/cypress/fixtures/turtle/migrated-task.ttl
++++ /dev/null
+@@ -1,20 +0,0 @@
+-@prefix schema: <https://schema.org/> .
+-@prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-@prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-<#it>
+-    a schema:Action, ical:Vtodo;
+-    schema:name "Learn Solid";
+-    ical:summary  "Learn Solid";
+-    ical:priority 1;
+-    schema:description "This was created a long time ago";
+-    schema:actionStatus schema:CompletedActionStatus;
+-    ical:due "2019-01-01T00:00:00.000Z"^^xsd:dateTime;
+-    ical:completed "2018-12-25T00:00:00.000Z"^^xsd:dateTime.
+-
+-<#metadata>
+-    a crdt:Metadata ;
+-    crdt:resource <#it> ;
+-    crdt:createdAt "[[createdAt][.*]]"^^xsd:dateTime ;
+-    crdt:updatedAt "[[updatedAt][.*]]"^^xsd:dateTime .
+diff --git a/cypress/fixtures/turtle/task.ttl b/cypress/fixtures/turtle/task.ttl
+deleted file mode 100644
+index 9e505db..0000000
+--- a/cypress/fixtures/turtle/task.ttl
++++ /dev/null
+@@ -1,16 +0,0 @@
+-@prefix schema: <https://schema.org/> .
+-@prefix ical: <http://www.w3.org/2002/12/cal/ical#> .
+-@prefix crdt: <https://vocab.noeldemartin.com/crdt/> .
+-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+-
+-<#it>
+-    a schema:Action, ical:Vtodo ;
+-    schema:actionStatus schema:PotentialActionStatus ;
+-    schema:name "{{ name }}" ;
+-    ical:summary  "{{ name }}" .
+-
+-<#it-metadata>
+-    a crdt:Metadata ;
+-    crdt:resource <#it> ;
+-    crdt:createdAt "{{ now() }}"^^xsd:dateTime ;
+-    crdt:updatedAt "{{ now() }}"^^xsd:dateTime .
+diff --git a/cypress/fixtures/turtle/type-index.ttl b/cypress/fixtures/turtle/type-index.ttl
+deleted file mode 100644
+index 296c7d4..0000000
+--- a/cypress/fixtures/turtle/type-index.ttl
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<{{ url ?? '' }}> a <http://www.w3.org/ns/solid/terms#TypeIndex>, <http://www.w3.org/ns/solid/terms#UnlistedDocument>.
+-
+-<#[[.*]]>
+-    a <http://www.w3.org/ns/solid/terms#TypeRegistration>;
+-    <http://www.w3.org/ns/solid/terms#forClass> <https://schema.org/Action>, <http://www.w3.org/2002/12/cal/ical#Vtodo>;
+-    <http://www.w3.org/ns/solid/terms#instanceContainer> <{{ containerUrl }}>.
+diff --git a/cypress/support/commands/index.ts b/cypress/support/commands/index.ts
+deleted file mode 100644
+index a59e465..0000000
+--- a/cypress/support/commands/index.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import { defineCommands } from '@aerogel/cypress';
+-
+-import * as navigationCommands from './navigation';
+-import * as stubsCommands from './stubs';
+-
+-const commands = {
+-    ...navigationCommands,
+-    ...stubsCommands,
+-};
+-
+-type Commands = typeof commands;
+-
+-defineCommands(commands);
+-
+-declare global {
+-    namespace Cypress {
+-        interface Chainable extends Commands {}
+-    }
+-}
+diff --git a/cypress/support/commands/navigation.ts b/cypress/support/commands/navigation.ts
+deleted file mode 100644
+index 15dfb0f..0000000
+--- a/cypress/support/commands/navigation.ts
++++ /dev/null
+@@ -1,14 +0,0 @@
+-export function seeActiveList(name: string): void {
+-    cy.see(name, 'li[aria-current="page"]');
+-}
+-
+-export function seeActiveWorkspace(name: string): void {
+-    cy.see(name);
+-}
+-
+-export function switchWorkspace(name: string): void {
+-    cy.contains('.group', 'Select workspace').within(() => {
+-        cy.get('button[role="combobox"]').click();
+-    });
+-    cy.press(name, '*[role="option"]');
+-}
+diff --git a/cypress/support/commands/stubs.ts b/cypress/support/commands/stubs.ts
+deleted file mode 100644
+index 896a8cf..0000000
+--- a/cypress/support/commands/stubs.ts
++++ /dev/null
+@@ -1,72 +0,0 @@
+-export function createStubs(open: boolean = true): void {
+-    cy.model('Workspace').then(async (Workspace) => {
+-        const main = await Workspace.create({ name: 'Main' });
+-
+-        await main.relatedTasks.create({ name: 'Learn Typescript' }).then((task) => task.toggle());
+-        await main.relatedTasks.create({ name: 'Learn Vue' }).then((task) => task.toggle());
+-        await main.relatedTasks.create({ name: 'Learn TailwindCSS' }).then((task) => task.toggle());
+-        await main.relatedTasks.create({ name: 'Learn Aerogel' });
+-    });
+-
+-    cy.model('Workspace').then(async (Workspace) => {
+-        const household = await Workspace.create({ name: 'Household' });
+-        const groceries = await household.relatedLists.create({ name: 'Groceries' });
+-        const recipes = await household.relatedLists.create({ name: 'Recipes' });
+-
+-        await household.relatedTasks.create({ name: 'Clean room' });
+-        await household.relatedTasks.create({ name: 'Clean Neko\'s litter box' }).then((task) => task.toggle());
+-
+-        await groceries.relatedTasks.create({ name: 'Bananas' });
+-        await groceries.relatedTasks.create({ name: 'Orange juice' });
+-        await groceries.relatedTasks.create({ name: 'Whole grain bread' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh apples and pears' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Baby carrots' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Red and green grapes' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Peanut butter' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Cucumber' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh strawberries' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Almond milk' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Romaine lettuce' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Mixed berries (frozen)' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Broccoli florets' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Whole grain pasta' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh tomatoes' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Rolled oats' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Bell peppers (variety pack)' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh basil leaves' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Canned black beans' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Brown rice' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh oranges and lemons' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Canned tomatoes' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Baby spinach' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Mixed nuts' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Fresh garlic and onions' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Avocado' }).then((task) => task.toggle());
+-        await groceries.relatedTasks
+-            .create({ name: 'Fresh blueberries and raspberries' })
+-            .then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Zucchini and squash' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Whole wheat tortillas' }).then((task) => task.toggle());
+-        await groceries.relatedTasks.create({ name: 'Applesauce (unsweetened)' }).then((task) => task.toggle());
+-
+-        await recipes.relatedTasks.create({ name: 'Ramen' });
+-        await recipes.relatedTasks.create({ name: 'Pizza' }).then((task) => task.toggle());
+-        await recipes.relatedTasks.create({ name: 'Baba Ganoush' }).then((task) => task.toggle());
+-    });
+-
+-    cy.model('Workspace').then(async (Workspace) => {
+-        const japanese = await Workspace.create({ name: 'Japanese' });
+-        const manga = await japanese.relatedLists.create({ name: 'Manga' });
+-
+-        await japanese.relatedTasks.create({ name: 'Learn Hiragana' }).then((task) => task.toggle());
+-        await japanese.relatedTasks.create({ name: 'Learn Katakana' }).then((task) => task.toggle());
+-        await japanese.relatedTasks.create({ name: 'Learn Heisig Kanji' });
+-
+-        await manga.relatedTasks.create({ name: 'Read One Piece' });
+-        await manga.relatedTasks.create({ name: 'Read Yotsubato' }).then((task) => task.toggle());
+-    });
+-
+-    if (open) {
+-        cy.model('Workspace').then((Workspace) => Workspace.all().then((workspaces) => workspaces[0].open()));
+-    }
+-}
+diff --git a/cypress/support/e2e.ts b/cypress/support/e2e.ts
+deleted file mode 100644
+index 17c03bc..0000000
+--- a/cypress/support/e2e.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-import '@aerogel/cypress/support';
+-
+-import './commands';
+diff --git a/cypress/tsconfig.json b/cypress/tsconfig.json
+deleted file mode 100644
+index ddf3324..0000000
+--- a/cypress/tsconfig.json
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{
+-    "extends": "@tsconfig/node22/tsconfig.json",
+-    "include": ["**/*.ts", "../src/**/*.ts"],
+-    "compilerOptions": {
+-        "baseUrl": ".",
+-        "module": "ESNext",
+-        "moduleResolution": "Bundler",
+-        "lib": ["DOM"],
+-        "types": ["node", "cypress", "@aerogel/cypress"],
+-        "paths": {
+-            "@/*": ["../src/*"]
+-        }
+-    }
+-}
+diff --git a/src/main.test.ts b/src/main.test.ts
+deleted file mode 100644
+index 30c71f7..0000000
+--- a/src/main.test.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-
+-describe('App', () => {
+-
+-    it('works', () => {
+-        expect(true).toBe(true);
+-    });
+-
+-});
+diff --git a/src/pages/workspace/components/TaskDescriptionInput.story.vue b/src/pages/workspace/components/TaskDescriptionInput.story.vue
+deleted file mode 100644
+index bdd2c66..0000000
+--- a/src/pages/workspace/components/TaskDescriptionInput.story.vue
++++ /dev/null
+@@ -1,67 +0,0 @@
+-<template>
+-    <Story group="tasks" :layout="{ type: 'grid' }">
+-        <Variant title="Playground">
+-            <Form :form="form">
+-                <TaskDescriptionInput name="food" :label="label" :placeholder="placeholder" />
+-            </Form>
+-
+-            <template #controls>
+-                <HstText v-model="label" title="Label" />
+-                <HstText v-model="placeholder" title="Placeholder" />
+-                <HstCheckbox v-model="hasErrors" title="Errors" />
+-            </template>
+-        </Variant>
+-
+-        <Variant title="Default">
+-            <TaskDescriptionInput label="What's the best food?" placeholder="Ramen" />
+-        </Variant>
+-
+-        <Variant title="Hover">
+-            <TaskDescriptionInput label="What's the best food?" placeholder="Ramen" input-class=":hover" />
+-        </Variant>
+-
+-        <Variant title="Focus">
+-            <TaskDescriptionInput
+-                label="What's the best food?"
+-                placeholder="Ramen"
+-                input-class=":focus :focus-visible"
+-            />
+-        </Variant>
+-
+-        <Variant title="Error">
+-            <Form :form="errorForm">
+-                <TaskDescriptionInput
+-                    name="food"
+-                    label="What's the best food?"
+-                    placeholder="Ramen"
+-                    class=":focus :focus-visible"
+-                />
+-            </Form>
+-        </Variant>
+-    </Story>
+-</template>
+-
+-<script setup lang="ts">
+-import { requiredStringInput, useForm } from '@aerogel/core';
+-import { ref, watchEffect } from 'vue';
+-
+-const form = useForm({ food: requiredStringInput() });
+-const errorForm = useForm({ food: requiredStringInput() });
+-const label = ref('What\'s the best food?');
+-const placeholder = ref('Ramen');
+-const hasErrors = ref(false);
+-
+-errorForm.submit();
+-
+-watchEffect(() => (hasErrors.value ? form.submit() : form.reset()));
+-</script>
+-
+-<style>
+-.story-taskdescriptioninput {
+-    grid-template-columns: repeat(2, 300px) !important;
+-}
+-
+-.story-taskdescriptioninput .variant-playground {
+-    grid-column: 1 / -1;
+-}
+-</style>
+diff --git a/src/utils/composables.ts b/src/utils/composables.ts
+index fb58478..760e99a 100644
+--- a/src/utils/composables.ts
++++ b/src/utils/composables.ts
+@@ -170,7 +170,7 @@ export function watchKeyboardShortcut(
+     listenerOrOptions: KeyboardShortcutOptions | (() => unknown),
+     listener?: () => unknown,
+ ): () => void {
+-    const options = typeof listenerOrOptions === 'object' ? listenerOrOptions : {};
++    const options = typeof listenerOrOptions === 'object' ? listenerOrOptions : { start: listenerOrOptions };
+ 
+     if (listener) {
+         options.start ??= listener;

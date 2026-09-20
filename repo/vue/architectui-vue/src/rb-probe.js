@@ -1,0 +1,198 @@
+/* rb-probe/1 - a neutral, read-only measurement probe.
+ *
+ * Added by environment/instrumentation.patch as src/rb-probe.js and imported as the FIRST line of
+ * src/main.js, so every wrapper below is installed before any application module body runs.
+ *
+ * What it does, exhaustively:
+ *   1. publishes boot and live scalars on window.__rb (every getter returns a STRING);
+ *   2. clears localStorage / sessionStorage once at boot, so a checkpoint can never inherit state
+ *      from a previous one. This seed genuinely persists UI state across page loads:
+ *        - src/stores/ui.js:107  localStorage.setItem('sidebarCollapsed', ...)   (toggleCollapse)
+ *          src/stores/ui.js:182  localStorage.getItem('sidebarCollapsed')        (handleResize)
+ *          src/stores/ui.js:307  localStorage.getItem('sidebarCollapsed')        (initializeFromStorage)
+ *        - src/stores/ui.js:153  localStorage.setItem('theme', newTheme)
+ *          src/stores/ui.js:313  localStorage.getItem('theme')                   (initializeFromStorage)
+ *        - src/stores/notifications.js:184 setItem('notificationSettings', ...)
+ *          src/stores/notifications.js:190 getItem('notificationSettings')
+ *      Without this reset, a checkpoint that collapses the sidebar (or switches theme) would leave
+ *      'sidebarCollapsed'='true' behind and every later checkpoint on the same origin would boot
+ *      into a collapsed sidebar - i.e. the measurement would depend on checkpoint ORDER. The reset
+ *      makes each checkpoint start from the seed's own default state.
+ *   3. wraps window.fetch / XMLHttpRequest.prototype.open / navigator.sendBeacon / window.open and
+ *      the src setter of img / iframe / script / source, classifying every url as same-origin or
+ *      egress, and counts cross-origin entries in performance resource timing;
+ *   4. counts uncaught errors and unhandled rejections.
+ *
+ * What it never does: it renders nothing, creates no element, adds no data-testid, holds no
+ * selector / constant / expectation belonging to any defect, mutates no application state, and
+ * reads no store. It cannot make a broken behaviour pass, and it cannot make a working behaviour
+ * fail: every scalar it publishes is a COUNT of traffic or errors the application itself produced.
+ * The one deliberate behaviour change is refusing window.open (see 3a below), which only ever
+ * suppresses a cross-origin navigation the benchmark forbids anyway.
+ *
+ * Seed-specific census behind the wrappers below (all grep-verified against src/**, 0 invented):
+ *   - service worker / CacheStorage: 0 hits for `serviceWorker` and 0 for `caches.` => nothing to
+ *     neutralise, so no stub is added (a stub here would be pure noise).
+ *   - fetch / XMLHttpRequest / axios / sendBeacon / EventSource / WebSocket: the ONLY hit in src/**
+ *     is src/stores/dashboard.js:312, and that line is a comment
+ *     (`// const response = await fetch('/api/dashboard')`). So the fetch/XHR/beacon wrappers are
+ *     inert for this seed and exist only to make any future egress measurable rather than silent.
+ *   - dynamic `.src =` assignments: 0 hits in src/**. `:src=` / `v-bind:src` template bindings:
+ *     0 hits. Cross-origin images are nevertheless created, but by LIBRARIES:
+ *       * src/DemoPages/Components/Carousel.vue:18 `:img-src="slide.image"` with the five
+ *         picsum.photos urls at Carousel.vue:53,59,66,72,78 - bootstrap-vue-next builds the <img>;
+ *       * src/DemoPages/Components/Maps.vue:337 `L.tileLayer('https://{s}.tile.openstreetmap.org/...')`
+ *         - leaflet builds one <img> per tile.
+ *     The HTMLImageElement src setter hook is therefore the only place that can observe them.
+ *     No checkpoint visits /components/carousel or /components/maps, so both counters stay 0.
+ *   - window.open: exactly ONE live call site, src/Layout/Components/Footer.vue:126
+ *     (`window.open(url, '_blank', 'noopener,noreferrer')`, url from the socialLinks map at
+ *     Footer.vue:115-120 => twitter/facebook/linkedin/github). It is counted and then refused: a
+ *     probe that let the call through would itself create the cross-origin navigation it is
+ *     supposed to be measuring. No checkpoint clicks a footer social button.
+ *
+ * Plain ES2018 JavaScript on purpose. `npm run build` is `vue-tsc --noEmit && vite build`, and
+ * tsconfig.json sets "allowJs": true with "checkJs": false and an "include" list that covers only
+ * src/**\/*.ts, *.d.ts, *.tsx and *.vue - so this .js file is bundled by vite but never type-checked,
+ * which is exactly what a measurement shim should be.
+ */
+
+const w = window;
+const nav = navigator;
+
+const state = {
+  egress: 0,
+  same: 0,
+  resourceEgress: 0,
+  errors: 0,
+  rejections: 0,
+  windowOpenRefused: 0,
+};
+const hosts = [];
+
+function classify(raw) {
+  let text = '';
+  if (typeof raw === 'string') text = raw;
+  else if (raw && typeof raw.url === 'string') text = raw.url;
+  else return 'skip';
+  if (!text) return 'skip';
+  try {
+    const url = new URL(text, window.location.href);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'skip';
+    if (url.origin === window.location.origin) return 'same';
+    if (hosts.indexOf(url.host) < 0) hosts.push(url.host);
+    return 'egress';
+  } catch (e) {
+    return 'skip';
+  }
+}
+
+function note(raw) {
+  const kind = classify(raw);
+  if (kind === 'same') state.same += 1;
+  else if (kind === 'egress') state.egress += 1;
+}
+
+// ---- 3a. request APIs ------------------------------------------------------------------------
+if (typeof w.fetch === 'function') {
+  const nativeFetch = w.fetch.bind(window);
+  w.fetch = function (input, init) {
+    note(input);
+    return nativeFetch(input, init);
+  };
+}
+
+const xhrProto = w.XMLHttpRequest && w.XMLHttpRequest.prototype ? w.XMLHttpRequest.prototype : null;
+if (xhrProto && typeof xhrProto.open === 'function') {
+  const nativeOpen = xhrProto.open;
+  xhrProto.open = function (...args) {
+    note(args[1]);
+    return nativeOpen.apply(this, args);
+  };
+}
+
+if (typeof nav.sendBeacon === 'function') {
+  const nativeBeacon = nav.sendBeacon.bind(navigator);
+  nav.sendBeacon = function (url, data) {
+    note(url);
+    return nativeBeacon(url, data);
+  };
+}
+
+// Counted and refused - see the Footer.vue:126 note in the header comment.
+w.open = function (...args) {
+  note(args[0]);
+  state.windowOpenRefused += 1;
+  return null;
+};
+
+// ---- 3b. subresource src setters (the only observer for leaflet tiles / carousel slides) -------
+function hookSrc(ctor) {
+  if (!ctor || !ctor.prototype) return;
+  const desc = Object.getOwnPropertyDescriptor(ctor.prototype, 'src');
+  if (!desc || typeof desc.set !== 'function') return;
+  const nativeSet = desc.set;
+  Object.defineProperty(ctor.prototype, 'src', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get: desc.get,
+    set(value) {
+      note(value);
+      nativeSet.call(this, value);
+    },
+  });
+}
+hookSrc(w.HTMLImageElement);
+hookSrc(w.HTMLIFrameElement);
+hookSrc(w.HTMLScriptElement);
+hookSrc(w.HTMLSourceElement);
+
+// ---- 3c. resource timing (catches anything the wrappers above cannot see, e.g. CSS fonts) -----
+function scanResources() {
+  let n = 0;
+  try {
+    const entries = performance.getEntriesByType('resource');
+    for (const entry of entries) if (classify(entry.name) === 'egress') n += 1;
+  } catch (e) {
+    n = 0;
+  }
+  state.resourceEgress = n;
+}
+
+// ---- 2. storage reset ------------------------------------------------------------------------
+try { w.localStorage.clear(); } catch (e) { /* storage may be blocked; the getter reports -1 */ }
+try { w.sessionStorage.clear(); } catch (e) { /* ditto */ }
+
+// ---- 4. error counters -----------------------------------------------------------------------
+w.addEventListener('error', function () { state.errors += 1; });
+w.addEventListener('unhandledrejection', function () { state.rejections += 1; });
+
+// ---- 1. published scalars (every getter returns a STRING) ------------------------------------
+const api = {
+  version: 'rb-probe/1',
+  ready: '0',
+  get egressCount() { return String(state.egress); },
+  get egressHosts() { return hosts.slice().sort().join('|'); },
+  get sameOriginCount() { return String(state.same); },
+  get egressResources() { scanResources(); return String(state.resourceEgress); },
+  get errorCount() { return String(state.errors); },
+  get rejectionCount() { return String(state.rejections); },
+  get windowOpenRefused() { return String(state.windowOpenRefused); },
+  get storageKeys() {
+    let local = -1;
+    let session = -1;
+    try { local = w.localStorage.length; } catch (e) { local = -1; }
+    try { session = w.sessionStorage.length; } catch (e) { session = -1; }
+    return String(local) + '/' + String(session);
+  },
+  get href() { return String(window.location.href); },
+  get hash() { return String(window.location.hash); },
+  get search() { return String(window.location.search); },
+  get pathname() { return String(window.location.pathname); },
+};
+w.__rb = api;
+
+function markReady() { api.ready = '1'; }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markReady);
+else markReady();
+w.addEventListener('load', markReady);

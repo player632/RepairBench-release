@@ -1,0 +1,983 @@
+/**
+ * RepairBench read-only observation bridge for repair-svelte__gittok.dev-01
+ * (seed gittok.dev: BlackShoreTech/gittok.dev, SvelteKit 2 + Svelte 5 + Vite 6 +
+ *  adapter-static, five prerendered routes: /, /feed, /setup, /about, /test).
+ *
+ *
+ *  - It reads the DOM the seed already renders: element censuses, attributes, computed
+ *    styles, text, geometry boxes, one same-origin JSON read (/manifest.json) and a
+ *    passive console latch. It reads NO Svelte component instance, NO store internals
+ *    through a private handle, NO rune state, NO canvas pixel and NO glyph outline.
+ *    Where a value lives in a module or a store, the bridge reads it the way a user
+ *    reads it: through what the seed painted into the document or into localStorage.
+ *  - Its drivers perform ONLY writes a user could perform: element.click() on the very
+ *    buttons the seed binds onclick to, typing into the topic input the seed binds
+ *    bind:value to (a value write plus the 'input' event the binding listens for) and
+ *    submitting the form the seed binds onsubmit to. Every driver returns a string
+ *    receipt saying what it did, so a checkpoint can prove an interaction happened
+ *    instead of trusting a sleep.
+ *  - Every getter is wrapped: an unavailable reading degrades to the sentinel '-'
+ *    (or -1 for a count) instead of throwing, so a checkpoint can only ever fail on a
+ *    measured value and never on a bridge crash.
+ *  - It adds NO markup hook and NO data-testid, edits NO component template and moves
+ *    NO element. src/routes/+layout.ts gains exactly one line, `import '$lib/rb-probe';`,
+ *    so the bridge is installed before the first route component mounts and its console
+ *    latch still sees boot errors.
+ *  - Numeric readings are rounded INSIDE the bridge and returned as integers, so no
+ *    checkpoint depends on a browser's length serialisation.
+ *  - The module is import-safe during prerender: every window touch sits behind a
+ *    `typeof window !== 'undefined'` guard, because the seed declares
+ *    `export const prerender = true` in this very file's host module.
+ */
+
+const SENT = '-';
+const SENTN = -1;
+// Achromatic tolerance for the body-text hue guard, as an sRGB channel spread (max - min). Justified by a
+// MEASURED table (s42/canvas_probe/SPREAD_TABLE_MEASURED.json: every row pushed through the same 1x1 canvas
+// fillRect + getImageData path toSrgb uses, so the spreads are the browser's own, not arithmetic on nominal
+// hex): every reading reachable on the five faces sits on Tailwind v4's gray ramp or on canvastext -
+// gray-200 oklch(0.928 0.006 264.531) -> rgb(229, 231, 235) spread 6, gray-500 oklch(0.551 0.027 264.364) -> rgb(106, 114, 130) spread 24, canvastext initial rgb(0, 0, 0) -> rgb(0, 0, 0) spread 0 - while every genuinely coloured token is far above the bound (blue-500 #3b82f6 spread 187, red-500 #ef4444 spread 171, green-500 #22c55e spread 163).
+// 32 admits the whole gray ramp and rejects every real hue: it sits strictly between them
+// (24 < 32 < 163) and the nearest saturated control is 6.79x the largest measured
+// gray-ramp spread. 🔴 The gray-ramp spreads here are the MEASURED ones, and they are NOT the nominal hex
+// arithmetic: Tailwind v4 emits gray-500 as oklch(0.551 0.027 264.364), whose sRGB rendering measures
+// rgb(106, 114, 130) (spread 24), not #6b7280 = rgb(107, 114, 128) (spread 21). EXACT channel equality
+// (what this guard used to demand) is wrong for Tailwind v4: its grays are near-neutral, not neutral, so
+// gray-200 would have been reported 'chromatic' on the clean face - the guard could not have passed on any
+// face at all.
+const NEUTRAL_SPREAD_MAX = 32;
+
+type AnyWin = Window & { __GT__?: Record<string, unknown> };
+
+function install(): void {
+  const W = window as unknown as AnyWin;
+  const bootQuoteAuthor = { value: SENT };
+  const manifestCache: { state: string; startUrl: string; display: string; shortName: string } = {
+    state: 'unfetched',
+    startUrl: SENT,
+    display: SENT,
+    shortName: SENT
+  };
+  const consoleErrors: string[] = [];
+
+  const txt = (el: Element | null | undefined): string => {
+    try {
+      if (!el) return SENT;
+      return (el.textContent || '').replace(/\s+/g, ' ').trim();
+    } catch (e) {
+      return SENT;
+    }
+  };
+
+  const all = (sel: string): Element[] => {
+    try {
+      return Array.prototype.slice.call(document.querySelectorAll(sel));
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const first = (sel: string): Element | null => {
+    try {
+      return document.querySelector(sel);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const cs = (el: Element | null, prop: string): string => {
+    try {
+      if (!el) return SENT;
+      const v = window.getComputedStyle(el as HTMLElement).getPropertyValue(prop);
+      return v === '' || v == null ? SENT : String(v);
+    } catch (e) {
+      return SENT;
+    }
+  };
+
+  const attr = (el: Element | null, name: string): string => {
+    try {
+      if (!el) return SENT;
+      const v = el.getAttribute(name);
+      return v == null ? SENT : String(v);
+    } catch (e) {
+      return SENT;
+    }
+  };
+
+  const px = (el: Element | null, prop: string): number => {
+    try {
+      if (!el) return SENTN;
+      const raw = window.getComputedStyle(el as HTMLElement).getPropertyValue(prop);
+      const n = parseFloat(String(raw));
+      return Number.isFinite(n) ? Math.round(n) : SENTN;
+    } catch (e) {
+      return SENTN;
+    }
+  };
+
+  // Normalise ANY colour the browser can parse to sRGB channels through the browser's OWN colour engine,
+  // instead of a hand-rolled converter. Needed because Tailwind v4 emits theme colours as oklch():
+  // getComputedStyle(document.body).color reads "oklch(0.928 0.006 264.531)" on the clean face, which an
+  // /^rgba?\(/ parser cannot see at all - it returned the sentinel, reddening P16 on every face that HAS the
+  // stylesheet while passing on the faces where the masker removed it (an inverted guard).
+  // 🔴 MEASURED, NOT ASSUMED - the previous version DID use a canvas, but it read the fillStyle GETTER back
+  // and regexed it, on the theory that the round trip re-serialises every colour as hex. It does not:
+  // Chromium preserves the specified colour space, so the getter returned "oklch(0.928 0.006 264.531)"
+  // VERBATIM (measured on about:blank by s42/canvas_probe/measure.mjs and on all five real faces by
+  // s42/diag/probe_*.json), none of its three hex/rgb regexes could match, and the defect survived a fix
+  // that believed it was already closed. The rasterised PIXEL, by contrast, is always sRGB, so this
+  // rasterises: fillRect + getImageData. Measured through that path on the five faces - clean rgb(229, 231, 235),
+  // oracle rgb(229, 231, 235), mid1 rgb(106, 114, 130), mutation rgb(0, 0, 0), mid2 rgb(0, 0, 0).
+  // Parseability is still decided by the canvas itself, which silently IGNORES an assignment it cannot
+  // parse so the previous value survives: priming with the sentinel '#010203' makes "unparseable"
+  // OBSERVABLE (measured: 'not-a-colour' leaves the sentinel pixel [1, 2, 3] untouched) instead of being
+  // reported as a colour. Documented residual false negative - a computed colour whose own serialisation IS
+  // '#010203' would be called unparseable; no face of this package emits rgb(1, 2, 3), and the failure mode
+  // is fail-loud (the sentinel '-'), never a silently green assert.
+  const toSrgb = (c: string): number[] | null => {
+    try {
+      if (!c || c === SENT) return null;
+      const cv = document.createElement('canvas');
+      cv.width = 1;
+      cv.height = 1;
+      const x = cv.getContext('2d');
+      if (!x) return null;
+      x.fillStyle = '#010203';
+      x.fillStyle = c;                       // ignored by the canvas when c is not a colour
+      if (String(x.fillStyle) === '#010203') return null;
+      x.clearRect(0, 0, 1, 1);
+      x.fillRect(0, 0, 1, 1);
+      const d = x.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2]];
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const metaContent = (selector: string): string => {
+    try {
+      const el = first(selector);
+      return attr(el, 'content');
+    } catch (e) {
+      return SENT;
+    }
+  };
+
+  // ---- route: / (landing) -------------------------------------------------
+  const landingQuoteAuthorEl = (): Element | null => {
+    try {
+      return first('div.glass-card p.font-mono');
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const clickByText = (sel: string, label: string): Element | null => {
+    try {
+      const want = String(label).replace(/\s+/g, ' ').trim().toLowerCase();
+      const hits = all(sel);
+      for (let i = 0; i < hits.length; i++) {
+        if (txt(hits[i]).toLowerCase() === want) return hits[i];
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const findMeOnlineBox = (): Element | null => {
+    try {
+      const heads = all('div.space-y-4 > h3');
+      for (let i = 0; i < heads.length; i++) {
+        if (txt(heads[i]) === 'Find Me Online') {
+          const box = heads[i].parentElement ? heads[i].parentElement.querySelector('div.flex.flex-col.gap-4') : null;
+          if (box) return box;
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const chipEls = (): Element[] => all('div[role="button"][tabindex="0"]');
+
+  const chipLabels = (): string[] => {
+    try {
+      return chipEls().map((c) => txt(c.querySelector('span.capitalize')));
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const selectedCount = (): number => {
+    try {
+      return chipEls().length;
+    } catch (e) {
+      return SENTN;
+    }
+  };
+
+  const storedTopics = (): string[] | null => {
+    try {
+      const raw = window.localStorage.getItem('topics');
+      if (raw == null) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map((x) => String(x)) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const categoryButtons = (): Element[] => {
+    try {
+      const grid = first('div.grid.p-6');
+      if (!grid) return [];
+      return Array.prototype.slice.call(grid.querySelectorAll(':scope > div.space-y-3 > button'));
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const subcategoryButtons = (): Element[] => {
+    try {
+      const grid = first('div.grid.p-6');
+      if (!grid) return [];
+      return Array.prototype.slice.call(
+        grid.querySelectorAll(':scope > div.space-y-3 > div.pl-4.space-y-3 > button')
+      );
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const leafButtons = (): Element[] => {
+    try {
+      const grid = first('div.grid.p-6');
+      if (!grid) return [];
+      return Array.prototype.slice.call(
+        grid.querySelectorAll(':scope > div.space-y-3 > div.pl-4.space-y-3 > div.pl-4.space-y-3 > button')
+      );
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const leafLabel = (el: Element | null): string => {
+    try {
+      if (!el) return SENT;
+      const span = el.querySelector('span.capitalize');
+      return txt(span);
+    } catch (e) {
+      return SENT;
+    }
+  };
+
+  const suggestionButtons = (): Element[] => {
+    try {
+      const box = first('div.absolute.top-full');
+      if (!box) return [];
+      return Array.prototype.slice.call(box.querySelectorAll('button'));
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const feedRoot = (): Element | null => first('div[role="list"]');
+
+  const bridge: Record<string, unknown> = {
+    bridgeVersion: 'gittok-rb-probe-1',
+
+    // ---- global shell (src/app.html, src/app.css, src/routes/+layout.svelte) ----
+    htmlLangAttribute(): string {
+      try {
+        return attr(document.documentElement, 'lang');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    documentTitle(): string {
+      try {
+        return String(document.title || SENT);
+      } catch (e) {
+        return SENT;
+      }
+    },
+    metaDescriptionPrefix(): string {
+      try {
+        const c = metaContent('meta[name="description"]');
+        return c === SENT ? SENT : c.slice(0, 44);
+      } catch (e) {
+        return SENT;
+      }
+    },
+    canonicalHref(): string {
+      try {
+        return attr(first('link[rel="canonical"]'), 'href');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    ogImageContent(): string {
+      return metaContent('meta[property="og:image"]');
+    },
+    themeColorMeta(): string {
+      return metaContent('meta[name="theme-color"]');
+    },
+    manifestLinkHref(): string {
+      try {
+        return attr(first('link[rel="manifest"]'), 'href');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    shellWrapperDisplay(): string {
+      try {
+        const el = document.body ? document.body.firstElementChild : null;
+        return cs(el, 'display');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    shellWrapperHasChildren(): string {
+      try {
+        const el = document.body ? document.body.firstElementChild : null;
+        if (!el) return SENT;
+        return el.children.length > 0 ? 'yes' : 'no';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    bodyTextColor(): string {
+      try {
+        const raw = cs(document.body, 'color');
+        // Reported in sRGB so the reading is comparable across colour spaces: the clean face's computed
+        // value is the oklch() form of gray-200 and toSrgb rasterises it to rgb(229, 231, 235) (MEASURED on the
+        // face, not converted from the nominal hex), which is what the F05 derivation registers. Falls back
+        // to the raw reading if the canvas cannot parse it, so a colour this bridge cannot normalise stays
+        // VISIBLE rather than being silently sentinelled - that fallback is exactly what made the r7
+        // baseline arm print the raw oklch string and expose R5 instead of hiding it.
+        const rgb = toSrgb(raw);
+        return rgb ? 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')' : raw;
+      } catch (e) {
+        return SENT;
+      }
+    },
+    bodyTextIsNeutralGray(): string {
+      try {
+        const rgb = toSrgb(cs(document.body, 'color'));
+        if (!rgb) return SENT;
+        const spread = Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]);
+        return spread <= NEUTRAL_SPREAD_MAX ? 'neutral' : 'chromatic';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    bodyBackgroundIsGradient(): string {
+      try {
+        const bg = cs(document.body, 'background-image');
+        if (bg === SENT) return SENT;
+        return bg.indexOf('gradient') >= 0 ? 'gradient' : 'none';
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    // ---- same-origin static JSON (static/manifest.json) ----
+    manifestFetchState(): string {
+      return manifestCache.state;
+    },
+    manifestStartUrl(): string {
+      return manifestCache.startUrl;
+    },
+    manifestDisplayAndShortName(): string {
+      try {
+        if (manifestCache.state !== 'ready') return SENT;
+        return manifestCache.display + '|' + manifestCache.shortName;
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    // ---- route: / (landing) ----
+    landingBlobCount(): number {
+      try {
+        return all('div.animate-float').length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    landingH1Text(): string {
+      return txt(first('div.glass-card h1'));
+    },
+    landingFeatureCount(): number {
+      try {
+        const box = first('div.space-y-6.text-gray-300.font-serif');
+        if (!box) return SENTN;
+        // `:scope > div`, NOT `children`. The container also holds the trailing disclaimer
+        // <p class="text-sm text-gray-400 mt-6 italic"> (src/routes/+page.svelte:125-130), so
+        // children.length is 4 while the {#each features} block the assert declares renders exactly
+        // 3 divs (the `features` const at :38-42 declares three entries, :113-123 emits one div per
+        // entry). Measured on all five faces: children.length = 4, `:scope > div` = 3. The declared
+        // expected value 3 was RIGHT; this selector was over-broad.
+        return box.querySelectorAll(':scope > div').length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    landingCtaHrefAndText(): string {
+      try {
+        const a = clickByText('a[href]', 'Start Scrolling');
+        if (!a) return SENT;
+        return attr(a, 'href') + '|' + txt(a);
+      } catch (e) {
+        return SENT;
+      }
+    },
+    landingQuoteBoxHeightPx(): number {
+      return px(first('div.glass-card div.relative.overflow-hidden'), 'height');
+    },
+    landingQuoteBoxDeclaresFixedHeight(): string {
+      try {
+        const el = first('div.glass-card div.relative.overflow-hidden');
+        if (!el) return SENT;
+        // Class-list reading, deliberately NOT a computed pixel height. P04 is a P2P territory guard, so it
+        // must be green on all five faces, but the masker D06 drops the root `import '../app.css'` and with
+        // no Tailwind stylesheet in the document `h-32` does not compute at all: the box then measures its
+        // content height (measured 128px on the faces carrying the stylesheet, 96px on the faces where D06
+        // is live). The declared utilities on <div class="relative h-32 mb-8 overflow-hidden">
+        // (src/routes/+page.svelte:94) hold on every face, which is exactly the territory claim.
+        return el.classList.contains('h-32') && el.classList.contains('overflow-hidden') ? 'yes' : 'no';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    landingQuoteAuthorLine(): string {
+      return txt(landingQuoteAuthorEl());
+    },
+    landingAuthorHandle(): string {
+      try {
+        const a = first('a[href="https://twitter.com/brsc2909"]');
+        if (!a) return SENT;
+        return txt(a.querySelector('span.font-mono'));
+      } catch (e) {
+        return SENT;
+      }
+    },
+    landingQuoteRotationState(): string {
+      try {
+        const now = txt(landingQuoteAuthorEl());
+        if (now === SENT) return SENT;
+        if (bootQuoteAuthor.value === SENT) {
+          bootQuoteAuthor.value = now;
+          return 'boot';
+        }
+        return now === bootQuoteAuthor.value ? 'same' : 'changed';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    landingQuoteBootAuthor(): string {
+      return bootQuoteAuthor.value;
+    },
+
+    // ---- route: /setup ----
+    setupInputPlaceholder(): string {
+      return attr(first('form input[type="text"]'), 'placeholder');
+    },
+    setupAddButtonText(): string {
+      return txt(first('form button[type="submit"]'));
+    },
+    setupSuggestionCount(): number {
+      try {
+        return suggestionButtons().length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    setupSuggestionLabels(): string {
+      try {
+        return suggestionButtons().map((b) => txt(b.querySelector('span.capitalize'))).join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupContinueLabel(): string {
+      try {
+        const bar = first('div.fixed.bottom-6.right-6');
+        if (!bar) return SENT;
+        const btns = Array.prototype.slice.call(bar.querySelectorAll('button'));
+        return txt(btns[btns.length - 1]);
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupContinueLabelCoherent(): string {
+      try {
+        const label = bridge.setupContinueLabel() as string;
+        if (label === SENT) return SENT;
+        const n = selectedCount();
+        if (n < 0) return SENT;
+        const saysFeed = label === 'Continue to Feed';
+        return saysFeed === n > 0 ? 'consistent' : 'divergent';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupSkipCoherent(): string {
+      try {
+        const skip = clickByText('div.fixed.bottom-6.right-6 button', 'Skip for now');
+        const n = selectedCount();
+        if (n < 0) return SENT;
+        return (!!skip === (n === 0)) ? 'consistent' : 'divergent';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupCategoryCount(): number {
+      try {
+        return categoryButtons().length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    setupCategoryLabels(): string {
+      try {
+        return categoryButtons().map((b) => txt(b.querySelector('span.capitalize'))).join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupSubcategoryLabels(): string {
+      try {
+        return subcategoryButtons().map((b) => txt(b.querySelector('span.capitalize'))).join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupLeafLabels(): string {
+      try {
+        return leafButtons().map((b) => leafLabel(b)).join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    setupLeafCount(): number {
+      try {
+        return leafButtons().length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    setupFirstLeafLabel(): string {
+      try {
+        const l = leafButtons();
+        return l.length ? leafLabel(l[0]) : SENT;
+      } catch (e) {
+        return SENT;
+      }
+    },
+    selectedChipCount(): number {
+      return selectedCount();
+    },
+    chipCensus(): string {
+      try {
+        return chipLabels().join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    chipCensusContains(label: string): string {
+      try {
+        const want = String(label);
+        const hits = chipLabels().filter((x) => x.indexOf(want) >= 0);
+        return hits.length ? hits.join('|') : 'none';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    chipRemoveGlyphCensus(): string {
+      try {
+        const chips = chipEls();
+        if (!chips.length) return 'nochips';
+        let withGlyph = 0;
+        for (let i = 0; i < chips.length; i++) {
+          const btns = Array.prototype.slice.call(chips[i].querySelectorAll('button'));
+          for (let j = 0; j < btns.length; j++) {
+            if (txt(btns[j]) === '\u00d7') withGlyph++;
+          }
+        }
+        if (withGlyph === chips.length) return 'all';
+        return withGlyph === 0 ? 'none' : 'partial';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    storedTopicCount(): number {
+      try {
+        const t = storedTopics();
+        return t == null ? SENTN : t.length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    storedTopicCensus(): string {
+      try {
+        const t = storedTopics();
+        return t == null ? 'nostorage' : t.join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    storeStorageCoherence(): string {
+      try {
+        const n = selectedCount();
+        if (n < 0) return SENT;
+        // An ABSENT 'topics' key is a MEASURED state, not an unmeasurable one. evaluation/dsl_runner.mjs
+        // gives every checkpoint its OWN browser context (runCheckpointOnce: browser.newContext at :829,
+        // context.close in the finally at :894), so no cross-checkpoint residue can ever reach this getter,
+        // and the app's own getStoredTopics() (src/lib/stores/topics.ts) rehydrates an absent key to an
+        // empty Set. 0 stored against 0 painted IS the agreement this assert declares; returning the
+        // sentinel for it hid a real coherence behind a false 'unmeasurable' and reddened P29/P30 on all
+        // five faces. A genuine disagreement still returns 'divergent'.
+        const t = storedTopics() || [];
+        if (t.length !== n) return 'divergent';
+        const a = t.slice().sort().join('|');
+        const b = chipLabels().slice().sort().join('|');
+        return a === b ? 'coherent' : 'divergent';
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    // ---- route: /about ----
+    aboutH1Text(): string {
+      return txt(first('h1'));
+    },
+    aboutListMarker(): string {
+      return cs(first('ol'), 'list-style-type');
+    },
+    aboutBulletMarker(): string {
+      return cs(first('ul'), 'list-style-type');
+    },
+    aboutOnlineAnchorTargetNth(n: number): string {
+      try {
+        const box = findMeOnlineBox();
+        if (!box) return SENT;
+        const links = Array.prototype.slice.call(box.querySelectorAll('a'));
+        const i = Number(n) || 0;
+        if (i >= links.length) return SENT;
+        return attr(links[i], 'target');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    aboutOnlineAnchorLabels(): string {
+      try {
+        const box = findMeOnlineBox();
+        if (!box) return SENT;
+        return Array.prototype.slice
+          .call(box.querySelectorAll('a'))
+          .map((a: Element) => txt(a.querySelector('span.font-mono')))
+          .join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    // ---- route: /feed ----
+    feedRootRoleAndLabel(): string {
+      try {
+        const r = feedRoot();
+        if (!r) return SENT;
+        return attr(r, 'role') + '|' + attr(r, 'aria-label');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    feedRootClassHasStrayHook(): string {
+      try {
+        const r = feedRoot();
+        if (!r) return SENT;
+        return r.classList.contains('svelte-16xb542') ? 'yes' : 'no';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    feedRootOverflowY(): string {
+      return cs(feedRoot(), 'overflow-y');
+    },
+    feedRootDeclaresOverflowScroll(): string {
+      try {
+        const r = feedRoot();
+        if (!r) return SENT;
+        // Class-list reading for the same reason as landingQuoteBoxDeclaresFixedHeight: a computed
+        // 'overflow-y' reads 'visible' on any face where the masker D06 removed the stylesheet (measured),
+        // so it is not a face-invariant control. The utility's presence in the class list is
+        // (src/routes/feed/+page.svelte:431).
+        return r.classList.contains('overflow-y-scroll') ? 'yes' : 'no';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    feedChromeAnchorOrder(): string {
+      try {
+        const box = first('div.fixed.top-4.right-4');
+        if (!box) return SENT;
+        return Array.prototype.slice
+          .call(box.querySelectorAll('a'))
+          .map((a: Element) => attr(a, 'href'))
+          .join('|');
+      } catch (e) {
+        return SENT;
+      }
+    },
+    feedStateBannerTexts(): string {
+      try {
+        const r = feedRoot();
+        if (!r) return SENT;
+        const hits = Array.prototype.slice
+          .call(r.querySelectorAll('div.font-mono.text-white'))
+          .map((d: Element) => txt(d))
+          .filter((s: string) => s.length > 0);
+        return hits.length ? hits.join('|') : 'none';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    feedProjectCardCount(): number {
+      try {
+        const r = feedRoot();
+        if (!r) return SENTN;
+        return r.querySelectorAll(':scope > div.project-container').length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+
+    // ---- route: /test ----
+    testPageH1Text(): string {
+      return txt(first('h1'));
+    },
+    testContainerMaxWidthPx(): number {
+      try {
+        const h = first('h1');
+        if (!h || !h.parentElement) return SENTN;
+        return px(h.parentElement, 'max-width');
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    testContainerCentred(): string {
+      try {
+        const h = first('h1');
+        if (!h || !h.parentElement) return SENT;
+        const l = cs(h.parentElement, 'margin-left');
+        const r = cs(h.parentElement, 'margin-right');
+        if (l === SENT || r === SENT) return SENT;
+        return l === r ? 'centred' : 'offcentre';
+      } catch (e) {
+        return SENT;
+      }
+    },
+    testPageLinkCensus(): number {
+      try {
+        return all('a[href="/test"]').length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+
+    // ---- passive console latch (read-only, never asserted as a red carrier) ----
+    consoleErrorCount(): number {
+      try {
+        return consoleErrors.length;
+      } catch (e) {
+        return SENTN;
+      }
+    },
+    consoleErrorHead(): string {
+      try {
+        return consoleErrors.length ? consoleErrors.slice(0, 3).join(' || ') : 'none';
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    setupInputValue(): string {
+      try {
+        const input = first('form input[type="text"]') as HTMLInputElement | null;
+        return input == null ? SENT : String(input.value);
+      } catch (e) {
+        return SENT;
+      }
+    },
+    storageShape(): string {
+      try {
+        const raw = window.localStorage.getItem('topics');
+        if (raw == null) return 'nostorage';
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? 'array' : 'other';
+      } catch (e) {
+        return 'unparseable';
+      }
+    },
+    chipPresence(): string {
+      try {
+        return chipEls().length > 0 ? 'some' : 'none';
+      } catch (e) {
+        return SENT;
+      }
+    },
+
+    // ---- drivers: user-performable writes only, each returns a receipt ----
+    typeIntoTopicInput(value: string): string {
+      try {
+        const input = first('form input[type="text"]') as HTMLInputElement | null;
+        if (!input) return 'driver:no-input';
+        input.value = String(value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return 'driver:typed:' + String(value);
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    submitTopicForm(): string {
+      try {
+        const btn = first('form button[type="submit"]') as HTMLElement | null;
+        if (!btn) return 'driver:no-submit';
+        btn.click();
+        return 'driver:submitted';
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    clickCategoryButton(label: string): string {
+      try {
+        const b = clickByText('div.grid.p-6 > div.space-y-3 > button span.capitalize', String(label));
+        const target = b ? b.closest('button') : null;
+        if (!target) return 'driver:no-category:' + String(label);
+        (target as HTMLElement).click();
+        return 'driver:clicked-category:' + String(label);
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    clickSubcategoryButton(label: string): string {
+      try {
+        const hits = subcategoryButtons();
+        for (let i = 0; i < hits.length; i++) {
+          if (leafLabel(hits[i]) === String(label)) {
+            (hits[i] as HTMLElement).click();
+            return 'driver:clicked-subcategory:' + String(label);
+          }
+        }
+        return 'driver:no-subcategory:' + String(label);
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    clickLeafByLabel(label: string): string {
+      try {
+        const hits = leafButtons();
+        for (let i = 0; i < hits.length; i++) {
+          if (leafLabel(hits[i]) === String(label)) {
+            (hits[i] as HTMLElement).click();
+            return 'driver:clicked-leaf:' + String(label);
+          }
+        }
+        return 'driver:no-leaf:' + String(label);
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    clickChipByLabel(label: string): string {
+      try {
+        const chips = chipEls();
+        for (let i = 0; i < chips.length; i++) {
+          if (txt(chips[i].querySelector('span.capitalize')) === String(label)) {
+            (chips[i] as HTMLElement).click();
+            return 'driver:clicked-chip:' + String(label);
+          }
+        }
+        return 'driver:no-chip:' + String(label);
+      } catch (e) {
+        return 'driver:error';
+      }
+    },
+    readQuoteAuthorNow(): string {
+      try {
+        const now = txt(landingQuoteAuthorEl());
+        if (bootQuoteAuthor.value === SENT && now !== SENT) bootQuoteAuthor.value = now;
+        return now;
+      } catch (e) {
+        return SENT;
+      }
+    }
+  };
+
+  // Passive console latch: wraps console.error only, never suppresses it.
+  try {
+    const origError = console.error.bind(console);
+    console.error = function (...args: unknown[]) {
+      try {
+        consoleErrors.push(args.map((a) => (typeof a === 'string' ? a : String(a))).join(' ').slice(0, 200));
+      } catch (e) {
+        /* latch must never throw */
+      }
+      return origError(...(args as []));
+    };
+  } catch (e) {
+    /* console may be frozen; the latch is best-effort by contract */
+  }
+
+  // One same-origin static read: the PWA manifest the seed links from app.html.
+  // It is a GET of a file the seed itself ships in static/, so it adds no external
+  // origin and no write. It resolves into a cache that the getters read.
+  try {
+    const link = first('link[rel="manifest"]');
+    const href = link ? (link as HTMLLinkElement).href : '/manifest.json';
+    manifestCache.state = 'fetching';
+    window
+      .fetch(href, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status ' + r.status))))
+      .then((j) => {
+        manifestCache.state = 'ready';
+        manifestCache.startUrl = typeof j.start_url === 'string' ? j.start_url : SENT;
+        manifestCache.display = typeof j.display === 'string' ? j.display : SENT;
+        manifestCache.shortName = typeof j.short_name === 'string' ? j.short_name : SENT;
+      })
+      .catch(() => {
+        manifestCache.state = 'failed';
+      });
+  } catch (e) {
+    manifestCache.state = 'failed';
+  }
+
+  W.__GT__ = bridge;
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    install();
+  } catch (e) {
+    // The bridge must never take the application down: publish a stub whose every
+    // member degrades to the sentinel so checkpoints fail on measured values only.
+    try {
+      (window as unknown as AnyWin).__GT__ = new Proxy(
+        {},
+        {
+          get(_t, prop) {
+            if (prop === 'bridgeVersion') return 'gittok-rb-probe-stub';
+            return () => SENT;
+          }
+        }
+      ) as unknown as Record<string, unknown>;
+    } catch (e2) {
+      /* nothing left to do */
+    }
+  }
+}
+
+export {};

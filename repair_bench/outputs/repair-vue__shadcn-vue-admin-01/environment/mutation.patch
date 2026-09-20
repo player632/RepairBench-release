@@ -1,0 +1,156 @@
+diff --git a/src/components/data-table/data-table.vue b/src/components/data-table/data-table.vue
+index 075a76f..b3a46f1 100644
+--- a/src/components/data-table/data-table.vue
++++ b/src/components/data-table/data-table.vue
+@@ -131,7 +131,7 @@
+         <DataTableLoading v-if="loading" />
+       </div>
+ 
+-      <DataTablePagination v-if="!loading && table.getRowCount()" :table="table" />
++      <DataTablePagination v-if="loading && table.getRowCount()" :table="table" />
+     </div>
+ 
+     <slot v-if="$slots['bulk-actions']" name="bulk-actions" :table="table" />
+diff --git a/src/components/data-table/table-pagination.vue b/src/components/data-table/table-pagination.vue
+index 4df5f6c..370cd58 100644
+--- a/src/components/data-table/table-pagination.vue
++++ b/src/components/data-table/table-pagination.vue
+@@ -17,7 +17,7 @@
+ const currentPage = computed(() => props.table.atoms.pagination.get().pageIndex + 1)
+ const currentPageSize = computed(() => props.table.atoms.pagination.get().pageSize)
+ const totalPages = computed(() => props.table.getPageCount())
+-const canPreviousPage = computed(() => props.table.getCanPreviousPage())
++const canPreviousPage = computed(() => !props.table.getCanPreviousPage())
+ const canNextPage = computed(() => props.table.getCanNextPage())
+ 
+ function handlePageSizeChange(value: unknown) {
+diff --git a/src/components/data-table/faceted-filter.vue b/src/components/data-table/faceted-filter.vue
+index 9202511..79b2b7c 100644
+--- a/src/components/data-table/faceted-filter.vue
++++ b/src/components/data-table/faceted-filter.vue
+@@ -55,7 +55,7 @@
+           </Badge>
+           <div class="hidden space-x-1 lg:flex">
+             <Badge
+-              v-if="selectedValues.size > 2"
++              v-if="selectedValues.size > 1"
+               variant="secondary"
+               class="px-1 font-normal rounded-sm"
+             >
+diff --git a/src/composables/use-auth.ts b/src/composables/use-auth.ts
+index fa24f1d..71ce93d 100644
+--- a/src/composables/use-auth.ts
++++ b/src/composables/use-auth.ts
+@@ -27,7 +27,7 @@
+     loading.value = false
+ 
+     const redirect = router.currentRoute.value.query.redirect as string
+-    if (!redirect || redirect.startsWith('//')) {
++    if (!redirect || redirect.startsWith('/')) {
+       toHome()
+     }
+     else {
+diff --git a/src/composables/use-system-theme.ts b/src/composables/use-system-theme.ts
+index 32ba6ee..f145040 100644
+--- a/src/composables/use-system-theme.ts
++++ b/src/composables/use-system-theme.ts
+@@ -17,7 +17,7 @@
+ 
+     watch(radius, (radius) => {
+       document.documentElement.style.setProperty('--radius', `${radius}rem`)
+-    }, { immediate: true })
++    }, { immediate: false })
+   }
+ 
+   return {
+diff --git a/src/components/command-menu-panel/command-to-page.vue b/src/components/command-menu-panel/command-to-page.vue
+index a965149..6dff186 100644
+--- a/src/components/command-menu-panel/command-to-page.vue
++++ b/src/components/command-menu-panel/command-to-page.vue
+@@ -31,7 +31,7 @@
+ const route = useRoute()
+ function commandItemClick(url: string) {
+   emit('click')
+-  if (route.fullPath !== url) {
++  if (route.fullPath === url) {
+     router.push(url)
+   }
+ }
+diff --git a/src/components/language-change.vue b/src/components/language-change.vue
+index ad2c5de..43c4b26 100644
+--- a/src/components/language-change.vue
++++ b/src/components/language-change.vue
+@@ -18,7 +18,7 @@
+ }
+ 
+ function handleLocaleChange(val: AcceptableValue) {
+-  if (typeof val !== 'string' || !SUPPORTED_LOCALES.has(val as Language)) {
++  if (typeof val !== 'string' || SUPPORTED_LOCALES.has(val as Language)) {
+     setDefaultLanguage()
+     return
+   }
+diff --git a/src/components/data-table/view-options.vue b/src/components/data-table/view-options.vue
+index 6b76811..5af81b3 100644
+--- a/src/components/data-table/view-options.vue
++++ b/src/components/data-table/view-options.vue
+@@ -17,7 +17,7 @@
+ const columns = computed(() => props.table.getAllColumns()
+   .filter(
+     column =>
+-      typeof column.accessorFn !== 'undefined' && column.getCanHide(),
++      typeof column.accessorFn === 'undefined' && column.getCanHide(),
+   ))
+ 
+ function resetColumnVisible() {
+diff --git a/src/components/custom-theme/toggle-color-mode.vue b/src/components/custom-theme/toggle-color-mode.vue
+index 8cf8180..ef743f8 100644
+--- a/src/components/custom-theme/toggle-color-mode.vue
++++ b/src/components/custom-theme/toggle-color-mode.vue
+@@ -34,7 +34,7 @@
+         v-for="item in colorModes" :key="item.colorMode"
+         variant="outline"
+         class="justify-center items-center h-8 px-3"
+-        :class="item.colorMode === mode ? 'border-foreground border-2' : ''"
++        :class="item.colorMode !== mode ? 'border-foreground border-2' : ''"
+         @click="setColorMode(item.colorMode)"
+       >
+         <component :is="item.icon" />
+diff --git a/src/pages/dashboard/index.vue b/src/pages/dashboard/index.vue
+index 634e923..d3de57d 100644
+--- a/src/pages/dashboard/index.vue
++++ b/src/pages/dashboard/index.vue
+@@ -14,7 +14,7 @@
+   { name: 'Notifications', value: 'notifications', disabled: true },
+ ]
+ 
+-const defaultTab = tabs[0].value
++const defaultTab = tabs[1].value
+ </script>
+ 
+ <template>
+diff --git a/src/pages/tasks/validators/task.validator.ts b/src/pages/tasks/validators/task.validator.ts
+index 848ee36..3f6aca7 100644
+--- a/src/pages/tasks/validators/task.validator.ts
++++ b/src/pages/tasks/validators/task.validator.ts
+@@ -1,7 +1,7 @@
+ import z from 'zod'
+ 
+ export const taskValidator = z.object({
+-  title: z.string().min(2).max(50),
++  title: z.string().min(2).max(5),
+   status: z.string(),
+   label: z.string(),
+   priority: z.string(),
+diff --git a/src/components/app-sidebar/team-switcher.vue b/src/components/app-sidebar/team-switcher.vue
+index 8f7d6f8..8c53879 100644
+--- a/src/components/app-sidebar/team-switcher.vue
++++ b/src/components/app-sidebar/team-switcher.vue
+@@ -13,7 +13,7 @@
+ 
+ const { isMobile } = useSidebar()
+ 
+-const activeTeam = ref<Team>(teams[0])
++const activeTeam = ref<Team>(teams[teams.length - 1])
+ function setActiveTeam(team: Team) {
+   activeTeam.value = team
+ }

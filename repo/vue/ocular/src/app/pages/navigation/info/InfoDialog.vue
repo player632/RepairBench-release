@@ -1,0 +1,70 @@
+<template>
+  <Dialog :open="open" :title="t('navigation.info.about')" @close="emit('close')">
+    <div :class="$style.infoBox">
+      <span>
+        <i18n-t keypath="navigation.info.github" scope="global">
+          <template #link>
+            <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
+            <Link inline to="https://github.com/simonwep/ocular">GitHub</Link>
+          </template>
+          <template #donation>
+            <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
+            <Link inline to="https://github.com/sponsors/simonwep">
+              {{ t('navigation.info.donation') }}
+            </Link>
+          </template>
+        </i18n-t>
+      </span>
+      <span :class="$style.love">{{ t('navigation.info.madeWithLove') }}</span>
+      <span :class="$style.meta">
+        {{
+          t('navigation.info.meta', {
+            version: OCULAR_BUILD_VERSION,
+            date: new Date(OCULAR_BUILD_DATE).toDateString(),
+            sha: OCULAR_BUILD_SHA
+          })
+        }}
+      </span>
+    </div>
+  </Dialog>
+</template>
+
+<script lang="ts" setup>
+import Dialog from '@components/base/dialog/Dialog.vue';
+import Link from '@components/base/link/Link.vue';
+import { useI18n } from 'vue-i18n';
+
+const { OCULAR_BUILD_SHA, OCULAR_BUILD_DATE, OCULAR_BUILD_VERSION } = import.meta.env;
+
+const emit = defineEmits<{
+  close: [];
+}>();
+
+defineProps<{
+  open: boolean;
+}>();
+
+const { t } = useI18n();
+</script>
+
+<style lang="scss" module>
+.infoBox {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-size-s);
+  text-align: center;
+  max-width: 300px;
+  gap: 8px;
+}
+
+.love {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-l);
+}
+
+.meta {
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+</style>

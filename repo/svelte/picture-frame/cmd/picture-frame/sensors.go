@@ -1,0 +1,212 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/MateEke/picture-frame/internal/config"
+	displaypkg "github.com/MateEke/picture-frame/internal/display"
+	displayadapter "github.com/MateEke/picture-frame/internal/display/adapter"
+	"github.com/MateEke/picture-frame/internal/hostmetrics"
+	"github.com/MateEke/picture-frame/internal/mqtt"
+	mqttadapter "github.com/MateEke/picture-frame/internal/mqtt/adapter"
+	"github.com/MateEke/picture-frame/internal/power"
+	poweradapter "github.com/MateEke/picture-frame/internal/power/adapter"
+	"github.com/MateEke/picture-frame/internal/sensors"
+	"github.com/MateEke/picture-frame/internal/sensors/ble"
+	bleadapter "github.com/MateEke/picture-frame/internal/sensors/ble/adapter"
+	mocksensor "github.com/MateEke/picture-frame/internal/sensors/mock"
+	"github.com/MateEke/picture-frame/internal/sensors/mqttsubscriber"
+	"github.com/MateEke/picture-frame/internal/startup"
+	"github.com/MateEke/picture-frame/internal/state"
+	"github.com/MateEke/picture-frame/internal/version"
+)
+
+// newHostReader wires vcgencmd for the throttle read, whatever the display backend is.
+func newHostReader() *hostmetrics.Reader {
+	return hostmetrics.New(hostmetrics.Config{Throttle: displayadapter.NewVcgencmd()})
+}
+
+// Probes logind once at startup; the result gates the HA buttons and the HTTP
+// endpoints. POWER_MOCK=denied simulates a host without the polkit rule for e2e.
+func newPowerManager(ctx context.Context, log *slog.Logger, production bool) *power.Manager {
+	logind := newLogind(log, production)
+	mgr := power.New(log, logind)
+	mgr.Probe(ctx)
+	return mgr
+}
+
+// Falls back to the mock when the bus is out of reach, so a missing system bus
+// degrades exactly like a missing polkit rule.
+func newLogind(log *slog.Logger, production bool) power.Logind {
+	if !production {
+		return power.NewMockLogind(log, os.Getenv("POWER_MOCK") != "denied")
+	}
+	logind, err := poweradapter.NewLogind()
+	if err != nil {
+		log.Info("power control unavailable, no system bus", "err", err)
+		return power.NewMockLogind(log, false)
+	}
+	return logind
+}
+
+func deviceMeta(info hostmetrics.HostInfo, ip, addr string) mqtt.DeviceMeta {
+	meta := mqtt.DeviceMeta{Model: info.Model, HwVersion: info.Revision, SwVersion: version.Version}
+	if strings.HasPrefix(info.Model, "Raspberry Pi") {
+		meta.Manufacturer = "Raspberry Pi Ltd"
+	}
+	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" && ip != "" {
+		meta.ConfigurationURL = "http://" + net.JoinHostPort(ip, port)
+	}
+	return meta
+}
+
+// hostFacts adapts the process-level host lookups to mqtt.HostReader.
+type hostFacts struct{ hostname string }
+
+func newHostFacts() hostFacts {
+	name, _ := os.Hostname()
+	return hostFacts{hostname: name}
+}
+
+func (h hostFacts) Hostname() string { return h.hostname }
+func (h hostFacts) IP() string       { return primaryIP() }
+
+func primaryIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				return v4.String()
+			}
+		}
+	}
+	return ""
+}
+
+func hasMqttSubscribers(cfg *config.Config) bool {
+	for _, s := range cfg.Sensors {
+		if s.Type == "mqtt-subscriber" {
+			return true
+		}
+	}
+	return false
+}
+
+// setupMQTT returns (nil, closed) when MQTT isn't needed. pubDone closes after
+// the Publisher's offline publish so main can disconnect cleanly.
+func setupMQTT(ctx context.Context, log *slog.Logger, cfg *config.Config, bus *state.Bus, screen *displaypkg.Screen, reader *hostmetrics.Reader, powerMgr *power.Manager) (*mqtt.Hub, <-chan struct{}) {
+	closed := make(chan struct{})
+	close(closed)
+	if !cfg.Mqtt.Bridge.Enabled && !hasMqttSubscribers(cfg) {
+		return nil, closed
+	}
+	host := newHostFacts()
+	mqttSet := mqtt.Settings{
+		NodeID:          cfg.Mqtt.Bridge.NodeID,
+		BaseTopic:       cfg.Mqtt.Bridge.BaseTopic,
+		DiscoveryPrefix: cfg.Mqtt.Bridge.DiscoveryPrefix,
+		StaleAfter:      cfg.Mqtt.Bridge.StaleAfter.Duration,
+	}
+	if cfg.Mqtt.Bridge.Enabled {
+		mqttSet.Device = deviceMeta(reader.ReadInfo(), primaryIP(), cfg.Addr)
+		mqttSet.Undervoltage = reader.Read(ctx).HasThrottle
+		mqttSet.Hostname = host.Hostname()
+		caps := powerMgr.Capabilities()
+		mqttSet.CanReboot, mqttSet.CanPowerOff = caps.Reboot, caps.PowerOff
+	}
+	willTopic := ""
+	if cfg.Mqtt.Bridge.Enabled {
+		willTopic = mqttSet.BridgeAvailabilityTopic()
+	}
+	mqttClient := mqttadapter.New(mqttadapter.Config{
+		Broker:    cfg.Mqtt.Broker,
+		ClientID:  cfg.Mqtt.ClientID,
+		Username:  cfg.Mqtt.Username,
+		Password:  cfg.Mqtt.Password,
+		WillTopic: willTopic,
+	})
+	hub := mqtt.NewHub(log, mqttClient)
+	if !cfg.Mqtt.Bridge.Enabled {
+		log.Info("mqtt: connection enabled for mqtt-subscriber sensors only", "broker", cfg.Mqtt.Broker)
+		return hub, closed
+	}
+	deps := mqtt.Deps{Bus: bus, Screen: screen, Metrics: reader, Host: host, Power: powerMgr}
+	pub := mqtt.New(log, hub, deps, mqttSet, startup.BuildSensorSpecs(cfg))
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		pub.Run(ctx)
+	}()
+	log.Info("mqtt: bridge enabled", "broker", cfg.Mqtt.Broker, "node_id", cfg.Mqtt.Bridge.NodeID)
+	return hub, pubDone
+}
+
+// buildSources builds sensor sources from config (BLE adapter and Hub shared per
+// type). An unbuildable source (no Bluetooth, no broker) is logged and skipped,
+// never fatal, the frame shows photos regardless of sensors.
+func buildSources(log *slog.Logger, cfg *config.Config, hub *mqtt.Hub) []sensors.Source {
+	var sources []sensors.Source
+	var bleAdapter *bleadapter.Bluetooth
+	bleUnavailable := false
+
+	for _, sensorCfg := range cfg.Sensors {
+		switch sensorCfg.Type {
+		case "ble":
+			if bleUnavailable {
+				continue
+			}
+			if bleAdapter == nil {
+				var err error
+				bleAdapter, err = bleadapter.NewWithID(cfg.BluetoothAdapter)
+				if err != nil {
+					log.Error("bluetooth adapter unavailable; skipping all BLE sensors",
+						"adapter", cfg.BluetoothAdapter, "err", err)
+					bleUnavailable = true
+					continue
+				}
+			}
+			src, err := ble.New(log, sensorCfg, bleAdapter)
+			if err != nil {
+				log.Error("skipping BLE sensor", "id", sensorCfg.ID, "err", err)
+				continue
+			}
+			sources = append(sources, src)
+		case "mqtt-subscriber":
+			if hub == nil {
+				log.Error("skipping mqtt-subscriber sensor: mqtt broker not configured", "id", sensorCfg.ID)
+				continue
+			}
+			src, err := mqttsubscriber.New(log, sensorCfg, hub)
+			if err != nil {
+				log.Error("skipping mqtt-subscriber sensor", "id", sensorCfg.ID, "err", err)
+				continue
+			}
+			sources = append(sources, src)
+			log.Info("mqtt-subscriber configured", "id", sensorCfg.ID, "topic", sensorCfg.Topic, "kind", sensorCfg.Kind)
+		case "mock":
+			interval := sensorCfg.PollInterval.Duration
+			if interval == 0 {
+				interval = 5 * time.Second
+			}
+			readings := make([]mocksensor.Reading, 0, len(sensorCfg.MockReadings))
+			for _, r := range sensorCfg.MockReadings {
+				readings = append(readings, mocksensor.Reading{
+					Kind:  sensors.Kind(r.Kind),
+					Value: r.Value,
+					Delta: r.Delta,
+				})
+			}
+			sources = append(sources, mocksensor.New(sensorCfg.ID, interval, readings...))
+			log.Info("mock sensor configured", "id", sensorCfg.ID, "readings", len(readings), "interval", interval)
+		}
+	}
+	return sources
+}

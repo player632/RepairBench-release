@@ -1,0 +1,21 @@
+// _______ ___ ___ _______ _______ ___     ___ _______        ___ ___ ___ ___
+// |   _   |   Y   |   _   |   _   |   |   |   |   _   |      |   Y   |   Y   |
+// |.  1___|.  1   |.  1   |.  l   |.  |   |.  |.  1___|      |.  |   |.      |
+// |.  |___|.  _   |.  _   |.  _   |.  |___|.  |.  __)_ ______|.  |   |. \_/  |
+// |:  1   |:  |   |:  |   |:  |   |:  1   |:  |:  1   |______|:  1   |:  |   |
+// |::.. . |::.|:. |::.|:. |::.|:. |::.. . |::.|::.. . |       \:.. ./|::.|:. |
+// `-------`--- ---`--- ---`--- ---`-------`---`-------'        `---' `--- ---'
+//
+// (c) 2015 - 2025 Karsten Schmidt // MIT licensed
+
+// RepairBench adaptation: must be the FIRST import so the deterministic Math.random is
+// installed before the VM boots and before lib/math.fs can reach it through js@.
+import "./rb-determinism.js";
+
+import { Charlie } from "./vm.js";
+import { KERNEL } from "./kernel.js";
+import { REPL } from "./repl.js";
+
+Charlie.interpreter(KERNEL);
+
+new REPL(Charlie).start();

@@ -1,0 +1,64 @@
+<template>
+  <ChartPlaceholder v-if="isEmpty" />
+  <StackedLineChart v-else :data="data" />
+</template>
+
+<script lang="ts" setup>
+import StackedLineChart from './stacked-line-chart/StackedLineChart.vue';
+import ChartPlaceholder from '@components/feature/chart-placeholder/ChartPlaceholder.vue';
+import { useNumberFormatter } from '@composables/number-formatter/useNumberFormatter.ts';
+import { useSettingsStore } from '@store/settings';
+import { useDataStore } from '@store/state';
+import { totals } from '@store/state/utils/budgets';
+import { sum } from '@utils/array/array.ts';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { StackedLineChartConfig } from './stacked-line-chart/StackedLineChart.types';
+
+const props = defineProps<{
+  highlight?: 'income' | 'expenses';
+  percentages?: boolean;
+}>();
+
+const { t } = useI18n();
+const { n } = useNumberFormatter();
+const { state } = useDataStore();
+const { state: settings } = useSettingsStore();
+
+const allIncomes = computed(() => state.years.flatMap((v) => totals(v.income)));
+const allExpenses = computed(() => state.years.flatMap((v) => totals(v.expenses)));
+
+const isEmpty = computed(() => !sum(allIncomes.value) && !sum(allExpenses.value));
+
+const data = computed((): StackedLineChartConfig => {
+  const totalMonths = state.years.length * 12;
+
+  // valueFormatter isn't reactive, but we have to capture dependencies of n
+  void n(0);
+
+  return {
+    valueFormatter: (value) => n(value),
+    labels: Array.from({ length: totalMonths }, (_, i) => {
+      const year = Math.floor(i / 12) + state.years[0].year;
+      const month = ((i + settings.general.monthOffset) % 12) + 1;
+      return `${year}-${month.toString().padStart(2, '0')}`;
+    }),
+    series: [
+      {
+        name: t('page.dashboard.income'),
+        trendName: t('page.dashboard.allTime.incomeTrend'),
+        data: allIncomes.value,
+        color: 'var(--c-success-light-dimmed)',
+        muted: props.highlight === 'expenses'
+      },
+      {
+        name: t('page.dashboard.expenses'),
+        trendName: t('page.dashboard.allTime.expensesTrend'),
+        data: allExpenses.value,
+        color: 'var(--c-danger-light-dimmed)',
+        muted: props.highlight === 'income'
+      }
+    ]
+  };
+});
+</script>

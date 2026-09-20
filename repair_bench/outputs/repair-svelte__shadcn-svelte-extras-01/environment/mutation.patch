@@ -1,0 +1,140 @@
+diff --git a/src/lib/components/ui/meter/meter.svelte b/src/lib/components/ui/meter/meter.svelte
+--- a/src/lib/components/ui/meter/meter.svelte
++++ b/src/lib/components/ui/meter/meter.svelte
+@@ -23,6 +23,6 @@
+ >
+ 	<div
+ 		class="h-full w-full flex-1 bg-(--meter-background) transition-[color,transform]"
+-		style={`transform: translateX(-${100 - (100 * (value ?? 0)) / (max ?? 1)}%)`}
++		style={`transform: translateX(-${(100 * (value ?? 0)) / (max ?? 1)}%)`}
+ 	></div>
+ </MeterPrimitive.Root>
+diff --git a/src/lib/components/ui/number-field/number-field.svelte.ts b/src/lib/components/ui/number-field/number-field.svelte.ts
+--- a/src/lib/components/ui/number-field/number-field.svelte.ts
++++ b/src/lib/components/ui/number-field/number-field.svelte.ts
+@@ -36,7 +36,7 @@
+ 			this.rootState.opts.min?.current !== undefined &&
+ 			Number(value) < this.rootState.opts.min.current
+ 		) {
+-			this.rootState.opts.value.current = this.rootState.opts.min.current;
++			this.rootState.opts.value.current = this.rootState.opts.max.current;
+ 		}
+ 		if (
+ 			this.rootState.opts.max?.current !== undefined &&
+diff --git a/src/lib/components/ui/star-rating/star-rating-star.svelte b/src/lib/components/ui/star-rating/star-rating-star.svelte
+--- a/src/lib/components/ui/star-rating/star-rating-star.svelte
++++ b/src/lib/components/ui/star-rating/star-rating-star.svelte
+@@ -18,7 +18,7 @@
+ 	<div class="relative size-full">
+ 		<StarIcon
+ 			class={cn('size-full fill-transparent transition-all', {
+-				'fill-current': state === 'active'
++				'fill-current': state === 'partial'
+ 			})}
+ 		/>
+ 		<StarHalfIcon
+diff --git a/src/lib/components/ui/stepper/stepper.svelte.ts b/src/lib/components/ui/stepper/stepper.svelte.ts
+--- a/src/lib/components/ui/stepper/stepper.svelte.ts
++++ b/src/lib/components/ui/stepper/stepper.svelte.ts
+@@ -20,7 +20,7 @@
+ 	}
+ 
+ 	canIncrement = $derived.by(() => {
+-		return this.steps.length > this.opts.step.current;
++		return this.steps.length >= this.opts.step.current;
+ 	});
+ 
+ 	previous() {
+diff --git a/src/lib/components/ui/tags-input/tags-input.svelte b/src/lib/components/ui/tags-input/tags-input.svelte
+--- a/src/lib/components/ui/tags-input/tags-input.svelte
++++ b/src/lib/components/ui/tags-input/tags-input.svelte
+@@ -12,7 +12,7 @@
+ 		if (transformed.length === 0) return undefined;
+ 
+ 		// disallow duplicates
+-		if (tags.find((t) => transformed === t)) return undefined;
++		if (tags.find((t) => transformed !== t)) return undefined;
+ 
+ 		return transformed;
+ 	};
+@@ -57,7 +57,7 @@
+ 	const filteredSuggestions = $derived.by(() => {
+ 		if (!suggestions) return [];
+ 
+-		const available = suggestions.filter((s) => !value.includes(s));
++		const available = suggestions.filter((s) => value.includes(s));
+ 
+ 		if (inputValue.length === 0) return available;
+ 
+diff --git a/src/lib/components/ui/underline-tabs/underline-tabs.svelte.ts b/src/lib/components/ui/underline-tabs/underline-tabs.svelte.ts
+--- a/src/lib/components/ui/underline-tabs/underline-tabs.svelte.ts
++++ b/src/lib/components/ui/underline-tabs/underline-tabs.svelte.ts
+@@ -42,7 +42,7 @@
+ 	}
+ 
+ 	handleBlur() {
+-		if (this.rootState.hoveredTab === this.opts.value.current) {
++		if (this.rootState.hoveredTab !== this.opts.value.current) {
+ 			this.rootState.isHovered = false;
+ 		}
+ 	}
+diff --git a/src/lib/docs/api-reference/api-reference.svelte b/src/lib/docs/api-reference/api-reference.svelte
+--- a/src/lib/docs/api-reference/api-reference.svelte
++++ b/src/lib/docs/api-reference/api-reference.svelte
+@@ -11,7 +11,7 @@
+ 	let { reference: referenceProp }: { reference?: RefBundle } = $props();
+ 
+ 	function componentSlugFromPath(pathname: string): string | undefined {
+-		const m = pathname.match(/\/components\/([^/]+)/);
++		const m = pathname.match(/\/component\/([^/]+)/);
+ 		return m?.[1];
+ 	}
+ 
+diff --git a/src/lib/docs/api-reference/reference-table.svelte b/src/lib/docs/api-reference/reference-table.svelte
+--- a/src/lib/docs/api-reference/reference-table.svelte
++++ b/src/lib/docs/api-reference/reference-table.svelte
+@@ -50,7 +50,7 @@
+ 					</tr>
+ 				</thead>
+ 				<tbody>
+-					{#each Object.entries(component.props) as [prop, value] (prop)}
++					{#each Object.entries(component.props).slice(1) as [prop, value] (prop)}
+ 						{@const propValue = value as PropReference}
+ 						<tr class="bg-card border-border not-last:border-b">
+ 							<td class="text-foreground px-4 py-2 align-top">
+diff --git a/src/lib/hooks/use-frecency.svelte.ts b/src/lib/hooks/use-frecency.svelte.ts
+--- a/src/lib/hooks/use-frecency.svelte.ts
++++ b/src/lib/hooks/use-frecency.svelte.ts
+@@ -43,7 +43,7 @@
+ 
+ 				if (b!.uses > a!.uses) return 1;
+ 
+-				return a!.lastUsage - b!.lastUsage;
++				return b!.lastUsage - a!.lastUsage;
+ 			})
+ 			.slice(0, this.opts.maxItems)
+ 			.map(([key]) => key);
+diff --git a/src/lib/hooks/use-media.svelte.ts b/src/lib/hooks/use-media.svelte.ts
+--- a/src/lib/hooks/use-media.svelte.ts
++++ b/src/lib/hooks/use-media.svelte.ts
+@@ -23,7 +23,7 @@
+ 	const queries = {};
+ 
+ 	for (const [name, size] of Object.entries(breakpoints)) {
+-		const query = new MediaQuery(`min-width: ${size}`);
++		const query = new MediaQuery(`max-width: ${size}`);
+ 
+ 		Object.defineProperty(queries, name, {
+ 			get: () => query.current
+diff --git a/src/lib/hooks/use-promise.svelte.ts b/src/lib/hooks/use-promise.svelte.ts
+--- a/src/lib/hooks/use-promise.svelte.ts
++++ b/src/lib/hooks/use-promise.svelte.ts
+@@ -31,7 +31,7 @@
+ 
+ 	/** Returns the value of the resolved promise or the fallback value (if provided)*/
+ 	get current() {
+-		return this.#isResolved ? this.#resolvedValue : this.fallback;
++		return this.#isResolved ? this.fallback : this.#resolvedValue;
+ 	}
+ 
+ 	/** Returns true when the promise has been resolved */

@@ -1,0 +1,72 @@
+name: Build Desktop App Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      # PERF-022: Cache Neutralino binaries and downloaded CDN libraries
+      - name: Cache Neutralino binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            desktop-app/bin
+            desktop-app/resources/libs
+          key: neutralino-${{ hashFiles('desktop-app/neutralino.config.json') }}
+
+      - name: Setup Neutralinojs binaries
+        working-directory: desktop-app
+        run: npm run setup
+
+      - name: Build desktop bundles
+        working-directory: desktop-app
+        run: npm run build
+
+      - name: Stage release assets
+        working-directory: desktop-app
+        run: |
+          STAGING="release-assets"
+          mkdir -p "$STAGING"
+
+          # Publish every platform as a separate self-contained download.
+          EXPECTED_BINARIES=(
+            markdown-viewer-linux_arm64
+            markdown-viewer-linux_armhf
+            markdown-viewer-linux_x64
+            markdown-viewer-mac_arm64
+            markdown-viewer-mac_universal
+            markdown-viewer-mac_x64
+            markdown-viewer-win_x64.exe
+          )
+          for filename in "${EXPECTED_BINARIES[@]}"; do
+            test -f "dist/markdown-viewer/$filename"
+            cp "dist/markdown-viewer/$filename" "$STAGING/$filename"
+          done
+
+          # SHA256 checksums
+          cd "$STAGING"
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Markdown Viewer ${{ github.ref_name }}"
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: desktop-app/release-assets/*

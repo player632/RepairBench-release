@@ -1,0 +1,186 @@
+diff --git a/js/characters.js b/js/characters.js
+index dc3ff98..ae091f7 100644
+--- a/js/characters.js
++++ b/js/characters.js
+@@ -89,7 +89,7 @@ const specificEvents = () => {
+             textContainer.innerHTML += `<p>I started elementary school</p>`
+             break;
+ 
+-        case 13:
++        case 12:
+             player.currentEducation = 'highschool'
+             textContainer.innerHTML += `<p>I started highschool</p>`
+             break;
+@@ -118,8 +118,8 @@ const careerPreviewer = () => {
+ const skillLeveler = () => {
+     const levelChanger = (skill, newXpNeeded) =>{
+         player.skills[skill[0]].level++;
+-        player.skills[skill[0]].xpNeeded = newXpNeeded
+         player.skills[skill[0]].xp = player.skills[skill[0]].xp - player.skills[skill[0]].xpNeeded;  
++        player.skills[skill[0]].xpNeeded = newXpNeeded
+     }
+ 
+     let skills = player.skills;
+diff --git a/js/interface.js b/js/interface.js
+index c61f279..63c33fd 100644
+--- a/js/interface.js
++++ b/js/interface.js
+@@ -131,6 +131,7 @@ const annualChanges = () => {
+     if (Math.floor(Math.random() * 10) === 5)
+         textContainer.innerHTML += `<p>${worldEventsMethodArr[Math.floor(Math.random() * worldEventsAmount)][1]()}</p>`
+ 
++    player.money.total += player.money.income - player.money.expenses
+ 
+     // job related stats
+     if (player.job !== 'none') {
+@@ -156,7 +157,6 @@ const annualChanges = () => {
+ 
+     //displaying flow of money
+     moneyViewer()
+-    player.money.total += player.money.income - player.money.expenses
+ 
+     resetAvaibleActions()
+ 
+diff --git a/js/libs.js b/js/libs.js
+index 705b3c6..b53d202 100644
+--- a/js/libs.js
++++ b/js/libs.js
+@@ -174,7 +174,7 @@ const skillListifier = (player) => {
+     let defaultString = 'You do not have any skill'
+     let string = '';
+     for(let skill of Object.entries(skills)){
+-        if((skill[1].level !== 0 || skill[1].level === 0) &&
++        if(skill[1].level !== 0 || skill[1].level === 0 &&
+             skill[1].xp !== 0){
+                 string = string.concat(`
+                 <li>
+@@ -226,11 +226,14 @@ const cvListifier = (player) =>{
+ const lifeStageDisplayer = () => {
+     let headContainer = document.getElementById('head-container');
+     if (player.age < 18) {
++        headContainer.innerText = 'Childhood';
+         player.lifeStage = 'childhood';
+     } else if (player.age < 60) {
++        headContainer.innerText = 'Adulthood';
+         player.lifeStage = 'adulthood'
+     }
+     else {
++        headContainer.innerText = 'Elderhood';
+         player.lifeStage = 'elderhood'
+     }
+ }
+diff --git a/js/main.js b/js/main.js
+index 0393082..9cf19bb 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -9,11 +9,11 @@ class Person {
+         this.language = languageQuery(this.nationality)
+         this.name = name || nameRandomizer(this.language, this.gender);
+         this.surname = surname || surnameRandomizer(this.language);
+-        this.driverLicense = this.age > 18 ? true : false;
+         this.age = age || 0;
+         this.money.total = money ? money : 0;
+         this.location = location || birthplaceQuery(this.nationality)
+         this.birthplace = this.location
++        this.driverLicense = this.age > 18 ? true : false;
+     }
+ 
+     inventory = { weapons: [], instruments: [], electronics: [], houses: [], cars: []};
+diff --git a/js/menu.js b/js/menu.js
+index 66435f5..a2f3235 100644
+--- a/js/menu.js
++++ b/js/menu.js
+@@ -812,6 +812,12 @@ const windows = {
+ 
+             player.inventory[type].splice(parseInt(index), 1)
+ 
++            let i = 0
++            for (let item of player.inventory[type]) {
++                item.inventoryIndex = i;
++                i++
++            }
++
+             player.money.total += parseInt(price)
+             moneyViewer()
+         },
+@@ -1395,6 +1401,8 @@ const windows = {
+         },
+         friendly: {
+             spendTime(data) {
++                if (player.actions.friendlyActions >= 3) return
++
+                 player.actions.friendlyActions++
+                 const index = data.getAttribute('data-index');
+                 let person = characters[index];
+@@ -1817,6 +1825,19 @@ const windows = {
+         },
+         chooseCareer(payer, paidBy) {
+             eventTitle.innerText = 'Choose your career';
++            eventBody.innerHTML = `
++            <select id="career-selector">
++                <option value="medic">Medic</option>
++                <option value="computerScience">Computer Science</option>
++                <option value="biology">Biology</option>
++                <option value="chemistry">Chemistry</option>
++                <option value="history">History</option>
++                <option value="politicalScience">Political Science</option>
++                <option value="math">Math</option>
++            </select>
++            <div class="option" data-label="yes">Study</div>
++            <div class="option" data-label="no">I changed my mind</div>
++            `
+             for (let option of document.getElementsByClassName('option')) {
+                 option.addEventListener('click', e => {
+                     const decision = e.target.getAttribute('data-label')
+@@ -1840,19 +1861,6 @@ const windows = {
+                     }
+                 })
+             }
+-            eventBody.innerHTML = `
+-            <select id="career-selector">
+-                <option value="medic">Medic</option>
+-                <option value="computerScience">Computer Science</option>
+-                <option value="biology">Biology</option>
+-                <option value="chemistry">Chemistry</option>
+-                <option value="history">History</option>
+-                <option value="politicalScience">Political Science</option>
+-                <option value="math">Math</option>
+-            </select>
+-            <div class="option" data-label="yes">Study</div>
+-            <div class="option" data-label="no">I changed my mind</div>
+-            `
+         },
+         payByMyself() {
+             if (player.money.income >= 6000 || player.money.total >= 6000 * 5) {
+@@ -1946,7 +1954,7 @@ const windows = {
+             })
+         },
+         apply(index) {
+-            const job = jobs[index];
++            const job = Object.assign({}, jobs[index]);
+             const requirements = job.requirements
+             let requirementsCompleted = 0;
+             for (let requirement of Object.entries(requirements)) {
+@@ -2098,8 +2106,8 @@ const windows = {
+                 case 'reading':
+                     if (player.age < 8) return
+                     if (player.money.total < 200) return notEnoughMoney()
+-                    freetime.isReading ? button.style.float = 'right' : button.style.float = 'left'
+                     freetime.isReading ? freetime.isReading = false : freetime.isReading = true;
++                    freetime.isReading ? button.style.float = 'right' : button.style.float = 'left'
+                     freetime.isReading ? player.money.expenses += 200 : player.money.expenses -= 200
+                     break;
+                 case 'parties':
+diff --git a/styles.css b/styles.css
+index db703ed..46e3da0 100644
+--- a/styles.css
++++ b/styles.css
+@@ -40,7 +40,7 @@ hr {
+     height: 100%;
+     background-color: rgba(0, 0, 0, 0.3);
+     transition: all ease 0.5s;
+-    display: flex;
++    display: none;
+     align-items: center;
+     justify-content: center;
+     

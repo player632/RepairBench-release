@@ -1,0 +1,101 @@
+import { Component, inject, signal } from '@angular/core';
+import { email, form, FormField, FormRoot, minLength, required, validate } from '@angular/forms/signals';
+import { Router, RouterLink } from '@angular/router';
+import { TranslocoModule } from '@jsverse/transloco';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCard } from '@spartan-ng/helm/card';
+import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
+import { HlmFieldImports } from '@spartan-ng/helm/field';
+import { HlmInputImports } from '@spartan-ng/helm/input';
+import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
+import { HlmLabelImports } from '@spartan-ng/helm/label';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
+import { AuthLayout } from '../layout';
+
+@Component({
+  selector: 'adm-signup',
+  imports: [
+    HlmButtonImports,
+    NgIcon,
+    HlmFieldImports,
+    HlmInputImports,
+    HlmCheckboxImports,
+    HlmLabelImports,
+    HlmSpinnerImports,
+    HlmInputGroupImports,
+    FormField,
+    FormRoot,
+    TranslocoModule,
+    HlmCard,
+    RouterLink,
+    AuthLayout,
+  ],
+  providers: [
+    provideIcons({
+      lucideEye,
+      lucideEyeOff,
+    }),
+  ],
+  templateUrl: './signup.html',
+})
+export default class Signup {
+  // ==========================================
+  // Services
+  // ==========================================
+
+  private readonly _router = inject(Router);
+
+  // ==========================================
+  // State
+  // ==========================================
+
+  protected readonly showPassword = signal(false);
+  protected readonly showConfirmPassword = signal(false);
+  protected readonly passwordMinLength = 8;
+
+  protected readonly signupModel = signal({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+
+  protected readonly signupForm = form(
+    this.signupModel,
+    (schema) => {
+      required(schema.name);
+      required(schema.email);
+      email(schema.email);
+      required(schema.password);
+      minLength(schema.password, this.passwordMinLength);
+      required(schema.confirmPassword);
+      validate(schema.confirmPassword, ({ value, valueOf }) => {
+        const confirmPassword = value();
+        const password = valueOf(schema.password);
+        if (confirmPassword !== password) {
+          return {
+            kind: 'passwordMismatch',
+          };
+        }
+        return null;
+      });
+    },
+    {
+      submission: {
+        action: async () => this.onSignup(),
+      },
+    }
+  );
+
+  // ==========================================
+  // Private Methods
+  // ==========================================
+
+  async onSignup(): Promise<void> {
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    this._router.navigate(['/login']);
+  }
+}

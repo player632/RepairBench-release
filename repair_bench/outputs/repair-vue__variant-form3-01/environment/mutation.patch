@@ -1,0 +1,137 @@
+diff --git a/src/components/form-designer/designer.js b/src/components/form-designer/designer.js
+--- a/src/components/form-designer/designer.js
++++ b/src/components/form-designer/designer.js
+@@ -59,7 +59,7 @@
+ 
+       if (!!skipHistoryChange) {
+         //什么也不做！！
+-      } else if (!emptyWidgetListFlag) {
++      } else if (emptyWidgetListFlag) {
+         this.emitHistoryChange()
+       } else {
+         this.saveCurrentHistoryStep()
+@@ -893,7 +893,7 @@
+ 
+       this.saveFormContentToStorage()
+ 
+-      if (this.historyData.index < this.historyData.steps.length - 1) {
++      if (this.historyData.index > this.historyData.steps.length - 1) {
+         this.historyData.steps = this.historyData.steps.slice(0, this.historyData.index + 1)
+       }
+     },
+diff --git a/src/components/form-designer/form-widget/field-widget/form-item-wrapper.vue b/src/components/form-designer/form-widget/field-widget/form-item-wrapper.vue
+--- a/src/components/form-designer/form-widget/field-widget/form-item-wrapper.vue
++++ b/src/components/form-designer/form-widget/field-widget/form-item-wrapper.vue
+@@ -195,7 +195,7 @@
+               nextSelected = this.parentWidget
+             }
+           } else if (this.parentList.length === (1 + this.indexOfParentList)) {
+-            nextSelected = this.parentList[this.indexOfParentList - 1]
++            nextSelected = this.parentList[this.indexOfParentList + 1]
+           } else {
+             nextSelected = this.parentList[this.indexOfParentList + 1]
+           }
+diff --git a/src/components/form-designer/setting-panel/index.vue b/src/components/form-designer/setting-panel/index.vue
+--- a/src/components/form-designer/setting-panel/index.vue
++++ b/src/components/form-designer/setting-panel/index.vue
+@@ -195,7 +195,7 @@
+       })
+     },
+     mounted() {
+-      if (!this.designer.selectedWidget) {
++      if (this.designer.selectedWidget) {
+         this.activeTab = "2"
+       } else {
+         this.activeTab = "1"
+diff --git a/src/components/form-designer/setting-panel/option-items-setting.vue b/src/components/form-designer/setting-panel/option-items-setting.vue
+--- a/src/components/form-designer/setting-panel/option-items-setting.vue
++++ b/src/components/form-designer/setting-panel/option-items-setting.vue
+@@ -45,7 +45,7 @@
+       <el-button link type="primary" @click="resetDefault">{{i18nt('designer.setting.resetDefault')}}</el-button>
+     </div>
+ 
+-    <div v-if="(selectedWidget.type === 'radio') || (selectedWidget.type === 'checkbox') || (selectedWidget.type === 'select')">
++    <div v-if="(selectedWidget.type === 'radio') || (selectedWidget.type === 'checkbox')">
+       <el-button link type="primary" @click="addOption">{{i18nt('designer.setting.addOption')}}</el-button>
+       <el-button link type="primary" @click="importOptions">{{i18nt('designer.setting.importOptions')}}</el-button>
+       <el-button link type="primary" @click="resetDefault">{{i18nt('designer.setting.resetDefault')}}</el-button>
+@@ -164,7 +164,7 @@
+       saveOptions() {
+         let lineArray = this.optionLines.split('\n')
+         //console.log('test', lineArray)
+-        if (lineArray.length > 0) {
++        if (lineArray.length > 1) {
+           this.optionModel.optionItems = []
+           lineArray.forEach((optLine) => {
+             if (!!optLine && !!optLine.trim()) {
+diff --git a/src/components/form-designer/setting-panel/property-editor/name-editor.vue b/src/components/form-designer/setting-panel/property-editor/name-editor.vue
+--- a/src/components/form-designer/setting-panel/property-editor/name-editor.vue
++++ b/src/components/form-designer/setting-panel/property-editor/name-editor.vue
+@@ -61,7 +61,7 @@
+ 
+         if (!!this.designer.formWidget) {
+           let foundRef = this.designer.formWidget.getWidgetRef(newName) // 检查newName是否已存在！！
+-          if (!!foundRef) {
++          if (!foundRef) {
+             this.selectedWidget.options.name = oldName
+             this.$message.info(this.i18nt('designer.hint.duplicateName') + newName)
+             return
+diff --git a/src/components/form-designer/toolbar-panel/index.vue b/src/components/form-designer/toolbar-panel/index.vue
+--- a/src/components/form-designer/toolbar-panel/index.vue
++++ b/src/components/form-designer/toolbar-panel/index.vue
+@@ -343,7 +343,7 @@
+         }
+         treeNode.push(curNode)
+ 
+-        if (widget.category === undefined) {
++        if (widget.category !== undefined) {
+           return
+         }
+ 
+diff --git a/src/components/form-designer/widget-panel/index.vue b/src/components/form-designer/widget-panel/index.vue
+--- a/src/components/form-designer/widget-panel/index.vue
++++ b/src/components/form-designer/widget-panel/index.vue
+@@ -183,7 +183,7 @@
+             displayName: this.i18n2t(`designer.widgetLabel.${con.type}`, `extension.widgetLabel.${con.type}`)
+           }
+         }).filter(con => {
+-          return !con.internal && !this.isBanned(con.type)
++          return !this.isBanned(con.type)
+         })
+ 
+         this.basicFields = BFS.map(fld => {
+diff --git a/src/components/form-render/index.vue b/src/components/form-render/index.vue
+--- a/src/components/form-render/index.vue
++++ b/src/components/form-render/index.vue
+@@ -169,10 +169,6 @@
+       },
+ 
+       getContainerWidgetName(widget) {
+-        if (widget.type === 'grid') {  //grid-item跟VueGridLayout全局注册组件重名，故特殊处理！！
+-          return 'vf-grid-item'
+-        }
+-
+         return widget.type + '-item'
+       },
+ 
+diff --git a/src/utils/util.js b/src/utils/util.js
+--- a/src/utils/util.js
++++ b/src/utils/util.js
+@@ -33,7 +33,7 @@
+   // }
+ 
+   Object.keys(obj2).forEach(prop => {
+-    obj1[prop] = obj2[prop]
++    obj2[prop] = obj1[prop]
+   })
+ }
+ 
+@@ -66,7 +66,7 @@
+ export const insertCustomCssToHead = function (cssCode, formId = '') {
+   let head = document.getElementsByTagName('head')[0]
+   let oldStyle = document.getElementById('vform-custom-css')
+-  if (!!oldStyle) {
++  if (!!oldStyle && !!formId) {
+     head.removeChild(oldStyle)  //先清除后插入！！
+   }
+   if (!!formId) {

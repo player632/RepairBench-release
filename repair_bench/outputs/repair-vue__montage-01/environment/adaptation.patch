@@ -1,0 +1,171 @@
+diff --git a/index.html b/index.html
+index 78b0dd6..2c009c6 100644
+--- a/index.html
++++ b/index.html
+@@ -4,10 +4,6 @@
+     <meta charset="UTF-8" />
+     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-    <link
+-      href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css"
+-      rel="stylesheet"
+-    />
+     <title>Montage</title>
+   </head>
+   <body>
+diff --git a/src/components/dashboard/layout/layout.vue b/src/components/dashboard/layout/layout.vue
+index 909cf9d..1eda547 100644
+--- a/src/components/dashboard/layout/layout.vue
++++ b/src/components/dashboard/layout/layout.vue
+@@ -208,7 +208,7 @@
+ 
+ <script lang="ts" setup>
+ import { SelectItem } from "@/models/common";
+-import { FontItem, FontResponse } from "@/models/font";
++import { FontItem } from "@/models/font";
+ import { useDashboardStore } from "@/store/dashboard";
+ import {
+   ALIGN_OPTIONS,
+@@ -216,12 +216,11 @@ import {
+   CANVAS_PRESET_OPTIONS_DIMENSIONS
+ } from "@/utils/constants";
+ import { onKeyDown } from "@vueuse/core";
+-import axios from "axios";
++import { LOCAL_FONTS } from "@/fixtures/fonts";
+ import { DegreePicker } from "degree-picker";
+ import "degree-picker/dist/style.css";
+ import { storeToRefs } from "pinia";
+ import { computed, onMounted, reactive, watch } from "vue";
+-import WebFont from "webfontloader";
+ 
+ interface State {
+   color: string;
+@@ -332,18 +331,8 @@ onKeyDown(["ArrowDown", "ArrowUp"], ({ code }: KeyboardEvent) => {
+   }
+ });
+ 
+-onMounted(async () => {
+-  const { data } = await axios.get<FontResponse>(
+-    `https://www.googleapis.com/webfonts/v1/webfonts?key=${
+-      import.meta.env.VITE_GOOGLE_FONTS_API_KEY
+-    }&sort=alpha`
+-  );
+-  state.fonts = data.items.slice(0, 25);
+-  WebFont.load({
+-    google: {
+-      families: state.fonts.map((f) => f.family)
+-    }
+-  });
++onMounted(() => {
++  state.fonts = LOCAL_FONTS.slice(0, 25);
+ });
+ </script>
+ 
+diff --git a/src/components/dashboard/sidebar/tabs/text.vue b/src/components/dashboard/sidebar/tabs/text.vue
+index b235c3f..52d228d 100644
+--- a/src/components/dashboard/sidebar/tabs/text.vue
++++ b/src/components/dashboard/sidebar/tabs/text.vue
+@@ -126,8 +126,6 @@
+ import { AssetEvent } from "@/models/common";
+ import { LAYER_TYPE } from "@/utils/constants";
+ import { useEventBus } from "@vueuse/core";
+-import { onMounted } from "vue";
+-import WebFont from "webfontloader";
+ 
+ const { emit } = useEventBus<AssetEvent>("asset");
+ 
+@@ -139,16 +137,6 @@ const TEXT_ITEMS: Record<string, string[]> = {
+   display: ["Lobster", "Bebas Neue", "Titan One"]
+ };
+ 
+-onMounted(() => {
+-  Object.keys(TEXT_ITEMS).forEach((type) => {
+-    const fonts = TEXT_ITEMS[type];
+-    WebFont.load({
+-      google: {
+-        families: fonts
+-      }
+-    });
+-  });
+-});
+ </script>
+ 
+ <style scoped>
+diff --git a/src/env.d.ts b/src/env.d.ts
+index 5c6aa16..ab8b619 100644
+--- a/src/env.d.ts
++++ b/src/env.d.ts
+@@ -1,7 +1,6 @@
+ /// <reference types="vite/client" />
+ 
+ interface ImportMetaEnv {
+-  readonly VITE_GOOGLE_FONTS_API_KEY: string;
+ }
+ 
+ interface ImportMeta {
+diff --git a/src/fixtures/fonts.ts b/src/fixtures/fonts.ts
+new file mode 100644
+index 0000000..11f1af9
+--- /dev/null
++++ b/src/fixtures/fonts.ts
+@@ -0,0 +1,35 @@
++import { FontItem } from "@/models/font";
++
++// Offline stand-in for the removed remote font-listing call. The families below
++// are exactly the ones this repository already names in
++// src/components/dashboard/sidebar/tabs/text.vue (TEXT_ITEMS), so the fixture
++// introduces no data the tree did not already carry, and the listing stays
++// deterministic across runs and machines.
++const FAMILIES: string[] = [
++  "Roboto",
++  "Montserrat",
++  "Poppins",
++  "Playfair Display",
++  "Merriweather",
++  "IBM Plex Serif",
++  "Roboto Mono",
++  "Inconsolata",
++  "Source Code Pro",
++  "Dancing Script",
++  "Pacifico",
++  "Indie Flower",
++  "Lobster",
++  "Bebas Neue",
++  "Titan One"
++];
++
++export const LOCAL_FONTS: FontItem[] = FAMILIES.map((family) => ({
++  family,
++  variants: ["regular"],
++  subsets: ["latin"],
++  version: "local",
++  lastModified: "1970-01-01",
++  files: {},
++  category: "local",
++  kind: "local#font"
++}));
+diff --git a/src/main.ts b/src/main.ts
+index 36a8556..3134f39 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -2,7 +2,6 @@ import FloatingVue from "floating-vue";
+ import { createPinia } from "pinia";
+ import { createApp } from "vue";
+ import { createI18n } from "vue-i18n";
+-import WebFont from "webfontloader";
+ import App from "./App.vue";
+ import en from "./i18n/en";
+ import hr from "./i18n/hr";
+@@ -23,12 +22,6 @@ const i18n = createI18n({
+ const pinia = createPinia();
+ const app = createApp(App);
+ 
+-WebFont.load({
+-  google: {
+-    families: ["Roboto"]
+-  }
+-});
+-
+ // Vuetify
+ import { createVuetify } from "vuetify";
+ import * as components from "vuetify/components";

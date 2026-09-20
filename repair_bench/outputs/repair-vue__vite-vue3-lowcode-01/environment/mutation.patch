@@ -1,0 +1,144 @@
+diff --git a/src/visual-editor/components/left-aside/index.vue b/src/visual-editor/components/left-aside/index.vue
+index fe21b29cbea8e5a6bc7b04e5a220f8a36b322477..574edb5 100644
+--- a/src/visual-editor/components/left-aside/index.vue
++++ b/src/visual-editor/components/left-aside/index.vue
+@@ -38,7 +38,7 @@
+       const { label, icon, order } = component;
+       return { label, icon, name, order, comp: component };
+     })
+-    .sort((a, b) => a.order - b.order);
++    .sort((a, b) => b.order - a.order);
+ 
+   const activeName = ref(tabs[0].name);
+ </script>
+diff --git a/src/visual-editor/components/left-aside/components/page-tree/index.vue b/src/visual-editor/components/left-aside/components/page-tree/index.vue
+index 6371478a2b7eb3dc62f762d7afb1e9d096267aa8..6e8f2dd 100644
+--- a/src/visual-editor/components/left-aside/components/page-tree/index.vue
++++ b/src/visual-editor/components/left-aside/components/page-tree/index.vue
+@@ -89,7 +89,7 @@
+   // 所有的页面
+   const pages = computed(() =>
+     Object.keys(jsonData.pages).map((key) => ({
+-      title: jsonData.pages[key].title,
++      title: key,
+       path: key,
+     })),
+   );
+diff --git a/src/visual-editor/hooks/useVisualData.ts b/src/visual-editor/hooks/useVisualData.ts
+index f5f3724355a7355bf32523ab55f84e20dc2cfeb2..c75317f 100644
+--- a/src/visual-editor/hooks/useVisualData.ts
++++ b/src/visual-editor/hooks/useVisualData.ts
+@@ -75,7 +75,7 @@
+ 
+   console.log('jsonData：', jsonData);
+   // 所有页面的path都必须以 / 开发
+-  const getPrefixPath = (path: string) => (path.startsWith('/') ? path : `/${path}`);
++  const getPrefixPath = (path: string) => `/${path}`;
+ 
+   const currentPage = jsonData.pages[route.path];
+ 
+@@ -129,7 +129,7 @@
+       state.currentPage = jsonData.pages['/'];
+       router.replace('/');
+     }
+-    const currentFocusBlock = state.currentPage.blocks.find((item) => item.focus);
++    const currentFocusBlock = state.currentPage.blocks.find((item) => item.focusWithChild);
+     setCurrentBlock(currentFocusBlock ?? ({} as VisualEditorBlockData));
+   };
+ 
+diff --git a/src/visual-editor/components/simulator-editor/simulator-editor.vue b/src/visual-editor/components/simulator-editor/simulator-editor.vue
+index dec16f3053283e3953ef8871697b1b3e32ed5544..d09c172 100644
+--- a/src/visual-editor/components/simulator-editor/simulator-editor.vue
++++ b/src/visual-editor/components/simulator-editor/simulator-editor.vue
+@@ -107,7 +107,7 @@
+     path: VisualEditorBlockData[] = [],
+   ) => {
+     for (let i = 0; i < nodes.length; i++) {
+-      const tmpPath = path.concat();
++      const tmpPath = path;
+       tmpPath.push(nodes[i]);
+       if (leafId == nodes[i]._vid) {
+         return tmpPath;
+@@ -152,7 +152,7 @@
+     currentPage.value.blocks.forEach((block) => {
+       block.focus = element._vid == block._vid;
+       block.focusWithChild = false;
+-      handleSlotsFocus(block, element._vid);
++      handleSlotsFocus(block, block._vid);
+       element.focusWithChild = false;
+     });
+   };
+@@ -167,7 +167,7 @@
+       delete globalProperties.$$refs[parentBlocks[index]._vid];
+       const delTarget = parentBlocks.splice(index, 1)[0];
+       if (delTarget.focus) {
+-        setCurrentBlock({} as VisualEditorBlockData);
++        setCurrentBlock(delTarget);
+       }
+     }
+   };
+diff --git a/src/visual-editor/components/right-attribute-panel/index.tsx b/src/visual-editor/components/right-attribute-panel/index.tsx
+index 393a171674a7e859e9c927749add13457cdde068..ae6dbd8 100644
+--- a/src/visual-editor/components/right-attribute-panel/index.tsx
++++ b/src/visual-editor/components/right-attribute-panel/index.tsx
+@@ -56,7 +56,7 @@
+               <ElTabPane label="事件" name="events">
+                 <EventAction />
+               </ElTabPane>
+-              {currentBlock.value.label?.startsWith('表单') ? (
++              {currentBlock.value.label === '表单容器' ? (
+                 <ElTabPane label="规则" name="form-rule" lazy>
+                   <FormRule />
+                 </ElTabPane>
+diff --git a/src/visual-editor/components/right-attribute-panel/components/page-setting/pageSetting.tsx b/src/visual-editor/components/right-attribute-panel/components/page-setting/pageSetting.tsx
+index eef986c2c29e37595af30fe473357bc617330012..54e35e2 100644
+--- a/src/visual-editor/components/right-attribute-panel/components/page-setting/pageSetting.tsx
++++ b/src/visual-editor/components/right-attribute-panel/components/page-setting/pageSetting.tsx
+@@ -16,7 +16,7 @@
+   setup() {
+     const { currentPage } = useVisualData();
+ 
+-    const pageConfig = currentPage.value.config;
++    const pageConfig = { ...currentPage.value.config };
+ 
+     const beforeUpload = (file: File) => {
+       console.log(file, '要上传的文件');
+diff --git a/src/visual-editor/components/right-attribute-panel/components/attr-editor/index.tsx b/src/visual-editor/components/right-attribute-panel/components/attr-editor/index.tsx
+index e6c926de25ba6398af13eaf023e1d2b093796d1a..297e713 100644
+--- a/src/visual-editor/components/right-attribute-panel/components/attr-editor/index.tsx
++++ b/src/visual-editor/components/right-attribute-panel/components/attr-editor/index.tsx
+@@ -84,7 +84,7 @@
+                   <ElFormItem label={'组件对齐方式'} labelWidth={'90px'}>
+                     <ElRadioGroup v-model={currentBlock.value.styles.justifyContent}>
+                       <ElRadioButton label="flex-start">{'左对齐'}</ElRadioButton>
+-                      <ElRadioButton label="center">{'居中'}</ElRadioButton>
++                      <ElRadioButton label="middle">{'居中'}</ElRadioButton>
+                       <ElRadioButton label="flex-end">{'右对齐'}</ElRadioButton>
+                     </ElRadioGroup>
+                   </ElFormItem>,
+diff --git a/src/visual-editor/components/left-aside/components/data-source/data-model.vue b/src/visual-editor/components/left-aside/components/data-source/data-model.vue
+index e55a1ab8848dd01de745749b035746e3f7a8fafc..29fc1f7 100644
+--- a/src/visual-editor/components/left-aside/components/data-source/data-model.vue
++++ b/src/visual-editor/components/left-aside/components/data-source/data-model.vue
+@@ -80,7 +80,7 @@
+   /**
+    * @description 模型集合
+    */
+-  const models = computed(() => cloneDeep(jsonData.models));
++  const models = computed(() => cloneDeep(jsonData.models).reverse());
+ 
+   /**
+    * @description 是否处于编辑状态
+diff --git a/src/packages/base-widgets/text/index.tsx b/src/packages/base-widgets/text/index.tsx
+index d3e9ef254b35a9236918f1f3f40e59e6c9079ab2..f8d91bd 100644
+--- a/src/packages/base-widgets/text/index.tsx
++++ b/src/packages/base-widgets/text/index.tsx
+@@ -34,7 +34,7 @@
+           ...styles,
+         }}
+       >
+-        {props.text || '默认文本'}
++        {props.text && '默认文本'}
+       </div>
+     );
+   },

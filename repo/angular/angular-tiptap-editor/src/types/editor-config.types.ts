@@ -1,0 +1,58 @@
+import { AteAutofocusMode, AteBlockControlsMode } from "angular-tiptap-editor";
+
+export interface ConfigItem {
+  key: string;
+  label: string;
+  icon: string;
+}
+
+export type ActivePanel = "none" | "config" | "theme";
+
+export interface EditorState {
+  showSidebar: boolean;
+  showCodeMode: boolean;
+  isTransitioning: boolean;
+  showToolbar: boolean;
+  showFooter: boolean;
+  showBubbleMenu: boolean;
+  showCharacterCount: boolean;
+  showWordCount: boolean;
+  showImageBubbleMenu: boolean;
+  showTableBubbleMenu: boolean;
+  showCellBubbleMenu: boolean;
+  enableSlashCommands: boolean;
+  placeholder: string;
+  locale?: string;
+  // Height configuration
+  minHeight?: number;
+  height?: number;
+  maxHeight?: number;
+  fillContainer: boolean;
+  // Autofocus configuration
+  autofocus: AteAutofocusMode;
+  maxCharacters?: number;
+  // Theme
+  darkMode: boolean;
+  // Active panel
+  activePanel: ActivePanel;
+  showInspector: boolean;
+  enableTaskExtension: boolean;
+  editable: boolean;
+  seamless: boolean;
+  notionMode: boolean;
+  floatingToolbar: boolean;
+  disabled: boolean;
+  showEditToggle: boolean;
+  blockControls: AteBlockControlsMode;
+}
+
+export interface MenuState {
+  showToolbarMenu: boolean;
+  showBubbleMenuMenu: boolean;
+  showSlashCommandsMenu: boolean;
+  showHeightMenu: boolean;
+}
+
+export interface EditorContent {
+  content: string;
+}

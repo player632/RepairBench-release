@@ -1,0 +1,519 @@
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+index 0000000..53753b7
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,487 @@
++// src/rbProbe.ts - RepairBench read-only observation probe (added by environment/instrumentation.patch).
++//
++// Contract:
++//  * every member is a PURE READ of DOM text / DOM structure / storage and returns a deterministic
++//    STRING (or an explicit __SENTINEL__ string when the thing it looks for is absent);
++//  * it never mutates application state, never writes storage, never adds a data-testid attribute,
++//    and never calls getComputedStyle()/getBoundingClientRect() - so no reading can drift with an
++//    animation phase or with layout;
++//  * the only writes it performs are element.click()/dispatchEvent() drives that the dsl asks for
++//    explicitly (fire()), i.e. exactly what a user's mouse would do;
++//  * 0 new npm imports (the seed's pnpm layout is isolated - node_modules top level has 55 entries -
++//    so a new bare import would be a CONFIG_PHANTOM_DEP risk). This file imports nothing at all.
++//  * published once as window.__rb from src/main.ts before app.mount().
++
++const NF = '__NOTFOUND__'
++const NONE = '__NONE__'
++const NOPAGER = '__NOPAGER__'
++
++function norm(value: unknown): string {
++  return String(value === null || value === undefined ? '' : value).replace(/\s+/g, ' ').trim()
++}
++
++function all(selector: string, root?: Element | null): Element[] {
++  const base: ParentNode = root === undefined || root === null ? document : root
++  return Array.prototype.slice.call(base.querySelectorAll(selector)) as Element[]
++}
++
++function textOf(el: Element | null): string {
++  return el === null ? NF : norm(el.textContent)
++}
++
++function joinTexts(els: Element[]): string {
++  return els.length === 0 ? NONE : els.map(el => norm(el.textContent)).join('|')
++}
++
++function byText(selector: string, needle: string, root?: Element | null): Element | null {
++  const want = norm(needle)
++  const els = all(selector, root)
++  for (const el of els) {
++    if (norm(el.textContent) === want)
++      return el
++  }
++  for (const el of els) {
++    if (norm(el.textContent).indexOf(want) >= 0)
++      return el
++  }
++  return null
++}
++
++function attr(el: Element | null, name: string): string {
++  if (el === null)
++    return NF
++  const v = el.getAttribute(name)
++  return v === null ? NONE : norm(v)
++}
++
++// Drive an element the way a mouse would: reka-ui (the Radix port this seed uses) binds some
++// interactions on pointer events and some on click, so dispatch the whole sequence. Never throws.
++function fire(el: Element | null): string {
++  if (el === null)
++    return NF
++  const kinds = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']
++  for (const kind of kinds) {
++    const init: PointerEventInit = {
++      bubbles: true,
++      cancelable: true,
++      composed: true,
++      view: window,
++      button: 0,
++      buttons: kind === 'pointerdown' || kind === 'mousedown' ? 1 : 0,
++    }
++    const ev = kind.indexOf('pointer') === 0 ? new PointerEvent(kind, init) : new MouseEvent(kind, init)
++    el.dispatchEvent(ev)
++  }
++  return 'fired'
++}
++
++function isDisabled(el: Element): string {
++  const html = el as HTMLButtonElement
++  if (html.disabled === true || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'))
++    return '1'
++  return '0'
++}
++
++function tableHeaderIndex(headerText: string): number {
++  const ths = all('table thead th')
++  const want = norm(headerText)
++  for (let i = 0; i < ths.length; i++) {
++    if (norm(ths[i].textContent) === want)
++      return i
++  }
++  return -1
++}
++
++function bodyRows(): Element[] {
++  return all('table tbody tr').filter(tr => all('td', tr).length > 1)
++}
++
++function facetTrigger(title: string): Element | null {
++  const want = norm(title)
++  // the column-header sort button carries the same word (Status/Priority) but lives inside <table>;
++  // the faceted-filter trigger lives in the toolbar, so exclude anything under a table.
++  const cand = all('button').filter(b => b.closest('table') === null && norm(b.textContent).indexOf(want) === 0)
++  for (const b of cand) {
++    if (b.classList.contains('border-dashed'))
++      return b
++  }
++  return cand.length === 0 ? null : cand[0]
++}
++
++function openPopoverContent(): Element | null {
++  const cs = all('[data-slot="popover-content"]')
++  return cs.length === 0 ? null : cs[cs.length - 1]
++}
++
++function openMenuContent(): Element | null {
++  const cs = all('[data-slot="dropdown-menu-content"]')
++  return cs.length === 0 ? null : cs[cs.length - 1]
++}
++
++function dialogContent(): Element | null {
++  const ds = all('[data-slot="dialog-content"]')
++  return ds.length === 0 ? null : ds[ds.length - 1]
++}
++
++function headerRight(): Element | null {
++  const h = document.querySelector('header')
++  if (h === null)
++    return null
++  return h.querySelector('div.ml-auto')
++}
++
++export function installRbProbe(): void {
++  const rb = {
++    version: 'rb-probe-shadcn-vue-admin-r38a',
++
++    boot: {
++      // '1' once #app has rendered something; the per-checkpoint latch precondition ANDs this with
++      // a checkpoint-specific element check, so a Suspense fallback can never be latched as ready.
++      ready(): string {
++        const app = document.getElementById('app')
++        if (app === null || app.childElementCount === 0)
++          return '0'
++        return norm(document.body.textContent).length > 0 ? '1' : '0'
++      },
++    },
++
++    route: {
++      path(): string {
++        return norm(location.pathname)
++      },
++      fullPath(): string {
++        return norm(location.pathname + location.search)
++      },
++    },
++
++    header: {
++      searchText(): string {
++        const h = document.querySelector('header')
++        if (h === null)
++          return NF
++        return textOf(h.querySelector('div.cursor-pointer span.text-xs'))
++      },
++      openLang(): string {
++        const box = headerRight()
++        return fire(box === null ? null : box.querySelector('button[aria-label="Change language"]'))
++      },
++      openThemePopover(): string {
++        const box = headerRight()
++        return fire(box === null ? null : box.querySelector('[data-slot="popover-trigger"]'))
++      },
++      openCommandMenu(): string {
++        const h = document.querySelector('header')
++        return fire(h === null ? null : h.querySelector('div.cursor-pointer'))
++      },
++    },
++
++    i18n: {
++      locale(): string {
++        const v = localStorage.getItem('app-locale')
++        return v === null ? NONE : norm(v)
++      },
++      localeAndSearch(): string {
++        const h = document.querySelector('header')
++        const s = h === null ? NF : textOf(h.querySelector('div.cursor-pointer span.text-xs'))
++        const v = localStorage.getItem('app-locale')
++        return (v === null ? NONE : norm(v)) + '|' + s
++      },
++    },
++
++    theme: {
++      radiusVar(): string {
++        const v = document.documentElement.style.getPropertyValue('--radius')
++        return norm(v) === '' ? NONE : norm(v)
++      },
++      htmlThemeClass(): string {
++        const cs = document.documentElement.classList
++        for (let i = 0; i < cs.length; i++) {
++          if (cs[i].indexOf('theme-') === 0)
++            return cs[i]
++        }
++        return NONE
++      },
++      colorModeLabels(): string {
++        const c = openPopoverContent()
++        if (c === null)
++          return NF
++        const btns = all('button', c).filter(b => {
++          const t = norm(b.textContent)
++          return t === 'light' || t === 'dark' || t === 'auto'
++        })
++        return joinTexts(btns)
++      },
++      highlightedModes(): string {
++        const c = openPopoverContent()
++        if (c === null)
++          return NF
++        const btns = all('button', c).filter(b => {
++          const t = norm(b.textContent)
++          return (t === 'light' || t === 'dark' || t === 'auto') && b.classList.contains('border-2')
++        })
++        return joinTexts(btns)
++      },
++    },
++
++    sidebar: {
++      teamHeader(): string {
++        const box = document.querySelector('[data-slot="sidebar-header"]')
++        if (box === null)
++          return NF
++        const name = box.querySelector('span[class~="font-semibold"][class~="truncate"]')
++        const plan = box.querySelector('span[class~="text-xs"][class~="truncate"]')
++        return textOf(name) + '|' + textOf(plan)
++      },
++      openTeamMenu(): string {
++        const box = document.querySelector('[data-slot="sidebar-header"]')
++        return fire(box === null ? null : box.querySelector('[data-slot="dropdown-menu-trigger"], button'))
++      },
++      teamMenuNames(): string {
++        const c = openMenuContent()
++        if (c === null)
++          return NF
++        const items = all('[data-slot="dropdown-menu-item"]', c).filter(i => norm(i.textContent) !== 'Add team')
++        return joinTexts(items)
++      },
++      pickTeam(needle: string): string {
++        const c = openMenuContent()
++        if (c === null)
++          return NF
++        return fire(byText('[data-slot="dropdown-menu-item"]', needle, c))
++      },
++    },
++
++    cmd: {
++      optionTexts(): string {
++        return joinTexts(all('[data-slot="command-item"]'))
++      },
++      firstOptions(n: number): string {
++        const want = Number(n) || 0
++        return joinTexts(all('[data-slot="command-item"]').slice(0, want))
++      },
++      clickOption(needle: string): string {
++        return fire(byText('[data-slot="command-item"]', needle))
++      },
++    },
++
++    menu: {
++      radioTexts(): string {
++        const c = openMenuContent()
++        return c === null ? NF : joinTexts(all('[data-slot="dropdown-menu-radio-item"]', c))
++      },
++      clickRadio(needle: string): string {
++        const c = openMenuContent()
++        if (c === null)
++          return NF
++        return fire(byText('[data-slot="dropdown-menu-radio-item"]', needle, c))
++      },
++      checkboxTexts(): string {
++        const c = openMenuContent()
++        return c === null ? NF : joinTexts(all('[data-slot="dropdown-menu-checkbox-item"]', c))
++      },
++    },
++
++    dt: {
++      pagerSummary(): string {
++        // scoped, because the latch sampler re-reads this every 40 ms: the pagination summary div is
++        // the w-[100px] cell of the pager bar, and every candidate carries the text-sm token.
++        //
++        // DataTable passes `rowCount: computed(() => props.serverPagination?.rowCount)`
++        // (src/components/data-table/data-table.vue:36) while src/pages/tasks/index.vue:36 supplies no
++        // `:serverPagination`, so on the CLEAN tree an unpaged row count reaches getPageCount() as a
++        // non-number and the summary renders "Page 1 of NaN"; the forward button pair is permanently
++        // disabled for the same reason. MEASURED, not derived - leg r38g clean arm, F01 actual
++        // "1|__NOPAGER__" (a full /^Page \d+ of \d+$/ match cannot match NaN) and F02 actual
++        // "1|next=disabled|last=disabled". Asserting a total-page count would therefore either be red
++        // on clean or would canonise the seed's own upstream bug as correct behaviour, so this probe
++        // asserts only that the pager bar exists and that the current page number is 1. NaN is never
++        // written into an expected value.
++        for (const sel of ['div[class~="w-[100px]"]', 'div[class~="text-sm"]']) {
++          for (const d of all(sel)) {
++            const t = norm(d.textContent)
++            const m = /^Page (-?\d+) of /.exec(t)
++            if (m !== null)
++              return 'page=' + m[1]
++          }
++        }
++        return NOPAGER
++      },
++      pagerButtons(): string {
++        //
++        // twice in src/components/data-table/table-pagination.vue (:62 first page, :71 previous page),
++        // so canPreviousPage is the one pager boolean whose truth value is decided by pageIndex alone:
++        // independent of getPageCount() and therefore immune to this seed's NaN page count, independent
++        // of the UA, and independent of any gesture. Clean page 1 => both disabled; the D02 polarity
++        // inversion => both enabled. isDisabled() is deliberately NOT changed: it reads the disabled
++        // attribute / aria-disabled / data-disabled, and the first button also carries
++        // `hidden ... lg:flex`, but visual hiding is not a disabled state, so it stays readable.
++        const sr = all('span.sr-only')
++        let first: Element | null = null
++        let prev: Element | null = null
++        for (const s of sr) {
++          const t = norm(s.textContent)
++          if (t === 'Go to first page')
++            first = s.closest('button')
++          else if (t === 'Go to previous page')
++            prev = s.closest('button')
++        }
++        if (first === null || prev === null)
++          return NOPAGER
++        return 'first=' + (isDisabled(first) === '1' ? 'disabled' : 'enabled')
++          + '|prev=' + (isDisabled(prev) === '1' ? 'disabled' : 'enabled')
++      },
++      rowCount(): string {
++        return String(bodyRows().length)
++      },
++      headerLabels(): string {
++        return joinTexts(all('table thead th').filter(th => norm(th.textContent) !== ''))
++      },
++      searchPlaceholder(): string {
++        // dialogs and popovers are portaled to <body>, so scoping to <main> isolates the toolbar input.
++        const inp = document.querySelector('main input[placeholder]')
++        return attr(inp, 'placeholder')
++      },
++      cellByHeader(rowIndex: number, headerText: string): string {
++        const idx = tableHeaderIndex(headerText)
++        if (idx < 0)
++          return NF
++        const rows = bodyRows()
++        const row = rows[Number(rowIndex) || 0]
++        if (row === undefined)
++          return NONE
++        const tds = all('td', row)
++        return textOf(tds[idx] === undefined ? null : tds[idx])
++      },
++      distinctColumnValues(headerText: string): string {
++        const idx = tableHeaderIndex(headerText)
++        if (idx < 0)
++          return NF
++        const seen: string[] = []
++        for (const row of bodyRows()) {
++          const tds = all('td', row)
++          const cell = tds[idx]
++          if (cell === undefined)
++            continue
++          const v = norm(cell.textContent)
++          if (v !== '' && seen.indexOf(v) < 0)
++            seen.push(v)
++        }
++        return seen.length === 0 ? NONE : seen.sort().join('|')
++      },
++      openFacet(title: string): string {
++        return fire(facetTrigger(title))
++      },
++      facetBadges(title: string): string {
++        const b = facetTrigger(title)
++        if (b === null)
++          return NF
++        return joinTexts(all('[data-slot="badge"]', b))
++      },
++      openViewOptions(): string {
++        return fire(byText('button', 'Columns View'))
++      },
++      viewOptionLabels(): string {
++        const c = openMenuContent()
++        return c === null ? NF : joinTexts(all('[data-slot="dropdown-menu-checkbox-item"]', c))
++      },
++    },
++
++    dash: {
++      tabLabelsDisabled(): string {
++        const ts = all('[data-slot="tabs-trigger"]')
++        if (ts.length === 0)
++          return NONE
++        return ts.map(t => norm(t.textContent) + ':' + isDisabled(t)).join('|')
++      },
++      kpiTitles(): string {
++        return joinTexts(all('[data-slot="card-title"][class~="text-sm"]'))
++      },
++      tabState(): string {
++        const act = all('[data-slot="tabs-trigger"][data-state="active"]')
++        const label = act.length === 0 ? NONE : norm(act[0].textContent)
++        const kpis = all('[data-slot="card-title"][class~="text-sm"]')
++        return label + '|' + (kpis.length === 0 ? NONE : kpis.length + ':' + kpis.map(k => norm(k.textContent)).join(','))
++      },
++    },
++
++    dlg: {
++      count(): string {
++        return String(all('[data-slot="dialog-content"]').length)
++      },
++      openCreate(): string {
++        return fire(byText('button', 'Create'))
++      },
++      titlePlaceholder(): string {
++        const d = dialogContent()
++        if (d === null)
++          return NF
++        return attr(d.querySelector('input[type="text"]'), 'placeholder')
++      },
++      setTitle(value: string): string {
++        const d = dialogContent()
++        if (d === null)
++          return NF
++        const inp = d.querySelector('input[type="text"]')
++        if (inp === null)
++          return NF
++        const el = inp as HTMLInputElement
++        el.value = String(value)
++        el.dispatchEvent(new Event('input', { bubbles: true }))
++        el.dispatchEvent(new Event('change', { bubbles: true }))
++        return norm(el.value)
++      },
++      submit(): string {
++        const d = dialogContent()
++        if (d === null)
++          return NF
++        return fire(byText('button', 'Submit', d))
++      },
++      createResult(): string {
++        const ds = all('[data-slot="dialog-content"]')
++        const errs = ds.length === 0 ? 0 : all('[data-slot="field-error"]', ds[ds.length - 1]).length
++        return 'err=' + String(errs) + '|dialog=' + String(ds.length)
++      },
++    },
++
++    auth: {
++      labels(): string {
++        const email = document.querySelector('label[for="email"]')
++        const password = document.querySelector('label[for="password"]')
++        const login = byText('button', 'Login')
++        return textOf(email) + '|' + textOf(password) + '|' + textOf(login)
++      },
++      clickLogin(): string {
++        return fire(byText('button', 'Login'))
++      },
++    },
++
++    err: {
++      page(): string {
++        return textOf(document.querySelector('h1')) + '|' + textOf(document.querySelector('h2'))
++      },
++    },
++
++    residue: {
++      //
++      // own in storage and the app must not be parking an auth token anywhere. Counts offenders only,
++      // so the reading is stable across faces and cannot be satisfied by "clear everything".
++      badKeys(): string {
++        const bad: string[] = []
++        for (const store of [localStorage, sessionStorage]) {
++          for (let i = 0; i < store.length; i++) {
++            const k = store.key(i)
++            if (k === null)
++              continue
++            if (/^__rb|^__L|token|jwt|__probe/i.test(k))
++              bad.push(k)
++          }
++        }
++        return String(bad.length) + (bad.length === 0 ? '' : '|' + bad.sort().join(','))
++      },
++    },
++  }
++
++  const w = window as unknown as { __rb?: unknown }
++  if (w.__rb === undefined)
++    w.__rb = rb
++}
+diff --git a/src/main.ts b/src/main.ts
+index edd90e9..b354b19 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -2,6 +2,7 @@
+ 
+ import App from './App.vue'
+ import { setupPlugins } from './plugins'
++import { installRbProbe } from './rbProbe'
+ 
+ import '@/assets/index.css'
+ import '@/assets/scrollbar.css'
+@@ -10,6 +11,13 @@
+ import 'vue-sonner/style.css' // vue sonner style
+ 
+ import '@/utils/env'
++
++// RepairBench instrumentation (environment/instrumentation.patch): publish the read-only observation
++// probe as window.__rb BEFORE the app mounts, so a checkpoint's bounded ready-gate can never observe a
++// half-mounted tree and a boot-time crash is visible as boot.ready() === '0' rather than as a timeout.
++// rbProbe.ts imports nothing at all (0 new npm imports - this seed's pnpm layout is isolated) and adds
++// 0 data-testid attributes.
++installRbProbe()
+ 
+ function bootstrap() {
+   const app = createApp(App)

@@ -1,0 +1,206 @@
+<template>
+  <div ref="reference" v-tooltip="{ text: tooltip, position: tooltipPosition }" :class="classes">
+    <slot :toggle="toggle" />
+  </div>
+  <div ref="popper" :class="[$style.popper, { [$style.visible]: visible }]">
+    <div :class="listClasses" @transitionend="transitionEnd">
+      <slot name="header" />
+
+      <ul v-if="options?.length || $slots.options" :class="$style.options">
+        <slot v-if="$slots.options" name="options" />
+        <template v-else-if="options">
+          <ContextMenuButton
+            v-for="option of options"
+            :key="option.id"
+            :testId="`${testId}-${option.id}`"
+            :padIcon="hasOptionWithIcon"
+            :text="option.label ?? option.id"
+            :icon="option.icon"
+            :muted="option.muted"
+            :highlight="option.id === highlight"
+            @click="select(option)"
+          />
+        </template>
+      </ul>
+
+      <span v-else-if="placeholder" :class="$style.placeholder">
+        {{ placeholder }}
+      </span>
+    </div>
+  </div>
+</template>
+
+<script lang="ts" setup>
+import ContextMenuButton from './ContextMenuButton.vue';
+import { ContextMenuStoreKey } from '@components/base/context-menu/ContextMenu.types';
+import { useBrowserType } from '@composables/browser-type/useBrowserType.ts';
+import { useOutOfElementClick } from '@composables/out-of-element-click/useOutOfElementClick.ts';
+import { getAnchorNames } from '@directives/v-tooltip/vTooltip.ts';
+import { uuid } from '@utils/uuid/uuid.ts';
+import { computed, provide, ref, useCssModule, useTemplateRef, watch } from 'vue';
+import type {
+  ContextMenuOption,
+  ContextMenuOptionId,
+  ContextMenuStore
+} from '@components/base/context-menu/ContextMenu.types';
+import type { Placement } from '@directives/v-tooltip/vTooltip.ts';
+import type { ClassNames } from '@utils/types.ts';
+
+const emit = defineEmits<{
+  select: [option: ContextMenuOption];
+  open: [];
+  close: [];
+}>();
+
+const props = withDefaults(
+  defineProps<{
+    class?: ClassNames;
+    tooltip?: string;
+    tooltipPosition?: Placement;
+    position?: string;
+    options?: ContextMenuOption[];
+    highlight?: ContextMenuOptionId;
+    testId?: string;
+    offset?: [number, number];
+    placeholder?: string;
+  }>(),
+  {
+    position: 'right',
+    offset: () => [10, 10]
+  }
+);
+
+const anchorId = `--${uuid()}`;
+
+const styles = useCssModule();
+const reference = useTemplateRef('reference');
+const popper = useTemplateRef('popper');
+const browser = useBrowserType();
+const visible = ref(false);
+const placement = ref<'top' | 'bottom' | 'left' | 'right' | 'auto'>('auto');
+
+useOutOfElementClick([popper, reference], () => (visible.value = false));
+
+const hasOptionWithIcon = computed(() => props.options?.some((v) => v.icon));
+const classes = computed(() => [props.class, styles.reference]);
+const listClasses = computed(() => [
+  styles.list,
+  { [styles[placement.value]]: placement.value in styles },
+  { [styles.firefox]: browser === 'Firefox' }
+]);
+
+const select = (option: ContextMenuOption): void => {
+  emit('select', option);
+  visible.value = false;
+};
+
+const toggle = () =>
+  requestAnimationFrame(() => {
+    visible.value = !visible.value;
+
+    if (visible.value && reference.value) {
+      const anchorNames = getAnchorNames(reference.value);
+      reference.value.style.setProperty('anchor-name', anchorNames.concat(anchorId).join(','));
+    }
+  });
+
+const transitionEnd = () => {
+  if (!visible.value && reference.value) {
+    const anchorNames = getAnchorNames(reference.value);
+    reference.value.style.setProperty('anchor-name', anchorNames.filter((v) => v !== anchorId).join(','));
+  }
+};
+
+watch(visible, (value) => (value ? emit('open') : emit('close')));
+
+provide<ContextMenuStore>(ContextMenuStoreKey, {
+  close: () => requestAnimationFrame(() => (visible.value = false))
+});
+</script>
+
+<style lang="scss" module>
+@use '@styles/globals.scss';
+
+.reference {
+  display: inline-flex;
+}
+
+.popper {
+  display: flex;
+  position: absolute; // fixed doesn't work in safari
+  pointer-events: none;
+  z-index: var(--context-menu-z-index);
+  position-anchor: v-bind(anchorId);
+  position-area: v-bind(position);
+  margin: 5px;
+  inset: auto;
+
+  &.visible {
+    pointer-events: all;
+
+    .list {
+      visibility: visible;
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  -webkit-backdrop-filter: var(--context-menu-backdrop);
+  backdrop-filter: var(--context-menu-backdrop);
+  box-shadow: var(--context-menu-shadow);
+  border-radius: var(--border-radius-m);
+  padding: 6px 0;
+  visibility: hidden;
+  opacity: 0;
+  transition: all var(--transition-s);
+
+  @include globals.onMobileDevices {
+    max-height: 200px;
+  }
+
+  &.top {
+    transform: translateY(6px);
+  }
+
+  &.bottom {
+    transform: translateY(-6px);
+  }
+
+  &.left {
+    transform: translateX(6px);
+  }
+
+  &.right {
+    transform: translateX(-6px);
+  }
+
+  // Absolute elements become invisible in firefox if backdrop-filter is attacked
+  // https://bugzilla.mozilla.org/show_bug.cgi?id=1781159
+  &.firefox {
+    backdrop-filter: none;
+    background: var(--cell-menu-background);
+  }
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  list-style: none outside none;
+  max-height: 130px;
+  overflow: auto;
+  overflow-x: hidden;
+}
+
+.placeholder {
+  display: inline-block;
+  padding: 0 8px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-m);
+  color: var(--c-primary-text-accent);
+}
+</style>

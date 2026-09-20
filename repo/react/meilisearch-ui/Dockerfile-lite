@@ -1,0 +1,37 @@
+FROM node:22 AS build
+
+# Setting working directory.
+WORKDIR /opt/meilisearch-ui
+
+# Pin pnpm major version to keep docker builds reproducible
+RUN npm install -g pnpm@10
+
+# Copying source files
+COPY . .
+
+# Installing dependencies
+RUN pnpm install
+
+# Build the app
+RUN npm run build
+
+# -------
+FROM nginx:stable-alpine AS final
+
+COPY --from=build /opt/meilisearch-ui/dist /usr/share/nginx/html
+
+# Create a directory for our available templates
+RUN mkdir -p /etc/nginx/templates-available/
+
+# Copy in the templates and the entrypoint scripts
+COPY nginx.basepath.conf.template /etc/nginx/templates-available/
+COPY nginx.root.conf.template /etc/nginx/templates-available/
+COPY docker-entrypoint.d/15-prepare-templates.sh /docker-entrypoint.d/
+COPY docker-entrypoint.d/30-basepath-subst.sh /docker-entrypoint.d/
+
+# Make the scripts executable
+RUN chmod +x /docker-entrypoint.d/15-prepare-templates.sh /docker-entrypoint.d/30-basepath-subst.sh
+
+# Default to root
+ENV BASE_PATH=""
+EXPOSE 24900

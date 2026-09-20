@@ -1,0 +1,140 @@
+diff --git a/src/DemoPages/Components/Accordions.vue b/src/DemoPages/Components/Accordions.vue
+--- a/src/DemoPages/Components/Accordions.vue
++++ b/src/DemoPages/Components/Accordions.vue
+@@ -331,7 +331,7 @@
+       })
+ 
+       // If the clicked panel was closed, open it
+-      if (wasOpen) {
++      if (!wasOpen) {
+         this.accordionStates[accordionId] = true
+       }
+     },
+diff --git a/src/DemoPages/Components/Pagination.vue b/src/DemoPages/Components/Pagination.vue
+--- a/src/DemoPages/Components/Pagination.vue
++++ b/src/DemoPages/Components/Pagination.vue
+@@ -348,7 +348,7 @@
+       return (this.interactivePage - 1) * this.interactivePerPage
+     },
+     endIndex() {
+-      return this.startIndex + this.interactivePerPage
++      return Math.min(this.startIndex + this.interactivePerPage, this.sampleData.length)
+     }
+   },
+   watch: {
+diff --git a/src/DemoPages/Components/TooltipsPopovers.vue b/src/DemoPages/Components/TooltipsPopovers.vue
+--- a/src/DemoPages/Components/TooltipsPopovers.vue
++++ b/src/DemoPages/Components/TooltipsPopovers.vue
+@@ -305,6 +305,7 @@
+         'top-start': 'popover-top-start',
+         'top-end': 'popover-top-end',
+         bottom: 'popover-bottom',
++        'bottom-start': 'popover-bottom-start',
+         'bottom-end': 'popover-bottom-end',
+         left: 'popover-left',
+         'left-start': 'popover-left-start',
+diff --git a/src/DemoPages/Dashboards/AnalyticsEnhanced.vue b/src/DemoPages/Dashboards/AnalyticsEnhanced.vue
+--- a/src/DemoPages/Dashboards/AnalyticsEnhanced.vue
++++ b/src/DemoPages/Dashboards/AnalyticsEnhanced.vue
+@@ -46,7 +46,7 @@
+                 <b-button
+                   v-for="period in ['Day', 'Week', 'Month', 'Year']"
+                   :key="period"
+-                  :variant="selectedPeriod !== period ? 'success' : 'outline-success'"
++                  :variant="selectedPeriod === period ? 'success' : 'outline-success'"
+                   @click="selectedPeriod = period"
+                 >
+                   {{ period }}
+diff --git a/src/DemoPages/Tables/RegularTables.vue b/src/DemoPages/Tables/RegularTables.vue
+--- a/src/DemoPages/Tables/RegularTables.vue
++++ b/src/DemoPages/Tables/RegularTables.vue
+@@ -286,7 +286,7 @@
+         if (!item || typeof item !== 'object') return false
+         return Object.values(item).some(value => {
+           if (value === null || value === undefined) return false
+-          return String(value).includes(filterLower)
++          return String(value).toLowerCase().includes(filterLower)
+         })
+       })
+     },
+diff --git a/src/components/DashboardWidget.vue b/src/components/DashboardWidget.vue
+--- a/src/components/DashboardWidget.vue
++++ b/src/components/DashboardWidget.vue
+@@ -68,7 +68,7 @@
+         ...statData,
+         trendIcon: statData.change > 0 ? 'angle-up' : 'angle-down',
+         trendColor: statData.change > 0 ? 'text-success' : 'text-danger',
+-        formattedChange: `${statData.change}%`
++        formattedChange: `${Math.abs(statData.change)}%`
+       }
+     })
+ 
+diff --git a/src/components/SidebarMenuItem.vue b/src/components/SidebarMenuItem.vue
+--- a/src/components/SidebarMenuItem.vue
++++ b/src/components/SidebarMenuItem.vue
+@@ -79,7 +79,7 @@
+ const sidebarStore = useSidebarStore()
+ 
+ const isActiveRoute = routePath => {
+-  return route.name === routePath
++  return route.path === routePath
+ }
+ 
+ const isParentActive = computed(() => {
+diff --git a/src/components/SidebarNav.vue b/src/components/SidebarNav.vue
+--- a/src/components/SidebarNav.vue
++++ b/src/components/SidebarNav.vue
+@@ -64,7 +64,7 @@
+ 
+ // Handle sidebar hover for collapsed state
+ const onSidebarHover = isHovering => {
+-  if (!sidebarStore.isCollapsed) {
++  if (sidebarStore.isCollapsed) {
+     const body = document.body
+     if (isHovering) {
+       body.classList.add('closed-sidebar-open')
+diff --git a/src/stores/sidebar.js b/src/stores/sidebar.js
+--- a/src/stores/sidebar.js
++++ b/src/stores/sidebar.js
+@@ -231,7 +231,7 @@
+     updateBodyClasses()
+ 
+     // Close all submenus when collapsing
+-    if (!isCollapsed.value) {
++    if (isCollapsed.value) {
+       activeSubmenus.value.clear()
+     }
+   }
+@@ -285,7 +285,7 @@
+ 
+     Object.entries(routeMap).forEach(([pathPrefix, submenuId]) => {
+       if (currentRoute.startsWith(pathPrefix)) {
+-        activeSubmenus.value.add(pathPrefix)
++        activeSubmenus.value.add(submenuId)
+       }
+     })
+   }
+diff --git a/src/stores/ui.js b/src/stores/ui.js
+--- a/src/stores/ui.js
++++ b/src/stores/ui.js
+@@ -164,7 +164,7 @@
+     if (icon) pageIcon.value = icon
+ 
+     // Update document title
+-    document.title = `${pageSubtitle.value} - ArchitectUI Vue`
++    document.title = `${title} - ArchitectUI Vue`
+   }
+ 
+   // Handle window resize
+@@ -240,9 +240,9 @@
+     // Update body classes
+     const body = document.body
+     if (mobileSidebarOpen.value) {
+-      body.classList.add('header-menu-open')
++      body.classList.add('closed-sidebar-open')
+     } else {
+-      body.classList.remove('header-menu-open')
++      body.classList.remove('closed-sidebar-open')
+     }
+   }
+ 

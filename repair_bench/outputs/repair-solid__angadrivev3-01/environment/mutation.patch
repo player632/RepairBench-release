@@ -1,0 +1,111 @@
+diff --git a/web/src/components/CollectionCard.tsx b/web/src/components/CollectionCard.tsx
+--- a/web/src/components/CollectionCard.tsx
++++ b/web/src/components/CollectionCard.tsx
+@@ -108,7 +108,7 @@
+ 
+     return (
+         <div class="flex flex-col w-64 h-60 bg-neutral-800 rounded-lg px-4 py-2 pb-3">
+-            <p class="text-white font-bold text-2xl text-center w-full p-2">{props.collection.name.length <= 11 ? props.collection.name : props.collection.name.substring(0, 9) + "..."}</p>
++            <p class="text-white font-bold text-2xl text-center w-full p-2">{props.collection.name.length < 11 ? props.collection.name : props.collection.name.substring(0, 9) + "..."}</p>
+             <hr class="border-neutral-600"/>
+             <div class="flex w-full items-center justify-center h-full my-2">
+                 <div class="flex flex-col items-start justify-between h-full">
+diff --git a/web/src/components/FileCard.tsx b/web/src/components/FileCard.tsx
+--- a/web/src/components/FileCard.tsx
++++ b/web/src/components/FileCard.tsx
+@@ -287,9 +287,9 @@
+ const FileCard: Component<{ File: FileData; onSelectionToggle?: (directory: string) => void; isSelected?: boolean }> = (props) => {
+     let DownloadLink = assetsUrl(`/download/${props.File.file_directory}`);
+     let link = assetsUrl(`/i/${props.File.file_directory}`);
+-    link = link.split('.').slice(0, -1).join('.');
++    link = link.split('.').slice(0, -2).join('.');
+     link += "/" + props.File.original_file_name;
+-    while (link.includes(" ")) {
++    if (link.includes(" ")) {
+         link = link.replace(" ", "%20");
+     }
+     const location = useLocation();
+@@ -357,7 +357,7 @@
+                             {getFileType(props.File.file_directory)}
+                         </p>
+                         <p>{props.File.file_directory}</p>
+-                        <p>{new Date(props.File.timestamp * 1000).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</p>
++                        <p>{new Date(props.File.timestamp * 1000).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+                         <p>
+                             {formatFileSize(props.File.file_size)}
+                         </p>
+diff --git a/web/src/library/functions.tsx b/web/src/library/functions.tsx
+--- a/web/src/library/functions.tsx
++++ b/web/src/library/functions.tsx
+@@ -4,7 +4,7 @@
+ 
+ const formatFileSize = (size: number) => {
+     if (size < 1024) return `${size} B`;
+-    const kb = size / 1024;
++    const kb = size / 1000;
+     if (kb < 1024) return `${kb.toFixed(2)} KB`;
+     const mb = kb / 1024;
+     if (mb < 1024) return `${mb.toFixed(2)} MB`;
+@@ -17,12 +17,11 @@
+ };
+ 
+ const getFileType = (filePath: string) => {
+-    const ext = filePath.split('.').pop()?.toLowerCase();
++    const ext = filePath.split('.').pop();
+     if (!ext) return "Unknown";
+     if (["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff"].includes(ext)) return "Image";
+     if (["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm"].includes(ext)) return "Video";
+     if (["mp3", "wav", "aac", "flac", "ogg", "wma", "m4a"].includes(ext)) return "Audio";
+-    if (["pdf"].includes(ext)) return "Document";
+     if (["doc", "docx", "odt", "rtf", "txt", "md", "tex"].includes(ext)) return "Text Document";
+     if (["xls", "xlsx", "ods", "csv", "tsv"].includes(ext)) return "Spreadsheet";
+     if (["ppt", "pptx", "odp", "key"].includes(ext)) return "Presentation";
+@@ -47,7 +46,7 @@
+       if (data.data.toggle === true) {
+           ctx.setFiles((prev: FileData[]) => [data.data.File, ...prev]);
+       } else if (data.data.toggle === false) {
+-          ctx.setFiles((prev: FileData[]) => prev.filter((file: FileData) => file.file_directory !== data.data.File.file_directory));
++          ctx.setFiles((prev: FileData[]) => prev.filter((file: FileData) => file.file_directory === data.data.File.file_directory));
+       }
+   } else if (data.type === "get_user_collections_response") {
+       const collections: CollectionCardData[] = data.data || [];
+@@ -205,7 +204,6 @@
+ 
+ const handleLogout = (setIsLoggedIn: (value: boolean) => void, ctx: AppContextType) => {
+     localStorage.removeItem("email");
+-    localStorage.removeItem("password");
+     localStorage.removeItem("display_name");
+     localStorage.setItem("token", generateClientToken());
+     ctx.setFiles([]);
+diff --git a/web/src/pages/MyDrive/Desktop/DriveDesktop.tsx b/web/src/pages/MyDrive/Desktop/DriveDesktop.tsx
+--- a/web/src/pages/MyDrive/Desktop/DriveDesktop.tsx
++++ b/web/src/pages/MyDrive/Desktop/DriveDesktop.tsx
+@@ -126,7 +126,7 @@
+                                 </div>
+                             </div>
+                         </div>
+-                        <Show when={props.Files().length >= 2}>
++                        <Show when={props.Files().length > 2}>
+                             <Select
+                                 options={props.sortOptions}
+                                 selected={props.selectedSort()}
+diff --git a/web/src/pages/MyDrive/MyDrive.tsx b/web/src/pages/MyDrive/MyDrive.tsx
+--- a/web/src/pages/MyDrive/MyDrive.tsx
++++ b/web/src/pages/MyDrive/MyDrive.tsx
+@@ -106,14 +106,14 @@
+ 
+         const result = arr.sort(comparatorMap[sel] || comparatorMap.time_desc);
+ 
+-        return sel.endsWith('_asc') ? result.reverse() : result;
++        return sel.endsWith('_desc') ? result.reverse() : result;
+     });
+ 
+     // Filtered files based on live search (name or directory)
+     const filteredFiles = createMemo(() => {
+         const q = searchQuery().trim().toLowerCase();
+         if (!q) return sortedFiles();
+-        return sortedFiles().filter(f => (f.original_file_name || '').toLowerCase().includes(q) || (f.file_directory || '').toLowerCase().includes(q));
++        return sortedFiles().filter(f => (f.original_file_name || '').toLowerCase().includes(q) && (f.file_directory || '').toLowerCase().includes(q));
+     });
+ 
+     // Clear persisted loaded files whenever the user changes search or sort

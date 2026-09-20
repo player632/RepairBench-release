@@ -1,0 +1,212 @@
+<script lang="ts" generics="TData">
+	import { tick } from 'svelte';
+	import type { CellVariantProps } from '$lib/types/data-grid.js';
+	import DataGridCellWrapper from '../data-grid-cell-wrapper.svelte';
+	import { cn } from '$lib/utils.js';
+	import { getUrlHref } from '$lib/data-grid.js';
+	import { toast } from 'svelte-sonner';
+
+	let {
+		cell,
+		table,
+		rowIndex,
+		columnId,
+		isEditing,
+		isFocused,
+		isSelected,
+		readOnly = false,
+		cellValue
+	}: CellVariantProps<TData> = $props();
+
+	// Use centralized cellValue prop - fine-grained reactivity is handled by DataGridCell
+	const initialValue = $derived((cellValue as string) ?? '');
+	let cellRef = $state<HTMLDivElement | null>(null);
+
+	// Track local edits separately - this only matters during editing
+	let localEditValue = $state<string | null>(null);
+	let previousInitialValue = $state<string | null>(null);
+
+	$effect(() => {
+		if (initialValue === previousInitialValue) return;
+
+		previousInitialValue = initialValue;
+		localEditValue = null;
+	});
+
+	// The display value directly from initialValue (no effect delay)
+	const displayValue = $derived(!isEditing ? (initialValue ?? '') : '');
+
+	// Value for tracking edits - use localEditValue if set, otherwise initialValue
+	const value = $derived(localEditValue ?? initialValue ?? '');
+
+	function getTextContent() {
+		return isEditing ? value : displayValue;
+	}
+
+	function setTextContent(nextValue: string | null) {
+		if (isEditing) {
+			localEditValue = nextValue ?? '';
+		}
+	}
+
+	function getSaveValue() {
+		return (cellRef?.textContent ?? value).trim();
+	}
+
+	function moveCaretToEnd() {
+		if (!cellRef?.textContent) return;
+
+		const range = document.createRange();
+		const selection = window.getSelection();
+		range.selectNodeContents(cellRef);
+		range.collapse(false);
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+	}
+
+	// Focus cell when entering edit mode
+	$effect(() => {
+		if (isEditing && cellRef) {
+			cellRef.focus();
+			moveCaretToEnd();
+		}
+	});
+
+	function handleBlur() {
+		const currentValue = getSaveValue();
+		const meta = table.options.meta;
+
+		if (!readOnly && currentValue !== initialValue) {
+			meta?.onDataUpdate?.({
+				rowIndex,
+				columnId,
+				value: currentValue || null
+			});
+		}
+		localEditValue = null;
+		meta?.onCellEditingStop?.();
+	}
+
+	function handleWrapperKeyDown(event: KeyboardEvent) {
+		const meta = table.options.meta;
+		if (isEditing) {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				event.stopPropagation();
+				const currentValue = getSaveValue();
+				if (!readOnly && currentValue !== initialValue) {
+					meta?.onDataUpdate?.({
+						rowIndex,
+						columnId,
+						value: currentValue || null
+					});
+				}
+				localEditValue = null;
+				meta?.onCellEditingStop?.({ moveToNextRow: true });
+			} else if (event.key === 'Tab') {
+				event.preventDefault();
+				event.stopPropagation();
+				const currentValue = getSaveValue();
+				if (!readOnly && currentValue !== initialValue) {
+					meta?.onDataUpdate?.({
+						rowIndex,
+						columnId,
+						value: currentValue || null
+					});
+				}
+				localEditValue = null;
+				meta?.onCellEditingStop?.({
+					direction: event.shiftKey ? 'left' : 'right'
+				});
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				localEditValue = initialValue;
+				if (cellRef) {
+					cellRef.textContent = initialValue;
+				}
+				cellRef?.blur();
+			}
+		} else if (
+			isFocused &&
+			!readOnly &&
+			event.key.length === 1 &&
+			!event.ctrlKey &&
+			!event.metaKey
+		) {
+			// Handle typing to pre-fill the value when editing starts
+			localEditValue = event.key;
+
+			void tick().then(() => {
+				if (cellRef && cellRef.contentEditable === 'true') {
+					moveCaretToEnd();
+				}
+			});
+		}
+	}
+
+	function handleLinkClick(event: MouseEvent) {
+		if (isEditing) {
+			event.preventDefault();
+			return;
+		}
+
+		// Check if URL was rejected due to dangerous protocol
+		const href = getUrlHref(value);
+		if (!href) {
+			event.preventDefault();
+			toast.error('Invalid URL', {
+				description: 'URL contains a dangerous protocol (javascript:, data:, vbscript:, or file:)'
+			});
+			return;
+		}
+
+		// Stop propagation to prevent grid from interfering with link navigation
+		event.stopPropagation();
+	}
+
+	const urlHref = $derived(displayValue ? getUrlHref(displayValue) : '');
+	const isDangerousUrl = $derived(displayValue && !urlHref);
+</script>
+
+<DataGridCellWrapper
+	{cell}
+	{table}
+	{rowIndex}
+	{columnId}
+	{isEditing}
+	{isFocused}
+	{isSelected}
+	onkeydown={handleWrapperKeyDown}
+>
+	{#if !isEditing && displayValue}
+		<div data-slot="grid-cell-content" class="size-full overflow-hidden text-start">
+			<a
+				data-focused={isFocused && !isDangerousUrl ? '' : undefined}
+				data-invalid={isDangerousUrl ? '' : undefined}
+				href={urlHref}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="truncate text-primary underline decoration-primary/30 underline-offset-2 hover:decoration-primary/60 data-[invalid]:cursor-not-allowed data-[focused]:text-foreground data-[invalid]:text-destructive data-[focused]:decoration-foreground/50 data-[invalid]:decoration-destructive/50 data-[focused]:hover:decoration-foreground/70 data-[invalid]:hover:decoration-destructive/70"
+				onclick={handleLinkClick}
+			>
+				{displayValue}
+			</a>
+		</div>
+	{:else}
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div
+			role="textbox"
+			data-slot="grid-cell-content"
+			contenteditable="true"
+			tabindex={-1}
+			bind:this={cellRef}
+			bind:textContent={getTextContent, setTextContent}
+			onblur={handleBlur}
+			class={cn(
+				'size-full overflow-hidden text-start outline-none',
+				'whitespace-nowrap **:inline **:whitespace-nowrap [&_br]:hidden'
+			)}
+		></div>
+	{/if}
+</DataGridCellWrapper>

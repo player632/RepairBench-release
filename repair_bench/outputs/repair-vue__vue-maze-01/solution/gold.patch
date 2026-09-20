@@ -1,0 +1,156 @@
+diff --git a/src/App.vue b/src/App.vue
+index 1b03fe1..d298b99 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <div id="app">
+     <div class="maze-container">
+-      <select :value="difficulty">
++      <select v-model="difficulty">
+         <option value="easy">Easy</option>
+         <option value="normal">Normal</option>
+         <option value="hard">Hard</option>
+@@ -46,7 +46,9 @@ export default class App extends Vue {
+   time = 0;
+   difficulty: Difficulty = "normal";
+   strategy: Strategy = "cluster";
+-  onStart() {}
++  onStart() {
++    this.startTime = Date.now();
++  }
+   onFinish() {
+     this.time = Date.now() - this.startTime;
+   }
+diff --git a/src/components/Maze.vue b/src/components/Maze.vue
+index 3f32c77..979fe9d 100644
+--- a/src/components/Maze.vue
++++ b/src/components/Maze.vue
+@@ -94,9 +94,9 @@ export default {
+     cellWidth() {
+       switch (this.difficulty) {
+         case "easy":
+-          return 10;
+-        case "hard":
+           return 50;
++        case "hard":
++          return 10;
+         default:
+           return 20;
+       }
+@@ -104,9 +104,9 @@ export default {
+     cellHeight() {
+       switch (this.difficulty) {
+         case "easy":
+-          return 10;
+-        case "hard":
+           return 50;
++        case "hard":
++          return 10;
+         default:
+           return 20;
+       }
+@@ -336,7 +336,7 @@ export default {
+       // Check if player can move
+ 
+       // Players can't go outside of the maze
+-      if (toX < -1 || toX >= this.lx || toY < 0 || toY >= this.ly) {
++      if (toX < 0 || toX >= this.lx || toY < 0 || toY >= this.ly) {
+         return;
+       }
+ 
+@@ -345,8 +345,7 @@ export default {
+         return;
+       }
+ 
+-      this.player.x = toX;
+-      this.player.y = toY;
++      Vue.set(this, "player", { x: toX, y: toY });
+       if (!this.isStarted) {
+         this.isStarted = true;
+         this.$emit("start");
+@@ -357,6 +356,7 @@ export default {
+         !this.isFinished
+       ) {
+         this.isFinished = true;
++        this.$emit("finish");
+       }
+     },
+     resetMaze() {
+@@ -454,7 +454,7 @@ export default {
+ 
+         // 横線の描画
+         for (let j = 0; j < bondV.length; j++) {
+-          if (!bondV[j]) {
++          if (bondV[j]) {
+             continue;
+           }
+           const x1 = j % lx;
+diff --git a/src/components/Renderer.ts b/src/components/Renderer.ts
+index cc8dd26..a11ec7d 100644
+--- a/src/components/Renderer.ts
++++ b/src/components/Renderer.ts
+@@ -26,8 +26,8 @@ class Renderer {
+   }
+ 
+   setColor(fill: string, stroke: string) {
+-    this.ctx.fillStyle = stroke;
+-    this.ctx.strokeStyle = fill;
++    this.ctx.fillStyle = fill;
++    this.ctx.strokeStyle = stroke;
+   }
+ 
+   beginPath() {
+@@ -64,7 +64,7 @@ class Renderer {
+   }
+ 
+   drawLine(x1: number, y1: number, x2: number, y2: number) {
+-    const fromX = x1 * this.unitWidth;
++    const fromX = this.offsetLeft + x1 * this.unitWidth;
+     const fromY = this.offsetTop + y1 * this.unitHeight;
+     const toX = this.offsetLeft + x2 * this.unitWidth;
+     const toY = this.offsetTop + y2 * this.unitHeight;
+diff --git a/src/components/getMaze.ts b/src/components/getMaze.ts
+index f2ee742..6882dd1 100644
+--- a/src/components/getMaze.ts
++++ b/src/components/getMaze.ts
+@@ -39,7 +39,7 @@ class Maze {
+ 
+   getClusterIndex(x: number, y: number): number {
+     let index = this.lx * y + x;
+-    if (index !== this.point[index]) {
++    while (index !== this.point[index]) {
+       index = this.point[index];
+     }
+     return index;
+@@ -81,7 +81,7 @@ class Maze {
+         ) {
+           continue;
+         }
+-        this.bondV[iy * this.lx + ix] = true;
++        this.bondV[(iy + 1) * this.lx + ix] = true;
+         this.connect(ix, iy, ix, iy + 1);
+       }
+     }
+@@ -98,7 +98,7 @@ class Maze {
+ 
+     // open start and goal
+     this.bondH[0] = true;
+-    this.bondH[(this.lx + 1) * this.ly] = true;
++    this.bondH[(this.lx + 1) * this.ly - 1] = true;
+     this.goal = {
+       x: this.lx - 1,
+       y: this.ly - 1
+diff --git a/src/components/getMaze2.ts b/src/components/getMaze2.ts
+index fd216e6..15c1541 100644
+--- a/src/components/getMaze2.ts
++++ b/src/components/getMaze2.ts
+@@ -71,7 +71,7 @@ class Maze {
+ 
+     // 行き止まりの場合スタックからランダムに選ぶ
+     // スタックが無くなったらスタート、ゴールを開けて探索完了
+-    this.bondH[1] = true;
++    this.bondH[0] = true;
+     this.bondH[(this.lx + 1) * this.ly - 1] = true;
+     return;
+   }

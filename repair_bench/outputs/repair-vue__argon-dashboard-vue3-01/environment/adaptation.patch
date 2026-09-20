@@ -1,0 +1,219 @@
+diff --git a/default.env b/default.env
+--- a/default.env
++++ b/default.env
+@@ -1,4 +1,10 @@
+ # ALL VARIABLE MUST BE PREFIXED WITH `VITE_`
+ VITE_APP_VERSION=0.1.0
+ VITE_GOOGLE_API_KEY=
+-VITE_DOCUMENT_ENDPOINT=https://argon-dashboard-vue3-docs.firebaseapp.com/
++# RB-OFFLINE (adaptation.patch): the upstream value was an absolute Firebase Hosting URL.
++# default.env is NOT a Vite env file - Vite loads .env / .env.[mode] from envDir (root) and
++# vite.config.ts sets no envDir, and the shipped Dockerfile copies a prod.env that does not
++# exist - so env("VITE_DOCUMENT_ENDPOINT") is undefined at runtime either way. This edit
++# removes the last external hostname from the tree with zero observable behaviour change.
++# VITE_APP_VERSION above is deliberately left untouched.
++VITE_DOCUMENT_ENDPOINT=/rb-assets/docs/
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -3,12 +3,15 @@
+ 
+ <head>
+   <meta charset="UTF-8" />
+-  <link rel="preconnect" href="https://fonts.googleapis.com">
+-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
++  <!-- RB-OFFLINE (adaptation.patch) STATIC_CDN(3) neutralized: the seed preconnects to
++       fonts.googleapis.com and fonts.gstatic.com and then loads the Google Fonts CSS2
++       stylesheet for the Open Sans family. The benchmark runs with allow_internet=false,
++       so all three remote references are replaced by ONE same-origin stylesheet that
++       declares the same family from local() sources only - zero network requests.
++       Fallback behaviour is unchanged: with no local Open Sans installed the browser uses
++       the generic sans-serif stack, exactly as it does upstream when the CDN is unreachable. -->
++  <link href="/rb-assets/fonts.css" rel="stylesheet">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+-  <link
+-    href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap"
+-    rel="stylesheet">
+   <meta name="msapplication-TileColor" content="#ffffff" />
+   <meta name="msapplication-TileImage" content="/ms-icon-144x144.png" />
+   <meta name="theme-color" content="#ffffff" />
+@@ -18,8 +21,12 @@
+   <meta property="og:title" content="Argon Dashboard - Vue 3" />
+   <meta property="og:site_name" content="Argon Dashboard - Vue 3"/>
+   <meta property="og:type" content="article"/>
+-  <meta property="og:url" content="https://argon-dashboard-vue3.web.app" />
+-  <meta property="og:image" content="https://argon-dashboard-vue3.web.app/assets/ltv_logo.2689a102.png" />
++  <!-- RB-OFFLINE (adaptation.patch) EXT_URL_LITERAL neutralized: og:url / og:image carried
++           the absolute upstream Firebase Hosting origin. Browsers never fetch Open Graph tags,
++           but `vite build` copies them verbatim into dist/index.html, so they are rewritten to
++           same-origin paths to keep the built output free of remote references. -->
++  <meta property="og:url" content="/" />
++  <meta property="og:image" content="/favicon.ico" />
+   <meta property="og:description" content="Fullstack tool for building web & mobile apps, complete with UI elements, a Vue frontend and an API-powered backend" />
+   
+ </head>
+@@ -32,28 +39,33 @@
+     </div>
+   </div>
+   <script type="module" src="/src/main.ts"></script>
+-  <script type="module">
+-    // Import the functions you need from the SDKs you need
+-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.8.4/firebase-app.js";
+-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.8.4/firebase-analytics.js";
+-    // TODO: Add SDKs for Firebase products that you want to use
+-    // https://firebase.google.com/docs/web/setup#available-libraries
+-
+-    // Your web app's Firebase configuration
+-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+-    const firebaseConfig = {
+-      apiKey: "AIzaSyAyis-Y_0dDJcS9-DordwJO2p0Ip8TDH-s",
+-      authDomain: "ltv-project-template.firebaseapp.com",
+-      projectId: "ltv-project-template",
+-      storageBucket: "ltv-project-template.appspot.com",
+-      messagingSenderId: "322102888634",
+-      appId: "1:322102888634:web:6896453699479fb4099a83",
+-      measurementId: "G-X7XVLW93EV"
+-    };
+-
+-    // Initialize Firebase
+-    const app = initializeApp(firebaseConfig);
+-    const analytics = getAnalytics(app);
++  <!-- RB-OFFLINE (adaptation.patch) EXT_URL_LITERAL neutralized: the seed ships an inline
++           <script type="module"> importing firebase-app.js and firebase-analytics.js from
++           www.gstatic.com and then calling initializeApp()/getAnalytics() against the upstream
++           Firebase project. With allow_internet=false both module imports are unresolvable and
++           Analytics would beacon off-box, so the block becomes an import-free, side-effect-free
++           stub: SAME call shape, SAME config keys (values neutralized, no host literals), no
++           global created, and it throws if it ever stops being inert. Nothing under src/
++           imports firebase, so no behaviour under test changes. -->
++  <script>
++    (function () {
++      var firebaseConfig = {
++        apiKey: "RB_OFFLINE_NEUTRALIZED",
++        authDomain: "RB_OFFLINE_NEUTRALIZED",
++        projectId: "RB_OFFLINE_NEUTRALIZED",
++        storageBucket: "RB_OFFLINE_NEUTRALIZED",
++        messagingSenderId: "0",
++        appId: "0",
++        measurementId: "G-RBOFFLINE0"
++      };
++      function initializeApp(_config) { return null; }
++      function getAnalytics(_app) { return null; }
++      var app = initializeApp(firebaseConfig);
++      var analytics = getAnalytics(app);
++      if (app !== null || analytics !== null) {
++        throw new Error("rb-offline: the firebase stub must stay inert");
++      }
++    })();
+   </script>
+ </body>
+ 
+diff --git a/src/components/Navigation/AuthenticationNav.vue b/src/components/Navigation/AuthenticationNav.vue
+--- a/src/components/Navigation/AuthenticationNav.vue
++++ b/src/components/Navigation/AuthenticationNav.vue
+@@ -1,4 +1,11 @@
+ <template>
++  <!-- RB-OFFLINE (adaptation.patch) EXT_URL_LITERAL neutralized: the two "Like us on Github"
++       el-link anchors below both carried an absolute off-box href pointing into the upstream
++       github.com repository ltv/fancy-dashboard-vue3 (scheme omitted here on purpose: this
++       comment must not re-introduce the very URL literal it documents).
++       The literal is bundled into the production JS, so it is rewritten to a same-document
++       fragment. The links keep rendering, keep their label, their icon and their popover;
++       only the off-box navigation target is removed. No behaviour under test lives here. -->
+   <div
+     class="container xl:max-w-5.75xl lg:max-w-4.5xl md:max-w-2.625xl sm:max-w-0.25xl w-full lg:h-14 h-10 flex flex-nowrap basis-auto justify-between items-center mx-auto lg:px-3.75"
+   >
+@@ -46,7 +53,7 @@
+                   >
+                     <template #reference>
+                       <el-link
+-                        href="https://github.com/ltv/fancy-dashboard-vue3"
++                        href="#rb-offline"
+                         :underline="false"
+                         class="py-px text-default font-medium w-full justify-start"
+                       >
+@@ -101,7 +108,7 @@
+           >
+             <template #reference>
+               <el-link
+-                href="https://github.com/ltv/fancy-dashboard-vue3"
++                href="#rb-offline"
+                 :underline="false"
+                 class="text-secondary hover:text-secondary-active"
+               >
+diff --git a/src/modules/map/views/index.vue b/src/modules/map/views/index.vue
+--- a/src/modules/map/views/index.vue
++++ b/src/modules/map/views/index.vue
+@@ -10,8 +10,39 @@
+ 
+ <script>
+ import env from 'core/env'
+-import { defineComponent, ref } from 'vue'
+-import { GoogleMap, Marker } from 'vue3-google-map'
++import { defineComponent, h, ref } from 'vue'
++// RB-OFFLINE (adaptation.patch): the upstream view mounts vue3-google-map's <GoogleMap>,
++// whose loader injects the maps.googleapis.com script at mount time. The seed never
++// supplies VITE_GOOGLE_API_KEY (default.env is not a Vite env file, so env() returns
++// undefined), which means the loader would fire a real cross-origin request carrying
++// key=undefined. Under allow_internet=false that is both a stall and a leak, so the two
++// components are replaced by inert, dependency-free local stubs with the same names, the
++// same props and the same default slot. Nothing under test lives on this page.
++const GoogleMap = defineComponent({
++  name: 'RbOfflineGoogleMap',
++  props: { apiKey: String, center: Object, zoom: Number },
++  setup(props, ctx) {
++    return () =>
++      h(
++        'div',
++        { 'data-rb-offline': 'google-map', 'data-rb-zoom': String(props.zoom) },
++        ctx.slots.default ? ctx.slots.default() : [],
++      )
++  },
++})
++
++const Marker = defineComponent({
++  name: 'RbOfflineMarker',
++  props: { options: Object },
++  setup(props) {
++    return () =>
++      h(
++        'span',
++        { style: { display: 'contents' }, 'data-rb-offline': 'marker',
++          'data-rb-marker-label': String((props.options && props.options.label) || '') },
++      )
++  },
++})
+ 
+ export default defineComponent({
+   components: { GoogleMap, Marker },
+diff --git a/public/rb-assets/fonts.css b/public/rb-assets/fonts.css
+new file mode 100644
+--- /dev/null
++++ b/public/rb-assets/fonts.css
+@@ -0,0 +1,26 @@
++/* RB-OFFLINE fixture created by adaptation.patch.
++ * Same-origin replacement for the Google Fonts CSS2 stylesheet that index.html used to
++ * load from fonts.googleapis.com for the 'Open Sans' family the app asks for
++ * (src/index.css @layer base { * { font-family: "Open Sans", sans-serif } } and
++ * tailwind.config.js theme.fontFamily.body).
++ *
++ * Every src is local() ONLY, so this file can never cause a network request. Where no
++ * local Open Sans is installed the face simply fails to resolve and the browser falls back
++ * to the generic sans-serif stack - byte-for-byte the same outcome as upstream when the
++ * CDN is unreachable under allow_internet=false. No measured behaviour of the seed depends
++ * on the actual glyph outlines.
++ */
++@font-face {
++  font-family: 'Open Sans';
++  font-style: normal;
++  font-weight: 300 800;
++  font-display: swap;
++  src: local('Open Sans Light'), local('OpenSans-Light'), local('Open Sans'), local('OpenSans');
++}
++@font-face {
++  font-family: 'Open Sans';
++  font-style: italic;
++  font-weight: 300 800;
++  font-display: swap;
++  src: local('Open Sans Italic'), local('OpenSans-Italic'), local('Open Sans'), local('OpenSans');
++}

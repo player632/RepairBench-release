@@ -1,0 +1,176 @@
+diff --git a/src/components/AppMenu.tsx b/src/components/AppMenu.tsx
+--- a/src/components/AppMenu.tsx
++++ b/src/components/AppMenu.tsx
+@@ -15,7 +15,7 @@
+         onClick={(event: { key: React.Key }) => {
+           navigate(event.key.toString());
+         }}
+-        selectedKeys={[selectedKey]}
++        defaultSelectedKeys={[selectedKey]}
+         items={[
+           { key: '/', label: 'Home' },
+           { key: '/sprites', label: 'Sprites' },
+diff --git a/src/components/Grid.tsx b/src/components/Grid.tsx
+--- a/src/components/Grid.tsx
++++ b/src/components/Grid.tsx
+@@ -79,7 +79,6 @@
+                 }
+               }}
+               onMouseEnter={() => onHover({ x: columnIndex, y: rowIndex })}
+-              onMouseLeave={() => onHover(null)}
+             />
+           ))
+         )}
+diff --git a/src/components/Sprite.css b/src/components/Sprite.css
+--- a/src/components/Sprite.css
++++ b/src/components/Sprite.css
+@@ -159,11 +159,11 @@
+ /* Frightened ghost */
+ 
+ .Sprite-frightened-ghost-time-0-phase-0 {
+-  background-position: calc(-1px * (584 + 0 * 16)) calc(-1px * (64 + 0 * 16));
++  background-position: calc(-1px * (584 + 2 * 16)) calc(-1px * (64 + 0 * 16));
+ }
+ 
+ .Sprite-frightened-ghost-time-0-phase-1 {
+-  background-position: calc(-1px * (584 + 1 * 16)) calc(-1px * (64 + 0 * 16));
++  background-position: calc(-1px * (584 + 3 * 16)) calc(-1px * (64 + 0 * 16));
+ }
+ 
+ .Sprite-frightened-ghost-time-1-phase-0 {
+diff --git a/src/components/Sprite.tsx b/src/components/Sprite.tsx
+--- a/src/components/Sprite.tsx
++++ b/src/components/Sprite.tsx
+@@ -21,7 +21,7 @@
+         left: `${x}px`,
+         top: `${y}px`,
+         transform: scale,
+-        transformOrigin: 'top left',
++        transformOrigin: 'center',
+       }}
+     />
+   );
+diff --git a/src/model/onAnimationFrame.ts b/src/model/onAnimationFrame.ts
+--- a/src/model/onAnimationFrame.ts
++++ b/src/model/onAnimationFrame.ts
+@@ -19,6 +19,10 @@
+     lastFrameLength = externalTimeStamp - game.externalTimeStamp;
+   }
+ 
++  if (game.gamePaused) {
++    return;
++  }
++
+   // Batch all timing updates
+   useGameStore.setState((state) => {
+     state.game.externalTimeStamp = externalTimeStamp;
+@@ -25,10 +29,6 @@
+     state.game.lastFrameLength = lastFrameLength;
+   });
+ 
+-  if (game.gamePaused) {
+-    return;
+-  }
+-
+   // Update game timestamp
+   useGameStore.setState((state) => {
+     state.game.timestamp += state.game.lastFrameLength;
+diff --git a/src/model/store/gameStore.ts b/src/model/store/gameStore.ts
+--- a/src/model/store/gameStore.ts
++++ b/src/model/store/gameStore.ts
+@@ -23,7 +23,7 @@
+   DEAD_WAITING_IN_BOX_DURATION,
+ } from './constants';
+ 
+-const ENERGIZER_DURATION = 5000;
++const ENERGIZER_DURATION = 50000;
+ 
+ export const getStatePhaseLength = (state: GhostStateValue): number => {
+   switch (state) {
+diff --git a/src/pages/GamePage/components/ExtraLives.tsx b/src/pages/GamePage/components/ExtraLives.tsx
+--- a/src/pages/GamePage/components/ExtraLives.tsx
++++ b/src/pages/GamePage/components/ExtraLives.tsx
+@@ -19,7 +19,7 @@
+             key={n}
+             direction="LEFT"
+             pacManAnimationPhase={1}
+-            x={n * 20 * SCALE_FACTOR}
++            x={n * 20}
+             y={0}
+           />
+         ))}
+diff --git a/src/pages/GamePage/components/GhostDebugTable.tsx b/src/pages/GamePage/components/GhostDebugTable.tsx
+--- a/src/pages/GamePage/components/GhostDebugTable.tsx
++++ b/src/pages/GamePage/components/GhostDebugTable.tsx
+@@ -18,7 +18,7 @@
+ const TileXCell: FC<{ ghostIndex: number }> = ({ ghostIndex }) => {
+   const ghost = useGameStore((state) => state.game.ghosts[ghostIndex]);
+   const tile = tileFromScreen(ghost.screenCoordinates);
+-  return <>{tile.x}</>;
++  return <>{tile.y}</>;
+ };
+ 
+ const TileYCell: FC<{ ghostIndex: number }> = ({ ghostIndex }) => {
+diff --git a/src/pages/GamePage/components/GhostsView.tsx b/src/pages/GamePage/components/GhostsView.tsx
+--- a/src/pages/GamePage/components/GhostsView.tsx
++++ b/src/pages/GamePage/components/GhostsView.tsx
+@@ -250,7 +250,7 @@
+ }) => (
+   <Sprite
+     className="Sprite-ghost"
+-    name={`frightened-ghost-time-${frightenedGhostTime}-phase-${ghostAnimationPhase}`}
++    name={`frightened-ghost-color-${frightenedGhostTime}-phase-${ghostAnimationPhase}`}
+     x={x}
+     y={y}
+     style={style}
+diff --git a/src/pages/GamePage/components/PillsView.tsx b/src/pages/GamePage/components/PillsView.tsx
+--- a/src/pages/GamePage/components/PillsView.tsx
++++ b/src/pages/GamePage/components/PillsView.tsx
+@@ -67,8 +67,8 @@
+ 
+   return (
+     <>
+-      {Array.from({ length: MAZE_HEIGHT_IN_TILES }).map((_, y) =>
+-        Array.from({ length: MAZE_WIDTH_IN_TILES }).map((_, x) => {
++      {Array.from({ length: MAZE_WIDTH_IN_TILES }).map((_, y) =>
++        Array.from({ length: MAZE_HEIGHT_IN_TILES }).map((_, x) => {
+           const pillFound = pills[y][x] !== EMPTY_TILE_ID;
+           return pillFound && <PillView key={`${x}/${y}`} tile={{ x, y }} />;
+         })
+diff --git a/src/pages/GamePage/components/useKeyboardActions.ts b/src/pages/GamePage/components/useKeyboardActions.ts
+--- a/src/pages/GamePage/components/useKeyboardActions.ts
++++ b/src/pages/GamePage/components/useKeyboardActions.ts
+@@ -37,9 +37,5 @@
+ 
+   useEffect(() => {
+     document.addEventListener('keydown', onKeyDown);
+-
+-    return () => {
+-      document.removeEventListener('keydown', onKeyDown);
+-    };
+   }, [onKeyDown]);
+ };
+diff --git a/src/pages/SpritePage/SpritePage.tsx b/src/pages/SpritePage/SpritePage.tsx
+--- a/src/pages/SpritePage/SpritePage.tsx
++++ b/src/pages/SpritePage/SpritePage.tsx
+@@ -38,7 +38,7 @@
+ 
+   useEffect(() => {
+     const timerId = setInterval(() => {
+-      setPhaseCounter((phaseCounter: number) => phaseCounter + 1);
++      setPhaseCounter(phaseCounter + 1);
+     }, 300);
+     return () => {
+       clearInterval(timerId);
+diff --git a/src/pages/WayFindingPage/WayPoint.tsx b/src/pages/WayFindingPage/WayPoint.tsx
+--- a/src/pages/WayFindingPage/WayPoint.tsx
++++ b/src/pages/WayFindingPage/WayPoint.tsx
+@@ -13,7 +13,7 @@
+ const DirectionToAngle = {
+   DOWN: 0,
+   LEFT: 90,
+-  UP: 180,
++  UP: 0,
+   RIGHT: 270,
+ };
+ 

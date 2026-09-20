@@ -1,0 +1,135 @@
+diff --git a/src/components/KeyboardHandler.svelte b/src/components/KeyboardHandler.svelte
+--- a/src/components/KeyboardHandler.svelte
++++ b/src/components/KeyboardHandler.svelte
+@@ -18,11 +18,11 @@
+       //   return;
+ 
+       case "ArrowLeft":
+-        handleMove($emptyCellIndex - 1);
++        handleMove($emptyCellIndex + 1);
+         return;
+ 
+       case "ArrowRight":
+-        handleMove($emptyCellIndex + 1);
++        handleMove($emptyCellIndex - 1);
+         return;
+ 
+       case "ArrowDown":
+diff --git a/src/components/PuzzleComplete.svelte b/src/components/PuzzleComplete.svelte
+--- a/src/components/PuzzleComplete.svelte
++++ b/src/components/PuzzleComplete.svelte
+@@ -51,7 +51,7 @@
+ 
+   function boom() {
+     confetti({
+-      particleCount: 0,
++      particleCount: 100,
+       disableForReducedMotion: true,
+       angle: 45,
+       origin: {
+@@ -60,7 +60,7 @@
+       }
+     });
+     confetti({
+-      particleCount: 0,
++      particleCount: 100,
+       disableForReducedMotion: true,
+       angle: 135,
+       origin: {
+diff --git a/src/components/ThemeSelector.svelte b/src/components/ThemeSelector.svelte
+--- a/src/components/ThemeSelector.svelte
++++ b/src/components/ThemeSelector.svelte
+@@ -15,7 +15,7 @@
+   function toggleTheme() {
+     const { classList } = document.querySelector("html");
+     classList.remove(theme);
+-    theme = "dark";
++    theme = theme === "light" ? "dark" : "light";
+     classList.add(theme);
+     try {
+       setItem(THEME_KEY, theme);
+diff --git a/src/components/TouchHandler.svelte b/src/components/TouchHandler.svelte
+--- a/src/components/TouchHandler.svelte
++++ b/src/components/TouchHandler.svelte
+@@ -20,7 +20,7 @@
+     const diffX = Math.abs(touchEndX - touchStartX);
+     const diffY = Math.abs(touchEndY - touchStartY);
+ 
+-    if (diffX > threshold && diffY > threshold) {
++    if (diffX > threshold || diffY > threshold) {
+       if (diffX > diffY) {
+         // moving right or left
+         if (touchEndX < touchStartX) {
+diff --git a/src/game.js b/src/game.js
+--- a/src/game.js
++++ b/src/game.js
+@@ -15,7 +15,7 @@
+ export const EMPTY = -1;
+ export const ROWS = 4;
+ export const COLUMNS = 4;
+-const SOLVED_STATE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, -1];
++const SOLVED_STATE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1];
+ let timer;
+ let dbSaveTimer;
+ 
+@@ -105,6 +105,7 @@
+ }
+ 
+ function clearTimers() {
++  clearInterval(timer);
+   clearInterval(dbSaveTimer);
+ }
+ 
+@@ -124,7 +125,7 @@
+ }
+ 
+ function canMoveLeft(index, emptyCellIndex, colNumber) {
+-  return index - 1 === emptyCellIndex && colNumber !== 0;
++  return index - 1 === emptyCellIndex && colNumber !== 1;
+ }
+ 
+ function canMoveRight(index, emptyCellIndex, colNumber) {
+@@ -168,6 +169,7 @@
+ function saveGameToDB() {
+   const game = {
+     puzzle: get(puzzle),
++    moves: get(moves),
+     time: get(time)
+   };
+ 
+@@ -232,14 +234,14 @@
+   }
+ 
+   if (rowWithEmptyCell % 2 === 0) {
+-    return inversions % 2 !== 0;
+-  } else {
+     return inversions % 2 === 0;
++  } else {
++    return inversions % 2 !== 0;
+   }
+ }
+ 
+ function isPuzzleSolved(puzzle) {
+-  for (let i = 0; i < puzzle.length; i++) {
++  for (let i = 0; i < puzzle.length - 1; i++) {
+     if (puzzle[i] !== i + 1) {
+       return false;
+     }
+diff --git a/src/stores/index.js b/src/stores/index.js
+--- a/src/stores/index.js
++++ b/src/stores/index.js
+@@ -13,11 +13,11 @@
+ );
+ 
+ export const minutesString = derived(time, ($time) => {
+-  const minutes = Math.round($time / 60);
+-  return String(minutes);
++  const minutes = Math.floor($time / 60);
++  return String(minutes).padStart(2, "0");
+ });
+ 
+ export const secondsString = derived(time, ($time) => {
+   const seconds = $time % 60;
+-  return String(seconds);
++  return String(seconds).padStart(2, "0");
+ });

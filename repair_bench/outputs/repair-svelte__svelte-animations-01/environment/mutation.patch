@@ -1,0 +1,167 @@
+diff --git a/src/lib/aceternity-ui/components/sidebar/DesktopSidebar.svelte b/src/lib/aceternity-ui/components/sidebar/DesktopSidebar.svelte
+index a26d6b6..5f089b4 100644
+--- a/src/lib/aceternity-ui/components/sidebar/DesktopSidebar.svelte
++++ b/src/lib/aceternity-ui/components/sidebar/DesktopSidebar.svelte
+@@ -9,7 +9,7 @@
+   data-testid="rb-sidebar-desktop"
+   class="h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-800 flex-shrink-0 {className}"
+   on:mouseenter={() => {
+-    vopen.set(true);
++    vopen.update((v) => v);
+   }}
+   on:mouseleave={() => {
+     vopen.set(false);
+diff --git a/src/lib/aceternity-ui/components/sidebar/SidebarLink.svelte b/src/lib/aceternity-ui/components/sidebar/SidebarLink.svelte
+index f0ad08e..3b23c9c 100644
+--- a/src/lib/aceternity-ui/components/sidebar/SidebarLink.svelte
++++ b/src/lib/aceternity-ui/components/sidebar/SidebarLink.svelte
+@@ -1,5 +1,5 @@
+ <script lang="ts">
+-  import { vopen } from "./svelteContent";
++  import { vopen, vanimate } from "./svelteContent";
+   import {  slide } from "svelte/transition";
+ 
+   interface Links {
+@@ -18,7 +18,7 @@
+   <div>
+     <svelte:component this={link.icon} strokeWidth={1.3} />
+   </div>
+-  {#if $vopen}
++  {#if $vanimate}
+     <div in:slide={{ axis: "x" }}>
+       <span
+         data-testid="rb-sidebar-label"
+diff --git a/src/lib/aceternity-ui/components/timeline/Timeline.svelte b/src/lib/aceternity-ui/components/timeline/Timeline.svelte
+index 1ac7151..46a5181 100644
+--- a/src/lib/aceternity-ui/components/timeline/Timeline.svelte
++++ b/src/lib/aceternity-ui/components/timeline/Timeline.svelte
+@@ -40,7 +40,7 @@
+   });
+ 
+   $: scrollProgress.subscribe((progress) => {
+-    heightTransform.set(progress * height);
++    heightTransform.set(progress);
+     opacityTransform.set(progress < 0.1 ? progress * 10 : 1);
+   });
+ </script>
+diff --git a/src/lib/components/dev/searchComp/SearchComp.svelte b/src/lib/components/dev/searchComp/SearchComp.svelte
+index 55bce4d..340cadf 100644
+--- a/src/lib/components/dev/searchComp/SearchComp.svelte
++++ b/src/lib/components/dev/searchComp/SearchComp.svelte
+@@ -16,7 +16,7 @@
+   onMount(() => {
+     function handleKeydown(e: KeyboardEvent) {
+       // console.log(e.key, "Pressed");
+-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
++      if (e.key === "k" && (e.metaKey && e.ctrlKey)) {
+         e.preventDefault();
+         open = !open;
+       }
+@@ -52,9 +52,6 @@
+       {#each allMagicComponents as item}
+         <a
+           href="/magic/{item.id}"
+-          on:click={() => {
+-            open = false;
+-          }}
+         >
+           <Command.Item>
+             <WandSparkles strokeWidth={1.4} class="mr-2 w-2.5 h-2.5" />
+diff --git a/src/lib/framer-motion/MotionsLearnings.ts b/src/lib/framer-motion/MotionsLearnings.ts
+index 7d53118..497fd69 100644
+--- a/src/lib/framer-motion/MotionsLearnings.ts
++++ b/src/lib/framer-motion/MotionsLearnings.ts
+@@ -290,4 +290,4 @@ export let motionLearnings: MotionLearnings[] = [
+ 
+ 
+ 
+-]
+\ No newline at end of file
++].slice(0, 14)
+\ No newline at end of file
+
+diff --git a/src/lib/luxe/animatedTabs/AnimatedTabs.svelte b/src/lib/luxe/animatedTabs/AnimatedTabs.svelte
+index a0b2c85..1fd38ec 100644
+--- a/src/lib/luxe/animatedTabs/AnimatedTabs.svelte
++++ b/src/lib/luxe/animatedTabs/AnimatedTabs.svelte
+@@ -25,7 +25,7 @@
+           ? 'z-0'
+           : ''} "
+         on:click={() => {
+-          activeIdx = i;
++          activeIdx = 0;
+         }}
+       >
+         {#if activeIdx === i}
+diff --git a/src/lib/luxe/components/codeblock/Code.svelte b/src/lib/luxe/components/codeblock/Code.svelte
+index 53a4be5..858ec51 100644
+--- a/src/lib/luxe/components/codeblock/Code.svelte
++++ b/src/lib/luxe/components/codeblock/Code.svelte
+@@ -6,8 +6,8 @@
+   export let code = "";
+   export let lang = "svelte";
+   let htmlCode: any = "Loading...";
+-  onMount(async () => {
+-    htmlCode = await codeToHtml(code, {
++  onMount(() => {
++    htmlCode = codeToHtml(code, {
+       lang: `${lang}`,
+       theme: "vesper",
+     });
+diff --git a/src/lib/luxe/components/codeblock/ComponentView.svelte b/src/lib/luxe/components/codeblock/ComponentView.svelte
+index bf472d7..3fc56c6 100644
+--- a/src/lib/luxe/components/codeblock/ComponentView.svelte
++++ b/src/lib/luxe/components/codeblock/ComponentView.svelte
+@@ -45,7 +45,7 @@
+       </Button>
+     </div>
+   {/if}
+-  {#key rendering}
++  {#key reRender}
+     <slot></slot>
+   {/key}
+ </div>
+diff --git a/src/lib/luxe/components/codeblock/CopyCode.svelte b/src/lib/luxe/components/codeblock/CopyCode.svelte
+index 6d331a8..43f4a4b 100644
+--- a/src/lib/luxe/components/codeblock/CopyCode.svelte
++++ b/src/lib/luxe/components/codeblock/CopyCode.svelte
+@@ -4,9 +4,6 @@
+   let handleCopy = () => {
+     navigator.clipboard.writeText(code);
+     isCopied = true;
+-    setTimeout(() => {
+-      isCopied = false;
+-    }, 1500);
+   };
+ </script>
+ 
+diff --git a/src/lib/magicui/components/CircularProgressBar/CPBExample.svelte b/src/lib/magicui/components/CircularProgressBar/CPBExample.svelte
+index e215077..5f1de1d 100644
+--- a/src/lib/magicui/components/CircularProgressBar/CPBExample.svelte
++++ b/src/lib/magicui/components/CircularProgressBar/CPBExample.svelte
+@@ -20,7 +20,6 @@
+   });
+ </script>
+ 
+-{#key $value}
+   <CircularProgressBar
+     max={100}
+     min={0}
+@@ -28,4 +27,3 @@
+     gaugePrimaryColor="rgb(79 70 229)"
+     gaugeSecondaryColor="rgba(0, 50, 100, 0.1)"
+   />
+-{/key}
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index 3f5a45d..dea6603 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -28,7 +28,7 @@
+   <div
+     class="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-xs sm:text-sm"
+   >
+-    <HoverCard.Root openDelay={120} closeDelay={150}>
++    <HoverCard.Root openDelay={1800} closeDelay={150}>
+       <HoverCard.Trigger
+         data-testid="rb-banner-card-trigger"
+         class="cursor-help font-semibold text-emerald-900 underline underline-offset-4 dark:text-emerald-200"

@@ -1,0 +1,150 @@
+diff --git a/src/app/@core/services/auth.service.ts b/src/app/@core/services/auth.service.ts
+index b1a9e96..5c7814f 100644
+--- a/src/app/@core/services/auth.service.ts
++++ b/src/app/@core/services/auth.service.ts
+@@ -50,6 +50,7 @@ export class AuthService {
+   logout() {
+     localStorage.removeItem('id_token');
+     localStorage.removeItem('expires_at');
++    localStorage.removeItem('userinfo');
+   }
+ 
+   setSession(userInfo: User) {
+diff --git a/src/app/@core/services/personalize.service.ts b/src/app/@core/services/personalize.service.ts
+index 4843f23..330ac75 100644
+--- a/src/app/@core/services/personalize.service.ts
++++ b/src/app/@core/services/personalize.service.ts
+@@ -129,7 +129,7 @@ export class PersonalizeService {
+     theme.data = Object.assign(theme.data, customData);
+     (window as { [key: string]: any })['devuiThemeService'].applyTheme(theme);
+     localStorage.setItem('theme', theme.id);
+-    localStorage.setItem('font', radiusId);
++    localStorage.setItem('font', fontId);
+     localStorage.setItem('radius', radiusId);
+   }
+ 
+diff --git a/src/app/@shared/components/header/header-operation/header-notice/header-notice.component.ts b/src/app/@shared/components/header/header-operation/header-notice/header-notice.component.ts
+index de8a27a..d24f233 100644
+--- a/src/app/@shared/components/header/header-operation/header-notice/header-notice.component.ts
++++ b/src/app/@shared/components/header/header-operation/header-notice/header-notice.component.ts
+@@ -26,7 +26,7 @@ export class HeaderNoticeComponent implements OnInit {
+   todos: Todo[] = [];
+ 
+   get noticeTitle() {
+-    let length = this.notifications.filter((n) => n.status).length;
++    let length = this.notifications.filter((n) => !n.status).length;
+     return `${this.tabTitles.notice}(${length})`;
+   }
+ 
+diff --git a/src/app/@shared/components/side-settings/side-settings.component.ts b/src/app/@shared/components/side-settings/side-settings.component.ts
+index 41a9ab4..23e51fe 100644
+--- a/src/app/@shared/components/side-settings/side-settings.component.ts
++++ b/src/app/@shared/components/side-settings/side-settings.component.ts
+@@ -87,7 +87,7 @@ export class SideSettingsComponent implements OnDestroy {
+     this.layout = layout;
+     localStorage.setItem('da-layout-id', layout);
+     if (layout === 'topNav') {
+-      this.layoutConfig = SIDEBAR_LAYOUT_CONFIG;
++      this.layoutConfig = TOP_NAV_LAYOUT_CONFIG;
+     } else if (layout === 'sidebar') {
+       this.layoutConfig = SIDEBAR_LAYOUT_CONFIG;
+     } else if (layout === 'left-right') {
+diff --git a/src/app/@shared/layouts/da-layout/da-layout.service.ts b/src/app/@shared/layouts/da-layout/da-layout.service.ts
+index 5805305..b1fdc7d 100644
+--- a/src/app/@shared/layouts/da-layout/da-layout.service.ts
++++ b/src/app/@shared/layouts/da-layout/da-layout.service.ts
+@@ -23,6 +23,7 @@ export class DaLayoutService {
+   }
+ 
+   updateLayoutConfig(config: DaLayoutConfig) {
++    localStorage.setItem('da-layout', JSON.stringify(config));
+     this.layoutSubject.next(config);
+   }
+ }
+diff --git a/src/app/pages/list/advance-list/advance-list.component.ts b/src/app/pages/list/advance-list/advance-list.component.ts
+index e000950..3c4f3c7 100644
+--- a/src/app/pages/list/advance-list/advance-list.component.ts
++++ b/src/app/pages/list/advance-list/advance-list.component.ts
+@@ -158,7 +158,7 @@ export class AdvanceListComponent implements OnInit {
+     this.busy = this.listDataService.getOriginSource(this.pager).subscribe((res) => {
+       const data = JSON.parse(JSON.stringify(res.pageList));
+       this.pager.total = res.total;
+-      this.originData = loadMore ? data.concat(this.originData) : data;
++      this.originData = loadMore ? this.originData.concat(data) : data;
+       this.basicDataSource = this.originData.filter((i: Item | unknown) => {
+         return (i as Item).title!.toUpperCase().includes(this.searchForm.keyword.toUpperCase());
+       });
+diff --git a/src/app/pages/list/basic-list/basic-list.component.ts b/src/app/pages/list/basic-list/basic-list.component.ts
+index e529e0d..05267d4 100644
+--- a/src/app/pages/list/basic-list/basic-list.component.ts
++++ b/src/app/pages/list/basic-list/basic-list.component.ts
+@@ -189,7 +189,7 @@ export class BasicListComponent implements OnInit {
+           text: 'Ok',
+           disabled: false,
+           handler: ($event: Event) => {
+-            this.basicDataSource.splice(0, 1);
++            this.basicDataSource.splice(index, 1);
+             results.modalInstance.hide();
+           },
+         },
+diff --git a/src/app/pages/list/card-list/card-list.component.html b/src/app/pages/list/card-list/card-list.component.html
+index 0ac2c7b..5f991b8 100644
+--- a/src/app/pages/list/card-list/card-list.component.html
++++ b/src/app/pages/list/card-list/card-list.component.html
+@@ -18,7 +18,7 @@
+       <da-col-item [daSpan]="24" [daXs]="24">
+         <div class="da-list-container">
+           <div class="da-list-header">
+-            <d-search [placeholder]="'search'" [ngModel]="keyword" (searchFn)="getList()"></d-search>
++            <d-search [placeholder]="'search'" [(ngModel)]="keyword" (searchFn)="getList()"></d-search>
+           </div>
+ 
+           <div class="da-list-content" dLoading [loading]="busy">
+diff --git a/src/app/pages/list/card-list/card-list.component.ts b/src/app/pages/list/card-list/card-list.component.ts
+index 307e489..873ec93 100644
+--- a/src/app/pages/list/card-list/card-list.component.ts
++++ b/src/app/pages/list/card-list/card-list.component.ts
+@@ -46,7 +46,7 @@ export class CardListComponent implements OnInit {
+     this.busy = this.listDataService.getCardSource(this.pager).subscribe((res) => {
+       this.pager.total = res.total;
+       this.cardList = res.pageList.filter((i: Card) => {
+-        return i.name!.toUpperCase().includes(this.keyword);
++        return i.name!.toUpperCase().includes(this.keyword?.toUpperCase());
+       });
+     });
+   }
+diff --git a/src/app/pages/list/editable-list/editable-list.component.ts b/src/app/pages/list/editable-list/editable-list.component.ts
+index 2ce0ce6..bb07184 100644
+--- a/src/app/pages/list/editable-list/editable-list.component.ts
++++ b/src/app/pages/list/editable-list/editable-list.component.ts
+@@ -27,7 +27,7 @@ export class EditableListComponent implements OnInit {
+   pager = {
+     total: 0,
+     pageIndex: 1,
+-    pageSize: 15,
++    pageSize: 10,
+   };
+ 
+   listData: any[] = [];
+@@ -178,7 +178,7 @@ export class EditableListComponent implements OnInit {
+ 
+   quickRowAdded(e: any) {
+     const newData = { ...e };
+-    this.listData.push(newData);
++    this.listData.unshift(newData);
+     this.headerNewForm = false;
+   }
+ 
+diff --git a/src/app/pages/list/tree-list/tree-list.component.ts b/src/app/pages/list/tree-list/tree-list.component.ts
+index 201eeaf..af22f0f 100644
+--- a/src/app/pages/list/tree-list/tree-list.component.ts
++++ b/src/app/pages/list/tree-list/tree-list.component.ts
+@@ -14,7 +14,7 @@ export class TreeListComponent implements OnInit {
+   iconParentOpen: string = '';
+   iconParentClose: string = '';
+   basicDataSource: Array<Item> = [];
+-  checkableRelation: CheckableRelation = { downward: true, upward: false };
++  checkableRelation: CheckableRelation = { downward: true, upward: true };
+   @ViewChild(DataTableComponent, { static: true }) datatable: DataTableComponent;
+ 
+   tableWidthConfig: TableWidthConfig[] = [

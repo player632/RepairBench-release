@@ -1,0 +1,48 @@
+name: Format and Update Readme
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  format-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Setup prettier cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/prettier
+          key: prettier-${{ github.sha }}
+          restore-keys: |
+            prettier-
+
+      - name: Format
+        run: pnpm run format
+
+      - name: Add, Commit and Push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Format"
+
+      - name: Update Readme
+        run: pnpm run update-readme
+
+      - name: Add, Commit and Push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update Readme"
+          file_pattern: README.md

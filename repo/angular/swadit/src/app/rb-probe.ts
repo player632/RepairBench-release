@@ -1,0 +1,459 @@
+/**
+ * RepairBench observability probe (instrumentation face) for
+ * repair-angular__swadit-01.
+ *
+ * A read-only DOM surface plus user-executable action primitives. It exposes
+ * exactly one global, window.__SWADIT__, whose members are plain functions.
+ * Calling a reader never mutates application state; only the drivers do, and
+ * the delivery DSL calls drivers exclusively from checkpoint setup steps.
+ * Every reader degrades to a sentinel ('-' for strings, -1 for numbers, false
+ * for booleans) when the element it needs is absent, so a broken face reports
+ * a stable value instead of throwing.
+ *
+ * The probe holds no reference to any Angular component, directive or service
+ * instance, reads no component-internal field, and adds no test-selector
+ * attribute to any template. Everything below is derived from the DOM that the
+ * shipped templates already render; BRIDGE_API.json records the file:line of
+ * every selector used here.
+ */
+const all = (sel: string, root?: ParentNode): HTMLElement[] =>
+  Array.prototype.slice.call((root || document).querySelectorAll(sel)) as HTMLElement[];
+
+const q = (sel: string, root?: ParentNode): HTMLElement | null =>
+  (root || document).querySelector(sel) as HTMLElement | null;
+
+const norm = (v: string | null | undefined): string =>
+  v === null || v === undefined ? '' : String(v).replace(/\s+/g, ' ').trim();
+
+const str = (v: string | null | undefined): string => {
+  const s = norm(v);
+  return s === '' ? '-' : s;
+};
+
+const cnt = (v: number): number => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : -1);
+
+const text = (el: HTMLElement | null): string => (el ? str(el.textContent) : '-');
+
+const firstToken = (v: string): string => {
+  const s = norm(v);
+  if (s === '') { return ''; }
+  const i = s.indexOf(' ');
+  return i < 0 ? s : s.substring(0, i);
+};
+
+const clickFirst = (els: HTMLElement[]): number => {
+  if (!els.length) { return 0; }
+  els[0].click();
+  return 1;
+};
+
+const defCards = (): HTMLElement[] => all('div.card.mb-2');
+
+const cardPreview = (c: HTMLElement): string => {
+  const p = q('.card-header .preview', c);
+  return p ? norm(p.textContent) : '';
+};
+
+const cardByName = (name: string): HTMLElement | null => {
+  const cs = defCards();
+  for (let i = 0; i < cs.length; i++) {
+    if (cardPreview(cs[i]).indexOf(name) === 0) { return cs[i]; }
+  }
+  return null;
+};
+
+const petCard = (): HTMLElement | null => cardByName('Pet');
+
+const petProps = (): HTMLElement[] => {
+  const c = petCard();
+  return c ? all('.property', c) : [];
+};
+
+const propName = (el: HTMLElement): string => {
+  const t = norm(el.textContent);
+  return t.length > 0 && t.charAt(t.length - 1) === '*' ? t.substring(0, t.length - 1) : t;
+};
+
+const propRow = (name: string): HTMLElement | null => {
+  const ps = petProps();
+  for (let i = 0; i < ps.length; i++) {
+    if (propName(ps[i]) === name) { return ps[i]; }
+  }
+  return null;
+};
+
+const rowOf = (el: HTMLElement | null): HTMLElement | null => {
+  let n: HTMLElement | null = el;
+  while (n) {
+    if (n.classList && n.classList.contains('clickable')) { return n; }
+    n = n.parentElement as HTMLElement | null;
+  }
+  return null;
+};
+
+const petTypes = (): HTMLElement[] => {
+  const c = petCard();
+  return c ? all('.propertyType', c) : [];
+};
+
+const typeTexts = (): string[] => {
+  const ts = petTypes();
+  const out: string[] = [];
+  for (let i = 0; i < ts.length; i++) { out.push(norm(ts[i].textContent)); }
+  return out;
+};
+
+const petExampleCode = (): HTMLElement | null => {
+  const c = petCard();
+  return c ? q('markdown pre code', c) : null;
+};
+
+const petExampleParsed = (): any => {
+  const el = petExampleCode();
+  if (!el) { return null; }
+  const raw = String(el.textContent || '');
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    try {
+      return JSON.parse(raw.replace(/\s+/g, ''));
+    } catch (e2) {
+      return null;
+    }
+  }
+};
+
+const exampleScalar = (key: string): string => {
+  const o = petExampleParsed();
+  if (!o || typeof o !== 'object') { return '-'; }
+  const v = o[key];
+  if (typeof v === 'string') { return str(v); }
+  if (typeof v === 'number' || typeof v === 'boolean') { return String(v); }
+  return '-';
+};
+
+const exampleArrayLen = (key: string): number => {
+  const o = petExampleParsed();
+  if (!o || typeof o !== 'object') { return -1; }
+  const v = o[key];
+  return Array.isArray(v) ? v.length : -1;
+};
+
+const refTypeCount = (needle: string): number => {
+  const ts = typeTexts();
+  let n = 0;
+  for (let i = 0; i < ts.length; i++) { if (ts[i].indexOf(needle) >= 0) { n++; } }
+  return cnt(n);
+};
+
+const pathRows = (): HTMLElement[] => all('div.path');
+
+const firstPathRow = (): HTMLElement | null => {
+  const r = pathRows();
+  return r.length ? r[0] : null;
+};
+
+const methodTexts = (unset: boolean): string => {
+  const row = firstPathRow();
+  if (!row) { return '-'; }
+  const els = all(unset ? '.methodKey.methodUnset' : '.methodKey:not(.methodUnset)', row);
+  const out: string[] = [];
+  for (let i = 0; i < els.length; i++) { out.push(norm(els[i].textContent)); }
+  return out.length ? out.join(',') : '-';
+};
+
+const defTabLinks = (): HTMLElement[] => all('ul.nav.nav-tabs a.nav-link');
+
+const tabLabel = (a: HTMLElement): string => {
+  const s = q('span', a);
+  return s ? norm(s.textContent) : norm(a.textContent);
+};
+
+const brandText = (): string => {
+  const b = q('.navbar-brand');
+  return b ? norm(b.textContent) : '';
+};
+
+const fileMenuItems = (): HTMLElement[] => all('.dropdown-menu .dropdown-item');
+
+const convertItem = (): HTMLElement | null => {
+  const items = fileMenuItems();
+  for (let i = 0; i < items.length; i++) {
+    if (norm(items[i].textContent).indexOf('Convert to OAS 3') >= 0) { return items[i]; }
+  }
+  return null;
+};
+
+const fileMenuToggle = (): HTMLElement | null => q('li.nav-item.dropdown > a.nav-link');
+
+const okButton = (): HTMLElement | null => q('.modal-footer button.btn-primary');
+
+const api: any = {
+  probeVersion: (): string => 'swadit-probe-1',
+  readerNames: (): string[] => Object.keys(api).sort(),
+  rootHostCount: (): number => cnt(all('app-root').length),
+
+  fileMenuTitle: (): string => text(fileMenuToggle()),
+  fileMenuItemCount: (): number => cnt(fileMenuItems().length),
+  convertItemPresent: (): number => (convertItem() ? 1 : 0),
+  modalOpenCount: (): number => cnt(all('.modal-footer').length),
+
+  defTabNames: (): string => {
+    const as = defTabLinks();
+    const out: string[] = [];
+    for (let i = 0; i < as.length; i++) { out.push(tabLabel(as[i])); }
+    return out.length ? out.join(',') : '-';
+  },
+  defTabCount: (): number => cnt(defTabLinks().length),
+  defTabBadgeCount: (): number => cnt(all('ul.nav.nav-tabs .badge').length),
+  defActiveTab: (): string => {
+    const as = defTabLinks();
+    for (let i = 0; i < as.length; i++) {
+      if (as[i].classList.contains('active')) { return str(tabLabel(as[i])); }
+    }
+    return '-';
+  },
+  defEmptyCategoryProof: (): string => {
+    const t = api.defActiveTab();
+    return t + ':' + defCards().length;
+  },
+
+  sortItemsChecked: (): boolean => {
+    const el = q('input#sortItems') as HTMLInputElement | null;
+    return el ? !!el.checked : false;
+  },
+  filterInputValue: (): string => {
+    const el = q('input[name="filterText"]') as HTMLInputElement | null;
+    return el ? str(el.value) : '-';
+  },
+  defCardCount: (): number => cnt(defCards().length),
+  defCardNames: (): string => {
+    const cs = defCards();
+    const out: string[] = [];
+    for (let i = 0; i < cs.length; i++) { out.push(firstToken(cardPreview(cs[i]))); }
+    return out.length ? out.join('|') : '-';
+  },
+  defFirstName: (): string => {
+    const cs = defCards();
+    return cs.length ? str(firstToken(cardPreview(cs[0]))) : '-';
+  },
+
+  petCardPresent: (): number => (petCard() ? 1 : 0),
+  petPropertyCount: (): number => cnt(petProps().length),
+  petPropertyNames: (): string => {
+    const ps = petProps();
+    const out: string[] = [];
+    for (let i = 0; i < ps.length; i++) { out.push(propName(ps[i])); }
+    return out.length ? out.join(',') : '-';
+  },
+  petRequiredStarCount: (): number => {
+    const ps = petProps();
+    let n = 0;
+    for (let i = 0; i < ps.length; i++) {
+      if (norm(ps[i].textContent).charAt(norm(ps[i].textContent).length - 1) === '*') { n++; }
+    }
+    return cnt(n);
+  },
+  petNameRowStar: (): number => {
+    const el = propRow('name');
+    return el && norm(el.textContent).charAt(norm(el.textContent).length - 1) === '*' ? 1 : 0;
+  },
+  petPhotoUrlsRowStar: (): number => {
+    const el = propRow('photoUrls');
+    if (!el) { return -1; }
+    return norm(el.textContent).charAt(norm(el.textContent).length - 1) === '*' ? 1 : 0;
+  },
+  petStatusDescription: (): string => {
+    const row = rowOf(propRow('status'));
+    return row ? text(q('.propertyDescription', row)) : '-';
+  },
+  petDescriptionCellCount: (): number => {
+    const c = petCard();
+    return c ? cnt(all('.propertyDescription', c).length) : -1;
+  },
+  petReadOnlyTypeCount: (): number => {
+    const ts = typeTexts();
+    let n = 0;
+    for (let i = 0; i < ts.length; i++) { if (/read only/.test(ts[i])) { n++; } }
+    return cnt(n);
+  },
+  petTypeTexts: (): string => {
+    const ts = typeTexts();
+    return ts.length ? ts.join('|') : '-';
+  },
+
+  petExampleExpanded: (): number => (petExampleCode() ? 1 : 0),
+  petExamplePhotoUrlsLen: (): number => exampleArrayLen('photoUrls'),
+  petExampleTagsLen: (): number => exampleArrayLen('tags'),
+  petExampleNameValue: (): string => exampleScalar('name'),
+  petExampleStatusValue: (): string => exampleScalar('status'),
+
+  petRefSchemasCount: (): number => refTypeCount('#/components/schemas/'),
+  petRefParametersCount: (): number => refTypeCount('#/components/parameters/'),
+  petRefDefinitionsCount: (): number => refTypeCount('#/definitions/'),
+
+  pathRowCount: (): number => cnt(pathRows().length),
+  pathFirstName: (): string => {
+    const row = firstPathRow();
+    if (!row) { return '-'; }
+    const s = q('span', row);
+    return text(s);
+  },
+  pathFirstUnsetMethods: (): string => methodTexts(true),
+  pathFirstSetMethods: (): string => methodTexts(false),
+  pathFirstPostOpacity: (): string => {
+    const row = firstPathRow();
+    if (!row) { return '-'; }
+    const el = q('.methodBgColor-post', row);
+    if (!el) { return '-'; }
+    const v = norm(window.getComputedStyle(el).opacity);
+    return v === '' ? '-' : v;
+  },
+  pathSelectedRowCount: (): number => cnt(all('div.path.path-selected').length),
+  pathSelectedLabelCount: (): number => {
+    const ls = all('label.mr-1');
+    for (let i = 0; i < ls.length; i++) {
+      const m = /\(([0-9]+) selected\)/.exec(norm(ls[i].textContent));
+      if (m) { return cnt(Number(m[1])); }
+    }
+    return -1;
+  },
+
+  pathTabCount: (): number => cnt(all('ul.nav.nav-tabs li.nav-item').length),
+  pathTabLabels: (): string => {
+    const as = all('ul.nav.nav-tabs a.nav-link');
+    const out: string[] = [];
+    for (let i = 0; i < as.length; i++) { out.push(norm(as[i].textContent)); }
+    return out.length ? out.join(',') : '-';
+  },
+  pathActiveTabLabel: (): string => {
+    const as = all('ul.nav.nav-tabs a.nav-link');
+    for (let i = 0; i < as.length; i++) {
+      if (as[i].classList.contains('active')) { return str(norm(as[i].textContent)); }
+    }
+    return '-';
+  },
+  pathActiveTabCount: (): number => cnt(all('ul.nav.nav-tabs a.nav-link.active').length),
+  pathActiveIsFirstTab: (): number => {
+    const as = all('ul.nav.nav-tabs a.nav-link');
+    if (!as.length) { return -1; }
+    const act = all('ul.nav.nav-tabs a.nav-link.active');
+    if (act.length !== 1) { return 0; }
+    return norm(act[0].textContent) === norm(as[0].textContent) ? 1 : 0;
+  },
+
+  sourceFirstLineKind: (): string => {
+    const el = q('.ace_line');
+    if (!el) { return '-'; }
+    const t = norm(el.textContent);
+    if (t === '') { return '-'; }
+    if (t.charAt(0) === '{') { return 'JSON'; }
+    if (t.indexOf('swagger:') === 0) { return 'YAML'; }
+    return 'OTHER:' + t;
+  },
+  sourceEditorCount: (): number => cnt(all('.ace_editor').length),
+  sourceValidationMark: (): string => {
+    const hs = q('.editor-header');
+    if (!hs) { return '-'; }
+    const t = norm(hs.textContent);
+    if (t.indexOf('validation passed') >= 0) { return 'passed'; }
+    if (t.indexOf('validation failed') >= 0) { return 'failed'; }
+    return 'none';
+  },
+
+  headerBrandHasSite: (): number => (/PETAPI/.test(brandText()) ? 1 : 0),
+  headerBrandHasDocTitle: (): number => (/Swagger Petstore/.test(brandText()) ? 1 : 0),
+  headerBrandHasEnDash: (): number => (brandText().indexOf('\u2013') >= 0 ? 1 : 0),
+
+  localStorageKeyNames: (): string => {
+    try {
+      const ks = Object.keys(window.localStorage).sort();
+      return ks.length ? ks.join(',') : '-';
+    } catch (e) {
+      return '-';
+    }
+  },
+  locationPathname: (): string => str(window.location.pathname),
+  probeGlobalCount: (): number => {
+    let n = 0;
+    const ks = Object.keys(window);
+    for (let i = 0; i < ks.length; i++) { if (ks[i].indexOf('__SWADIT') === 0) { n++; } }
+    return cnt(n);
+  },
+
+  expandCardByName: (name: string): number => {
+    const c = cardByName(String(name));
+    if (!c) { return 0; }
+    const h = q('.card-header', c);
+    return clickFirst(h ? [h] : []);
+  },
+  collapseCardByName: (name: string): number => {
+    const c = cardByName(String(name));
+    if (!c) { return 0; }
+    if (!q('.card-block', c)) { return 1; }
+    const h = q('.card-header', c);
+    return clickFirst(h ? [h] : []);
+  },
+  expandGeneratedExample: (): number => {
+    const c = petCard();
+    if (!c) { return 0; }
+    if (q('markdown pre code', c)) { return 1; }
+    const sp = all('span.clickable', c);
+    for (let i = 0; i < sp.length; i++) {
+      if (norm(sp[i].textContent).indexOf('Generated example') === 0) { sp[i].click(); return 1; }
+    }
+    return 0;
+  },
+  setSortItems: (on: boolean): boolean => {
+    const el = q('input#sortItems') as HTMLInputElement | null;
+    if (!el) { return false; }
+    el.checked = !!on;
+    el.dispatchEvent(new Event('change'));
+    el.dispatchEvent(new Event('input'));
+    return !!el.checked;
+  },
+  setFilterText: (v: string): string => {
+    const el = q('input[name="filterText"]') as HTMLInputElement | null;
+    if (!el) { return '-'; }
+    el.value = String(v);
+    el.dispatchEvent(new Event('input'));
+    return el.value;
+  },
+  clearFilterText: (): number => {
+    const x = q('.filterBox .input-group-text.clickable');
+    if (x) { x.click(); return 1; }
+    const el = q('input[name="filterText"]') as HTMLInputElement | null;
+    if (!el) { return 0; }
+    el.value = '';
+    el.dispatchEvent(new Event('input'));
+    return 1;
+  },
+  clickPathButton: (label: string): number => {
+    const bs = all('.btn-group button');
+    for (let i = 0; i < bs.length; i++) {
+      if (norm(bs[i].textContent) === String(label)) { bs[i].click(); return 1; }
+    }
+    return 0;
+  },
+  clickDefTab: (name: string): number => {
+    const as = defTabLinks();
+    for (let i = 0; i < as.length; i++) {
+      if (tabLabel(as[i]).indexOf(String(name)) === 0) { as[i].click(); return 1; }
+    }
+    return 0;
+  },
+  openFileMenu: (): number => clickFirst(fileMenuToggle() ? [fileMenuToggle() as HTMLElement] : []),
+  clickConvertToOas3: (): number => {
+    api.openFileMenu();
+    const it = convertItem();
+    return clickFirst(it ? [it] : []);
+  },
+  dismissModalOk: (): number => clickFirst(okButton() ? [okButton() as HTMLElement] : []),
+  convertToOas3: (): number => {
+    const clicked = api.clickConvertToOas3();
+    api.dismissModalOk();
+    return clicked;
+  }
+};
+
+(window as any).__SWADIT__ = api;

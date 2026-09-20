@@ -1,0 +1,113 @@
+diff --git a/color-notes.html b/color-notes.html
+index 665d205..f9a1a81 100644
+--- a/color-notes.html
++++ b/color-notes.html
+@@ -187,11 +187,11 @@
+         <header>
+             <a data-testid="mn-b-export" @click="downloadNote">📋</a>
+             <h2 data-testid="mn-b-title">{{ title }}</h2>
+-            <input type="color" id="favcolor" name="favcolor" v-model="note.color" data-testid="mn-b-color">
++            <input type="color" id="favcolor" name="favcolor" :value="note.color" data-testid="mn-b-color">
+         </header>
+ 
+         <textarea autofocus placeholder="insert your note .." data-testid="mn-b-composer" v-model="note.text"
+-            @keyup.ctrl.enter="addNote"></textarea>
++            @keyup.enter="addNote"></textarea>
+         <button class="button" data-testid="mn-b-submit" @click="addNote">Submit</button>
+ 
+ 
+@@ -227,7 +227,7 @@
+                     let { text, date, color } = this.note;
+                     this.notes.push({
+                         text,
+-                        date: new Date(Date.now()).toLocaleString(),
++                        date,
+                         color
+                     });
+                     this.note.text = '';
+@@ -256,7 +256,7 @@
+                 }
+             },
+             mounted() {
+-                if (localStorage.getItem('notes')) this.notes = JSON.parse(localStorage.getItem('notes'));
++                if (sessionStorage.getItem('notes')) this.notes = JSON.parse(sessionStorage.getItem('notes'));
+             },
+             watch: {
+                 notes: {
+diff --git a/index-mobile.html b/index-mobile.html
+index 3f35a1a..4bc5ab0 100644
+--- a/index-mobile.html
++++ b/index-mobile.html
+@@ -113,7 +113,7 @@
+     </div>
+     <script src="rb-probe.js"></script>
+     <script>
+-        document.getElementById("app").style.height = document.documentElement.clientHeight + "px";
++        document.getElementById("mobile-app").style.height = document.documentElement.clientHeight + "px";
+         var app = new Vue({
+             el: '#app',
+             data: {
+@@ -135,15 +135,15 @@
+                     if (text === '') {
+                         return ;
+                     }
+-                    this.notes.push({
++                    this.notes[this.notes.length] = {
+                         text,
+                         date: new Date(Date.now()).toLocaleString(),
+ 
+-                    })
++                    }
+                 },
+                 removeNote(index) {
+ 
+-                    this.$delete(this.notes, index)
++                    this.$delete(this.note, index)
+                 },
+ 
+             },
+diff --git a/index.html b/index.html
+index fa97dc7..a50d438 100644
+--- a/index.html
++++ b/index.html
+@@ -147,9 +147,9 @@
+         <div data-testid="mn-a-card" v-for="(note, index) in notes">
+             <div class ="top">
+                 <button class="close" :data-testid="'mn-a-close-'+index" @click="removeNote(index)"></button>
+-                <i data-testid="mn-a-date">{{note.date}}</i>
++                <i data-testid="mn-a-date">{{note.text}}</i>
+             </div>
+-            {{note.text}}
++            {{note.date}}
+         </div>
+     </div>
+     <script src="rb-probe.js"></script>
+@@ -172,17 +172,16 @@
+                     let {
+                         text, title, color
+                     } = this.note
+-                    if (text === '') {
++                    if (text === null) {
+                        return;
+                     }
+                     this.notes.push({
+                         text,
+                         date: new Date(Date.now()).toLocaleString(),
+                     })
+-                    this.note.text = ''
+                 },
+                 removeNote(index) {
+-                    this.$delete(this.notes, index)
++                    this.$delete(this.notes, this.notes.length - 1)
+                 },
+ 
+             },
+@@ -192,7 +191,7 @@
+             watch: {
+                 notes: {
+                     handler() {
+-                        localStorage.setItem('notes', JSON.stringify(this.notes));
++                        localStorage.setItem('note', JSON.stringify(this.notes));
+                     },
+                     deep: true,
+                 },

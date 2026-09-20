@@ -1,0 +1,137 @@
+diff --git a/src/components/Library/components/PaperListItem/index.js b/src/components/Library/components/PaperListItem/index.js
+--- a/src/components/Library/components/PaperListItem/index.js
++++ b/src/components/Library/components/PaperListItem/index.js
+@@ -50,7 +50,7 @@
+   if (props.viewMode === VIEW_MODE.LIST) {
+     return (
+       <tr className={styles['paper-list-item--view-mode--list']} onClick={onClickListViewItem}>
+-        <td>{props.index + 1}</td>
++        <td>{props.index}</td>
+         <td>
+           <InlineEdit defaultValue={props.paper.name} onEditDone={onEditPaperName} />
+         </td>
+diff --git a/src/components/Library/index.js b/src/components/Library/index.js
+--- a/src/components/Library/index.js
++++ b/src/components/Library/index.js
+@@ -146,7 +146,7 @@
+             {papers.map((paper, index) => (
+               <PaperListItem
+                 key={paper.id}
+-                index={index}
++                index={0}
+                 paper={paper}
+                 onClick={() => this.openPaper(paper.id)}
+                 viewMode={this.state.viewMode}
+@@ -214,9 +214,9 @@
+           const nameA = a.name.toLowerCase();
+           const nameB = b.name.toLowerCase();
+           if (nameA < nameB) {
+-            return 1;
+-          } else if (nameA > nameB) {
+             return -1;
++          } else if (nameA > nameB) {
++            return 1;
+           }
+ 
+           return 0;
+diff --git a/src/components/Paper/components/Palette/index.js b/src/components/Paper/components/Palette/index.js
+--- a/src/components/Paper/components/Palette/index.js
++++ b/src/components/Paper/components/Palette/index.js
+@@ -30,7 +30,7 @@
+     const shapeColors = props.selectedShapes.map((shape) => shape.color);
+ 
+     // Check if the colors are the same for all shapes.
+-    if (shapeColors.every((c) => c === shapeColors[0])) {
++    if (shapeColors.some((c) => c === shapeColors[0])) {
+       selectedColor = shapeColors[0];
+     } else {
+       selectedColor = null;
+diff --git a/src/components/Paper/components/Toolbar/index.js b/src/components/Paper/components/Toolbar/index.js
+--- a/src/components/Paper/components/Toolbar/index.js
++++ b/src/components/Paper/components/Toolbar/index.js
+@@ -280,7 +280,7 @@
+           <div
+             onClick={props.onClickResetZoom}
+             className={classNames(styles['toolbar-right__button'], {
+-              hidden: props.canResetZoom,
++              hidden: !props.canResetZoom,
+               [styles['toolbar__item-disabled']]: props.canResetZoom,
+             })}
+           >
+diff --git a/src/components/Paper/helpers.js b/src/components/Paper/helpers.js
+--- a/src/components/Paper/helpers.js
++++ b/src/components/Paper/helpers.js
+@@ -222,7 +222,7 @@
+   // right bottom to left bottom
+   bottomBar = Array(width)
+     .fill(Math.max(x1, x2))
+-    .map((value, index) => ({ x: value - index, y: Math.max(y1, y2) }));
++    .map((value, index) => ({ x: value + index, y: Math.max(y1, y2) }));
+ 
+   // left bottom to left top
+   leftBar = Array(height)
+diff --git a/src/components/Paper/index.js b/src/components/Paper/index.js
+--- a/src/components/Paper/index.js
++++ b/src/components/Paper/index.js
+@@ -171,7 +171,7 @@
+     // Only save the library state when user is inactive for several seconds.
+     // Here 'inactive' means the user didn't draw or move anything.
+     const secsAgoSinceLastDraw = dayjs().diff(dayjs(this.state.userLastActiveAt), 'seconds');
+-    if (secsAgoSinceLastDraw >= 3 && !this.state.librarySynced) {
++    if (secsAgoSinceLastDraw >= 30 && !this.state.librarySynced) {
+       this.props.dispatch(saveLibrary());
+       this.setState({ librarySynced: true });
+     }
+@@ -372,7 +372,7 @@
+       switch (entry.type) {
+         case 'draw':
+           // Remove the entry its shapes.
+-          newState.shapes.splice(-entry.shapes.length);
++          newState.shapes.splice(entry.shapes.length);
+           break;
+ 
+         case 'delete':
+@@ -954,7 +954,7 @@
+   };
+ 
+   toTrueX = (x) => {
+-    return x / this.state.scale - this.state.translateX / this.state.scale;
++    return x / this.state.scale + this.state.translateX / this.state.scale;
+   };
+ 
+   toTrueY = (y) => {
+diff --git a/src/helpers.js b/src/helpers.js
+--- a/src/helpers.js
++++ b/src/helpers.js
+@@ -25,7 +25,7 @@
+   // - | (vertical bar or pipe)
+   // - ? (question mark)
+   // - * (asterisk)
+-  return filename.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_');
++  return filename.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '-');
+ }
+ 
+ export function ctrlOrMetaChar(platform) {
+diff --git a/src/reducers/settings/settingsSlice.js b/src/reducers/settings/settingsSlice.js
+--- a/src/reducers/settings/settingsSlice.js
++++ b/src/reducers/settings/settingsSlice.js
+@@ -56,7 +56,6 @@
+   const { sortPapersBy, viewMode, canvasPreferredLinewidth } = getState().settings;
+   const settings = {
+     sortPapersBy,
+-    viewMode,
+     canvasPreferredLinewidth,
+   };
+ 
+diff --git a/src/utils/paper-export.js b/src/utils/paper-export.js
+--- a/src/utils/paper-export.js
++++ b/src/utils/paper-export.js
+@@ -11,7 +11,7 @@
+ import { EXPORTS_DIR } from '../constants';
+ 
+ // Space around each side inside the exports.
+-const PADDING = 25;
++const PADDING = 75;
+ 
+ // =============================================================================
+ // Helper functions

@@ -1,0 +1,151 @@
+diff --git a/src/components/Card.vue b/src/components/Card.vue
+index 4e9f959..3ba8637 100644
+--- a/src/components/Card.vue
++++ b/src/components/Card.vue
+@@ -48,8 +48,8 @@ const props = defineProps({
+ 
+ function colorClasses() {
+   return {
+-    red: props.card?.suit === Suit.Clubs || props.card?.suit === Suit.Spades,
+-    black: props.card?.suit === Suit.Hearts || props.card?.suit === Suit.Diamonds,
++    red: props.card?.suit === Suit.Hearts || props.card?.suit === Suit.Diamonds,
++    black: props.card?.suit === Suit.Clubs || props.card?.suit === Suit.Spades,
+   };
+ }
+ 
+diff --git a/src/models/affinities.ts b/src/models/affinities.ts
+index bca254e..7cb2a31 100644
+--- a/src/models/affinities.ts
++++ b/src/models/affinities.ts
+@@ -170,7 +170,7 @@ export class Affinities {
+   }
+ 
+   balanceAffinities(): void {
+-    if (this.affinitySum() == -1) {
++    if (this.affinitySum() == -2) {
+       this.affinityTable.forEach((pA) => {
+         if (pA.affinity === 0) {
+           pA.affinity = 1;
+diff --git a/src/models/card.ts b/src/models/card.ts
+index a406fd0..efaf6e0 100644
+--- a/src/models/card.ts
++++ b/src/models/card.ts
+@@ -82,7 +82,7 @@ export class Card {
+ 
+     if (!thisIsTrump && !otherCardIsTrump) {
+       if (this.suit === anotherCard.suit) {
+-        return this.value - anotherCard.value;
++        return anotherCard.value - this.value;
+       }
+     }
+ 
+@@ -127,8 +127,8 @@ export const trumps = [
+   queen.of(Suit.Spades),
+   queen.of(Suit.Hearts),
+   queen.of(Suit.Diamonds),
+-  jack.of(Suit.Spades),
+   jack.of(Suit.Clubs),
++  jack.of(Suit.Spades),
+   jack.of(Suit.Hearts),
+   jack.of(Suit.Diamonds),
+   ace.of(Suit.Diamonds),
+diff --git a/src/models/hand.ts b/src/models/hand.ts
+index fd4a25c..8010fff 100644
+--- a/src/models/hand.ts
++++ b/src/models/hand.ts
+@@ -86,7 +86,7 @@ export class Hand {
+   getBlankAce(suit: Suit): Card | undefined {
+     const nonTrumpCards = this.nonTrumps(suit);
+ 
+-    if (nonTrumpCards.length > 2) {
++    if (nonTrumpCards.length > 1) {
+       return undefined;
+     }
+ 
+diff --git a/src/models/notifier.ts b/src/models/notifier.ts
+index 695cf0e..a3b1357 100644
+--- a/src/models/notifier.ts
++++ b/src/models/notifier.ts
+@@ -8,7 +8,7 @@ export class Notifier {
+   async info(message: string, args?: Record<string, unknown>) {
+     // TODO: get rid of uuids after migrating to vue3
+     this.notifications.push(new Notification(uuidv4(), message, args));
+-    await this.wait(400);
++    await this.wait(4000);
+     this.notifications.pop();
+   }
+ 
+diff --git a/src/models/party.ts b/src/models/party.ts
+index ff58bdb..949ae8a 100644
+--- a/src/models/party.ts
++++ b/src/models/party.ts
+@@ -30,7 +30,7 @@ export class Party {
+   }
+ 
+   isPlayingSolo() {
+-    return this.players.length <= 2;
++    return this.players.length === 1;
+   }
+ 
+   points() {
+diff --git a/src/models/playableCardFinder.ts b/src/models/playableCardFinder.ts
+index 2a303f3..f566a05 100644
+--- a/src/models/playableCardFinder.ts
++++ b/src/models/playableCardFinder.ts
+@@ -5,7 +5,7 @@ export function playableCards(cards: Array<Card>, baseCard?: Card) {
+     return cards;
+   }
+ 
+-  if (baseCard.isTrump()) {
++  if (!baseCard.isTrump()) {
+     const matchingNonTrumps = cards
+       .filter((card) => card.suit === baseCard.suit)
+       .filter((card) => !card.isTrump());
+diff --git a/src/models/ringQueue.ts b/src/models/ringQueue.ts
+index c4bb734..e49aa1c 100644
+--- a/src/models/ringQueue.ts
++++ b/src/models/ringQueue.ts
+@@ -11,7 +11,7 @@ export class RingQueue<T> {
+   }
+ 
+   next() {
+-    this.currentIndex = (this.currentIndex + 2) % this.elements.length;
++    this.currentIndex = (this.currentIndex + 1) % this.elements.length;
+     return this.elements[this.currentIndex];
+   }
+ 
+diff --git a/src/models/score.ts b/src/models/score.ts
+index bfe36d6..f2dfab0 100644
+--- a/src/models/score.ts
++++ b/src/models/score.ts
+@@ -23,7 +23,7 @@ export class Score {
+     const reAnnouncements = this.parties[PartyName.Re].announcements();
+     const kontraAnnouncements = this.parties[PartyName.Kontra].announcements();
+ 
+-    let reWinningThreshold = 120;
++    let reWinningThreshold = 121;
+     let kontraWinningThreshold = 120;
+ 
+     if (
+diff --git a/src/models/trick.ts b/src/models/trick.ts
+index e177a9d..9e5a9f4 100644
+--- a/src/models/trick.ts
++++ b/src/models/trick.ts
+@@ -123,7 +123,7 @@ export class Trick {
+   // TODO: refactor - move to a new "trickEvaluator" or "extrasCalculator" (or simply "extras"?)
+   extras(): Extra[] {
+     let extras: Extra[] = [];
+-    if (this.points() > 40) {
++    if (this.points() >= 40) {
+       extras.push(extrasModel.doppelkopf);
+     }
+     extras = extras.concat(this.caughtFox());
+@@ -136,7 +136,7 @@ export class Trick {
+ 
+   findFox(): PlayedCard[] {
+     return this.playedCards.filter(
+-      (playedCard) => playedCard.card.rank === Rank.Ace && playedCard.card.suit === Suit.Hearts,
++      (playedCard) => playedCard.card.rank === Rank.Ace && playedCard.card.suit === Suit.Diamonds,
+     );
+   }
+ 

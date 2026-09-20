@@ -1,0 +1,129 @@
+diff --git a/src/engine/game.ts b/src/engine/game.ts
+--- a/src/engine/game.ts
++++ b/src/engine/game.ts
+@@ -103,7 +103,7 @@ const loadGame = () => {
+   const stored = localStorage.getItem(GAME_STORAGE_KEY);
+   if (stored) {
+     const result = JSON.parse(stored) as Partial<GameState>;
+-    return { ...defaultState(), ...result, paused: true };
++    return { ...defaultState(), ...result, paused: false };
+   }
+ 
+   return defaultState();
+@@ -134,7 +134,7 @@ export const useGameStore = createStore(
+         const sharedUpdate = {
+           dogecoin: newDogeCount,
+           ticks: state.ticks + 1,
+-          maxDogecoin: Math.min(newDogeCount, state.maxDogecoin),
++          maxDogecoin: Math.max(newDogeCount, state.maxDogecoin),
+           successChance:
+             state.currentMission === "To The Moon"
+               ? state.successChance + calculateResearchRate(state) / 10
+@@ -155,7 +155,7 @@ export const useGameStore = createStore(
+         }
+         if (
+           state.phase < 4 &&
+-          state.unlocks.includes(Unlocks.SocialMediaManager) ||
++          state.unlocks.includes(Unlocks.SocialMediaManager) &&
+           state.unlocks.includes(Unlocks.Incorporate)
+         ) {
+           return { ...sharedUpdate, phase: 4 };
+@@ -185,7 +185,7 @@ export const useGameStore = createStore(
+ 
+     sendTweet: () => {
+       set((state) => {
+-        const coin = state.dogecoin + 50000;
++        const coin = state.dogecoin - 50000;
+         const luckyNumber = Math.random();
+ 
+         let luck = state.luck;
+@@ -272,7 +272,7 @@ export const useGameStore = createStore(
+       set((state) => {
+         const roll = Math.random();
+ 
+-        if (state.successChance < roll) {
++        if (state.successChance > roll) {
+           addVictory({
+             ticks: state.ticks,
+             maxDoge: state.maxDogecoin,
+@@ -324,7 +324,7 @@ const calculateHashRate = (store: GameState) => {
+       store.mediumMiners * 50 +
+       store.largeMiners * 140) *
+     (store.realEstate.includes(RealEstate.Server) ? 1.3 : 1) *
+-    (1 + store.minerAllocation)
++    (1 - store.minerAllocation)
+   );
+ };
+ 
+diff --git a/src/engine/market.ts b/src/engine/market.ts
+--- a/src/engine/market.ts
++++ b/src/engine/market.ts
+@@ -42,7 +42,7 @@ export const getRandomFluctuation = (
+     if (goodLuck || (options.currentLuck && options.currentLuck > 0)) {
+       const moveRange = currentVal * 0.5; // Random range: 50%
+       const delta = Math.random() * moveRange + currentVal * 0.3; // Total range: random * 50% + 30%, 30% to 80%
+-      return delta;
++      return 0 - delta;
+     }
+ 
+     const badLuck = Math.random() > 0.99;
+diff --git a/src/engine/runtime.ts b/src/engine/runtime.ts
+--- a/src/engine/runtime.ts
++++ b/src/engine/runtime.ts
+@@ -20,7 +20,7 @@ export const useMarketRunner = () => {
+   const ticks = useGameStore((state) => state.ticks);
+ 
+   useEffect(() => {
+-    if (ticks % 20 !== 0) {
++    if (ticks % 20 === 0) {
+       setRandomDogePrice();
+     }
+   }, [ticks]);
+diff --git a/src/interface/doge-hq.tsx b/src/interface/doge-hq.tsx
+--- a/src/interface/doge-hq.tsx
++++ b/src/interface/doge-hq.tsx
+@@ -34,7 +34,7 @@ export const DogeHQ: React.FC = () => {
+           <button
+             onClick={() => {
+               unlockNewThing(Unlocks.SocialMediaManager);
+-              spendUSD(1000000);
++              spendDoge(1000000);
+             }}
+             disabled={doge < 1000000}
+             style={{
+diff --git a/src/interface/miner-market.tsx b/src/interface/miner-market.tsx
+--- a/src/interface/miner-market.tsx
++++ b/src/interface/miner-market.tsx
+@@ -35,7 +35,7 @@ export const MinerMarket: React.FC = () => {
+           onClick={() => {
+             buySmallMiner();
+           }}
+-          disabled={usd < getMediumMinerPrice(gameStore.smallMiners)}
++          disabled={usd < getSmallMinerPrice(gameStore.smallMiners)}
+           data-tip="+5 hash rate"
+         >
+           Buy crappy miner (${getSmallMinerPrice(gameStore.smallMiners)})
+diff --git a/src/interface/real-estate.tsx b/src/interface/real-estate.tsx
+--- a/src/interface/real-estate.tsx
++++ b/src/interface/real-estate.tsx
+@@ -29,7 +29,7 @@ export const FactoryMarketplace: React.FC = () => {
+         {!realEstate.includes(RealEstate.Server) && (
+           <button
+             onClick={() => {
+-              acquireProperty(RealEstate.Pool);
++              acquireProperty(RealEstate.Server);
+               spendUSD(5000);
+             }}
+             disabled={usd < 5000}
+diff --git a/src/interface/twitter.tsx b/src/interface/twitter.tsx
+--- a/src/interface/twitter.tsx
++++ b/src/interface/twitter.tsx
+@@ -21,7 +21,7 @@ export const TwitterFeed: React.FC = () => {
+   const followers = useGameStore((state) => state.twitterFollowers);
+   const tweetCount = useGameStore((state) => state.tweetCount);
+ 
+-  if (hasSocialMediaManager) return null;
++  if (!hasSocialMediaManager) return null;
+ 
+   return (
+     <div className="panel">

@@ -1,0 +1,63 @@
+<script lang="ts">
+import { onMounted } from "vue";
+import { messageBox } from "./utils/message";
+import config from "./utils/config";
+import { formatDate } from "./utils";
+
+export default {
+  name: "App",
+  setup() {
+    const interval = 1000 * 60 * 3;
+    let timer: number;
+
+    function checkVersion() {
+      const t = Date.now();
+      const { origin, pathname } = location;
+      const url = `${origin + pathname}version.json?t=${t}`;
+      fetch(url).then(r => r.status === 200 ? r.json() : ({} as any)).then(res => {
+        if (res.version && res.version !== window._version) {
+          // 弹一次后直接关闭查询
+          clearTimeout(timer);
+          messageBox({
+            title: `版本更新提示`,
+            content: `
+            <div class="text-[14px]">
+              <p>当前页面有新版本发布, 是否更新？</p>
+              <p>新版发布时间：<span class="text-amber-600">${formatDate(res.version)}</span></p>
+              <p>不更新则需要手动刷新页面，否则影响部分功能使用。</p>
+            </div>
+            `,
+            confirmText: "更新",
+            cancelText: "取消(关闭提醒)",
+            confirm() {
+              // const url = new URL(href);
+              // url.searchParams.set("t", t.toString());
+              // location.href = url.toString();
+
+              // TODO: index.html 加了不缓存设置，所以这里可以直接刷新（保险起见，可以在 ng 或者 cdn 也配置不缓存）
+              // 为什么不在 url 上加时间戳刷新？理由是浏览器会缓存不带参数的链接，
+              // 重新输入网址之后依然是缓存上次的文件
+              location.reload();
+            },
+          });
+        } else {
+          timer = setTimeout(checkVersion, interval);
+        }
+      }).catch(error => {
+        console.error("检查版本出错 >>", error);
+        clearTimeout(timer);
+      });
+    }
+
+    onMounted(function () {
+      if (window._version && !config.isDev) {
+        checkVersion();
+        // timer = setTimeout(checkVersion, interval);
+      }
+    });
+  }
+}
+</script>
+<template>
+  <router-view />
+</template>

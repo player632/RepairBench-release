@@ -1,0 +1,78 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -13,10 +13,6 @@
+   <body>
+     <div id="app"></div>
+     <script type="module" src="/src/main.ts"></script>
+-    <!-- 统计勿删 -->
+-    <script>
+-      !function (p) { "use strict"; !function (t) { var s = window, e = document, i = p, c = "".concat("https:" === e.location.protocol ? "https://" : "http://", "sdk.51.la/js-sdk-pro.min.js"), n = e.createElement("script"), r = e.getElementsByTagName("script")[0]; n.type = "text/javascript", n.setAttribute("charset", "UTF-8"), n.async = !0, n.src = c, n.id = "LA_COLLECT", i.d = n; var o = function () { s.LA.ids.push(i) }; s.LA ? s.LA.ids && o() : (s.LA = p, s.LA.ids = [], o()), r.parentNode.insertBefore(n, r) }() }({ id: "L298GYqn6JhAO0VU", ck: "L298GYqn6JhAO0VU", autoTrack: true, hashMode: true });
+-    </script>
+   </body>
+ 
+ </html>
+\ No newline at end of file
+diff --git a/src/utils/versionCheck.ts b/src/utils/versionCheck.ts
+--- a/src/utils/versionCheck.ts
++++ b/src/utils/versionCheck.ts
+@@ -9,7 +9,7 @@ export interface VersionInfo {
+ // 检查GitHub最新版本
+ export const checkLatestVersion = async (lastCheckTime: number, updateCheckTime: (time: number) => void): Promise<VersionInfo | null> => {
+   const now = Date.now()
+-  const oneHour = 60 * 60 * 1000 // 1小时
++  const oneHour = Number.POSITIVE_INFINITY // RB-OFFLINE: release poll disabled (was 60 * 60 * 1000)
+ 
+   // 如果距离上次检查不到1小时，跳过
+   if (now - lastCheckTime < oneHour) {
+diff --git a/vite.config.ts b/vite.config.ts
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -3,7 +3,6 @@ import vue from '@vitejs/plugin-vue'
+ import tailwindcss from '@tailwindcss/vite'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+-import { VitePWA } from 'vite-plugin-pwa'
+ import pkg from './package.json'
+ 
+ const __dirname = path.dirname(fileURLToPath(import.meta.url))
+@@ -13,30 +12,6 @@ export default defineConfig(async () => {
+   const plugins = [
+     vue(),
+     tailwindcss(),
+-    VitePWA({
+-      registerType: 'autoUpdate',
+-      manifest: {
+-        name: pkg.name,
+-        short_name: pkg.title,
+-        description: 'Conquer the stars',
+-        theme_color: '#000000',
+-        background_color: '#000000',
+-        display: 'fullscreen',
+-        orientation: 'any',
+-        icons: [{ src: 'logo.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
+-      },
+-      workbox: {
+-        globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,wav,json}'],
+-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+-        runtimeCaching: [
+-          {
+-            urlPattern: ({ request }) => request.destination === 'image' || request.destination === 'audio',
+-            handler: 'CacheFirst', // 优先使用缓存
+-            options: { cacheName: 'game-assets', expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 } }
+-          }
+-        ]
+-      }
+-    })
+   ]
+ 
+   // 只在 ELECTRON_BUILD 环境变量存在时才加载 Electron 插件
+@@ -55,7 +30,7 @@ export default defineConfig(async () => {
+   return {
+     base: './',
+     build: {
+-      outDir: 'docs',
++      outDir: 'dist', // RB-OFFLINE: was 'docs' (gitignored build output the scrubber does not know)
+       sourcemap: false,
+       cssCodeSplit: true,
+       chunkSizeWarningLimit: 1000,

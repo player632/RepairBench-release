@@ -1,0 +1,153 @@
+diff --git a/website/src/components/ASTOutput.js b/website/src/components/ASTOutput.js
+index 8d14ce8..eaf402c 100644
+--- a/website/src/components/ASTOutput.js
++++ b/website/src/components/ASTOutput.js
+@@ -34,7 +34,7 @@ export default function ASTOutput({parseResult={}, position=null}) {
+       <ErrorBoundary>
+         {
+           React.createElement(
+-            visualizations[0],
++            visualizations[selectedOutput],
+             {parseResult, position},
+           )
+         }
+diff --git a/website/src/components/Editor.js b/website/src/components/Editor.js
+index 79ee51d..89dd596 100644
+--- a/website/src/components/Editor.js
++++ b/website/src/components/Editor.js
+@@ -236,7 +236,7 @@ Editor.propTypes = {
+ 
+ Editor.defaultProps = {
+   value: '',
+-  highlight: false,
++  highlight: true,
+   lineNumbers: true,
+   readOnly: false,
+   mode: 'javascript',
+diff --git a/website/src/components/JSONEditor.js b/website/src/components/JSONEditor.js
+index fa1f332..8c873b0 100644
+--- a/website/src/components/JSONEditor.js
++++ b/website/src/components/JSONEditor.js
+@@ -29,7 +29,7 @@ export default class Editor extends React.Component {
+       {
+         value: this.props.value,
+         mode: {name: 'javascript', json: true},
+-        readOnly: false,
++        readOnly: true,
+         lineNumbers: true,
+         foldGutter: true,
+         gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
+diff --git a/website/src/components/SplitPane.js b/website/src/components/SplitPane.js
+index 87b8cf2..fbb9b73 100644
+--- a/website/src/components/SplitPane.js
++++ b/website/src/components/SplitPane.js
+@@ -41,6 +41,7 @@ export default function SplitPane({vertical, className, children, onResize}) {
+       setPosition(Math.min(Math.max(0, newPosition), 99));
+     };
+     let upHandler = () => {
++      document.removeEventListener('mousemove', moveHandler);
+       document.removeEventListener('mouseup', upHandler);
+       global.document.body.style.cursor = '';
+ 
+diff --git a/website/src/components/dialogs/SettingsDialog.js b/website/src/components/dialogs/SettingsDialog.js
+index 028740d..6f6c7b9 100644
+--- a/website/src/components/dialogs/SettingsDialog.js
++++ b/website/src/components/dialogs/SettingsDialog.js
+@@ -28,7 +28,7 @@ export default class SettingsDialog extends React.Component {
+   }
+ 
+   _saveAndClose() {
+-    this.props.onSave(this.props.parser, this.props.parserSettings);
++    this.props.onSave(this.props.parser, this.state.parserSettings);
+     this.props.onWantToClose();
+   }
+ 
+diff --git a/website/src/components/visualization/Tree.js b/website/src/components/visualization/Tree.js
+index be96812..0a75efb 100644
+--- a/website/src/components/visualization/Tree.js
++++ b/website/src/components/visualization/Tree.js
+@@ -28,6 +28,7 @@ function initSettings() {
+ function reducer(state, element) {
+   const newState = {...state, [element.name]: element.checked};
+ 
++  global.localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+   return newState;
+ }
+ 
+diff --git a/website/src/components/visualization/tree/Element.js b/website/src/components/visualization/tree/Element.js
+index 7871cbc..9e4ec0c 100644
+--- a/website/src/components/visualization/tree/Element.js
++++ b/website/src/components/visualization/tree/Element.js
+@@ -158,7 +158,7 @@ const Element = React.memo(function Element({
+       }
+       setOpenState(newOpenState);
+     },
+-    [onClick],
++    [onClick, isOpen],
+   );
+ 
+   const range = treeAdapter.getRange(value);
+diff --git a/website/src/core/TreeAdapter.js b/website/src/core/TreeAdapter.js
+index a6f481e..75269a5 100644
+--- a/website/src/core/TreeAdapter.js
++++ b/website/src/core/TreeAdapter.js
+@@ -13,7 +13,7 @@ class TreeAdapter {
+    * Used by UI components to render an appropriate input for each filter.
+    */
+   getConfigurableFilters() {
+-    return (this._adapterOptions.filters || []);
++    return (this._adapterOptions.filters || []).filter(filter => Boolean(filter.key));
+   }
+ 
+   /**
+diff --git a/website/src/store/parserMiddleware.js b/website/src/store/parserMiddleware.js
+index d5c356b..fc03a88 100644
+--- a/website/src/store/parserMiddleware.js
++++ b/website/src/store/parserMiddleware.js
+@@ -55,7 +55,7 @@ export default store => next => action => {
+               ignoreKeysFilter(newParser._ignoredProperties),
+               functionFilter(),
+               emptyKeysFilter(),
+-              locationInformationFilter(new Set()),
++              locationInformationFilter(newParser.locationProps),
+               typeKeysFilter(newParser.typeProps),
+             ],
+             locationProps: newParser.locationProps,
+diff --git a/website/src/store/reducers.js b/website/src/store/reducers.js
+index 74233b0..e85f1b1 100644
+--- a/website/src/store/reducers.js
++++ b/website/src/store/reducers.js
+@@ -400,7 +400,7 @@ function error(state=initialState.error, action) {
+ function showTransformPanel(state=initialState.showTransformPanel, action) {
+   switch (action.type) {
+     case actions.SELECT_TRANSFORMER:
+-      return state;
++      return true;
+     case actions.HIDE_TRANSFORMER:
+     case actions.SELECT_CATEGORY:
+     case actions.CLEAR_SNIPPET:
+diff --git a/website/src/store/selectors.js b/website/src/store/selectors.js
+index c8ec16c..e8681bd 100644
+--- a/website/src/store/selectors.js
++++ b/website/src/store/selectors.js
+@@ -75,7 +75,7 @@ export function getInitialCode(state) {
+ }
+ 
+ export function getKeyMap (state) {
+-  return 'default';
++  return state.workbench.keyMap;
+ }
+ 
+ 
+diff --git a/website/src/utils/stringify.js b/website/src/utils/stringify.js
+index 56d7cee..79313d8 100644
+--- a/website/src/utils/stringify.js
++++ b/website/src/utils/stringify.js
+@@ -13,6 +13,6 @@ export default function stringify(value) {
+     case 'bigint':
+       return Number.isNaN(value) ? 'NaN' : String(value);
+     default:
+-      return String(value);
++      return JSON.stringify(value);
+   }
+ }

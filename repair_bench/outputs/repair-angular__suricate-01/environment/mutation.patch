@@ -1,0 +1,176 @@
+diff --git a/src/main/webapp/app/admin/repositories/repositories.ts b/src/main/webapp/app/admin/repositories/repositories.ts
+index 166a934..31c939c 100644
+--- a/src/main/webapp/app/admin/repositories/repositories.ts
++++ b/src/main/webapp/app/admin/repositories/repositories.ts
+@@ -223,7 +223,6 @@ export class Repositories extends List<Repository, RepositoryRequest> {
+ 
+ 		this.httpRepositoryService.synchronize().subscribe({
+ 			next: () => {
+-				this.disableAllReposSync.next(false);
+ 				this.dragAndDropDisabled = false;
+ 				this.toastService.sendMessage('repositories.synchronize.success', ToastType.SUCCESS);
+ 			},
+diff --git a/src/main/webapp/app/app.ts b/src/main/webapp/app/app.ts
+index 9487dff..43e69f5 100644
+--- a/src/main/webapp/app/app.ts
++++ b/src/main/webapp/app/app.ts
+@@ -84,7 +84,6 @@ export class App implements OnInit, OnDestroy {
+ 			.getCurrentThemeValue()
+ 			.pipe(takeUntil(this.unsubscribe))
+ 			.subscribe((theme: string) => {
+-				this.overlayContainer.getContainerElement().parentElement.classList.remove(this.theme);
+ 				this.overlayContainer.getContainerElement().parentElement.classList.add(theme);
+ 				this.theme = theme;
+ 			});
+diff --git a/src/main/webapp/app/core/components/login/login.ts b/src/main/webapp/app/core/components/login/login.ts
+index 24de9a5..5b11396 100644
+--- a/src/main/webapp/app/core/components/login/login.ts
++++ b/src/main/webapp/app/core/components/login/login.ts
+@@ -105,6 +105,11 @@ export class Login implements OnInit {
+ 	 * Init method
+ 	 */
+ 	public ngOnInit(): void {
++		if (AuthenticationService.isLoggedIn()) {
++			this.navigateToHomePage();
++			return;
++		}
++
+ 		const token: string = this.route.snapshot.queryParamMap.get('token');
+ 		const error: string = this.route.snapshot.queryParamMap.get('error');
+ 		if (token) {
+@@ -113,11 +118,6 @@ export class Login implements OnInit {
+ 			this.toastService.sendMessage('authentication.failed.with.providers', ToastType.DANGER, error);
+ 		}
+ 
+-		if (AuthenticationService.isLoggedIn()) {
+-			this.navigateToHomePage();
+-			return;
+-		}
+-
+ 		this.httpConfigurationService.getAuthenticationProviders().subscribe((authProviders: AuthenticationProvider[]) => {
+ 			this.authenticationProviders = authProviders;
+ 		});
+diff --git a/src/main/webapp/app/core/components/settings/ux-settings/ux-settings.ts b/src/main/webapp/app/core/components/settings/ux-settings/ux-settings.ts
+index d26d986..9125f76 100644
+--- a/src/main/webapp/app/core/components/settings/ux-settings/ux-settings.ts
++++ b/src/main/webapp/app/core/components/settings/ux-settings/ux-settings.ts
+@@ -137,8 +137,8 @@ export class UxSettings implements OnInit {
+ 				toArray()
+ 			)
+ 			.subscribe(() => {
+-				this.settingsService
+-					.initUserSettings(AuthenticationService.getConnectedUser())
++				this.httpUserService
++					.getUserSettings(AuthenticationService.getConnectedUser().username)
+ 					.subscribe((userSettings: UserSetting[]) => {
+ 						this.userSettings = userSettings;
+ 					});
+diff --git a/src/main/webapp/app/shared/components/form-sidenav/form-sidenav.ts b/src/main/webapp/app/shared/components/form-sidenav/form-sidenav.ts
+index 004dff1..16ddc7a 100644
+--- a/src/main/webapp/app/shared/components/form-sidenav/form-sidenav.ts
++++ b/src/main/webapp/app/shared/components/form-sidenav/form-sidenav.ts
+@@ -170,7 +170,6 @@ export class FormSidenav implements OnInit, OnDestroy {
+ 				.pipe(takeUntil(this.unsubscribe))
+ 				.subscribe((formFields: FormField[]) => {
+ 					this.formGroup = this.formService.generateFormGroupForFields(formFields);
+-					this.configuration.formFields = formFields;
+ 				});
+ 		}
+ 	}
+diff --git a/src/main/webapp/app/shared/components/inputs/input/input.ts b/src/main/webapp/app/shared/components/inputs/input/input.ts
+index 04ea4e3..c2ad3fd 100644
+--- a/src/main/webapp/app/shared/components/inputs/input/input.ts
++++ b/src/main/webapp/app/shared/components/inputs/input/input.ts
+@@ -214,8 +214,7 @@ export class Input extends BaseInput implements OnInit {
+ 		let cellSize = 87;
+ 
+ 		if (this.field().fields && this.field().fields.length > 0) {
+-			const numberOfFieldDisplayed = this.field().fields.filter((field: FormField) => field.type !== DataType.HIDDEN);
+-			cellSize = 87 / numberOfFieldDisplayed.length;
++			cellSize = 87 / this.field().fields.length;
+ 		}
+ 
+ 		return cellSize;
+diff --git a/src/main/webapp/app/shared/components/list/list.ts b/src/main/webapp/app/shared/components/list/list.ts
+index a2eaae2..7d6dbec 100644
+--- a/src/main/webapp/app/shared/components/list/list.ts
++++ b/src/main/webapp/app/shared/components/list/list.ts
+@@ -255,7 +255,6 @@ export abstract class List<TRet, TReq> implements OnInit, OnDestroy {
+ 		this.researchChanged
+ 			.pipe(takeUntil(this.unsubscribe), debounceTime(500), distinctUntilChanged())
+ 			.subscribe((searchValue: string) => {
+-				this.httpFilter.page = 0;
+ 				this.httpFilter.search = searchValue;
+ 				this.refreshList();
+ 			});
+diff --git a/src/main/webapp/app/shared/components/toast/toast.ts b/src/main/webapp/app/shared/components/toast/toast.ts
+index 80c8aee..f058f45 100644
+--- a/src/main/webapp/app/shared/components/toast/toast.ts
++++ b/src/main/webapp/app/shared/components/toast/toast.ts
+@@ -101,7 +101,6 @@ export class Toast implements OnInit, OnDestroy {
+ 	 * Show the toast notification
+ 	 */
+ 	private showToast(): void {
+-		this.clearTimeout();
+ 		this.hideWithinTimeout();
+ 	}
+ 
+diff --git a/src/main/webapp/app/shared/services/frontend/authentication/authentication-service.ts b/src/main/webapp/app/shared/services/frontend/authentication/authentication-service.ts
+index d709028..0aefb0e 100644
+--- a/src/main/webapp/app/shared/services/frontend/authentication/authentication-service.ts
++++ b/src/main/webapp/app/shared/services/frontend/authentication/authentication-service.ts
+@@ -119,7 +119,7 @@ export class AuthenticationService {
+ 	 */
+ 	public static isAdmin(): boolean {
+ 		const token = AuthenticationService.decodeAccessToken();
+-		return token.roles && token.roles.includes(RoleName.ROLE_ADMIN);
++		return token.roles && token.roles.length > 0;
+ 	}
+ 
+ 	/**
+@@ -163,13 +163,7 @@ export class AuthenticationService {
+ 	public authenticate(credentials: Credentials): Observable<AuthenticationResponse> {
+ 		const url = `${AuthenticationService.authenticationApiEndpoint}/signin`;
+ 
+-		return this.httpClient.post<AuthenticationResponse>(url, credentials).pipe(
+-			tap((authenticationResponse: AuthenticationResponse) => {
+-				if (authenticationResponse && authenticationResponse.accessToken) {
+-					AuthenticationService.setAccessToken(authenticationResponse.accessToken);
+-				}
+-			})
+-		);
++		return this.httpClient.post<AuthenticationResponse>(url, credentials);
+ 	}
+ 
+ 	/**
+diff --git a/src/main/webapp/app/shared/validators/custom-async-validator-service.ts b/src/main/webapp/app/shared/validators/custom-async-validator-service.ts
+index 947eb72..bf9bcf3 100644
+--- a/src/main/webapp/app/shared/validators/custom-async-validator-service.ts
++++ b/src/main/webapp/app/shared/validators/custom-async-validator-service.ts
+@@ -41,7 +41,6 @@ export class CustomAsyncValidatorService {
+ 			return this.httpRepositoryService.getAll(HttpFilterService.getInfiniteFilter()).pipe(
+ 				map((repositories) => {
+ 					return repositories.content
+-						.filter((repository) => repository.id !== currentRepository.id)
+ 						.filter((repository) => repository.priority === control.value).length >= 1
+ 						? { uniquePriority: true }
+ 						: null;
+diff --git a/src/main/webapp/app/shared/validators/custom-validator.ts b/src/main/webapp/app/shared/validators/custom-validator.ts
+index d15d51b..409df7d 100644
+--- a/src/main/webapp/app/shared/validators/custom-validator.ts
++++ b/src/main/webapp/app/shared/validators/custom-validator.ts
+@@ -29,13 +29,7 @@ export class CustomValidator {
+ 	 */
+ 	public static checkPasswordMatch(passwordControl: AbstractControl): ValidatorFn {
+ 		return (confirmPasswordControl: AbstractControl): ValidationErrors => {
+-			if (
+-				(passwordControl.dirty || passwordControl.touched) &&
+-				(confirmPasswordControl.dirty || confirmPasswordControl.touched)
+-			) {
+-				return passwordControl.value !== confirmPasswordControl.value ? { passwordMismatch: true } : null;
+-			}
+-			return null;
++			return passwordControl.value !== confirmPasswordControl.value ? { passwordMismatch: true } : null;
+ 		};
+ 	}
+ 

@@ -1,0 +1,183 @@
+import { Component, onMount, useContext } from "solid-js";
+import { BinSVG, CopySVG, CrossSVG, EyeSVG } from "../assets/SvgFiles";
+import { CollectionCardData } from "../library/types";
+import { formatFileSize, getCollection, getCollectionPathIds } from "../library/functions";
+import { useWebSocket } from "../Websockets";
+import toast from "solid-toast";
+import { useNavigate, useLocation } from "@solidjs/router";
+import { AppContext } from "../Context";
+import Tooltip from "@corvu/tooltip";
+
+const CollectionCard: Component<{ collection: CollectionCardData }> = (props) => {
+    const {socket, status} = useWebSocket();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const ctx = useContext(AppContext)!;
+
+    const handleDelete = () => {
+        if (status() !== "connected") {
+            toast.error("Could not secure a connection to the server. Please try again later.");
+            return;
+        }
+        const ws = socket();
+        if (!ws) return;
+        ws.send(JSON.stringify({
+            type: "delete_collection",
+            data: {
+                collection_id: props.collection.id,
+                auth: {
+                    token: localStorage.getItem('token') || '',
+                    email: localStorage.getItem('email') || '',
+                    password: localStorage.getItem('password') || ''
+                }
+            }
+        }));
+    };
+
+    // The ID of the currently displayed collection, parsed from the URL path.
+    const currentCollectionId = () => {
+        const pathIds = getCollectionPathIds(location.pathname);
+        return pathIds[pathIds.length - 1] || "";
+    };
+
+    const handleRemove = () => {
+        if (status() !== "connected") {
+            toast.error("Could not secure a connection to the server. Please try again later.");
+            return;
+        }
+        const ws = socket();
+        if (!ws) return;
+
+        ws.send(JSON.stringify({
+            type: "remove_folder_from_collection",
+            data: {
+            collection_id: currentCollectionId(),
+            folder_id: props.collection.id,
+            auth: {
+                token: localStorage.getItem('token') || '',
+                email: localStorage.getItem('email') || '',
+                password: localStorage.getItem('password') || ''
+            }
+            }
+        }));
+    };
+
+    const viewCollection = () => {
+        const currentUrl = window.location.href;
+        let newUrl = "";
+
+        if (currentUrl.includes("/my_collection")) {
+            newUrl = `/collection/${props.collection.id}`;
+        } else if (currentUrl.includes("/collection/")) {
+            const pathIds = getCollectionPathIds(location.pathname);
+            if (pathIds.length >= 2 && pathIds[pathIds.length - 2] === props.collection.id) {
+                // Clicking an ancestor in the path -> navigate back to that ancestor.
+                const newIds = pathIds.slice(0, -1);
+                newUrl = `/collection/${newIds.join('/')}`;
+            } else {
+                // Navigating into a child -> append to the existing path.
+                newUrl = `/collection/${pathIds.join('/')}/${props.collection.id}`;
+            }
+        } else {
+            newUrl = `/collection/${props.collection.id}`;
+        }
+
+        navigate(newUrl);
+    };
+
+    const handleCopy = () => {
+        const collectionUrl = `${window.location.origin}/collection/${props.collection.id}`;
+        navigator.clipboard.writeText(collectionUrl)
+            .then(() => {
+                toast.success("Collection URL copied to clipboard!");
+            })
+            .catch(() => {
+                toast.error("Failed to copy collection URL.");
+            });
+    };
+
+    onMount(() => {
+        getCollection(props.collection.id, status, socket, ctx);
+    });
+
+    const isParentCollectionOwned = () => {
+        const lastId = currentCollectionId();
+        if (!lastId) return false;
+        return ctx.knownCollections()[lastId]?.isOwned || false;
+    }
+
+    return (
+        <div class="flex flex-col w-64 h-60 bg-neutral-800 rounded-lg px-4 py-2 pb-3">
+            <p class="text-white font-bold text-2xl text-center w-full p-2">{props.collection.name.length < 11 ? props.collection.name : props.collection.name.substring(0, 9) + "..."}</p>
+            <hr class="border-neutral-600"/>
+            <div class="flex w-full items-center justify-center h-full my-2">
+                <div class="flex flex-col items-start justify-between h-full">
+                    <p class="text-gray-400 text-sm">Size:</p>
+                    <p class="text-gray-400 text-sm">File Count:</p>
+                    <p class="text-gray-400 text-sm">Folder Count:</p>
+                    <p class="text-gray-400 text-sm">Editors:</p>
+                </div>
+                <div class="flex flex-col items-start justify-between h-full ml-4">
+                    <p class="text-white text-sm">{formatFileSize(props.collection.size)}</p>
+                    <p class="text-white text-sm">{props.collection.file_count}</p>
+                    <p class="text-white text-sm">{props.collection.folder_count}</p>
+                    <p class="text-white text-sm">{props.collection.editor_count}</p>
+                </div>
+            </div>
+            <div class="flex w-full justify-between px-5">
+                <Tooltip placement="bottom" openDelay={0} closeDelay={0}>
+                    <Tooltip.Trigger
+                        onClick={viewCollection}
+                        class="flex items-center justify-center p-2 bg-yellow-700/30 hover:bg-yellow-700/20 rounded-xl text-yellow-600"
+                    >
+                        <EyeSVG />
+                    </Tooltip.Trigger>
+                    <Tooltip.Content class="bg-neutral-900 text-white px-2 py-1 rounded">
+                        View Collection
+                    </Tooltip.Content>
+                </Tooltip>
+                <Tooltip placement="bottom" openDelay={0} closeDelay={0}>
+                    <Tooltip.Trigger
+                        onClick={handleCopy}
+                        class="flex items-center justify-center p-2 bg-lime-700/30 hover:bg-lime-700/20 rounded-xl text-lime-600"
+                    >
+                        <CopySVG />
+                    </Tooltip.Trigger>
+                    <Tooltip.Content class="bg-neutral-900 text-white px-2 py-1 rounded">
+                        Copy Link to Collection
+                    </Tooltip.Content>
+                </Tooltip>
+                {location.pathname.startsWith("/collection") ? (
+                    <>
+                    {isParentCollectionOwned() && (
+                        <Tooltip placement="bottom" openDelay={0} closeDelay={0}>
+                            <Tooltip.Trigger
+                                onClick={handleRemove}
+                                class="flex items-center justify-center p-2 bg-red-700/30 hover:bg-red-700/20 rounded-xl text-red-600"
+                            >
+                                <CrossSVG />
+                            </Tooltip.Trigger>
+                            <Tooltip.Content class="bg-neutral-900 text-white px-2 py-1 rounded">
+                                Remove From Collection
+                            </Tooltip.Content>
+                        </Tooltip>
+                    )}
+                    </>
+                ) : (
+                    <Tooltip placement="bottom" openDelay={0} closeDelay={0}>
+                        <Tooltip.Trigger
+                            onClick={handleDelete}
+                            class="flex items-center justify-center p-2 bg-red-700/30 hover:bg-red-700/20 rounded-xl text-red-600"
+                        >
+                            <BinSVG />
+                        </Tooltip.Trigger>
+                        <Tooltip.Content class="bg-neutral-900 text-white px-2 py-1 rounded">
+                            Delete Collection
+                        </Tooltip.Content>
+                    </Tooltip>
+                )}
+            </div>
+        </div>
+    )
+}
+export default CollectionCard;

@@ -1,0 +1,157 @@
+import { type Component, For, type JSX, onMount } from "solid-js";
+import { type MachineStates, createMachine } from "../src/index.js";
+import { createStore } from "solid-js/store";
+
+type Todo = {
+  title: string;
+  done: boolean;
+};
+
+type TodoProps = {
+  todo: Todo;
+  onRemove: () => void;
+  onEdit: (title: string) => void;
+  onToggle: () => void;
+};
+
+const todo_states: MachineStates<{
+  Reading: {
+    input: TodoProps;
+    value: JSX.Element;
+  };
+  Editing: {
+    input: TodoProps;
+    value: JSX.Element;
+  };
+}> = {
+  Reading(props, next) {
+    const { todo, onRemove, onToggle } = props;
+
+    return (
+      <>
+        <input type="checkbox" checked={todo.done} data-rb-click="sm-toggle" onChange={onToggle} />
+        <div
+          class="px-2"
+          data-rb-dbl="sm-title"
+          style={{ "text-decoration": todo.done ? "line-through" : "none" }}
+          onDblClick={() => next.Reading(props)}
+        >
+          {todo.title}
+        </div>
+        <button data-rb-click="sm-remove" onClick={() => onRemove()}>x</button>
+      </>
+    );
+  },
+  Editing(props, next) {
+    const { todo, onEdit } = props;
+
+    function commit() {
+      onEdit(input.value);
+    }
+
+    let input!: HTMLInputElement;
+    return (
+      <form
+        data-rb-form="sm-edit-form"
+        onSubmit={e => {
+          e.preventDefault();
+          commit();
+        }}
+      >
+        <input
+          ref={el => {
+            input = el;
+            onMount(() => el.focus());
+          }}
+          type="text"
+          data-rb-input="sm-edit"
+          data-rb-count="sm-edit-input"
+          data-rb-max="sm-edit-input"
+          value={todo.title}
+          onBlur={commit}
+        />
+      </form>
+    );
+  },
+};
+
+function DisplayTodo(props: TodoProps) {
+  const state = createMachine({
+    states: todo_states,
+    initial: {
+      type: "Reading",
+      input: props,
+    },
+  });
+
+  return (
+    <div class="group-item flex items-center rounded border border-gray-600 bg-gray-800 px-3 py-2" data-rb-count="sm-row">
+      {state.value}
+    </div>
+  );
+}
+
+const App: Component = () => {
+  const [todos, setTodos] = createStore<Todo[]>([
+    { title: "Learn Solid", done: false },
+    { title: "Learn JSX", done: false },
+    { title: "Build a Todo app", done: false },
+  ]);
+
+  function addTodo(title: string) {
+    setTodos(todos.length, { title, done: false });
+  }
+  function removeTodo(index: number) {
+    setTodos(p => {
+      const copy = p.slice();
+      copy.splice(index, 1);
+      return copy;
+    });
+  }
+  function toggleTodo(index: number) {
+    setTodos(index, "done", p => !p);
+  }
+  function editTodo(index: number, title: string) {
+    setTodos(index, "title", title);
+  }
+
+  let input!: HTMLInputElement;
+  return (
+    <div class="box-border flex min-h-screen w-full flex-col items-center justify-center space-y-4 bg-gray-800 p-24 text-white" data-rb-root="state-machine">
+      <div class="wrapper-v">
+        <div class="m-24">
+          <div>
+            <form
+              class="flex items-center space-x-2"
+              data-rb-form="sm-add-form"
+              onSubmit={e => {
+                e.preventDefault();
+                if (!input.value.trim()) return;
+                addTodo(input.value);
+                input.value = "";
+              }}
+            >
+              <input class="w-64" placeholder="What needs to be done?" data-rb-input="sm-add" ref={input} />
+              <button data-rb-click="sm-add-btn">Add Todo</button>
+            </form>
+          </div>
+
+          <div class="mt-4 flex flex-col items-start space-y-2" data-rb-scope="sm-todos">
+            <For each={todos}>
+              {(todo, i) => (
+                <DisplayTodo
+                  todo={todo}
+                  onRemove={() => removeTodo(i())}
+                  onToggle={() => toggleTodo(i())}
+                  onEdit={title => editTodo(i(), title)}
+                />
+              )}
+            </For>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;

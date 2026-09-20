@@ -1,0 +1,52 @@
+<template>
+  <ContextMenu
+    :class="classes"
+    :tooltip="t('navigation.tools.tools')"
+    :position="appSize === 'mobile' ? 'top' : 'right center'"
+    tooltipPosition="right"
+  >
+    <template #default="{ toggle }">
+      <Button size="l" testId="navigation-tools-menu" :icon="RiToolsLine" textual color="dimmed" @click="toggle" />
+    </template>
+
+    <template #options>
+      <LoadDemoDataButton v-if="!OCULAR_GENESIS_HOST || OCULAR_HYBRID_MODE" />
+      <ChangePasswordButton v-if="user" />
+      <PrivacyModeButton />
+      <ExportButton />
+      <ImportButton />
+      <CopyPasteButton />
+      <DeleteYearButton />
+    </template>
+  </ContextMenu>
+</template>
+
+<script lang="ts" setup>
+import ChangePasswordButton from './change-password/ChangePasswordButton.vue';
+import CopyPasteButton from './copy-paste/CopyPasteButton.vue';
+import DeleteYearButton from './delete-year/DeleteYearButton.vue';
+import ExportButton from './export/ExportButton.vue';
+import ImportButton from './import/ImportButton.vue';
+import LoadDemoDataButton from './load-demo-data/LoadDemoDataButton.vue';
+import PrivacyModeButton from './privacy-mode/PrivacyModeButton.vue';
+import Button from '@components/base/button/Button.vue';
+import ContextMenu from '@components/base/context-menu/ContextMenu.vue';
+import { useAppSize } from '@composables/app-size/useAppSize.ts';
+import { useStorage } from '@store/storage/useStorage.ts';
+import { RiToolsLine } from '@remixicon/vue';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { ClassNames } from '@utils/types.ts';
+
+const { OCULAR_GENESIS_HOST, OCULAR_HYBRID_MODE } = import.meta.env;
+
+const props = defineProps<{
+  class: ClassNames;
+}>();
+
+const { user } = useStorage();
+const { t } = useI18n();
+const appSize = useAppSize();
+
+const classes = computed(() => props.class);
+</script>

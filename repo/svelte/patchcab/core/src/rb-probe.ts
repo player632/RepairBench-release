@@ -1,0 +1,399 @@
+/* RepairBench neutral read-only instrumentation probe (added by environment/instrumentation.patch).
+ *
+ * WHAT THIS FILE IS: a measurement surface, not a feature. It is imported as the FIRST line of
+ * core/src/index.ts, so by ES module evaluation order (depth-first, source order) its body runs
+ * BEFORE `import * as svelte from 'svelte/internal'` (seed index.ts:1), BEFORE ./Patchcab.svelte
+ * (seed :2) and therefore BEFORE the app's own onMount fetch('/modules.json') at
+ * core/src/Patchcab.svelte:18 - i.e. the resource observer and the request counters are already
+ * installed when the first byte of application code runs, so nothing can be missed by arriving late.
+ *
+ * WHAT IT DOES, in order:
+ *   1. records any boot-time exception, so a probe fault can never masquerade as an app fault;
+ *   2. snapshots the window property names that exist at boot, records any pre-existing
+ *      localStorage/sessionStorage key, then wipes both storages - this seed never uses Web Storage
+ *      (0 hits for localStorage|sessionStorage|indexedDB|document.cookie over core/src and
+ *      modules/src), so the wipe is a no-op for the app and an isolation guarantee for the harness:
+ *      every checkpoint starts from an identical, empty, offline state;
+ *   3. installs a BUFFERED PerformanceObserver over 'resource' entries and classifies each URL as
+ *      inert (data:/blob:), same-origin or cross-origin - this is the egress measurement, and it is
+ *      the only way to see the 14 same-origin module PNGs that core/src/rack/Preview.svelte:11-17
+ *      requests through a DETACHED `new Image()` (an element-src setter, which no fetch/XHR wrapper
+ *      can see);
+ *   4. wraps fetch, XMLHttpRequest.prototype.open, navigator.sendBeacon and window.open purely to
+ *      COUNT calls (behaviour is unchanged: every wrapper forwards all arguments and returns the
+ *      original result), so an attempted request is measured even when it never becomes a resource;
+ *   5. counts window errors, unhandled rejections and resource load errors;
+ *   6. publishes window.__rb, a flat object of ZERO-ARGUMENT GETTERS THAT ALL RETURN A STRING.
+ *
+ * WHAT IT NEVER DOES: it renders nothing, creates no DOM element, adds no data-testid attribute,
+ * registers no route, touches no store, issues no request, and changes no application behaviour.
+ * Every getter returns a string because evaluation/dsl_runner.mjs:787-790 compares js_eval asserts
+ * with assertEq(expected, got, loose=true) at :43-44, so a number would compare by coercion and
+ * an object or array never would.
+ *
+ * WHY A SAME-ORIGIN CENSUS IS ENOUGH HERE: the cold face this task measures is
+ * core/public/index.html:108-114 `new Patchcab({ target: document.body, props: {} })`, i.e. props are
+ * EMPTY, so core/src/Patchcab.svelte:8-9 api/rack are undefined, :28 `if (api)` and :52 `if (rack)`
+ * are both false, :65-67 `{#each $modulesAll}` iterates 0 times and 0 Container components exist.
+ * core/src/rack/Container.svelte:110-113 `await libraries.add(module.libs)` is therefore never called,
+ * and that is the ONLY site that reaches core/src/state/libraries.ts:16-21
+ * (`createElement('script')` + `$script.src = lib` + `document.body.appendChild($script)`) - the only
+ * cross-origin injection path in the seed (every one of the 14 core/public/modules.json entries carries
+ * libs: ["https://unpkg.com/tone@14.7.77/build/Tone.js"]). environment/adaptation.patch additionally
+ * puts a fail-closed same-origin gate in front of it, because the seed's Promise there listens only for
+ * 'load' (libraries.ts:23-27 and :33) with no 'error' branch and no timeout, so a genuinely unreachable
+ * CDN would hang forever and turn a behavioural red into an infrastructure timeout.
+ *
+ * blob: URLs are classified as INERT, not as egress: URL.createObjectURL is an in-process object
+ * reference rather than a network request (core/src/rack/Bar.svelte:29-33 builds a Blob for the
+ * file-saver download path, which this face never drives).
+ */
+// core/tsconfig.json sets "isolatedModules": true, which refuses to compile a file that TypeScript
+// considers a global script (TS1208). This probe is imported for its side effects only, so the empty
+// export below is what makes it a module; it exports no value and binds no name.
+export {};
+
+;(function () {
+  const w: any = typeof window !== 'undefined' ? window : null;
+  if (!w) return;
+  if (w.__rb) return;
+
+  const VERSION = 'patchcab-rb-probe-1';
+  // Globals this seed legitimately creates after the probe boots: core/src/index.ts:10
+  // `window['__sv'] = svelte` (the app's own published svelte/internal handle); `saveAs`, published by
+  //   the seed's OWN dependency file-saver@2.0.5 (its UMD dist/FileSaver.min.js ends `saveAs=i.saveAs=i`,
+  //   imported unconditionally at core/src/rack/Bar.svelte:2, so it is present in EVERY arm and owns none
+  //   of the 12 defects - measured: the clean baseline leg read back exactly "saveAs"); and anything the
+  // Svelte 3.44.2 dev build or the harness may add under a __svelte / __rb prefix. Everything else
+  // that appears on window after boot is residue, and P24 reads it.
+  const GLOBAL_WHITELIST = ['__sv', 'saveAs'];
+  const GLOBAL_WHITELIST_RE = /^__(rb|svelte|sv$)/;
+
+  let bootState = 'ok';
+  let bootError = 'none';
+
+  let fetchCalls = 0;
+  let xhrCalls = 0;
+  let beaconCalls = 0;
+  let windowOpenCalls = 0;
+  let crossOriginAttempts = 0;
+
+  let jsErrors = 0;
+  let resourceErrors = 0;
+  let rejections = 0;
+
+  let crossOrigin = 0;
+  let sameOrigin = 0;
+  let inert = 0;
+  let total = 0;
+  let observerActive = false;
+  const crossHosts: string[] = [];
+  const otherNames: string[] = [];
+  const fetchPaths: string[] = [];
+
+  let residueBefore = '';
+  let bootGlobals: string[] = [];
+
+  const classify = (raw: string): string => {
+    const url = String(raw == null ? '' : raw);
+    if (!url) return 'inert';
+    if (/^(data:|blob:|about:)/i.test(url)) return 'inert';
+    try {
+      const u = new URL(url, w.location ? w.location.href : undefined);
+      if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'about:') return 'inert';
+      const here = w.location ? w.location.origin : '';
+      if (here && u.origin === here) return 'same';
+      if (!/^(https?:|wss?:)/i.test(u.protocol)) return 'inert';
+      return 'cross';
+    } catch (e) {
+      return 'inert';
+    }
+  };
+
+  const hostOf = (raw: string): string => {
+    try {
+      const u = new URL(String(raw), w.location ? w.location.href : undefined);
+      return u.host || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const note = (raw: string): void => {
+    const kind = classify(raw);
+    total += 1;
+    if (kind === 'same') sameOrigin += 1;
+    else if (kind === 'inert') inert += 1;
+    else {
+      crossOrigin += 1;
+      const h = hostOf(raw);
+      if (h && crossHosts.indexOf(h) < 0) crossHosts.push(h);
+    }
+    if (kind !== 'cross') {
+      const tail = String(raw).split('/').pop() || '';
+      if (otherNames.indexOf(tail) < 0 && otherNames.length < 24) otherNames.push(tail);
+    }
+  };
+
+  try {
+    // ---- 2. storage residue snapshot + wipe (isolation, not behaviour) ----
+    try {
+      const seen: string[] = [];
+      const ls = w.localStorage;
+      const ss = w.sessionStorage;
+      if (ls) for (let i = 0; i < ls.length; i += 1) seen.push('local:' + String(ls.key(i)));
+      if (ss) for (let i = 0; i < ss.length; i += 1) seen.push('session:' + String(ss.key(i)));
+      residueBefore = seen.join(',');
+      if (ls) ls.clear();
+      if (ss) ss.clear();
+    } catch (e) {
+      residueBefore = 'storage-unavailable';
+    }
+    try {
+      bootGlobals = Object.getOwnPropertyNames(w);
+    } catch (e) {
+      bootGlobals = [];
+    }
+
+    // ---- 3. buffered resource observer = the egress measurement ----
+    const PO: any = w.PerformanceObserver;
+    if (PO) {
+      const obs = new PO((list: any) => {
+        try {
+          const entries = list.getEntries();
+          for (let i = 0; i < entries.length; i += 1) note(entries[i].name);
+        } catch (e) {
+          /* a malformed entry must never break the page */
+        }
+      });
+      try {
+        obs.observe({ type: 'resource', buffered: true });
+        observerActive = true;
+      } catch (e) {
+        try {
+          obs.observe({ entryTypes: ['resource'] });
+          observerActive = true;
+        } catch (e2) {
+          observerActive = false;
+        }
+      }
+    }
+
+    // ---- 4. count-only request wrappers (every one forwards and returns unchanged) ----
+    if (typeof w.fetch === 'function') {
+      const origFetch = w.fetch.bind(w);
+      w.fetch = function (...args: any[]) {
+        fetchCalls += 1;
+        try {
+          const first: any = args[0];
+          const url = typeof first === 'string' ? first : first && first.url ? String(first.url) : '';
+          const kind = classify(url);
+          if (kind === 'cross') {
+            crossOriginAttempts += 1;
+            const h = hostOf(url);
+            if (h && crossHosts.indexOf(h) < 0) crossHosts.push(h);
+          } else if (kind === 'same') {
+            try {
+              const p = new URL(url, w.location.href).pathname;
+              if (fetchPaths.indexOf(p) < 0) fetchPaths.push(p);
+            } catch (e) {
+              /* ignore */
+            }
+          }
+        } catch (e) {
+          /* counting must never break the call */
+        }
+        return origFetch(...args);
+      };
+    }
+    if (w.XMLHttpRequest && w.XMLHttpRequest.prototype && typeof w.XMLHttpRequest.prototype.open === 'function') {
+      const origOpen = w.XMLHttpRequest.prototype.open;
+      w.XMLHttpRequest.prototype.open = function (...args: any[]) {
+        xhrCalls += 1;
+        try {
+          const url = String(args[1] == null ? '' : args[1]);
+          if (classify(url) === 'cross') {
+            crossOriginAttempts += 1;
+            const h = hostOf(url);
+            if (h && crossHosts.indexOf(h) < 0) crossHosts.push(h);
+          }
+        } catch (e) {
+          /* ignore */
+        }
+        return origOpen.apply(this, args as any);
+      };
+    }
+    if (w.navigator && typeof w.navigator.sendBeacon === 'function') {
+      const origBeacon = w.navigator.sendBeacon.bind(w.navigator);
+      w.navigator.sendBeacon = function (...args: any[]) {
+        beaconCalls += 1;
+        try {
+          if (classify(String(args[0] == null ? '' : args[0])) === 'cross') crossOriginAttempts += 1;
+        } catch (e) {
+          /* ignore */
+        }
+        return origBeacon(...args);
+      };
+    }
+    if (typeof w.open === 'function') {
+      const origOpen = w.open.bind(w);
+      w.open = function (...args: any[]) {
+        windowOpenCalls += 1;
+        try {
+          if (classify(String(args[0] == null ? '' : args[0])) === 'cross') crossOriginAttempts += 1;
+        } catch (e) {
+          /* ignore */
+        }
+        return origOpen(...args);
+      };
+    }
+
+    // ---- 5. error counters ----
+    w.addEventListener('error', (ev: any) => {
+      if (ev && ev.target && ev.target !== w && (ev.target.src || ev.target.href)) resourceErrors += 1;
+      else jsErrors += 1;
+    }, true);
+    w.addEventListener('unhandledrejection', () => {
+      rejections += 1;
+    });
+  } catch (e) {
+    bootState = 'error';
+    bootError = String((e as any) && (e as any).message ? (e as any).message : e).split('\n')[0].slice(0, 200);
+  }
+
+  // ---- 6. the published measurement surface: zero-argument getters, every one a STRING ----
+  const storageNames = (): string[] => {
+    const out: string[] = [];
+    try {
+      const ls = w.localStorage;
+      const ss = w.sessionStorage;
+      if (ls) for (let i = 0; i < ls.length; i += 1) out.push('local:' + String(ls.key(i)));
+      if (ss) for (let i = 0; i < ss.length; i += 1) out.push('session:' + String(ss.key(i)));
+    } catch (e) {
+      out.push('storage-unavailable');
+    }
+    return out;
+  };
+
+  const newGlobals = (): string[] => {
+    let now: string[] = [];
+    try {
+      now = Object.getOwnPropertyNames(w);
+    } catch (e) {
+      return [];
+    }
+    const before: { [k: string]: boolean } = {};
+    for (let i = 0; i < bootGlobals.length; i += 1) before[bootGlobals[i]] = true;
+    const out: string[] = [];
+    for (let i = 0; i < now.length; i += 1) {
+      const k = now[i];
+      if (before[k]) continue;
+      if (GLOBAL_WHITELIST.indexOf(k) >= 0) continue;
+      if (GLOBAL_WHITELIST_RE.test(k)) continue;
+      out.push(k);
+    }
+    return out;
+  };
+
+  // Elements that can carry an outbound URL. Same-origin and data: references are NOT egress; only a
+  // resolved cross-origin src/href/data/poster counts. This is the DOM-side complement to the resource
+  // observer: it sees a declared reference even if the browser never fires it.
+  const externalElementRefs = (): number => {
+    let n = 0;
+    try {
+      const sel = 'script[src],link[href],img[src],iframe[src],frame[src],embed[src],object[data],source[src],video[src],audio[src],input[src]';
+      const els = w.document.querySelectorAll(sel);
+      for (let i = 0; i < els.length; i += 1) {
+        const el: any = els[i];
+        const raw = String(el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('data') || '');
+        if (!raw) continue;
+        if (classify(el.src || el.href || el.data || raw) === 'cross') n += 1;
+      }
+    } catch (e) {
+      return -1;
+    }
+    return n;
+  };
+
+  const api: { [k: string]: () => string } = {
+    version: () => VERSION,
+    bootState: () => String(bootState),
+    bootError: () => String(bootError),
+    // positive control: the app really mounted. core/src/Patchcab.svelte:61 renders <Bar> whose root is
+    // a <header> (core/src/rack/Bar.svelte:150), so a mounted cold face has exactly one.
+    mountPresent: () => {
+      try {
+        return String(w.document.querySelectorAll('body > header').length === 1 ? 'true' : 'false');
+      } catch (e) {
+        return 'ERR';
+      }
+    },
+    domNodes: () => {
+      try {
+        return String(w.document.getElementsByTagName('*').length);
+      } catch (e) {
+        return 'ERR';
+      }
+    },
+    readyState: () => {
+      try {
+        return String(w.document.readyState);
+      } catch (e) {
+        return 'ERR';
+      }
+    },
+    //
+    storageKeyCount: () => {
+      const names = storageNames();
+      return String(names.length === 1 && names[0] === 'storage-unavailable' ? 0 : names.length);
+    },
+    storageResidueNow: () => storageNames().join(','),
+    storageResidueBefore: () => String(residueBefore),
+    globalNewKeys: () => newGlobals().join(','),
+    globalNewKeyCount: () => String(newGlobals().length),
+    locationState: () => {
+      try {
+        return String(w.location.pathname + w.location.search + w.location.hash);
+      } catch (e) {
+        return 'ERR';
+      }
+    },
+    // --- egress measurement ---
+    extHosts: () => crossHosts.slice().sort().join(','),
+    extHostCount: () => String(crossHosts.length),
+    crossOriginCount: () => String(crossOrigin),
+    sameOriginCount: () => String(sameOrigin),
+    inertCount: () => String(inert),
+    resourceCount: () => String(total),
+    // positive control: a static SPA always loads its own js/css/font/png, so this must be 'true'.
+    // Without it, extHosts()=='' could be read off a dead observer instead of an offline page.
+    sameOriginPresent: () => String(sameOrigin > 0 ? 'true' : 'false'),
+    otherResources: () => (otherNames.length ? otherNames.slice(0, 8).join(' | ') : 'none'),
+    observerActive: () => String(observerActive),
+    externalElementRefs: () => String(externalElementRefs()),
+    scriptTagCount: () => {
+      try {
+        return String(w.document.querySelectorAll('script').length);
+      } catch (e) {
+        return 'ERR';
+      }
+    },
+    fetchCalls: () => String(fetchCalls),
+    fetchPaths: () => fetchPaths.slice().sort().join(','),
+    xhrCalls: () => String(xhrCalls),
+    beaconCalls: () => String(beaconCalls),
+    windowOpenCalls: () => String(windowOpenCalls),
+    crossOriginAttempts: () => String(crossOriginAttempts),
+    errors: () => String(jsErrors),
+    resourceErrors: () => String(resourceErrors),
+    rejections: () => String(rejections),
+  };
+  // getterCount is DERIVED at call time and includes itself, so it can never drift when a getter is
+  // added or removed: it is always exactly the number of published zero-arg getters on window.__rb.
+  api.getterCount = () => String(Object.keys(api).length);
+  try {
+    Object.defineProperty(w, '__rb', { value: api, writable: false, configurable: false, enumerable: false });
+  } catch (e) {
+    w.__rb = api;
+  }
+})();

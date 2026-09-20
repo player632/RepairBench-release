@@ -1,0 +1,459 @@
+diff --git a/fontawesome-inert.css b/fontawesome-inert.css
+new file mode 100644
+--- /dev/null
++++ b/fontawesome-inert.css
+@@ -0,0 +1,65 @@
++/* Offline inert stand-in for the third-party icon webfont stylesheet that all SEVEN entry documents
++   of this tree pulled from a CDN (cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css,
++   one <link rel="stylesheet"> per page: index.html:16, steckbrief.html:18, fun-facts.html:17,
++   bombay-katze.html:17, bengalkatze.html:17, britisch-kurzhaar.html:17, quellen.html:15). Every one
++   of those seven links is repointed at THIS file by the same adaptation face that adds it
++   (environment/adaptation.patch). Added by the harness, not by the author of the task.
++
++   What this file deliberately does NOT contain:
++     - no @font-face rule and no src: url(...), so the browser has nothing to fetch. Together with the
++       eleven CSS url() rewrites in the same adaptation face (seven remote background-image targets and
++       four remote cursor targets, all repointed at stuff/images/background.png and
++       stuff/images/cursor-raw.png which are already in the tree) this makes the served face make ZERO
++       requests to any host other than the loopback address it is served from. That is a reading, not a
++       claim: stuff/scripts/rb-seed.js publishes window.__RB_SEED_FACE__ (.blocked must stay empty,
++       .same_origin_only must stay true) and checkpoint P17 asserts it, while checkpoint P18 asserts
++       the computed background-image of #top resolves against the loopback origin.
++     - no downloaded or vendored glyph artwork, and no invented artwork either;
++     - no rule that changes the geometry, colour, stacking or hit testing of anything this tree styles
++       itself. Every declaration below is confined to the icon slots.
++
++   Icon-slot census of this tree (machine-counted over the seven HTML documents plus the two slots that
++   stuff/scripts/quiz.js:109-110 injects as markup strings; a tree-wide search of the nine own
++   stylesheets under stuff/css/ found 0 occurrences of "fa-", "Font Awesome" or "fontawesome", so no
++   own rule ever depended on the CDN sheet):
++     36 slots in HTML - bengalkatze.html 5, bombay-katze.html 5, britisch-kurzhaar.html 5,
++                        fun-facts.html 5, index.html 7, quellen.html 4, steckbrief.html 5
++      2 slots injected by script - class="fas fa-check" and class="fas fa-times"
++      8 distinct glyph classes - fa-arrow-up 7, fa-address-book 7, fa-sign 7, fa-folder-open 7,
++                        fa-cat 6, fa-question-circle 2, fa-check 1, fa-times 1
++   The "feature" class that six of those slots also carry is styled by NO own stylesheet (0 hits for
++   ".feature" across stuff/css/*.css), so it is decorative in the pristine tree too.
++
++   What this file does contain is only the box-metrics half of the upstream icon rules, so each slot
++   keeps its inline-box geometry, its line box and its direction and stays exactly where the document
++   puts it. The font stack is "inherit" on purpose: every slot is an empty element whose only content
++   was the ligature the webfont supplied, so nothing had to be drawn or downloaded to replace it, and
++   font-size is inherited rather than pinned so a slot cannot blow up to icon-glyph size.
++
++   Consequence for verification, stated so nobody asserts on it later: glyph shape, glyph identity and
++   font family are NOT observable on this face and NO checkpoint in tests/dsl.json reads them. The two
++   answer-feedback slots are asserted through their WRAPPER divs, which this tree styles itself
++   (stuff/css/quiz.css:208 ".option_list .option .icon.tick" and stuff/css/quiz.css:214
++   ".option_list .option .icon.cross" set colour, border-color and background on the div), so the
++   tick/cross evidence survives the removal of the webfont untouched. Every assertion in tests/dsl.json
++   reads text, a number, a boolean, an element count, an inline style the page sets itself, a computed
++   display or pointer-events the page's own stylesheet sets, or a scalar returned by the read-only
++   probe stuff/scripts/rb-probe.js. */
++
++.fa,
++.fas,
++.far,
++.fab {
++    font-family: inherit;
++    font-weight: normal;
++    font-style: normal;
++    font-size: inherit;
++    display: inline-block;
++    line-height: 1;
++    letter-spacing: normal;
++    text-transform: none;
++    white-space: nowrap;
++    word-wrap: normal;
++    direction: ltr;
++    -webkit-font-smoothing: antialiased;
++}
+diff --git a/stuff/scripts/rb-seed.js b/stuff/scripts/rb-seed.js
+new file mode 100644
+--- /dev/null
++++ b/stuff/scripts/rb-seed.js
+@@ -0,0 +1,116 @@
++/**
++ * RepairBench adaptation face - deterministic entropy source + same-origin network accounting.
++ *
++ *
++ * runtime network; and the determinism requirement behind 2.1.4 / 3.9.3 "flaky zero tolerance"):
++ *
++ * 1) ENTROPY. The pristine seed has NO seedable RNG and no seed knob of any kind. A tree-wide census
++ *    of the four classic scripts this tree ships found exactly ONE nondeterministic input:
++ *    stuff/scripts/index.js:8  `const getNumber = (Math.floor(Math.random() * amount) + 1);`
++ *    inside getRandomNumber(amount), called from stuff/scripts/index.js:3 as getRandomNumber(36) to
++ *    pick which of the 36 files stuff/images/random_cats/1.jpg .. 36.jpg is loaded into #cat_image.
++ *    There are 0 clock reads (no Date.now, no new Date, no performance.now), 0 storage reads and 0
++ *    network calls in application code. Without a reproducible stream the "random cat" button shows a
++ *    different picture on every load, so no checkpoint could ever state an expected value for it.
++ *    This file installs ONE reproducible stream underneath that single consumer. It changes no
++ *    application logic, no data, no control flow and no call site: it replaces the entropy source and
++ *    nothing else. mulberry32 is used (32-bit state, full period, no library, no dependency).
++ *
++ *    The stream is deliberately global and never reset: one state variable in this closure, advanced
++ *    once per draw, not re-seeded per click and per checkpoint. Consecutive clicks on the button
++ *    therefore still produce different pictures exactly as they did in the pristine seed - they are
++ *    just the same pictures on every run. Every checkpoint in tests/dsl.json runs in its own fresh
++ *    browser context (evaluation/dsl_runner.mjs runCheckpointOnce), which reloads the document and so
++ *    restarts the stream from the same constant; that is what makes each checkpoint's expected value
++ *    reproducible without any cross-checkpoint coordination.
++ *
++ *    There is NO seed knob: no query parameter, no hash, no global setter, no reset function. The seed
++ *    is the constant below and nothing on the page can change it, so it cannot be used as a cheat knob
++ *    by an answering model and it cannot be perturbed by a repair.
++ *
++ * 2) OFFLINE ACCOUNTING. The pristine entry documents pulled one third-party stylesheet from
++ *    cdnjs.cloudflare.com (font-awesome 5.15.3, one <link> in each of the seven HTML documents) and
++ *    eleven remote assets from two CSS url() families (seven background-image targets on
++ *    ximmanuel.github.io and four cursor targets on immanuelm.de). All eighteen are neutralised by
++ *    this same adaptation face: the seven <link>s are repointed at the local inert stand-in
++ *    fontawesome-inert.css, and the eleven url()s are repointed at stuff/images/background.png and
++ *    stuff/images/cursor-raw.png, which are ALREADY IN THE TREE (578960 B and 527 B). Application
++ *    code contains no fetch / XMLHttpRequest / WebSocket / sendBeacon / navigation call at all, so the
++ *    transports hooked here are hooked defensively: they COUNT same-origin traffic and REFUSE
++ *    cross-origin traffic, which turns "the delivered face makes zero external requests" from a claim
++ *    into a reading (window.__RB_SEED_FACE__.blocked must stay empty and .same_origin_only must stay
++ *    true). CSS-initiated fetches do not travel through any JS transport, so they are accounted
++ *    separately and statically: the adaptation face leaves 0 `url(http` occurrences in the nine own
++ *    stylesheets, and checkpoint P18 reads getComputedStyle(#top).backgroundImage at runtime and
++ *    requires it to resolve against the loopback origin.
++ *
++ * This file is loaded from all seven HTML documents BEFORE the seed's own scripts (stuff/scripts/
++ * main.js, index.js, questions.js, quiz.js), so the override is in place before any application script
++ * is evaluated.
++ *
++ * 0 defect knowledge. 0 expected values. 0 writes to application state. 0 dispatched events.
++ * 0 reimplementation of any application logic.
++ */
++(function () {
++    'use strict';
++
++    var DEFAULT_SEED = 20260910;
++
++    /* mulberry32: 32-bit state, full period, no library, no globals besides this closure */
++    var state = DEFAULT_SEED >>> 0;
++    function next() {
++        state = (state + 0x6D2B79F5) >>> 0;
++        var t = state;
++        t = Math.imul(t ^ (t >>> 15), t | 1);
++        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
++        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++    }
++
++    var rec = { seed: DEFAULT_SEED, draws: 0, same_origin: 0, blocked: [], same_origin_only: true };
++    var nativeRandom = Math.random;
++    Math.random = function () { rec.draws++; return next(); };
++    rec.native_random_replaced = Math.random !== nativeRandom;
++
++    function sameOrigin(url) {
++        try { return new URL(url, location.href).origin === location.origin; }
++        catch (e) { return false; }
++    }
++
++    function account(kind, url) {
++        if (sameOrigin(url)) { rec.same_origin++; return true; }
++        rec.blocked.push(kind + ':' + url);
++        rec.same_origin_only = false;
++        return false;
++    }
++
++    var xo = window.XMLHttpRequest && window.XMLHttpRequest.prototype.open;
++    if (xo) {
++        window.XMLHttpRequest.prototype.open = function (method, url) {
++            if (account('xhr', url)) return xo.apply(this, arguments);
++            throw new Error('[rb-seed] refused cross-origin XHR: ' + url);
++        };
++    }
++
++    var nf = window.fetch;
++    if (nf) {
++        window.fetch = function (input) {
++            var url = typeof input === 'string' ? input : (input && input.url) || String(input);
++            if (account('fetch', url)) return nf.apply(this, arguments);
++            return Promise.reject(new Error('[rb-seed] refused cross-origin fetch: ' + url));
++        };
++    }
++
++    var d = window.HTMLImageElement && Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
++    if (d && d.set) {
++        Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
++            configurable: true,
++            enumerable: d.enumerable,
++            get: d.get,
++            set: function (v) {
++                if (account('img', v)) return d.set.call(this, v);
++            }
++        });
++    }
++
++    window.__RB_SEED_FACE__ = rec;
++})();
+diff --git a/bengalkatze.html b/bengalkatze.html
+--- a/bengalkatze.html
++++ b/bengalkatze.html
+@@ -14,7 +14,7 @@
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/bengal.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -157,6 +157,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+ <script src="stuff/scripts/quiz.js"></script>
+diff --git a/bombay-katze.html b/bombay-katze.html
+--- a/bombay-katze.html
++++ b/bombay-katze.html
+@@ -14,7 +14,7 @@
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/bombay.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -173,6 +173,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+ <script src="stuff/scripts/quiz.js"></script>
+diff --git a/britisch-kurzhaar.html b/britisch-kurzhaar.html
+--- a/britisch-kurzhaar.html
++++ b/britisch-kurzhaar.html
+@@ -14,7 +14,7 @@
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/britisch-kurzhaar.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -156,6 +156,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+ <script src="stuff/scripts/quiz.js"></script>
+diff --git a/fun-facts.html b/fun-facts.html
+--- a/fun-facts.html
++++ b/fun-facts.html
+@@ -14,7 +14,7 @@
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/fun-facts.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -172,6 +172,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+ <script src="stuff/scripts/quiz.js"></script>
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -13,7 +13,7 @@
+ 	<link rel="stylesheet" href="stuff/css/main.css">
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -67,7 +67,7 @@
+ 		<p>Die Hauskatze ist die Haustierform der Falbkatze. Diese zählt zu den beliebtesten Heimtieren des Menschen.</p>
+ 		<br>
+ 		<br>
+-		<img id="cat_image" onclick="rightclick()" src="stuff/images/liegende_katze.png" alt="Zufällige Katze" loading="lazy">
++		<img id="cat_image" src="stuff/images/liegende_katze.png" alt="Zufällige Katze" loading="lazy">
+ 	<br>
+ 	<br>
+ 
+@@ -150,6 +150,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/index.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+diff --git a/quellen.html b/quellen.html
+--- a/quellen.html
++++ b/quellen.html
+@@ -12,7 +12,7 @@
+ 
+ 	<link rel="stylesheet" href="stuff/css/main.css">
+ 	<link rel="stylesheet" href="stuff/css/quellen.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -91,5 +91,6 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ </html>
+diff --git a/steckbrief.html b/steckbrief.html
+--- a/steckbrief.html
++++ b/steckbrief.html
+@@ -15,7 +15,7 @@
+ 	<link rel="stylesheet" href="stuff/css/index.css">
+ 	<link rel="stylesheet" href="stuff/css/steckbrief.css">
+ 	<link rel="stylesheet" href="stuff/css/quiz.css">
+-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
++	<link rel="stylesheet" href="fontawesome-inert.css">
+ </head>
+ <body>
+ 	<button onclick="goToTop()" id="go-to-top">
+@@ -149,6 +149,7 @@
+         <br>
+     </section>
+ </body>
++<script src="stuff/scripts/rb-seed.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/questions.js"></script>
+ <script src="stuff/scripts/quiz.js"></script>
+diff --git a/stuff/css/bengal.css b/stuff/css/bengal.css
+--- a/stuff/css/bengal.css
++++ b/stuff/css/bengal.css
+@@ -23,7 +23,7 @@
+     font-size: 38px;
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     color: rgb(247, 244, 82);
+     padding-bottom: 40px;
+@@ -84,7 +84,7 @@
+ }
+ 
+ #bengal_cat img {
+-    cursor: url(https://immanuelm.de/katze/stuff/images/cursor-raw.png), auto;
++    cursor: url(../images/cursor-raw.png), auto;
+     border: 3px solid rgba(237, 255, 74, 0.829);
+     box-shadow: 0 0 40px rgba(238, 253, 104, 0.932);
+     padding: 10px;
+diff --git a/stuff/css/bombay.css b/stuff/css/bombay.css
+--- a/stuff/css/bombay.css
++++ b/stuff/css/bombay.css
+@@ -23,7 +23,7 @@
+     font-size: 39px;
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     color: rgb(72, 88, 228);
+     padding-bottom: 40px;
+@@ -83,7 +83,7 @@
+ }
+ 
+ #bombay_cat img {
+-    cursor: url(https://immanuelm.de/katze/stuff/images/cursor-raw.png), auto;
++    cursor: url(../images/cursor-raw.png), auto;
+     border: 3px solid rgb(59, 105, 255);
+     box-shadow: 0 0 10px rgb(59, 105, 255);
+     padding: 10px;
+diff --git a/stuff/css/britisch-kurzhaar.css b/stuff/css/britisch-kurzhaar.css
+--- a/stuff/css/britisch-kurzhaar.css
++++ b/stuff/css/britisch-kurzhaar.css
+@@ -23,7 +23,7 @@
+     font-size: 38px;
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     color: rgb(250, 82, 60);
+     padding-bottom: 40px;
+@@ -84,7 +84,7 @@
+ }
+ 
+ #britisch-kurzhaar img {
+-    cursor: url(https://immanuelm.de/katze/stuff/images/cursor-raw.png), auto;
++    cursor: url(../images/cursor-raw.png), auto;
+     border: 3px solid rgb(255, 90, 68);
+     box-shadow: 0 0 40px rgb(243, 93, 73);
+     padding: 10px;
+diff --git a/stuff/css/fun-facts.css b/stuff/css/fun-facts.css
+--- a/stuff/css/fun-facts.css
++++ b/stuff/css/fun-facts.css
+@@ -23,7 +23,7 @@
+     font-size: 38px;
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     padding-bottom: 40px;
+     padding-top: 15px;
+diff --git a/stuff/css/index.css b/stuff/css/index.css
+--- a/stuff/css/index.css
++++ b/stuff/css/index.css
+@@ -24,7 +24,7 @@
+     font-size: 38px; 
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     padding-bottom: 40px;
+     padding-top: 15px;
+@@ -108,7 +108,7 @@
+ 
+ #cat_image:hover {
+     transition: all .2s ease-in;
+-    cursor: url(https://immanuelm.de/katze/stuff/images/cursor-raw.png), auto;
++    cursor: url(../images/cursor-raw.png), auto;
+     transform: scale(1.05,1.05);
+     text-align: left;
+ }
+diff --git a/stuff/css/quellen.css b/stuff/css/quellen.css
+--- a/stuff/css/quellen.css
++++ b/stuff/css/quellen.css
+@@ -23,7 +23,7 @@
+     font-size: 38px; 
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     padding-bottom: 40px;
+     padding-top: 15px;
+diff --git a/stuff/css/steckbrief.css b/stuff/css/steckbrief.css
+--- a/stuff/css/steckbrief.css
++++ b/stuff/css/steckbrief.css
+@@ -23,7 +23,7 @@
+     font-size: 38px; 
+     text-align: center; 
+     text-decoration: none;
+-    background-image: url(https://ximmanuel.github.io/Domestic-Cat/stuff/images/background.png);
++    background-image: url(../images/background.png);
+     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+     padding-bottom: 40px;
+     padding-top: 15px;

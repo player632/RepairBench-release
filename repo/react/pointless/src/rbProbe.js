@@ -1,0 +1,437 @@
+/**
+ * RepairBench read-only probe bridge (`rbProbe`) - publishes `window.__rb` exactly once.
+ *
+ * Discipline (same shape as the registered corpus' probe bridges):
+ *  - STRICTLY READ-ONLY: it dispatches nothing, mutates no store, no DOM node and no fixture. Every
+ *    function is a getter over `store.getState()` or over `document`/`performance`.
+ *  - PUBLISHED ONCE AND FROZEN: the root object and every namespace are `Object.freeze`d, and a
+ *    second import is a no-op, so a repair cannot re-point a reading at its own value
+ *    (`__rb.globals.rbIsFrozen()` is the checkpoint that proves it).
+ *  - NEVER THROWS: every reader is wrapped, so a broken state yields a `__ERR__:` string (a visible
+ *    red) instead of a setup_failure.
+ *  - SCALARS ONLY: readers return numbers, strings, booleans or plain JSON-safe arrays of scalars,
+ *    because evaluation/dsl_runner.mjs compares `js_eval` results with a loose `==` and an
+ *
+ *
+ * Why a probe is needed at all: `pointless` keeps its drawing state in two places the DOM only
+ * partially shows - the Redux `library.papers[].shapes` array (which `Paper.componentDidUpdate`
+ * syncs after every stroke through `setPaperShapes`) and the rendered `<svg>` (one `<path>` per
+ * shape, plus the in-progress shape and the eraser circle). Reading both sides is what makes a
+ * stroke, a colour, a line width, a zoom level, an undo, a paste or an export assertable.
+ */
+import { store } from './store';
+
+const RB_PROBE_VERSION = 'r37i-2';
+
+/* The only __-prefixed window globals this face is allowed to own: the probe itself plus the two the
+ * offline host fixture installs (window.__TAURI_IPC__ is the Tauri v1 entry point the seed's own
+ * @tauri-apps/api calls into, window.__rbHostFixture is its frozen introspection). Listing them by
+ * name keeps `globals.unexpected()` order-independent while still catching anything ELSE a repair
+ * parks on window - the anti-hack reading stays red-capable (measured with the --ctl arm). */
+const RB_KNOWN_GLOBALS = ['__rb', '__TAURI_IPC__', '__rbHostFixture'];
+
+const wrap = (fn, fallback) => {
+  try {
+    const value = fn();
+    return value === undefined ? fallback : value;
+  } catch (e) {
+    return '__ERR__:' + String((e && e.message) || e).slice(0, 90);
+  }
+};
+
+const uncaught = [];
+const rejections = [];
+const consoleErrors = [];
+
+if (typeof window !== 'undefined' && !window.__rb) {
+  const baselineGlobals = Object.getOwnPropertyNames(window).filter((k) => k.indexOf('__') === 0).sort();
+
+  window.addEventListener('error', (event) => {
+    uncaught.push(String((event && (event.message || (event.error && event.error.message))) || 'error').slice(0, 160));
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event && event.reason;
+    rejections.push(String((reason && (reason.message || reason)) || 'rejection').slice(0, 160));
+  });
+  const nativeError = console.error;
+  console.error = function patched(...args) {
+    try {
+      consoleErrors.push(args.map((a) => String((a && a.message) || a)).join(' ').slice(0, 200));
+    } catch (e) {
+      /* never let the probe break the app */
+    }
+    return nativeError.apply(console, args);
+  };
+
+  const state = () => store.getState();
+  const settings = () => state().settings;
+  const library = () => state().library;
+  const router = () => state().router.current;
+  const currentPaperId = () => state().paper.paperId;
+  const papers = () => library().papers || [];
+  const folders = () => library().folders || [];
+  const paperById = (id) => papers().find((p) => p.id === (id || currentPaperId())) || null;
+
+  /* The drawing surface. In the paper view there is exactly one editable <svg>; the library grid
+   * renders one READ-ONLY thumbnail <svg> per paper, and instrumentation tags them differently
+   * (paper-canvas vs paper-thumb) so a count is never ambiguous. */
+  const svg = () => document.querySelector('[data-testid="paper-canvas"]');
+  const group = () => (svg() ? svg().querySelector('g') : null);
+  const paths = () => (svg() ? [...svg().querySelectorAll('path')] : []);
+  const num = (v, digits) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    const f = Math.pow(10, digits === undefined ? 3 : digits);
+    return Math.round(n * f) / f;
+  };
+  const dStats = (d) => {
+    const s = String(d || '');
+    const coords = (s.match(/-?\d+(?:\.\d+)?/g) || []).map(Number).filter((n) => Number.isFinite(n));
+    let minX = null, minY = null, maxX = null, maxY = null;
+    /* d3's line() emits "Mx,yLx,y..." - pairs, in order */
+    for (let i = 0; i + 1 < coords.length; i += 2) {
+      const x = coords[i], y = coords[i + 1];
+      minX = minX === null ? x : Math.min(minX, x);
+      maxX = maxX === null ? x : Math.max(maxX, x);
+      minY = minY === null ? y : Math.min(minY, y);
+      maxY = maxY === null ? y : Math.max(maxY, y);
+    }
+    return { len: s.length, commands: (s.match(/[MLCZmlcz]/g) || []).length, coords: coords.length, minX: num(minX), minY: num(minY), maxX: num(maxX), maxY: num(maxY), head: s.slice(0, 60) };
+  };
+
+  const sameOrigin = (url) => {
+    try {
+      const u = new URL(String(url), window.location.href);
+      return u.origin === window.location.origin;
+    } catch (e) {
+      return true;
+    }
+  };
+
+  const shapeSummary = (shape) => {
+    const pts = Array.isArray(shape.points) ? shape.points : [];
+    const xs = pts.map((p) => Number(p.x)).filter((n) => Number.isFinite(n));
+    const ys = pts.map((p) => Number(p.y)).filter((n) => Number.isFinite(n));
+    return {
+      type: String(shape.type),
+      color: String(shape.color),
+      linewidth: num(shape.linewidth),
+      points: pts.length,
+      minX: num(xs.length ? Math.min.apply(null, xs) : null),
+      minY: num(ys.length ? Math.min.apply(null, ys) : null),
+      maxX: num(xs.length ? Math.max.apply(null, xs) : null),
+      maxY: num(ys.length ? Math.max.apply(null, ys) : null),
+      firstX: num(pts.length ? pts[0].x : null),
+      firstY: num(pts.length ? pts[0].y : null),
+      lastX: num(pts.length ? pts[pts.length - 1].x : null),
+      lastY: num(pts.length ? pts[pts.length - 1].y : null),
+      preserveAspectRatio: shape.preserveAspectRatio === undefined ? null : !!shape.preserveAspectRatio,
+    };
+  };
+
+  const hostFixture = () => (typeof window !== 'undefined' ? window.__rbHostFixture || null : null);
+
+  const rb = {
+    meta: Object.freeze({
+      name: '__rb',
+      version: RB_PROBE_VERSION,
+      frozen: true,
+      storePublished: !!store && typeof store.getState === 'function',
+    }),
+
+    globals: Object.freeze({
+      rbIsFrozen: () => wrap(() => Object.isFrozen(window.__rb) && Object.isFrozen(window.__rb.canvas), false),
+      publishedOnce: () => wrap(() => (window.__rb && window.__rb.meta ? window.__rb.meta.version : null) === RB_PROBE_VERSION, false),
+      baselineCount: () => wrap(() => baselineGlobals.length, -1),
+      unexpected: () =>
+        wrap(() => {
+          const base = new Set(baselineGlobals.concat(RB_KNOWN_GLOBALS));
+          return Object.getOwnPropertyNames(window).filter((k) => k.indexOf('__') === 0 && !base.has(k)).length;
+        }, -1),
+      unexpectedNames: () =>
+        wrap(() => {
+          const base = new Set(baselineGlobals.concat(RB_KNOWN_GLOBALS));
+          return Object.getOwnPropertyNames(window).filter((k) => k.indexOf('__') === 0 && !base.has(k)).sort().join(',');
+        }, '__ERR__'),
+    }),
+
+    errors: Object.freeze({
+      uncaught: () => wrap(() => uncaught.length, -1),
+      rejections: () => wrap(() => rejections.length, -1),
+      consoleErrors: () => wrap(() => consoleErrors.length, -1),
+      samples: () => wrap(() => uncaught.concat(rejections, consoleErrors).slice(0, 4).join(' | '), '__ERR__'),
+    }),
+
+    net: Object.freeze({
+      externalResources: () =>
+        wrap(() => performance.getEntriesByType('resource').filter((e) => !sameOrigin(e.name)).length, -1),
+      resources: () => wrap(() => performance.getEntriesByType('resource').length, -1),
+      externalHosts: () =>
+        wrap(
+          () =>
+            performance
+              .getEntriesByType('resource')
+              .filter((e) => !sameOrigin(e.name))
+              .map((e) => new URL(e.name).host)
+              .filter((v, i, a) => a.indexOf(v) === i)
+              .sort()
+              .join(','),
+          '__ERR__',
+        ),
+      /* Census only (never an assertion): http(s) strings baked into the built bundle's DOM. The
+       * seed's own SVG namespace declarations (http://www.w3.org/2000/svg) land here and are not
+       * egress - the resource-timing reading above is the one that measures requests. */
+      domUrlAttrs: () =>
+        wrap(() => {
+          let n = 0;
+          for (const el of document.querySelectorAll('[href],[src],[xmlns],[data-url]')) {
+            for (const a of ['href', 'src', 'xmlns', 'data-url']) {
+              const v = el.getAttribute && el.getAttribute(a);
+              if (v && /^https?:\/\//i.test(v) && !sameOrigin(v)) n++;
+            }
+          }
+          return n;
+        }, -1),
+    }),
+
+    boot: Object.freeze({
+      ready: () =>
+        wrap(
+          () =>
+            !!store &&
+            typeof store.getState === 'function' &&
+            !!document.getElementById('root') &&
+            document.getElementById('root').children.length > 0 &&
+            (hostFixture() ? hostFixture().installed() : false),
+          false,
+        ),
+      rootKids: () => wrap(() => (document.getElementById('root') ? document.getElementById('root').children.length : -1), -1),
+      routerName: () => wrap(() => String(router().name), '__ERR__'),
+      routerArgs: () => wrap(() => JSON.stringify(router().args || {}), '__ERR__'),
+      appVersion: () => wrap(() => String(settings().appVersion), '__ERR__'),
+      platform: () => wrap(() => String(settings().platform), '__ERR__'),
+    }),
+
+    host: Object.freeze({
+      installed: () => wrap(() => (hostFixture() ? hostFixture().installed() : false), false),
+      callCount: () => wrap(() => hostFixture().callCount(), -1),
+      callCountFor: (cmd) => wrap(() => hostFixture().callCount(cmd), -1),
+      commands: () => wrap(() => hostFixture().commands().sort().join(','), '__ERR__'),
+      unknownCalls: () => wrap(() => hostFixture().unknownCalls().length, -1),
+      unknownNames: () => wrap(() => hostFixture().unknownCalls().join(','), '__ERR__'),
+      dialogs: () => wrap(() => hostFixture().dialogs().length, -1),
+      dialogMessages: () => wrap(() => hostFixture().dialogs().map((d) => String(d.message).slice(0, 60)).join(' | '), '__ERR__'),
+      writes: () => wrap(() => hostFixture().writes().length, -1),
+      writePaths: () => wrap(() => hostFixture().writePaths().join(','), '__ERR__'),
+      writeBytes: () => wrap(() => hostFixture().writes().map((w) => w.bytes).join(','), '__ERR__'),
+      writeText: (i) => wrap(() => String(hostFixture().writes()[i === undefined ? 0 : i].text), '__ERR__'),
+      writeTextHas: (needle, i) => wrap(() => String(hostFixture().writes()[i === undefined ? 0 : i].text || '').indexOf(needle) >= 0, false),
+      savedLibraries: () => wrap(() => hostFixture().savedLibraries().filter((s) => s).length, -1),
+      savedShapeTotals: () => wrap(() => hostFixture().savedLibraries().filter((s) => s).map((s) => s.savedShapeTotals.join('+')).join(','), '__ERR__'),
+      savedSettings: () => wrap(() => JSON.stringify(hostFixture().savedSettings()), '__ERR__'),
+      liveFolderCount: () => wrap(() => hostFixture().liveFolders().length, -1),
+      livePaperCount: () => wrap(() => Object.keys(hostFixture().livePapers()).reduce((n, k) => n + hostFixture().livePapers()[k].length, 0), -1),
+    }),
+
+    store: Object.freeze({
+      sliceKeys: () => wrap(() => Object.keys(state()).sort().join(','), '__ERR__'),
+      settingsKeys: () => wrap(() => Object.keys(settings()).sort().join(','), '__ERR__'),
+      isDarkModeType: () => wrap(() => {
+        const v = settings().isDarkMode;
+        if (v && typeof v === 'object') return 'MediaQueryList';
+        return typeof v + ':' + String(v);
+      }, '__ERR__'),
+      isDarkModeTruthy: () => wrap(() => !!settings().isDarkMode, false),
+      sortPapersBy: () => wrap(() => (settings().sortPapersBy === undefined ? 'undefined' : String(settings().sortPapersBy)), '__ERR__'),
+      viewMode: () => wrap(() => (settings().viewMode === undefined ? 'undefined' : String(settings().viewMode)), '__ERR__'),
+      preferredLinewidth: () => wrap(() => (settings().canvasPreferredLinewidth === undefined ? 'undefined' : String(settings().canvasPreferredLinewidth)), '__ERR__'),
+      currentPaperId: () => wrap(() => String(currentPaperId()), '__ERR__'),
+    }),
+
+    library: Object.freeze({
+      folderCount: () => wrap(() => folders().length, -1),
+      folderNames: () => wrap(() => folders().map((f) => f.name).join('|'), '__ERR__'),
+      paperCount: () => wrap(() => papers().length, -1),
+      paperNames: () => wrap(() => papers().map((p) => p.name).join('|'), '__ERR__'),
+      paperIds: () => wrap(() => papers().map((p) => p.id).join('|'), '__ERR__'),
+      paperNameAt: (i) => wrap(() => String(papers()[i].name), '__ERR__'),
+      shapeCountOf: (id) => wrap(() => ((paperById(id) || {}).shapes || []).length, -1),
+      shapeTypesOf: (id) => wrap(() => ((paperById(id) || {}).shapes || []).map((s) => s.type).join('|'), '__ERR__'),
+      shapeColorsOf: (id) => wrap(() => ((paperById(id) || {}).shapes || []).map((s) => s.color).join('|'), '__ERR__'),
+      shapeLinewidthsOf: (id) => wrap(() => ((paperById(id) || {}).shapes || []).map((s) => num(s.linewidth)).join('|'), '__ERR__'),
+      shapePointCountsOf: (id) => wrap(() => ((paperById(id) || {}).shapes || []).map((s) => (s.points || []).length).join('|'), '__ERR__'),
+      shapeAt: (i, id) => wrap(() => JSON.stringify(shapeSummary(((paperById(id) || {}).shapes || [])[i])), '__ERR__'),
+      shapeField: (i, field, id) => wrap(() => {
+        const s = ((paperById(id) || {}).shapes || [])[i] || {};
+        const v = s[field];
+        return typeof v === 'object' ? JSON.stringify(v) : String(v);
+      }, '__ERR__'),
+      totalShapes: () => wrap(() => papers().reduce((n, p) => n + ((p.shapes || []).length), 0), -1),
+    }),
+
+    canvas: Object.freeze({
+      present: () => wrap(() => !!svg(), false),
+      count: () => wrap(() => document.querySelectorAll('[data-testid="paper-canvas"]').length, -1),
+      thumbCount: () => wrap(() => document.querySelectorAll('[data-testid="paper-thumb"]').length, -1),
+      pathCount: () => wrap(() => paths().length, -1),
+      committedPathCount: () => wrap(() => paths().filter((p) => !p.getAttribute('stroke-dasharray')).length, -1),
+      selectionPathCount: () => wrap(() => paths().filter((p) => p.getAttribute('stroke-dasharray')).length, -1),
+      strokes: () => wrap(() => paths().map((p) => p.getAttribute('stroke')).join('|'), '__ERR__'),
+      strokeWidths: () => wrap(() => paths().map((p) => num(p.getAttribute('stroke-width'))).join('|'), '__ERR__'),
+      dasharrays: () => wrap(() => paths().map((p) => String(p.getAttribute('stroke-dasharray'))).join('|'), '__ERR__'),
+      dLengths: () => wrap(() => paths().map((p) => (p.getAttribute('d') || '').length).join('|'), '__ERR__'),
+      dCommands: () => wrap(() => paths().map((p) => ((p.getAttribute('d') || '').match(/[MLCZmlcz]/g) || []).length).join('|'), '__ERR__'),
+      dCurves: () => wrap(() => paths().map((p) => ((p.getAttribute('d') || '').match(/C/g) || []).length).join('|'), '__ERR__'),
+      firstD: () => wrap(() => String(paths()[0].getAttribute('d') || '').slice(0, 90), '__ERR__'),
+      lastD: () => wrap(() => String(paths()[paths().length - 1].getAttribute('d') || '').slice(0, 90), '__ERR__'),
+      pathDStats: (i) => wrap(() => JSON.stringify(dStats(paths()[i < 0 ? paths().length + i : i].getAttribute('d'))), '__ERR__'),
+      pathField: (i, field) => wrap(() => {
+        const p = paths()[i < 0 ? paths().length + i : i];
+        const v = field === 'dStats' ? JSON.stringify(dStats(p.getAttribute('d'))) : p.getAttribute(field);
+        return typeof v === 'object' ? JSON.stringify(v) : String(v);
+      }, '__ERR__'),
+      transform: () => wrap(() => String(group().getAttribute('transform')), '__ERR__'),
+      scale: () => wrap(() => num((String(group().getAttribute('transform')).match(/scale\(([-\d.]+)/) || [])[1]), null),
+      translateX: () => wrap(() => num((String(group().getAttribute('transform')).match(/translate\(([-\d.]+)/) || [])[1]), null),
+      translateY: () => wrap(() => num((String(group().getAttribute('transform')).match(/translate\([-\d.]+\s+([-\d.]+)/) || [])[1]), null),
+      zoomText: () => wrap(() => String((document.querySelector('[data-testid="zoom-percentage"]') || {}).textContent || '').trim(), '__ERR__'),
+      eraserCircleCount: () => wrap(() => (svg() ? svg().querySelectorAll('circle').length : -1), -1),
+      eraserR: () => wrap(() => num(svg().querySelector('circle').getAttribute('r')), null),
+      eraserCx: () => wrap(() => num(svg().querySelector('circle').getAttribute('cx')), null),
+      viewBox: () => wrap(() => String(svg().getAttribute('viewBox') || 'none'), '__ERR__'),
+      svgRect: () => wrap(() => {
+        const r = svg().getBoundingClientRect();
+        return JSON.stringify({ x: num(r.x, 1), y: num(r.y, 1), w: num(r.width, 1), h: num(r.height, 1) });
+      }, '__ERR__'),
+      containerModeFlags: () =>
+        wrap(() => {
+          const el = svg() ? svg().parentElement : null;
+          const cls = String((el && el.className) || '');
+          return ['is-draw-mode', 'is-erase-mode', 'is-pan-mode', 'is-panning'].filter((f) => cls.indexOf(f) >= 0).join('|');
+        }, '__ERR__'),
+      cursorStyle: () => wrap(() => String((svg() && svg().parentElement ? getComputedStyle(svg().parentElement).cursor : 'none')), '__ERR__'),
+    }),
+
+    dom: Object.freeze({
+      testidCount: (t) => wrap(() => document.querySelectorAll('[data-testid="' + t + '"]').length, -1),
+      testidText: (t, i) => wrap(() => {
+        const els = document.querySelectorAll('[data-testid="' + t + '"]');
+        return String((els[i === undefined ? 0 : i] || {}).textContent || '').trim();
+      }, '__ERR__'),
+      testidAttr: (t, attr, i) => wrap(() => {
+        const els = document.querySelectorAll('[data-testid="' + t + '"]');
+        return String((els[i === undefined ? 0 : i] || {}).getAttribute(attr));
+      }, '__ERR__'),
+      testidClassHas: (t, needle, i) => wrap(() => {
+        const els = document.querySelectorAll('[data-testid="' + t + '"]');
+        return String(((els[i === undefined ? 0 : i] || {}).className || '')).indexOf(needle) >= 0;
+      }, false),
+      activeTestids: (needle) => wrap(() => [...document.querySelectorAll('[data-testid]')].filter((el) => String(el.className || '').indexOf('toolbar__item-active') >= 0 && (!needle || String(el.getAttribute('data-testid')).indexOf(needle) >= 0)).map((el) => el.getAttribute('data-testid')).sort().join(','), '__ERR__'),
+      disabledTestids: (needle) => wrap(() => [...document.querySelectorAll('[data-testid]')].filter((el) => String(el.className || '').indexOf('toolbar__item-disabled') >= 0 && (!needle || String(el.getAttribute('data-testid')).indexOf(needle) >= 0)).map((el) => el.getAttribute('data-testid')).sort().join(','), '__ERR__'),
+      bodyTextHas: (needle) => wrap(() => String(document.body.textContent || '').indexOf(needle) >= 0, false),
+      rowCount: (selector) => wrap(() => document.querySelectorAll(selector).length, -1),
+      modalOpen: () => wrap(() => [...document.querySelectorAll('[data-testid="modal"]')].filter((m) => String(m.className || '').indexOf('modal__open') >= 0 || String(m.className || '').indexOf('open') >= 0).length, -1),
+      modalTitle: () => wrap(() => String((document.querySelector('[data-testid="modal-title"]') || {}).textContent || '').trim(), '__ERR__'),
+      selectValue: (t) => wrap(() => String((document.querySelector('[data-testid="' + t + '"]') || {}).value), '__ERR__'),
+      inputValue: (t) => wrap(() => String((document.querySelector('[data-testid="' + t + '"]') || {}).value), '__ERR__'),
+      inputCount: () => wrap(() => document.querySelectorAll('input').length, -1),
+      /* --- DOM-ORDER readers (r37i-2). Redux order is NOT display order: Library.renderPapers()
+       * sorts a copy and renders it, so every sorting / numbering checkpoint has to read the DOM.
+       * Each reader returns a SCALAR (joined string or number) because dsl_runner compares js_eval
+       *
+      els: (t) => wrap(() => document.querySelectorAll('[data-testid="' + t + '"]').length, -1),
+      cellTexts: (t, cellIdx) =>
+        wrap(
+          () =>
+            [...document.querySelectorAll('[data-testid="' + t + '"]')]
+              .map((el) => String(((el.children[cellIdx === undefined ? 0 : cellIdx] || {}).textContent || '')).trim())
+              .join('|'),
+          '__ERR__',
+        ),
+      cellText: (t, cellIdx, rowIdx) =>
+        wrap(() => {
+          const el = document.querySelectorAll('[data-testid="' + t + '"]')[rowIdx === undefined ? 0 : rowIdx];
+          return String(((el && el.children[cellIdx === undefined ? 0 : cellIdx]) || {}).textContent || '').trim();
+        }, '__ERR__'),
+      childTestidTexts: (parentT, childT) =>
+        wrap(
+          () =>
+            [...document.querySelectorAll('[data-testid="' + parentT + '"]')]
+              .map((el) => {
+                const c = el.querySelector('[data-testid="' + childT + '"]');
+                return String((c || {}).textContent || '').trim();
+              })
+              .join('|'),
+          '__ERR__',
+        ),
+      idOrder: (t, idAttr) =>
+        wrap(
+          () =>
+            [...document.querySelectorAll('[data-testid="' + t + '"]')]
+              .map((el) => String(el.getAttribute(idAttr || 'data-rb-id')))
+              .join('|'),
+          '__ERR__',
+        ),
+      countWhere: (t, attr, val) =>
+        wrap(() => [...document.querySelectorAll('[data-testid="' + t + '"]')].filter((el) => String(el.getAttribute(attr)) === String(val)).length, -1),
+      attrWhere: (t, whereAttr, whereVal, readAttr) =>
+        wrap(() => {
+          const el = [...document.querySelectorAll('[data-testid="' + t + '"]')].find((e) => String(e.getAttribute(whereAttr)) === String(whereVal));
+          return el ? String(el.getAttribute(readAttr)) : '__ABSENT__';
+        }, '__ERR__'),
+      textWhere: (t, whereAttr, whereVal, cellIdx) =>
+        wrap(() => {
+          const el = [...document.querySelectorAll('[data-testid="' + t + '"]')].find((e) => String(e.getAttribute(whereAttr)) === String(whereVal));
+          if (!el) return '__ABSENT__';
+          if (cellIdx === undefined || cellIdx === null) return String(el.textContent || '').trim();
+          return String(((el.children[cellIdx] || {}).textContent || '')).trim();
+        }, '__ERR__'),
+      classHasWhere: (t, whereAttr, whereVal, needle) =>
+        wrap(() => {
+          const el = [...document.querySelectorAll('[data-testid="' + t + '"]')].find((e) => String(e.getAttribute(whereAttr)) === String(whereVal));
+          return el ? String(el.className || '').indexOf(needle) >= 0 : false;
+        }, false),
+      modalOpenCount: () =>
+        wrap(() => [...document.querySelectorAll('[data-testid="modal"]')].filter((m) => m.getAttribute('data-rb-open') === '1').length, -1),
+      modalOpenTitles: () =>
+        wrap(
+          () =>
+            [...document.querySelectorAll('[data-testid="modal"]')]
+              .filter((m) => m.getAttribute('data-rb-open') === '1')
+              .map((m) => String(m.getAttribute('data-rb-title')))
+              .sort()
+              .join('|'),
+          '__ERR__',
+        ),
+      modalCount: () => wrap(() => document.querySelectorAll('[data-testid="modal"]').length, -1),
+    }),
+
+    /*
+     * sessionStorage, no cookie, no URL query/hash (the router is pure Redux, so the URL is also the
+     * proof that a repair did not bolt a route onto the address bar to fake a state). */
+    residue: Object.freeze({
+      localStorageKeys: () => wrap(() => Object.keys(window.localStorage).sort().join(','), '__ERR__'),
+      localStorageCount: () => wrap(() => Object.keys(window.localStorage).length, -1),
+      sessionStorageCount: () => wrap(() => Object.keys(window.sessionStorage).length, -1),
+      cookieLength: () => wrap(() => String(document.cookie || '').length, -1),
+      urlSearch: () => wrap(() => String(window.location.search || ''), '__ERR__'),
+      urlHash: () => wrap(() => String(window.location.hash || ''), '__ERR__'),
+      urlPathname: () => wrap(() => String(window.location.pathname || ''), '__ERR__'),
+      indexedDbDatabases: () => wrap(() => (typeof window.indexedDB !== 'undefined' ? 1 : 0), -1),
+      clean: () =>
+        wrap(
+          () =>
+            Object.keys(window.localStorage).length === 0 &&
+            Object.keys(window.sessionStorage).length === 0 &&
+            String(document.cookie || '') === '' &&
+            String(window.location.search || '') === '' &&
+            String(window.location.hash || '') === '',
+          false,
+        ),
+    }),
+  };
+
+  for (const key of Object.keys(rb)) Object.freeze(rb[key]);
+  Object.freeze(rb);
+  Object.defineProperty(window, '__rb', { value: rb, writable: false, configurable: false });
+}

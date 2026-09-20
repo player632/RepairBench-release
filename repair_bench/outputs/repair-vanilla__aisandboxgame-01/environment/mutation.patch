@@ -1,0 +1,123 @@
+diff --git a/js/migrations/index.js b/js/migrations/index.js
+index ec2e045..1c506d9 100644
+--- a/js/migrations/index.js
++++ b/js/migrations/index.js
+@@ -12,7 +12,7 @@
+   'use strict';
+ 
+   // 当前 reader 能识别的最大格式。每升级一代要同步 +1。
+-  const CURRENT_VERSION = 2;
++  const CURRENT_VERSION = 1;
+ 
+   // 把"未知字段保留传递"的责任放在 JSON.parse 与 deep-copy 实现里：
+   // reader 永远先拿完整原对象，做 schema-aware 处理时只读已知字段、不删除任何未知字段。
+diff --git a/js/migrations/v1ToV2.js b/js/migrations/v1ToV2.js
+index cf45f97..5d0f576 100644
+--- a/js/migrations/v1ToV2.js
++++ b/js/migrations/v1ToV2.js
+@@ -24,7 +24,6 @@
+     if (!p1 || typeof p1 !== 'object') return;
+     const anchor = p1.player_anchor;
+     if (!anchor || typeof anchor !== 'object') return;
+-    if (Array.isArray(anchor.allowed_modes)) return; // 已是 V2 形态
+ 
+     const oldMode = typeof anchor.mode === 'string' ? anchor.mode : null;
+     let migrated;
+@@ -198,7 +197,7 @@
+     if (!pm || typeof pm !== 'object') return;
+     if (typeof pm.opening_greeting !== 'string') return;
+     // 优先保留新位置（如果作者已经写在新位置）
+-    if (typeof card.snapshot.opening_greeting === 'string' && card.snapshot.opening_greeting.trim()) {
++    if (typeof card.snapshot.opening_greeting === 'string' && card.snapshot.opening_greeting) {
+       return;
+     }
+     card.snapshot.opening_greeting = pm.opening_greeting;
+diff --git a/js/services/stageRouter.js b/js/services/stageRouter.js
+index 8cbeee4..6ae6a09 100644
+--- a/js/services/stageRouter.js
++++ b/js/services/stageRouter.js
+@@ -265,7 +265,6 @@
+     const prevStage = state.stage;
+     const prevSubstage = state.substage;
+     state.stage = stage;
+-    state.substage = DEFAULT_SUBSTAGE[stage] || null;
+     // 侧栏与主舞台完全独立——不再因主切换而自动改 sideStage
+     _log('stage:', prevStage, '→', stage);
+     _apply();
+@@ -306,12 +305,11 @@
+     if (ownerMode !== state.mode) return { ok: false, reason: 'cross-mode', ownerMode: ownerMode };
+     // 黑名单 / account 软门：没有 side pane 容器的 stage（design）或未解锁的 account 一律拒进侧栏
+     if (_sideStageBlocked(state.mode, target)) return { ok: false, reason: 'blocked' };
+-    if (state.sideStage === target && !options.force) return { ok: false, reason: 'noop' };
++    if (state.sideStage !== target && !options.force) return { ok: false, reason: 'noop' };
+     const prevSide = state.sideStage;
+     const prevSideSub = state.sideSubstage;
+     state.sideStage = target;
+     state.sideSubstage = _pickSideSubstageFor(target);
+-    _saveSideStage(state.mode, target);
+     if (state.sideSubstage) _saveSideSubstage(target, state.sideSubstage);
+     _log('sideStage:', prevSide, '→', target);
+     _apply();
+diff --git a/js/ui/themeUI.js b/js/ui/themeUI.js
+index 90453f5..ead14df 100755
+--- a/js/ui/themeUI.js
++++ b/js/ui/themeUI.js
+@@ -63,7 +63,7 @@
+     if (!frameW || !frameH || !imgW || !imgH) {
+       return { width: frameW || 0, height: frameH || 0, tx: 0, ty: 0, zoom: c.zoom };
+     }
+-    const coverScale = Math.max(frameW / imgW, frameH / imgH);
++    const coverScale = Math.min(frameW / imgW, frameH / imgH);
+     const width = imgW * coverScale * c.zoom;
+     const height = imgH * coverScale * c.zoom;
+     const overflowX = width - frameW; // zoom>=1 时 >=0
+@@ -129,7 +129,7 @@
+   function _getAutoUIScale(width = null) {
+     const viewportWidth =
+       Number(width) || window.innerWidth || document.documentElement.clientWidth || 0;
+-    if (viewportWidth >= 3840) return 1.5;
++    if (viewportWidth > 3840) return 1.5;
+     if (viewportWidth >= 2560) return 1.2;
+     return 1;
+   }
+@@ -256,10 +256,6 @@
+         }
+       }
+ 
+-      if (normalized === 'parchment' && this.getThemeMode() !== 'light') {
+-        this.applyThemeMode('light');
+-      }
+-
+       return normalized;
+     },
+ 
+diff --git a/js/utils/cardSchemaVersion.js b/js/utils/cardSchemaVersion.js
+index 8771fdb..5638cfa 100644
+--- a/js/utils/cardSchemaVersion.js
++++ b/js/utils/cardSchemaVersion.js
+@@ -55,10 +55,10 @@
+     isV2(card) { return this.getSchemaVersion(card) === 2; },
+ 
+     // 原始格式判定（gate 编辑用 —— migrate 后 _schema_version 不能再用）
+-    isOriginallyV1(card) { return this.getOriginSchemaVersion(card) === 1; },
++    isOriginallyV1(card) { return this.getSchemaVersion(card) === 1; },
+ 
+     // 用于"未来格式卡"检测：格式号高于当前 reader 能识别的最大值
+-    isFuture(card) { return this.getSchemaVersion(card) > CURRENT_VERSION; },
++    isFuture(card) { return this.getSchemaVersion(card) >= CURRENT_VERSION; },
+   };
+ 
+   if (typeof window !== 'undefined') {
+diff --git a/js/utils/snapshotRing.js b/js/utils/snapshotRing.js
+index e39e4c4..d875c91 100644
+--- a/js/utils/snapshotRing.js
++++ b/js/utils/snapshotRing.js
+@@ -31,7 +31,7 @@
+         const s = out[i];
+         if (!s || s.pinned) continue;
+         const at = Number.isFinite(s.savedAt) ? s.savedAt : 0;
+-        if (at < oldestAt) {
++        if (at <= oldestAt) {
+           oldestAt = at;
+           oldestIdx = i;
+         }

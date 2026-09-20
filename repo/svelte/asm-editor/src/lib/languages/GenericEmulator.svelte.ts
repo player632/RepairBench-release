@@ -1,0 +1,875 @@
+import {
+    BaseEmulator,
+    CompilationFailedError,
+    type EmulatorConfig
+} from '$lib/languages/BaseEmulator.svelte'
+import {
+    type BaseEmulatorActions,
+    type BaseEmulatorState,
+    createMemoryTab,
+    type EmulatorSettings,
+    InterpreterStatus,
+    makeGenericDiagnostic,
+    makeRegister,
+    numbersOfSizeToSlice
+} from '$lib/languages/commonLanguageFeatures.svelte'
+import { Terminal } from '$lib/languages/peripherals/Terminal.svelte'
+import type { Testcase, TestcaseResult, TestcaseValidationError } from '$lib/Project.svelte'
+import { PAGE_ELEMENTS_PER_ROW, PAGE_SIZE } from '$lib/Config'
+import { createDebouncer } from '$lib/utils'
+import { settingsStore } from '$stores/settingsStore.svelte'
+import {
+    byteSliceToNum,
+    isMemoryChunkEqual,
+    numberToByteSlice
+} from '$cmp/specific/project/memory/memoryTabUtils'
+import { ExecutionController, type ExecutionGeneration } from '$lib/languages/ExecutionController'
+import { Prompt } from '$stores/promptStore.svelte'
+import structuredClone from '@ungap/structured-clone'
+
+export abstract class GenericEmulator<T, R extends string>
+    extends BaseEmulator<R>
+    implements BaseEmulatorActions, BaseEmulatorState
+{
+    protected state: Omit<BaseEmulatorState, 'code' | 'stdOut'>
+    protected _code: string
+    protected _emulatorOptions: Required<EmulatorSettings>
+    protected readonly _peripherals: { terminal: Terminal }
+    private semanticCheckId = 0
+    /** Number of core operations currently in flight, see `duringCoreOperation`. */
+    private coreOperations = 0
+    private coreIdleWaiters: (() => void)[] = []
+    protected readonly executionController = new ExecutionController(() => Prompt.cancel())
+
+    constructor(code: string, options: EmulatorConfig<R>, emulatorOptions: EmulatorSettings = {}) {
+        super(options)
+        this._emulatorOptions = {
+            globalPageSize: emulatorOptions.globalPageSize ?? PAGE_SIZE,
+            globalPageElementsPerRow:
+                emulatorOptions.globalPageElementsPerRow ?? PAGE_ELEMENTS_PER_ROW,
+            baseAddress: emulatorOptions.baseAddress ?? 0x1000n,
+            stackAddress: emulatorOptions.stackAddress ?? 0x7ffffffcn,
+            initialMemoryValue: emulatorOptions.initialMemoryValue ?? 0x0,
+            language: emulatorOptions.language ?? 'M68K'
+        }
+        this._code = $state(code)
+        this._peripherals = {
+            terminal: new Terminal({ executionController: this.executionController })
+        }
+
+        this.state = $state({
+            systemSize: options.systemSize,
+            registers: [],
+            startingRegisterNames: [...options.registerNames],
+            hiddenRegisters: options.hiddenRegisters ?? [], //TODO should this be state?
+            pc: 0n,
+            terminated: false,
+            line: -1,
+            decorations: [],
+            statusRegisters: [],
+            compilerDiagnostics: [],
+            callStack: [],
+            errors: [],
+            sp: 0n,
+            latestSteps: [],
+            executionTime: -1,
+            canUndo: false,
+            canExecute: false,
+            breakpoints: [],
+            interrupt: undefined,
+            memory: {
+                global: createMemoryTab(
+                    this._emulatorOptions.globalPageSize,
+                    'Global',
+                    this._emulatorOptions.baseAddress,
+                    this._emulatorOptions.globalPageElementsPerRow,
+                    this._emulatorOptions.initialMemoryValue,
+                    options.endianness ?? 'little'
+                ),
+                tabs: [
+                    createMemoryTab(
+                        8 * 4,
+                        'Stack',
+                        this._emulatorOptions.stackAddress,
+                        4,
+                        this._emulatorOptions.initialMemoryValue,
+                        options.endianness ?? 'little'
+                    )
+                ]
+            }
+        })
+        this.clear()
+        void this.semanticCheck()
+    }
+
+    protected abstract getInstance(): T | null
+
+    protected addDecorations() {
+        if (!this.getInstance()) return
+        const decorations = this._getCompiledCode()
+        this.state.decorations = decorations.decorations
+        this.state.compiledCode = decorations.code
+    }
+
+    protected addError(error: string) {
+        this.state.errors.push(error)
+    }
+
+    protected scrollStackTab() {
+        const settings = settingsStore
+        const current = this.state
+        if (!settings.values.autoScrollStackTab.value || !this.getInstance()) return
+        const stackTab = current.memory.tabs.find((e) => e.name === 'Stack')
+        const sp = this._getSp()
+        if (!stackTab) return
+        const newAddress = sp - (sp % BigInt(stackTab.pageSize))
+        if (stackTab.address !== newAddress) {
+            stackTab.address = newAddress
+            this.updateMemory()
+            //reset the prevState as we don't know what the previous state was
+            stackTab.data.prevState = stackTab.data.current
+        }
+    }
+
+    /**
+     * Places the Stack memory tab right after a successful compile.
+     * The default points it one page below SP and then lets `scrollStackTab()` snap it to the
+     * page containing SP. Languages whose legacy emulator did not auto-scroll on compile
+     * (M68K) override this to keep the "page below SP" position.
+     */
+    protected positionStackTabOnCompile() {
+        const stackTab = this.state.memory.tabs.find((e) => e.name === 'Stack')
+        if (stackTab) {
+            stackTab.address = this._getSp() - BigInt(stackTab.pageSize)
+        }
+        this.scrollStackTab()
+    }
+
+    /**
+     * Serializes everything that touches the core against `_checkCode`'s throwaway assembly.
+     *
+     * The MARS/RARS derived cores (MIPS, RISC-V) keep the assembled program and the register file in
+     * *module global* state, so assembling a second instance while one of them is executing hijacks
+     * the run: the in flight `simulate*` carries on stepping the throwaway's program and then
+     * reports a perfectly normal termination with the wrong registers and memory, no error raised.
+     * Their `step`/`simulate*` yield to the event loop, so the debounced semantic check that
+     * `setCode` arms on every keystroke can land inside a running program (a long run, or one
+     * suspended on an input prompt) instead of safely between two of them.
+     *
+     * The whole public operation is held, not just the awaited core call: the epilogue that reads
+     * registers and memory back out of the core must not be interleaved with a check either.
+     */
+    private async duringCoreOperation<T>(operation: () => Promise<T>): Promise<T> {
+        this.coreOperations += 1
+        try {
+            return await operation()
+        } finally {
+            this.coreOperations -= 1
+            if (this.coreOperations === 0) {
+                const waiters = this.coreIdleWaiters
+                this.coreIdleWaiters = []
+                for (const resolve of waiters) resolve()
+            }
+        }
+    }
+
+    private waitForIdleCore(): Promise<void> {
+        if (this.coreOperations === 0) return Promise.resolve()
+        return new Promise<void>((resolve) => this.coreIdleWaiters.push(resolve))
+    }
+
+    protected async semanticCheck() {
+        const checkId = ++this.semanticCheckId
+        try {
+            //`_checkCode` assembles a throwaway core, which for the MARS/RARS derived cores would
+            //hijack a run that is still in flight (see `duringCoreOperation`), so wait it out. A
+            //check that a newer one superseded in the meantime is dropped instead of assembling.
+            await this.waitForIdleCore()
+            if (checkId !== this.semanticCheckId) return []
+            const diagnostics = await this._checkCode(this._code)
+            if (checkId !== this.semanticCheckId) return diagnostics
+            this.state.compilerDiagnostics = diagnostics
+            this.state.errors = []
+            return diagnostics
+        } catch (e) {
+            console.error(e)
+            if (checkId !== this.semanticCheckId) return []
+            const error = this._stringifyError(e)
+            this.addError(error)
+            return [makeGenericDiagnostic(error)]
+        }
+    }
+
+    protected setRegisters(override?: bigint[]) {
+        if (!this.getInstance() && !override) {
+            override = new Array(this._registerNames.length).fill(0)
+        }
+
+        this.state.registers = (override ?? this._getRegisterValues()).map((reg, i) => {
+            return makeRegister(this._registerNames[i], reg, this._systemSize)
+        })
+    }
+
+    protected getRegistersValue() {
+        if (!this.getInstance()) return []
+        return this._getRegisterValues()
+    }
+
+    protected updateRegisters() {
+        if (this.state.registers.length === 0) return
+        this.getRegistersValue().forEach((reg, i) => {
+            this.state.registers[i].setValue(reg)
+        })
+        this.state.sp = this._getSp()
+    }
+
+    protected updateMemory() {
+        if (!this.getInstance()) return
+        try {
+            const temp = this.state.memory.global.data.current
+            const memory = this._readMemoryBytes(
+                this.state.memory.global.address,
+                BigInt(this.state.memory.global.pageSize)
+            )
+            this.state.memory.global.data.current = new Uint8Array(memory)
+            this.state.memory.global.data.prevState = temp
+            this.state.memory.tabs.forEach((tab) => {
+                const temp = tab.data.current
+                const memory = this._readMemoryBytes(tab.address, BigInt(tab.pageSize))
+                tab.data.current = new Uint8Array(memory)
+                tab.data.prevState = temp
+            })
+        } catch (e) {
+            console.error(e)
+            this.addError(this._stringifyError(e))
+        }
+    }
+
+    protected async requestInput(question: string, execution: ExecutionGeneration) {
+        this.state.interrupt = { type: 'ReadInput', message: question }
+        try {
+            return await this._peripherals.terminal.readAsync(question, execution)
+        } finally {
+            this.state.interrupt = undefined
+        }
+    }
+
+    protected getLastExecutedLine(fallback = -1): number {
+        try {
+            const instruction = this._getLastInstruction?.()
+            if (instruction) return instruction.lineNumber
+            const [step] = this._getUndoHistory(1)
+            return step?.line ?? fallback
+        } catch (e) {
+            console.error(e)
+            return fallback
+        }
+    }
+
+    protected updateData() {
+        const settings = settingsStore
+        if (!this.getInstance()) return
+        this.state.terminated = this._hasTerminated()
+        this.state.pc = this._getPc()
+        this.state.callStack = this._getCallStack()
+        this.state.latestSteps = this._getUndoHistory(
+            settings.values.maxVisibleHistoryModifications.value
+        )
+    }
+
+    // ----- public api ----- //
+    clear(): void {
+        this.executionController.invalidate()
+        this._peripherals.terminal.clear()
+        this._peripherals.terminal.useInteractiveInput()
+        this.state = {
+            ...this.state,
+            terminated: false,
+            compiledCode: undefined,
+            pc: 0n,
+            sp: 0n,
+            decorations: [],
+            line: -1,
+            interrupt: undefined,
+            errors: [],
+            canUndo: false,
+            executionTime: -1,
+            canExecute: false,
+            latestSteps: [],
+            callStack: [],
+            //diagnostics describe the source, not the run — they survive a stop/clear and are
+            //replaced by the next compile or semantic check
+            memory: {
+                global: createMemoryTab(
+                    this._emulatorOptions.globalPageSize,
+                    'Global',
+                    this._emulatorOptions.baseAddress,
+                    this._emulatorOptions.globalPageElementsPerRow,
+                    this._emulatorOptions.initialMemoryValue,
+                    this._endianness
+                ),
+                tabs: [
+                    createMemoryTab(
+                        8 * 4,
+                        'Stack',
+                        this._emulatorOptions.stackAddress,
+                        4,
+                        this._emulatorOptions.initialMemoryValue,
+                        this._endianness
+                    )
+                ]
+            }
+        }
+        this.setRegisters(new Array(this._registerNames.length).fill(0))
+        this.updateStatusRegisters()
+    }
+
+    async compile(historySize: number, codeOverride: string | undefined): Promise<void> {
+        return this.duringCoreOperation(() => this.compileInternal(historySize, codeOverride))
+    }
+
+    private async compileInternal(
+        historySize: number,
+        codeOverride: string | undefined
+    ): Promise<void> {
+        this.clear()
+        const execution = this.executionController.capture()
+        try {
+            const result = await this._compile(codeOverride ?? this._code, historySize)
+            this.executionController.ensureCurrent(execution)
+            if (!result.ok) {
+                this.state.compilerDiagnostics = result.diagnostics
+                this.state.canExecute = false
+                throw new CompilationFailedError(result.report, result.diagnostics)
+            }
+            //a successful build replaces the semantic check's list so stale squiggles drop and the
+            //warnings the assembler emitted while succeeding are shown
+            this.state.compilerDiagnostics = result.diagnostics ?? []
+            this._initialize(historySize)
+            this.addDecorations()
+            this.state.canExecute = true
+            this.state.canUndo = false
+            this.state.line = this._getNextInstruction()?.lineNumber ?? -1
+            this.updateRegisters()
+            this.positionStackTabOnCompile()
+            this.updateMemory()
+            this.updateData()
+            this.updateStatusRegisters()
+        } catch (e) {
+            if (!this.executionController.isCurrent(execution)) return
+            //assembler errors already live in state.compilerDiagnostics and are rendered from there,
+            //pushing them into state.errors too would render the whole list twice
+            if (e instanceof CompilationFailedError) throw e
+            this.addError(this._stringifyError(e))
+            this.debouncer[1]()
+            throw e
+        }
+    }
+
+    dispose(): void {
+        this.debouncer[1]()
+        this.clear()
+        this._dispose()
+    }
+
+    getLineFromAddress(address: bigint): number {
+        if (!this.getInstance()) return -1
+        const statement = this._getInstructionAt(address)
+        if (!statement) return -1
+        return statement.lineNumber
+    }
+
+    resetSelectedLine(): void {
+        this.state.line = -1
+    }
+
+    updateStatusRegisters() {
+        const flags = this._getFlags()
+
+        this.state.statusRegisters = flags.map((s) => ({
+            name: s.name,
+            value: s.value ? 1 : 0,
+            prev: (s.prev ?? s.value) ? 1 : 0
+        }))
+    }
+
+    async run(haltLimit: number): Promise<InterpreterStatus> {
+        return this.duringCoreOperation(() => this.runInternal(haltLimit))
+    }
+
+    private async runInternal(haltLimit: number): Promise<InterpreterStatus> {
+        if (haltLimit <= 0) haltLimit = Number.MAX_SAFE_INTEGER
+        const start = performance.now()
+        const execution = this.executionController.capture()
+        try {
+            await this._run(haltLimit, this.state.breakpoints)
+            this.executionController.ensureCurrent(execution)
+            const terminated = this._hasTerminated()
+            try {
+                const ins = this._getNextInstruction()
+                //shows the next instruction, if it't not available it means the code has terminated, so show the last instruction
+                if (!terminated) {
+                    this.state.line = ins?.lineNumber ?? -1
+                } else {
+                    this.state.line = this.getLastExecutedLine()
+                }
+            } catch {
+                this.state.line = terminated ? this.getLastExecutedLine() : -1
+            }
+            this.state.canUndo = this._canUndo()
+            this.updateRegisters()
+            this.scrollStackTab()
+            this.updateMemory()
+            this.updateData()
+            this.updateStatusRegisters()
+            this.state.executionTime = performance.now() - start
+            this.state.terminated = terminated
+            //if it managed to run, it means it does not have valid errors
+            this.state.errors = []
+            return terminated ? InterpreterStatus.Terminated : InterpreterStatus.Running
+        } catch (e) {
+            if (!this.executionController.isCurrent(execution)) {
+                return InterpreterStatus.Terminated
+            }
+            console.error(e)
+            let line = -1
+            try {
+                //the failing instruction is the last one that was attempted, not the one after it
+                line =
+                    this._getLastInstruction?.()?.lineNumber ??
+                    this._getNextInstruction()?.lineNumber ??
+                    -1
+            } catch (e) {
+                console.error(e)
+            }
+            this.addError(this._stringifyError(e, line >= 0 ? line + 1 : undefined))
+            this.state.terminated = true
+            this.state.line = line
+        }
+        return InterpreterStatus.TerminatedWithException
+    }
+
+    protected debouncer = createDebouncer(500)
+
+    setCode(code: string): void {
+        this._code = code
+        this.debouncer[0](() => void this.semanticCheck())
+    }
+
+    setGlobalMemoryAddress(address: bigint): void {
+        try {
+            const bytes = this.getInstance()
+                ? this._readMemoryBytes(address, BigInt(this.state.memory.global.pageSize))
+                : new Uint8Array(this.state.memory.global.pageSize).fill(
+                      this._emulatorOptions.initialMemoryValue
+                  )
+            this.state.memory.global.address = address
+            this.state.memory.global.data.current = bytes
+            // Reset prevState as we don't know what the previous state was.
+            this.state.memory.global.data.prevState = this.state.memory.global.data.current
+        } catch (e) {
+            console.error(e)
+            this.addError(this._stringifyError(e))
+        }
+    }
+
+    setTabMemoryAddress(address: bigint, tabId: number): void {
+        try {
+            const tab = this.state.memory.tabs.find((e) => e.id == tabId)
+            if (!tab) return
+            const bytes = this.getInstance()
+                ? this._readMemoryBytes(address, BigInt(tab.pageSize))
+                : new Uint8Array(tab.pageSize).fill(this._emulatorOptions.initialMemoryValue)
+            tab.address = address
+            tab.data.current = bytes
+            tab.data.prevState = tab.data.current
+        } catch (e) {
+            console.error(e)
+            this.addError(this._stringifyError(e))
+        }
+    }
+
+    async validateTestcase(testcase: Testcase) {
+        const errors: TestcaseValidationError[] = []
+        if (!this.getInstance()) throw new Error('Interpreter not initialized')
+        const registers = this._getRegisterValues()
+        for (const [register, value] of Object.entries(testcase.expectedRegisters)) {
+            const registerIndex = this._registerNames.findIndex(
+                (r) => r.toUpperCase() === register.toUpperCase()
+            )
+            if (registerIndex === -1) {
+                console.error(`Register ${register} not found`)
+                continue
+            }
+            const registerValue = BigInt(registers[registerIndex])
+            if (registerValue !== value) {
+                errors.push({
+                    type: 'wrong-register',
+                    register,
+                    expected: value,
+                    got: registerValue
+                })
+            }
+        }
+        const stdOut = this.stdOut
+        if (stdOut !== testcase.expectedOutput) {
+            errors.push({
+                type: 'wrong-output',
+                expected: testcase.expectedOutput,
+                got: stdOut
+            })
+        }
+        for (const value of testcase.expectedMemory) {
+            if (value.type === 'number') {
+                const bytes = new Uint8Array(
+                    this._readMemoryBytes(value.address, BigInt(value.bytes))
+                )
+                const num = byteSliceToNum(bytes, this._endianness)
+                if (num !== value.expected) {
+                    errors.push({
+                        type: 'wrong-memory-number',
+                        address: value.address,
+                        bytes: value.bytes,
+                        expected: value.expected,
+                        got: num
+                    })
+                }
+            } else if (value.type === 'number-chunk') {
+                const bytes = this._readMemoryBytes(
+                    value.address,
+                    BigInt(value.expected.length * value.bytes)
+                )
+                const expected = numbersOfSizeToSlice(value.expected, value.bytes, this._endianness)
+                if (!isMemoryChunkEqual(bytes, expected)) {
+                    errors.push({
+                        type: 'wrong-memory-chunk',
+                        address: value.address,
+                        expected: expected,
+                        got: Array.from(bytes)
+                    })
+                }
+            } else if (value.type === 'string-chunk') {
+                const bytes = this._readMemoryBytes(value.address, BigInt(value.expected.length))
+                const str = new TextDecoder().decode(new Uint8Array(bytes))
+                if (str !== value.expected) {
+                    errors.push({
+                        type: 'wrong-memory-string',
+                        address: value.address,
+                        expected: value.expected,
+                        got: str
+                    })
+                }
+            }
+        }
+        return errors
+    }
+
+    async step(): Promise<boolean> {
+        return this.duringCoreOperation(() => this.stepInternal())
+    }
+
+    private async stepInternal(): Promise<boolean> {
+        let lastLine = -1
+        const execution = this.executionController.capture()
+        try {
+            if (!this.getInstance()) throw new Error('Interpreter not initialized')
+            lastLine = this._getNextInstruction()?.lineNumber ?? -1
+            const result = await this._step()
+            this.executionController.ensureCurrent(execution)
+            this.state.terminated = result.terminated
+            if (result.terminated) {
+                this.state.line = this.getLastExecutedLine(lastLine)
+            } else {
+                try {
+                    const ins = this._getNextInstruction()
+                    this.state.line = ins?.lineNumber ?? -1
+                } catch {}
+            }
+
+            this.state.canUndo = this._canUndo()
+            //if it managed to step, it means it does not have valid errors
+            this.state.errors = []
+        } catch (e) {
+            if (!this.executionController.isCurrent(execution)) return false
+            console.error(e)
+            this.addError(this._stringifyError(e, lastLine >= 0 ? lastLine + 1 : undefined))
+            this.state.terminated = true
+            this.state.line = lastLine
+            throw e
+        }
+        this.updateRegisters()
+        this.scrollStackTab()
+        this.updateMemory()
+        this.updateData()
+        this.updateStatusRegisters()
+        return this._hasTerminated()
+    }
+
+    async runTestcase(testcase: Testcase, haltLimit: number) {
+        return this.duringCoreOperation(() => this.runTestcaseInternal(testcase, haltLimit))
+    }
+
+    private async runTestcaseInternal(testcase: Testcase, haltLimit: number) {
+        const start = performance.now()
+        const execution = this.executionController.capture()
+        try {
+            if (!this.getInstance()) throw new Error('Interpreter not initialized')
+            for (const [register, value] of Object.entries(testcase.startingRegisters)) {
+                const registerName = this._registerNames.find(
+                    (candidate) => candidate.toUpperCase() === register.toUpperCase()
+                )
+                if (!registerName) throw new Error(`Register ${register} not found`)
+                this._setRegisterValue(registerName, value)
+            }
+            for (const value of testcase.startingMemory) {
+                if (value.type === 'number') {
+                    const slice = new Uint8Array(
+                        numberToByteSlice(value.expected, value.bytes, this._endianness)
+                    )
+                    this._writeMemoryBytes(value.address, slice)
+                } else if (value.type === 'number-chunk') {
+                    const expected = numbersOfSizeToSlice(
+                        value.expected,
+                        value.bytes,
+                        this._endianness
+                    )
+                    this._writeMemoryBytes(value.address, new Uint8Array(expected))
+                } else if (value.type === 'string-chunk') {
+                    const encoded = new TextEncoder().encode(value.expected)
+                    this._writeMemoryBytes(value.address, encoded)
+                }
+            }
+            this._peripherals.terminal.useScriptedInput(testcase.input)
+            try {
+                await this._runTestcase(testcase, haltLimit)
+            } finally {
+                this._peripherals.terminal.useInteractiveInput()
+            }
+            const ins = this._getNextInstruction()
+            //shows the next instruction, if it't not available it means the code has terminated, so show the last instruction
+            this.state.line = ins?.lineNumber ?? this.getLastExecutedLine()
+            this.state.canUndo = false
+
+            this.updateRegisters()
+            this.scrollStackTab()
+            this.updateStatusRegisters()
+            this.updateMemory()
+            this.updateData()
+            this.state.executionTime = performance.now() - start
+        } catch (e) {
+            //the run was superseded (clear/dispose/stop while an interrupt was pending), the state
+            //has already been rebuilt by clear() and must not be written back over
+            if (!this.executionController.isCurrent(execution)) {
+                return InterpreterStatus.Terminated
+            }
+            console.error(e)
+            let line = -1
+            try {
+                //the failing instruction is the last one that was attempted, not the one after it
+                line =
+                    this._getLastInstruction?.()?.lineNumber ??
+                    this._getNextInstruction()?.lineNumber ??
+                    -1
+            } catch (e) {
+                console.error(e)
+            }
+            this.addError(this._stringifyError(e, line >= 0 ? line + 1 : undefined))
+            this.state.terminated = true
+            this.state.line = line
+        }
+        return InterpreterStatus.TerminatedWithException
+    }
+
+    async test(code: string, testcases: Testcase[], haltLimit: number, historySize = 0) {
+        //held across the whole loop: `validateTestcase` reads registers and memory back out of the
+        //core between two runs, which a semantic check must not be able to slip into either
+        return this.duringCoreOperation(() =>
+            this.testInternal(code, testcases, haltLimit, historySize)
+        )
+    }
+
+    private async testInternal(
+        code: string,
+        testcases: Testcase[],
+        haltLimit: number,
+        historySize = 0
+    ) {
+        const terminal = this._peripherals.terminal
+        const results: TestcaseResult[] = []
+        for (const original of testcases) {
+            const testcase = structuredClone($state.snapshot(original)) as Testcase
+            try {
+                await this.compile(historySize, code)
+                await this.runTestcase(testcase, haltLimit)
+                const errors = await this.validateTestcase(testcase)
+                results.push({
+                    errors,
+                    passed: errors.length === 0,
+                    testcase
+                })
+            } catch (e) {
+                console.error(e)
+                this.addError(this._stringifyError(e))
+            }
+        }
+        const passedTests = results.filter((r) => r.passed)
+        terminal.prepend('⏳ Running tests...\n\n')
+        if (passedTests.length !== results.length) {
+            terminal.write(
+                `\n❌ ${results.length - results.filter((r) => r.passed).length} testcases not passed\n`
+            )
+        }
+        if (passedTests.length > 0) {
+            if (!terminal.output.endsWith('testcases not passed')) {
+                terminal.write('\n')
+            }
+            terminal.write(`\n✅ ${passedTests.length} testcases passed \n`)
+        }
+        return results
+    }
+
+    toggleBreakpoint(line: number): void {
+        const index = this.state.breakpoints.indexOf(line)
+        if (index === -1) this.state.breakpoints.push(line)
+        else this.state.breakpoints.splice(index, 1)
+    }
+
+    undo(amount: number | undefined): void {
+        try {
+            if (!this.getInstance()) return
+            const undoCount = Math.max(0, Math.floor(amount ?? 1))
+            for (let i = 0; i < undoCount && this._canUndo(); i++) {
+                this._undo()
+            }
+            const instruction = this._getNextInstruction()
+            this.state.line = instruction?.lineNumber ?? -1
+            this.state.canUndo = this._canUndo()
+            this.updateRegisters()
+            this.scrollStackTab()
+            this.updateMemory()
+            this.updateData()
+            this.updateStatusRegisters()
+        } catch (e) {
+            this.addError(this._stringifyError(e))
+            this.state.terminated = true
+            console.error(e)
+            throw e
+        }
+    }
+
+    readMemoryBytes(address: bigint, length: number): Uint8Array {
+        if (!this.getInstance()) throw new Error('Emulator not initialized')
+        return this._readMemoryBytes(address, BigInt(length))
+    }
+
+    async check() {
+        //no `getInstance()` guard here: assembler checking must work before the first compile.
+        //`_checkCode` is responsible for bailing out when its language needs a live instance
+        //(X86 returns [] without a core, M68K's is a pure static call).
+        return this.semanticCheck()
+    }
+
+    get breakpoints() {
+        return this.state.breakpoints
+    }
+
+    get callStack() {
+        return this.state.callStack
+    }
+
+    get canExecute() {
+        return this.state.canExecute
+    }
+
+    get canUndo() {
+        return this.state.canUndo
+    }
+
+    get compilerDiagnostics() {
+        return this.state.compilerDiagnostics
+    }
+
+    get compilerErrors() {
+        return this.state.compilerDiagnostics.filter((d) => d.severity === 'error')
+    }
+
+    get decorations() {
+        return this.state.decorations
+    }
+
+    get errors() {
+        return this.state.errors
+    }
+
+    get executionTime() {
+        return this.state.executionTime
+    }
+
+    get hiddenRegisters() {
+        return this.state.hiddenRegisters
+    }
+
+    get latestSteps() {
+        return this.state.latestSteps
+    }
+
+    get line() {
+        return this.state.line
+    }
+
+    get memory() {
+        return this.state.memory
+    }
+
+    get pc() {
+        return this.state.pc
+    }
+
+    get registers() {
+        return this.state.registers
+    }
+
+    get startingRegisterNames() {
+        return this.state.startingRegisterNames
+    }
+
+    get sp() {
+        return this.state.sp
+    }
+
+    get statusRegisters() {
+        return this.state.statusRegisters
+    }
+
+    get stdOut() {
+        return this._peripherals.terminal.output
+    }
+
+    get peripherals(): { terminal: Terminal } {
+        return this._peripherals
+    }
+
+    get interrupt() {
+        return this.state.interrupt
+    }
+
+    get terminated() {
+        return this.state.terminated
+    }
+
+    get code() {
+        return this._code
+    }
+
+    get systemSize() {
+        return this._systemSize
+    }
+
+    get endianness() {
+        return this._endianness
+    }
+
+    get compiledCode() {
+        return this.state.compiledCode
+    }
+}

@@ -1,0 +1,456 @@
+// rb-probe.ts - READ-ONLY observation bridge for repair-angular__free-angular-tailwind-dashboard-01.
+// Installed by environment/instrumentation.patch through EXACTLY ONE added line in src/main.ts
+// (`import './app/rb-probe';`). It publishes window.__FTD__ and does nothing else.
+//
+// Hard rules this file obeys:
+//   * 0 data-testid, 0 data-rb-*, 0 template edits, 0 moved elements, 0 added bindings. Everything below
+//     reads the DOM the seed already renders (tags, classes, attributes, inline styles, computed styles,
+//     text, geometry, resource timing) plus 0 Angular component fields (no getComponent / componentInstance).
+//   * Every getter is wrapped and DEGRADES TO A SENTINEL ('-' for strings, -1 for numbers) instead of
+//     throwing, so a checkpoint can only ever fail on a measured value and never on a bridge crash.
+//   * The only writes are the ones a user can perform with a mouse: element.click() on the very elements the
+//     seed binds (click) to. Each driver returns a string receipt so a checkpoint can prove the interaction
+//     happened instead of trusting a sleep.
+//   * A passive console latch counts error/warn traffic without changing it (the original methods are still
+//     called), so boot failures stay visible in the browser console and in the runner log.
+
+const NS = '__FTD__';
+const S = '-';
+const N = -1;
+
+function q(sel: string, root?: ParentNode | null): Element | null {
+  try {
+    const r: ParentNode = root === undefined ? document : (root as ParentNode);
+    return r ? r.querySelector(sel) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function qa(sel: string, root?: ParentNode | null): Element[] {
+  try {
+    const r: ParentNode = root === undefined ? document : (root as ParentNode);
+    if (!r) { return []; }
+    return Array.prototype.slice.call(r.querySelectorAll(sel)) as Element[];
+  } catch (e) {
+    return [];
+  }
+}
+
+function txt(el: Element | null | undefined): string {
+  try {
+    if (!el) { return S; }
+    return String(el.textContent || '').replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    return S;
+  }
+}
+
+function attrOf(el: Element | null | undefined, name: string): string {
+  try {
+    if (!el || !el.hasAttribute(name)) { return S; }
+    return String(el.getAttribute(name));
+  } catch (e) {
+    return S;
+  }
+}
+
+function clsOf(el: Element | null | undefined): string {
+  try {
+    if (!el) { return S; }
+    const c = (el as HTMLElement).className;
+    return typeof c === 'string' ? c : S;
+  } catch (e) {
+    return S;
+  }
+}
+
+function tok(el: Element | null | undefined, name: string): string {
+  try {
+    if (!el || !el.classList) { return S; }
+    return el.classList.contains(name) ? 'yes' : 'no';
+  } catch (e) {
+    return S;
+  }
+}
+
+function widthPx(el: Element | null | undefined): number {
+  try {
+    if (!el) { return N; }
+    const w = (el as HTMLElement).getBoundingClientRect().width;
+    return typeof w === 'number' && isFinite(w) ? Math.round(w) : N;
+  } catch (e) {
+    return N;
+  }
+}
+
+function inlineStyleOf(el: Element | null | undefined, prop: string): string {
+  try {
+    if (!el) { return S; }
+    const st = (el as HTMLElement).style;
+    if (!st) { return S; }
+    const v = st.getPropertyValue(prop);
+    return v === '' ? S : String(v);
+  } catch (e) {
+    return S;
+  }
+}
+
+function count(sel: string): number {
+  const n = qa(sel).length;
+  return typeof n === 'number' ? n : N;
+}
+
+// ---- badge channels -------------------------------------------------------
+// app-badge renders <span [ngClass]="baseStyles + ' ' + sizeClass + ' ' + colorStyles">, so the colour and
+// size tokens live on the FIRST span child of the host element, never on the host itself. The host carries
+// only the @HostBinding('class') value.
+function badgeHosts(scope: string): Element[] {
+  return qa(scope + ' app-badge');
+}
+
+function badgeSpan(scope: string, i: number): Element | null {
+  const hosts = badgeHosts(scope);
+  const host = hosts[i];
+  return host ? q('span', host) : null;
+}
+
+function bgTokens(scope: string, i: number): string {
+  try {
+    const c = clsOf(badgeSpan(scope, i));
+    if (c === S || c === '') { return S; }
+    const kept = c.split(/\s+/).filter((t) => /(^|:)bg-/.test(t)).sort();
+    return kept.length ? kept.join('|') : S;
+  } catch (e) {
+    return S;
+  }
+}
+
+function bgFamily(scope: string, i: number): string {
+  try {
+    const c = clsOf(badgeSpan(scope, i));
+    if (c === S) { return S; }
+    if (/bg-success/.test(c)) { return 'success'; }
+    if (/bg-error/.test(c)) { return 'error'; }
+    if (/bg-warning/.test(c)) { return 'warning'; }
+    if (/bg-blue-light/.test(c)) { return 'info'; }
+    if (/bg-brand/.test(c)) { return 'primary'; }
+    if (/bg-gray/.test(c)) { return 'neutral'; }
+    return S;
+  } catch (e) {
+    return S;
+  }
+}
+
+function sizeToken(scope: string, i: number): string {
+  try {
+    const c = clsOf(badgeSpan(scope, i));
+    if (c === S) { return S; }
+    const kept = c.split(/\s+/).filter((t) => /^text-(theme-xs|theme-sm|xs|sm|base|lg|xl)$/.test(t));
+    return kept.length ? kept.join('|') : S;
+  } catch (e) {
+    return S;
+  }
+}
+
+const RO = 'app-recent-orders';
+const MET = 'app-ecommerce-metrics';
+
+function roRow(i: number): Element | null {
+  const rows = qa(RO + ' tbody tr');
+  return rows[i] || null;
+}
+
+function roCell(i: number, n: number): Element | null {
+  const row = roRow(i);
+  if (!row) { return null; }
+  const cells = qa('td', row);
+  return cells[n] || null;
+}
+
+function metricCard(i: number): Element | null {
+  const cards = qa(MET + ' > div > div');
+  return cards[i] || null;
+}
+
+function demoRow(i: number): Element | null {
+  const rows = qa('app-demographic-card .space-y-5 > div');
+  return rows[i] || null;
+}
+
+// ---- passive console latch ------------------------------------------------
+const latch = { errors: 0, warns: 0, firstError: S };
+try {
+  const origError = console.error ? console.error.bind(console) : null;
+  console.error = function (...args: any[]): void {
+    latch.errors = latch.errors + 1;
+    if (latch.firstError === S) {
+      latch.firstError = String(args && args.length ? args[0] : '').slice(0, 140);
+    }
+    if (origError) { origError(...args); }
+  };
+  const origWarn = console.warn ? console.warn.bind(console) : null;
+  console.warn = function (...args: any[]): void {
+    latch.warns = latch.warns + 1;
+    if (origWarn) { origWarn(...args); }
+  };
+  window.addEventListener('error', () => { latch.errors = latch.errors + 1; });
+} catch (e) {
+  // a latch failure must never take the bridge down
+}
+
+function clickEl(el: Element | null, label: string): string {
+  try {
+    if (!el) { return 'notfound:' + label; }
+    (el as HTMLElement).click();
+    return 'clicked:' + label;
+  } catch (e) {
+    return 'error:' + label;
+  }
+}
+
+const api = {
+  probeVersion(): string { return 'ftd-rb-probe-1'; },
+
+  // --- document / boot shell ---
+  docTitle(): string { try { return String(document.title || S); } catch (e) { return S; } },
+  pathnameNow(): string { try { return String(location.pathname || S); } catch (e) { return S; } },
+  htmlDirAttribute(): string { return attrOf(document.documentElement, 'dir'); },
+  htmlDirIsRtl(): string { const v = attrOf(document.documentElement, 'dir'); return v === 'rtl' ? 'yes' : 'no'; },
+  rootDarkClass(): string { return tok(document.documentElement, 'dark'); },
+  rootColorScheme(): string { return attrOf(document.documentElement, 'data-color-scheme'); },
+  bodyDarkUtilityClass(): string { return tok(document.body, 'dark:bg-gray-900'); },
+  themeStorageValue(): string { try { const v = localStorage.getItem('theme'); return v === null ? S : String(v); } catch (e) { return S; } },
+  dirStorageValue(): string { try { const v = localStorage.getItem('dir'); return v === null ? S : String(v); } catch (e) { return S; } },
+  localStorageKeyCount(): number { try { return localStorage.length; } catch (e) { return N; } },
+  appRootChildCount(): number { return count('app-root > *:not(router-outlet)'); },
+  routerOutletCount(): number { return count('app-layout router-outlet'); },
+  notFoundHostCount(): number { return count('app-not-found'); },
+  badgeHostCountOnPage(): number { return count('app-badge'); },
+  badgesPageRendered(): string {
+    try {
+      const noFourOhFour = count('app-not-found') === 0;
+      const hasBadges = count('app-badge') > 0;
+      return noFourOhFour && hasBadges ? 'yes' : 'no';
+    } catch (e) { return S; }
+  },
+  externalResourceRequestCount(): number {
+    try {
+      const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+      const origin = location.origin;
+      let n = 0;
+      for (let i = 0; i < entries.length; i++) {
+        const nm = String(entries[i].name || '');
+        if (/^https?:\/\//.test(nm) && nm.indexOf(origin) !== 0) { n = n + 1; }
+      }
+      return n;
+    } catch (e) { return N; }
+  },
+  consoleErrorCount(): number { return latch.errors; },
+  consoleWarnCount(): number { return latch.warns; },
+  consoleFirstError(): string { return latch.firstError; },
+
+  // --- sidebar / layout shell ---
+  sidebarHostCount(): number { return count('app-sidebar'); },
+  sidebarAsideCount(): number { return count('app-sidebar aside'); },
+  sidebarAsideHas290(): string { return tok(q('app-sidebar aside'), 'w-[290px]'); },
+  sidebarAsideHas90(): string { return tok(q('app-sidebar aside'), 'w-[90px]'); },
+  sidebarAsideWidthPx(): number { return widthPx(q('app-sidebar aside')); },
+  sidebarLogoImageSource(): string {
+    try {
+      const anchor = q('app-sidebar aside a[href="/"]') || q('app-sidebar aside a');
+      const img = anchor ? q('img', anchor) : null;
+      return attrOf(img, 'src');
+    } catch (e) { return S; }
+  },
+  sidebarLogoAnchorPresent(): string {
+    try { return q('app-sidebar aside a') ? 'yes' : 'no'; } catch (e) { return S; }
+  },
+  sidebarMenuHeadingText(): string { return txt(q('app-sidebar aside nav h2')); },
+  layoutContentMarginToken(): string {
+    try {
+      const header = q('app-header');
+      const box = header ? header.parentElement : null;
+      if (!box) { return S; }
+      if (box.classList.contains('ms-0')) { return '0'; }
+      if (box.classList.contains('xl:ms-[290px]')) { return '290'; }
+      if (box.classList.contains('xl:ms-[90px]')) { return '90'; }
+      return S;
+    } catch (e) { return S; }
+  },
+  backdropOverlayCount(): number { return count('app-backdrop div'); },
+  sidebarToggleButtonCount(): number { return count('app-header button[aria-label="Toggle Sidebar"]'); },
+  sidebarWidgetAnchorHref(): string { return attrOf(q('app-sidebar-widget a'), 'href'); },
+  sidebarWidgetTargetAttr(): string { return attrOf(q('app-sidebar-widget a'), 'target'); },
+  sidebarWidgetRelAttr(): string { return attrOf(q('app-sidebar-widget a'), 'rel'); },
+  sidebarWidgetAnchorText(): string { return txt(q('app-sidebar-widget a')); },
+  sidebarWidgetExternalCount(): number { return count('app-sidebar a[href^="https://"], app-sidebar a[href^="http://"]'); },
+
+  // --- header ---
+  headerButtonCount(): number { return count('app-header header button'); },
+  appMenuBox(): Element | null { const boxes = qa('app-header header > div > div'); return boxes[1] || null; },
+  appMenuDivHiddenToken(): string { return tok(api.appMenuBox(), 'hidden'); },
+  appMenuDivFlexToken(): string { return tok(api.appMenuBox(), 'flex'); },
+  searchInputCount(): number { return count('app-header form input'); },
+  searchInputPlaceholder(): string { return attrOf(q('app-header form input'), 'placeholder'); },
+  themeToggleButtonCount(): number { return count('app-theme-toggle-button button'); },
+  sidebarToggleIconWidth(): string { return attrOf(q('app-header button[aria-label="Toggle Sidebar"] svg'), 'width'); },
+
+  // --- ecommerce page composition ---
+  ecommerceHostCount(): number { return count('app-ecommerce'); },
+  ecommerceGridChildCount(): number { return count('app-ecommerce > div > div'); },
+  ecommerceChildCensus(): string {
+    try {
+      const tags = ['app-ecommerce-metrics', 'app-monthly-sales-chart', 'app-monthly-target', 'app-statics-chart', 'app-demographic-card', 'app-recent-orders'];
+      const out: string[] = [];
+      for (let i = 0; i < tags.length; i++) { out.push(tags[i] + '=' + count(tags[i])); }
+      return out.join(',');
+    } catch (e) { return S; }
+  },
+  demographicWrapperSpanToken(): string {
+    try {
+      const host = q('app-demographic-card');
+      const wrap = host ? host.parentElement : null;
+      if (!wrap) { return S; }
+      if (wrap.classList.contains('xl:col-span-5')) { return 'xl:col-span-5'; }
+      if (wrap.classList.contains('xl:col-span-7')) { return 'xl:col-span-7'; }
+      return S;
+    } catch (e) { return S; }
+  },
+  recentOrdersWrapperSpanToken(): string {
+    try {
+      const host = q('app-recent-orders');
+      const wrap = host ? host.parentElement : null;
+      if (!wrap) { return S; }
+      if (wrap.classList.contains('xl:col-span-5')) { return 'xl:col-span-5'; }
+      if (wrap.classList.contains('xl:col-span-7')) { return 'xl:col-span-7'; }
+      return S;
+    } catch (e) { return S; }
+  },
+  demographicWrapperWidthPx(): number { const h = q('app-demographic-card'); return widthPx(h ? h.parentElement : null); },
+  recentOrdersWrapperWidthPx(): number { const h = q('app-recent-orders'); return widthPx(h ? h.parentElement : null); },
+  demographicNarrowerThanRecentOrders(): string {
+    try {
+      const a = api.demographicWrapperWidthPx();
+      const b = api.recentOrdersWrapperWidthPx();
+      if (a === N || b === N) { return S; }
+      return a < b ? 'yes' : 'no';
+    } catch (e) { return S; }
+  },
+
+  // --- metric cards ---
+  metricCardCount(): number { return count(MET + ' > div > div'); },
+  metricLabelNth(i: number): string { return txt(q('.flex.items-end > div > span', metricCard(i))); },
+  metricValueNth(i: number): string { return txt(q('.flex.items-end h4', metricCard(i))); },
+  metricBadgeBgTokensNth(i: number): string {
+    try {
+      const card = metricCard(i);
+      const span = card ? q('app-badge > span', card) : null;
+      const c = clsOf(span);
+      if (c === S || c === '') { return S; }
+      const kept = c.split(/\s+/).filter((t) => /(^|:)bg-/.test(t)).sort();
+      return kept.length ? kept.join('|') : S;
+    } catch (e) { return S; }
+  },
+  metricBadgeFamilyNth(i: number): string {
+    try {
+      const card = metricCard(i);
+      const span = card ? q('app-badge > span', card) : null;
+      const c = clsOf(span);
+      if (c === S) { return S; }
+      if (/bg-success/.test(c)) { return 'success'; }
+      if (/bg-error/.test(c)) { return 'error'; }
+      if (/bg-warning/.test(c)) { return 'warning'; }
+      if (/bg-blue-light/.test(c)) { return 'info'; }
+      if (/bg-brand/.test(c)) { return 'primary'; }
+      return S;
+    } catch (e) { return S; }
+  },
+
+  // --- recent orders table ---
+  recentOrdersHeading(): string { return txt(q(RO + ' h3')); },
+  recentOrdersRowCount(): number { return count(RO + ' tbody tr'); },
+  recentOrdersTableHeaderTokens(): string {
+    try {
+      const heads = qa(RO + ' thead th');
+      const out: string[] = [];
+      for (let i = 0; i < heads.length; i++) { out.push(txt(heads[i])); }
+      return out.length ? out.join('|') : S;
+    } catch (e) { return S; }
+  },
+  recentOrdersProductNameNth(i: number): string { return txt(q('p', roCell(i, 0))); },
+  recentOrdersProductVariantsNth(i: number): string { return txt(q('span', roCell(i, 0))); },
+  recentOrdersCategoryNth(i: number): string { return txt(roCell(i, 1)); },
+  recentOrdersPriceNth(i: number): string { return txt(roCell(i, 2)); },
+  recentOrdersStatusTextNth(i: number): string { return txt(q('app-badge', roCell(i, 3))); },
+  recentOrdersBadgeFamilyNth(i: number): string { return bgFamily(RO + ' tbody tr:nth-child(' + (i + 1) + ')', 0); },
+  recentOrdersBadgeBgTokensNth(i: number): string { return bgTokens(RO + ' tbody tr:nth-child(' + (i + 1) + ')', 0); },
+  recentOrdersBadgeSizeTokenNth(i: number): string { return sizeToken(RO + ' tbody tr:nth-child(' + (i + 1) + ')', 0); },
+  recentOrdersBadgeHostClassFirst(): string { return clsOf(q(RO + ' app-badge')); },
+  recentOrdersImageCount(): number { return count(RO + ' tbody img'); },
+  recentOrdersImageWithSrcCount(): number { return count(RO + ' tbody img[src]'); },
+  recentOrdersImageAltNth(i: number): string { return attrOf(q('img', roCell(i, 0)), 'alt'); },
+  recentOrdersFilterButtonText(): string {
+    try {
+      const buttons = qa(RO + ' button');
+      return buttons.length ? txt(buttons[0]) : S;
+    } catch (e) { return S; }
+  },
+
+  // --- demographic card ---
+  demographicHeading(): string { return txt(q('app-demographic-card h3')); },
+  demographicSubheading(): string {
+    try {
+      const head = q('app-demographic-card h3');
+      const p = head && head.parentElement ? q('p', head.parentElement) : null;
+      return txt(p);
+    } catch (e) { return S; }
+  },
+  demographicMapHostId(): string { return attrOf(q('app-demographic-card #mapOne'), 'id'); },
+  demographicRowCount(): number { return count('app-demographic-card .space-y-5 > div'); },
+  demographicNameNth(i: number): string { return txt(q('p.font-semibold', demoRow(i))); },
+  demographicCustomersNth(i: number): string { return txt(q('span.block', demoRow(i))); },
+  demographicPercentTextNth(i: number): string {
+    try {
+      const row = demoRow(i);
+      if (!row) { return S; }
+      const ps = qa('p.font-medium', row);
+      return txt(ps[ps.length - 1] || null);
+    } catch (e) { return S; }
+  },
+  demographicBarWidthStyleNth(i: number): string { return inlineStyleOf(q('.relative.block > div', demoRow(i)), 'width'); },
+  demographicBarWidthPxNth(i: number): number { return widthPx(q('.relative.block > div', demoRow(i))); },
+  demographicFlagAltNth(i: number): string { return attrOf(q('img', demoRow(i)), 'alt'); },
+
+  // --- monthly target card ---
+  monthlyTargetHeading(): string { return txt(q('app-monthly-target h3')); },
+  monthlyTargetChartHostId(): string { return attrOf(q('app-monthly-target #chartTwo'), 'id'); },
+  monthlyTargetApexHostCount(): number { return count('app-monthly-target apx-chart'); },
+  monthlyTargetParagraph(): string { return txt(q('app-monthly-target p.mx-auto')); },
+  monthlyTargetDropdownToggleCount(): number { return count('app-monthly-target button.dropdown-toggle'); },
+
+  // --- drivers: only clicks a user can make, each returning a receipt ---
+  clickSidebarToggle(): string { return clickEl(q('app-header button[aria-label="Toggle Sidebar"]'), 'sidebar-toggle'); },
+  clickHeaderButtonNth(n: number): string {
+    const buttons = qa('app-header header button');
+    return clickEl(buttons[n] || null, 'header-button-' + n);
+  },
+  clickThemeToggleFlip(): string {
+    try {
+      const before = attrOf(document.documentElement, 'data-color-scheme');
+      const btn = q('app-theme-toggle-button button');
+      if (!btn) { return 'notfound:theme-toggle'; }
+      (btn as HTMLElement).click();
+      const after = attrOf(document.documentElement, 'data-color-scheme');
+      return before !== after ? 'flipped' : 'same';
+    } catch (e) { return S; }
+  },
+  clickMonthlyTargetDropdown(): string { return clickEl(q('app-monthly-target button.dropdown-toggle'), 'monthly-target-dropdown'); },
+};
+
+try {
+  (window as any)[NS] = api;
+} catch (e) {
+  // publishing must never throw into the boot path
+}
+

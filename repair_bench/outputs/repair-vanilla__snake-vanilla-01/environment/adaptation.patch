@@ -1,0 +1,154 @@
+diff --git a/app.js b/app.js
+index 5099b03..a04a14b 100644
+--- a/app.js
++++ b/app.js
+@@ -17,7 +17,7 @@ let querystring = require('querystring');
+ let server = http.createServer((req, res) => {
+   let pathname = url.parse(req.url).pathname,
+     UrlType = pathname.split('/'),    //辨别请求是不是ajax，本应用ajax请求都有aqi标记，具体使用时需要根据情况修改此处
+-    ProxyedUrl = pathname.replace(/\/api/, 'http://39.104.22.73:8888'),  //指向后后的url
++    ProxyedUrl = pathname.replace(/\/api/, 'rb-offline/inert-proxy'),  //指向后后的url
+     ext = path.parse(pathname).ext,
+     mimeType = mime.getType(ext);
+ 
+@@ -30,7 +30,7 @@ let server = http.createServer((req, res) => {
+ 
+     req.on('end', function () {
+       axios.post(
+-        pathname.replace(/\/api/, 'http://39.104.22.73:8888'),
++        pathname.replace(/\/api/, 'rb-offline/inert-proxy'),
+         JSON.parse(post)
+       ).then(function (response) {
+         res.end(JSON.stringify(response.data));
+diff --git a/index.html b/index.html
+index 9f39e98..4261fb2 100644
+--- a/index.html
++++ b/index.html
+@@ -89,6 +89,8 @@
+ 
+ <script src="js/snake.js"></script>
+ <script src="js/messageBox.js"></script>
++<!-- RepairBench offline stand-in: in-tree replacement for the three unreachable upstream endpoints and for the three off-site window.open targets. Loaded here (after messageBox.js, before index.js) so it can patch MessageBox.prototype.myAjax before the page boots. See environment/adaptation.patch and meta.json.patch_ledger.adaptation_note. -->
++<script src="rb-offline/api.js"></script>
+ <script src="js/index.js"></script>
+ </body>
+ </html>
+\ No newline at end of file
+diff --git a/js/index.js b/js/index.js
+index a89c759..9b6b3ef 100644
+--- a/js/index.js
++++ b/js/index.js
+@@ -14,7 +14,7 @@ var OverDeal = function (gameData) {
+     messageBox.reloadGame(gameData.score - 10, gameData.overReason);
+ 
+     messageBox.myAjax({
+-        url: 'https://codinglife.online/api/createScore',
++        url: 'rb-offline/api/createScore',
+         data: para,
+         success: function (data) {
+             // 重载英雄榜
+@@ -25,7 +25,7 @@ var OverDeal = function (gameData) {
+     });
+ 
+     messageBox.myAjax({
+-        url: 'https://codinglife.online/api/createLog',
++        url: 'rb-offline/api/createLog',
+         data: JSON.stringify({
+             platformType: "贪吃蛇",
+             page: "贪吃蛇",
+diff --git a/js/messageBox.js b/js/messageBox.js
+index c0f1524..a75c867 100644
+--- a/js/messageBox.js
++++ b/js/messageBox.js
+@@ -21,7 +21,7 @@ MessageBox.prototype.closeMessageBox = function () {
+ MessageBox.prototype.reloadScoreList = function(callback){
+   // 请求成绩列表接口，获取游戏记录条数。
+   this.myAjax({
+-    url:'https://codinglife.online/api/getSnakeScoreTopList',
++    url:'rb-offline/api/getSnakeScoreTopList',
+     // url:'localhost:8080/getSnakeScoreList',
+     success:function (data){
+       var data = JSON.parse(data),
+@@ -99,13 +99,13 @@ MessageBox.prototype.reloadGame = function (score,overReason) {
+ 
+   // 修改按钮绑定的函数
+   document.getElementsByClassName('leave-Message')[0].onclick = function (){
+-    window.open('https://codinglife.online/message-board');
++    window.open('rb-offline/leave-message');
+   };
+   document.getElementsByClassName('conform')[0].onclick = function () {
+-    window.open('https://github.com/SunQQQ/snake');
++    window.open('rb-offline/source-code');
+   };
+   document.getElementsByClassName('adminUrl')[0].onclick = function () {
+-    window.open('https://codinglife.online/admin');
++    window.open('rb-offline/game-records');
+   };
+   document.getElementsByClassName('skip')[0].onclick = function () {
+     window.location.reload();
+diff --git a/rb-offline/api.js b/rb-offline/api.js
+new file mode 100644
+index 0000000..b32ca08
+--- /dev/null
++++ b/rb-offline/api.js
+@@ -0,0 +1,60 @@
++/**
++ * RepairBench offline stand-in - added by environment/adaptation.patch (instance repair-vanilla__snake-vanilla-01).
++ *
++ * WHY THIS FILE EXISTS. Upstream drives its whole right-hand panel through three endpoints on
++ * the upstream host (js/index.js:17 createScore, js/index.js:28 createLog,
++ * js/messageBox.js:24 getSnakeScoreTopList) and three off-site window.open targets
++ * (js/messageBox.js:102/105/108). Offline, XMLHttpRequest can never reach readyState 4 with
++ * status 200/304, so js/messageBox.js:73 never calls para.success - and that success callback is
++ * the ONLY code that renders the hero board (js/messageBox.js:40) and the default nickname
++ * (js/messageBox.js:42). Left as-is the panel would stay frozen on the hardcoded markup in
++ * index.html:41-60 and there would be nothing to measure.
++ *
++ * WHAT IT CHANGES. (a) MessageBox.prototype.myAjax is replaced by an in-tree route table with an
++ * IDENTICAL call shape (para.url / para.data / para.success(responseText)) that resolves on a
++ * macrotask, preserving the async ordering the page was written against; (b) window.open is
++ * reduced to an inert no-op returning null (the value a browser returns for a blocked popup), so
++ * the three off-site buttons keep their own control flow but touch no network.
++ *
++ * WHAT IT DOES NOT CHANGE. No game logic, no rendering path, no selector, no style, no timing
++ * constant. js/snake.js is untouched by this patch. The rendering code under test
++ * (js/messageBox.js:27-42, :80-112) runs exactly as shipped.
++ */
++(function () {
++  'use strict';
++
++  // Canned hero-board payload. Its length (3) deliberately differs from the 5 rows the entry
++  // document hardcodes at index.html:41-60, so a checkpoint can tell "the list was rendered from
++  // the endpoint" apart from "the hardcoded markup is still there".
++  var SCORE_TOP_LIST = {
++    code: 0,
++    data: {
++      total: 3,
++      list: [
++        { userName: '\u6bd4\u514b\u5927\u9b54\u738b', score: 230 },
++        { userName: '\u5f20\u53ef', score: 120 },
++        { userName: '\u738b\u8000\u8f89', score: 100 }
++      ]
++    }
++  };
++
++  var ROUTES = {
++    'rb-offline/api/getSnakeScoreTopList': function () { return SCORE_TOP_LIST; },
++    'rb-offline/api/createScore': function (body) { return { code: 0, data: { ok: true, received: body === undefined ? null : body } }; },
++    'rb-offline/api/createLog': function (body) { return { code: 0, data: { ok: true, received: body === undefined ? null : body } }; }
++  };
++
++  if (typeof MessageBox !== 'undefined' && MessageBox.prototype) {
++    MessageBox.prototype.myAjax = function (para) {
++      var route = ROUTES[para && para.url];
++      var payload = route ? route(para.data) : { code: 0, data: {} };
++      window.setTimeout(function () {
++        if (para && typeof para.success === 'function') {
++          para.success(JSON.stringify(payload));
++        }
++      }, 0);
++    };
++  }
++
++  window.open = function () { return null; };
++})();

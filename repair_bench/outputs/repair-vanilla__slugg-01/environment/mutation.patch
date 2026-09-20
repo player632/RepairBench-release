@@ -1,0 +1,135 @@
+diff --git a/src/Animator.coffee b/src/Animator.coffee
+index 79b03bf70..2630a9bfd 100644
+--- a/src/Animator.coffee
++++ b/src/Animator.coffee
+@@ -41,7 +41,7 @@
+ 		for frame in root_frames
+ 			@weights_to[frame.srcID] ?= 0
+ 			@weights[frame.srcID] ?= 0
+-			@weights[frame.srcID] += (@weights_to[frame.srcID] - @weights[frame.srcID]) / 5
++			@weights[frame.srcID] += (@weights_to[frame.srcID] - @weights[frame.srcID]) / 3
+ 		
+ 		calc_frame = root_frames[0]
+ 		
+diff --git a/src/Character.coffee b/src/Character.coffee
+index b83a72dab..2770dde1e 100644
+--- a/src/Character.coffee
++++ b/src/Character.coffee
+@@ -58,7 +58,7 @@
+ 		@animator = new Animator {segments}
+ 	
+ 	step: (world)->
+-		@invincibility -= 1
++		@invincibility -= 2
+ 		@controller.update()
+ 		if @controller.descend
+ 			if (not @descend_pressed_last) or @descend > 0
+@@ -81,12 +81,12 @@
+ 		if @grounded
+ 			if @controller.start_jump
+ 				# normal jumping
+-				@vy = -@jump_velocity
++				@vy = @jump_velocity
+ 				@vx += @controller.x
+ 			else if @controller.genuflect
+ 				unless @crouched
+ 					@h = @crouched_h
+-					@y += @normal_h - @crouched_h
++					@y -= @normal_h - @crouched_h
+ 					@crouched = yes
+ 					@sliding = abs(@vx) > 5
+ 			else
+@@ -103,7 +103,7 @@
+ 			@face = sign(@vx) unless sign(@vx) is 0
+ 		else
+ 			# air control
+-			@vx += @controller.x * @air_control
++			@vx += @controller.x * @air_control * 2
+ 			if @controller.extend_jump
+ 				@vy -= @jump_velocity_air_control
+ 			if @against_wall
+diff --git a/src/KeyboardController.coffee b/src/KeyboardController.coffee
+index bda44aee4..be6e14070 100644
+--- a/src/KeyboardController.coffee
++++ b/src/KeyboardController.coffee
+@@ -13,7 +13,7 @@
+ 		key_codes =
+ 			right: [39, 68, 76] # right, D, L
+ 			left: [37, 65, 74] # left, A, J
+-			jump: [38, 87, 73, 32] # up, W, I, space
++			jump: [38, 87, 73] # up, W, I, space
+ 			descend: [40, 83, 75] # down, S, K
+ 			genuflect: [16, 17, 90] # ctrl, shift, Z
+ 		
+@@ -26,7 +26,7 @@
+ 				return yes if @keys[keyCode]? and not @prev_keys[keyCode]?
+ 			return no
+ 		
+-		@x = pressed("right") - pressed("left")
++		@x = pressed("right")
+ 		@start_jump = just_pressed("jump")
+ 		@extend_jump = pressed("jump")
+ 		@descend = pressed("descend")
+diff --git a/src/MobileEntity.coffee b/src/MobileEntity.coffee
+index 5bdbeb151..598b97ef5 100644
+--- a/src/MobileEntity.coffee
++++ b/src/MobileEntity.coffee
+@@ -4,7 +4,7 @@
+ 		@vx ?= 0
+ 		@vy ?= 0
+ 		@max_vx = 15
+-		@max_vy = 20
++		@max_vy = 26
+ 		@footing = null
+ 		@previous_footing = null
+ 		@grounded = no
+diff --git a/src/Platform.coffee b/src/Platform.coffee
+index a300cf3f1..8b2c69088 100644
+--- a/src/Platform.coffee
++++ b/src/Platform.coffee
+@@ -18,7 +18,7 @@
+ 	pattern = ctx.createPattern(pattern_canvas, "repeat")
+ 	
+ 	constructor: ->
+-		@x ?= 16 * -400
++		@x ?= 16 * -200
+ 		@w ?= 16 * 800
+ 		@h ?= 16
+ 		@fence_height ?= 0
+diff --git a/src/Vehicle.coffee b/src/Vehicle.coffee
+index 0ca726d5e..781e99507 100644
+--- a/src/Vehicle.coffee
++++ b/src/Vehicle.coffee
+@@ -30,6 +30,6 @@
+ 	friction: 0.06
+ 	step: (world)->
+ 		# (no super)
+-		@vx += @heading
++		@vx -= @heading
+ 		@vx /= 1 + @friction
+ 		
+diff --git a/src/World.coffee b/src/World.coffee
+index 54573dbf6..5a4bab9b4 100644
+--- a/src/World.coffee
++++ b/src/World.coffee
+@@ -17,6 +17,6 @@
+ 		y = 0
+ 		last_was_pathway = yes
+-		while y > -1800
++		while y > -1200
+ 			y -= 32 * ~~(random()*(if last_was_pathway then 2 else 4) + 5)
+ 			if random() < 0.2 and not last_was_pathway
+ 				@objects.push(new Pathway({y}))
+diff --git a/src/asset-loading.coffee b/src/asset-loading.coffee
+index e5ab17c3f..b05eca9a2 100644
+--- a/src/asset-loading.coffee
++++ b/src/asset-loading.coffee
+@@ -35,7 +35,7 @@
+ 
+ @load_frame = (srcID)->
+ 	if animation_data?
+-		animation_data[srcID].srcID = srcID
++		animation_data[srcID].srcID = "run/1"
+ 		animation_data[srcID]
+ 	else
+ 		load_image(srcID)

@@ -1,0 +1,150 @@
+diff --git a/src/components/modals/SavesManager.vue b/src/components/modals/SavesManager.vue
+index d462b43a111a45c1c62866609eda58cf85cbe295..b482225 100644
+--- a/src/components/modals/SavesManager.vue
++++ b/src/components/modals/SavesManager.vue
+@@ -218,7 +218,7 @@
+             }
+         });
+     }
+-    settings.saves = settings.saves.filter((save: string) => save === id);
++    settings.saves = settings.saves.filter((save: string) => save !== id);
+     localStorage.removeItem(id);
+     clearCachedSave(id);
+ }
+diff --git a/src/game/settings.ts b/src/game/settings.ts
+index 04f54bd24625ea94f788c656618e612213bc728b..6c94271 100644
+--- a/src/game/settings.ts
++++ b/src/game/settings.ts
+@@ -92,7 +92,7 @@
+             }
+             const settings = JSON.parse(item);
+             if (typeof settings === "object") {
+-                Object.assign(settings, state);
++                Object.assign(state, settings);
+             }
+         }
+         globalBus.emit("loadSettings", state);
+diff --git a/src/components/Layer.vue b/src/components/Layer.vue
+index 2e56f7aba49ff9fee15117f36aef0e1f9d4555c0..692ccac 100644
+--- a/src/components/Layer.vue
++++ b/src/components/Layer.vue
+@@ -48,7 +48,7 @@
+ const Component = () => render(props.display);
+ const MinimizedComponent = () => props.minimizedDisplay == null ? undefined : render(props.minimizedDisplay);
+ const showGoBack = computed(
+-    () => projInfo.allowGoBack && !unref(props.forceHideGoBack) && props.index > 1 && !unref(props.minimized)
++    () => projInfo.allowGoBack && !unref(props.forceHideGoBack) && props.index > 0 && !unref(props.minimized)
+ );
+ 
+ function goBack() {
+diff --git a/src/components/modals/Options.vue b/src/components/modals/Options.vue
+index b9024520939d3bf26307fecc4f5c6d9146b428ab..908d1a5 100644
+--- a/src/components/modals/Options.vue
++++ b/src/components/modals/Options.vue
+@@ -74,7 +74,7 @@
+ const { autosave, offlineProd } = toRefs(player);
+ const isPaused = computed({
+     get() {
+-        return player.devSpeed !== 0;
++        return player.devSpeed === 0;
+     },
+     set(value: boolean) {
+         player.devSpeed = value ? 0 : null;
+diff --git a/src/wrappers/tooltips/Tooltip.vue b/src/wrappers/tooltips/Tooltip.vue
+index f1fdddc0a88aa7ae8878e346ef0a7cb9fad24a1c..37f1020 100644
+--- a/src/wrappers/tooltips/Tooltip.vue
++++ b/src/wrappers/tooltips/Tooltip.vue
+@@ -53,7 +53,7 @@
+ }>();
+ 
+ const isHovered = ref(false);
+-const isShown = computed(() => props.pinned?.value === true && isHovered.value);
++const isShown = computed(() => props.pinned?.value === true || isHovered.value);
+ 
+ const Component = () => render(props.display);
+ 
+diff --git a/src/components/TPS.vue b/src/components/TPS.vue
+index 13305e50ce9574b87280db815053037962a93854..db73da6 100644
+--- a/src/components/TPS.vue
++++ b/src/components/TPS.vue
+@@ -9,8 +9,8 @@
+ 
+ const tps = computed(() =>
+     Decimal.div(
+-        state.lastTenTicks.reduce((acc, curr) => acc + curr, 0),
+-        state.lastTenTicks.length
++        state.lastTenTicks.length,
++        state.lastTenTicks.reduce((acc, curr) => acc + curr, 0)
+     )
+ );
+ </script>
+diff --git a/src/features/resources/resource.ts b/src/features/resources/resource.ts
+index 37b9af4ab08e16cc00f602d805cab8a2b811cce4..feb5f11 100644
+--- a/src/features/resources/resource.ts
++++ b/src/features/resources/resource.ts
+@@ -130,7 +130,7 @@
+     });
+ 
+     const oompsString = computed(() => {
+-        if (oompsMag.value !== 0) {
++        if (oompsMag.value === 0) {
+             return pointGain
+                 ? format(pointGain.value, resource.precision, resource.small) +
+                       " " +
+diff --git a/src/data/common.tsx b/src/data/common.tsx
+index 9f9809762ad117c4c11aa0534a420ecdaf53fc2a..2d0bf30 100644
+--- a/src/data/common.tsx
++++ b/src/data/common.tsx
+@@ -116,7 +116,7 @@
+             resetDescription:
+                 processGetter(resetDescription) ??
+                 computed((): string =>
+-                    Decimal.gt(conversion.gainResource.value, 1e3) ? "Reset for " : ""
++                    Decimal.lt(conversion.gainResource.value, 1e3) ? "Reset for " : ""
+                 ),
+             showNextAt: processGetter(showNextAt) ?? true,
+             minimumGain: processGetter(minimumGain) ?? 1,
+@@ -210,7 +210,7 @@
+             ...(props as Omit<typeof props, keyof LayerTreeNodeOptions>),
+             layerID,
+             display: display ?? layerID,
+-            append: processGetter(append) ?? false,
++            append: processGetter(append) ?? true,
+             onClick() {
+                 if (unref<boolean>(layerTreeNode.append)) {
+                     if (player.tabs.includes(layerID)) {
+diff --git a/src/data/layers/prestige.tsx b/src/data/layers/prestige.tsx
+index ccfba495157a33e0b8d16f6bd72d38f1aceb343f..a065db1 100644
+--- a/src/data/layers/prestige.tsx
++++ b/src/data/layers/prestige.tsx
+@@ -37,7 +37,7 @@
+         reset
+     }));
+     const tooltip = addTooltip(treeNode, () => ({
+-        display: () => createResourceTooltip(main.points)(),
++        display: createResourceTooltip(points),
+         pinnable: true
+     }));
+ 
+@@ -49,7 +49,7 @@
+ 
+     const hotkey = createHotkey(() => ({
+         description: "Reset for prestige points",
+-        key: "o",
++        key: "p",
+         onPress: resetButton.onClick!
+     }));
+ 
+diff --git a/src/data/projEntry.tsx b/src/data/projEntry.tsx
+index fdbe0898329e9548e7cfd18672c61d5ceffad874..abba816 100644
+--- a/src/data/projEntry.tsx
++++ b/src/data/projEntry.tsx
+@@ -35,7 +35,7 @@
+         nodes: noPersist([[prestige.treeNode]]),
+         branches: [],
+         onReset() {
+-            points.value = toRaw(tree.resettingNode.value) === toRaw(prestige.treeNode) ? 10 : 0;
++            points.value = toRaw(tree.resettingNode.value) === toRaw(prestige.treeNode) ? 0 : 10;
+             best.value = points.value;
+             total.value = points.value;
+         },

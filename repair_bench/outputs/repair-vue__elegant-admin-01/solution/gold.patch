@@ -1,0 +1,144 @@
+diff --git a/src/components/CountTo/index.vue b/src/components/CountTo/index.vue
+--- a/src/components/CountTo/index.vue
++++ b/src/components/CountTo/index.vue
+@@ -9,7 +9,7 @@
+   startValue: 0,
+   endValue: 2021,
+   duration: 1500,
+-  autoplay: false,
++  autoplay: true,
+   decimals: 0,
+   prefix: '',
+   suffix: '',
+diff --git a/src/hooks/useTable.ts b/src/hooks/useTable.ts
+--- a/src/hooks/useTable.ts
++++ b/src/hooks/useTable.ts
+@@ -21,7 +21,7 @@
+       // 当前页数
+       pageNum: 1,
+       // 每页显示条数
+-      pageSize: 100,
++      pageSize: 10,
+       // 总条数
+       total: 0,
+     },
+diff --git a/src/layouts/modules/Logo/index.vue b/src/layouts/modules/Logo/index.vue
+--- a/src/layouts/modules/Logo/index.vue
++++ b/src/layouts/modules/Logo/index.vue
+@@ -22,7 +22,7 @@
+ const title = ref(import.meta.env.VITE_APP_TITLE)
+ const logo = ref(imgLogo)
+ 
+-const to = computed(() => !settingsStore.settings.home.enable ? settingsStore.settings.home.fullPath : '')
++const to = computed(() => settingsStore.settings.home.enable ? settingsStore.settings.home.fullPath : '')
+ </script>
+ 
+ <template>
+diff --git a/src/layouts/modules/Topbar/Toolbar/Breadcrumb/index.vue b/src/layouts/modules/Topbar/Toolbar/Breadcrumb/index.vue
+--- a/src/layouts/modules/Topbar/Toolbar/Breadcrumb/index.vue
++++ b/src/layouts/modules/Topbar/Toolbar/Breadcrumb/index.vue
+@@ -36,7 +36,7 @@
+ </script>
+ 
+ <template>
+-  <Breadcrumb v-if="settingsStore.mode !== 'pc'" class="breadcrumb whitespace-nowrap px-2">
++  <Breadcrumb v-if="settingsStore.mode === 'pc'" class="breadcrumb whitespace-nowrap px-2">
+     <TransitionGroup name="breadcrumb">
+       <BreadcrumbItem v-for="(item, index) in breadcrumbList" :key="`${index}_${item.path}_${item.title}`" :to="index < breadcrumbList.length - 1 && item.path !== '' ? pathCompile(item.path) : ''">
+         {{ item.title }}
+diff --git a/src/layouts/modules/Topbar/Toolbar/rightSide.vue b/src/layouts/modules/Topbar/Toolbar/rightSide.vue
+--- a/src/layouts/modules/Topbar/Toolbar/rightSide.vue
++++ b/src/layouts/modules/Topbar/Toolbar/rightSide.vue
+@@ -27,7 +27,7 @@
+ 
+ <template>
+   <div class="flex items-center">
+-    <NavSearch v-if="!settingsStore.settings.toolbar.navSearch" />
++    <NavSearch v-if="settingsStore.settings.toolbar.navSearch" />
+     <Language v-if="settingsStore.settings.toolbar.translationLang" />
+     <Fullscreen v-if="settingsStore.settings.toolbar.fullscreen" />
+     <PageReload v-if="settingsStore.settings.toolbar.pageReload" />
+diff --git a/src/router/index.ts b/src/router/index.ts
+--- a/src/router/index.ts
++++ b/src/router/index.ts
+@@ -29,7 +29,7 @@
+     // 是否已根据权限动态生成并注册路由
+     if (routeStore.isGenerate) {
+       // 导航栏如果不是 single 模式，则需要根据 path 定位主导航的选中状态
+-      settingsStore.settings.menu.menuMode === 'single' && menuStore.setActived(to.path)
++      settingsStore.settings.menu.menuMode !== 'single' && menuStore.setActived(to.path)
+       // 如果已登录状态下，进入登录页会强制跳转到主页
+       if (to.name === 'login') {
+         next({
+diff --git a/src/settings.default.ts b/src/settings.default.ts
+--- a/src/settings.default.ts
++++ b/src/settings.default.ts
+@@ -34,7 +34,7 @@
+   },
+   home: {
+     enable: true,
+-    title: '控制室',
++    title: '控制台',
+     fullPath: '/dashboard',
+   },
+   layout: {
+diff --git a/src/store/modules/menu.ts b/src/store/modules/menu.ts
+--- a/src/store/modules/menu.ts
++++ b/src/store/modules/menu.ts
+@@ -90,7 +90,7 @@
+     function getDeepestPath(menu: Menu.recordRaw, rootPath = '') {
+       let retnPath = ''
+       if (menu.children) {
+-        const item = menu.children.find(item => item.meta?.menu === false)
++        const item = menu.children.find(item => item.meta?.menu !== false)
+         if (item) {
+           retnPath = getDeepestPath(item, resolveRoutePath(rootPath, menu.path))
+         }
+diff --git a/src/store/modules/route.ts b/src/store/modules/route.ts
+--- a/src/store/modules/route.ts
++++ b/src/store/modules/route.ts
+@@ -70,7 +70,7 @@
+             path: tmpRoute.path,
+             title: tmpRoute.meta?.title,
+             icon: tmpRoute.meta?.icon,
+-            hide: !tmpRoute.meta?.breadcrumb && tmpRoute.meta?.breadcrumb !== false,
++            hide: !tmpRoute.meta?.breadcrumb && tmpRoute.meta?.breadcrumb === false,
+           })
+           if (!tmpRoute.meta) {
+             tmpRoute.meta = {}
+diff --git a/src/store/modules/settings.ts b/src/store/modules/settings.ts
+--- a/src/store/modules/settings.ts
++++ b/src/store/modules/settings.ts
+@@ -32,7 +32,7 @@
+       currentColorScheme.value = colorScheme
+       switch (colorScheme) {
+         case 'light':
+-          document.documentElement.classList.remove('Dark')
++          document.documentElement.classList.remove('dark')
+           break
+         case 'dark':
+           document.documentElement.classList.add('dark')
+diff --git a/src/store/modules/tabbar.ts b/src/store/modules/tabbar.ts
+--- a/src/store/modules/tabbar.ts
++++ b/src/store/modules/tabbar.ts
+@@ -38,7 +38,7 @@
+         // 记录查找到的标签页
+         const findTab = list.value.find((item) => {
+           if (item.routeName) {
+-            return item.routeName !== route.name
++            return item.routeName === route.name
+           }
+           else {
+             return item.tabId === tabId
+diff --git a/src/views/reload/index.vue b/src/views/reload/index.vue
+--- a/src/views/reload/index.vue
++++ b/src/views/reload/index.vue
+@@ -2,7 +2,7 @@
+ const router = useRouter()
+ 
+ onMounted(() => {
+-  router.go(1)
++  router.go(-1)
+ })
+ </script>
+ 

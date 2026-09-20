@@ -1,0 +1,336 @@
+diff --git a/color-notes.html b/color-notes.html
+index f4e8a7f..665d205 100644
+--- a/color-notes.html
++++ b/color-notes.html
+@@ -183,28 +183,29 @@
+ </head>
+ 
+ <body>
+-    <div id="app">
++    <div id="app" data-testid="mn-b-app">
+         <header>
+-            <a @click="downloadNote">📋</a>
+-            <h2>{{ title }}</h2>
+-            <input type="color" id="favcolor" name="favcolor" v-model="note.color">
++            <a data-testid="mn-b-export" @click="downloadNote">📋</a>
++            <h2 data-testid="mn-b-title">{{ title }}</h2>
++            <input type="color" id="favcolor" name="favcolor" v-model="note.color" data-testid="mn-b-color">
+         </header>
+ 
+-        <textarea autofocus placeholder="insert your note .." v-model="note.text"
++        <textarea autofocus placeholder="insert your note .." data-testid="mn-b-composer" v-model="note.text"
+             @keyup.ctrl.enter="addNote"></textarea>
+-        <button class="button" @click="addNote">Submit</button>
++        <button class="button" data-testid="mn-b-submit" @click="addNote">Submit</button>
+ 
+ 
+-        <div v-for="(note, index) in notes" class="noteBox">
+-            <div class="top" :style="{ 'background-color': note.color }">
+-                <button class="close" @click="removeNote(index)"></button>
+-                <i>{{ note.date }}</i>
++        <div v-for="(note, index) in notes" class="noteBox" data-testid="mn-b-card">
++            <div class="top" data-testid="mn-b-head" :style="{ 'background-color': note.color }">
++                <button class="close" :data-testid="'mn-b-close-'+index" @click="removeNote(index)"></button>
++                <i :data-testid="'mn-b-date-'+index">{{ note.date }}</i>
+             </div>
+-            <div class="content">
++            <div class="content" data-testid="mn-b-content">
+                 {{ note.text }}
+             </div>
+         </div>
+     </div>
++    <script src="rb-probe.js"></script>
+     <script>
+         var app = new Vue({
+             el: '#app',
+diff --git a/index-mobile.html b/index-mobile.html
+index 5ea6c57..3f35a1a 100644
+--- a/index-mobile.html
++++ b/index-mobile.html
+@@ -96,21 +96,22 @@
+ </head>
+ 
+ <body>
+-    <div id="app">
++    <div id="app" data-testid="mn-c-app">
+ 
+-        <h2>{{title}}</h2>
++        <h2 data-testid="mn-c-title">{{title}}</h2>
+ 
+-        <textarea autofocus placeholder="insert your note .." v-model="note.text"></textarea>
++        <textarea autofocus placeholder="insert your note .." data-testid="mn-c-composer" v-model="note.text"></textarea>
+ 
+-        <button class="button" @click="addNote">Submit</button>
++        <button class="button" data-testid="mn-c-submit" @click="addNote">Submit</button>
+ 
+-        <div :class="{addNote:note.done}" v-for="(note, index) in notes">
+-            <button class="close" @click="removeNote(index)">&times;</button>
+-            <i>{{note.date}}</i>
++        <div :class="{addNote:note.done}" v-for="(note, index) in notes" data-testid="mn-c-card">
++            <button class="close" data-testid="mn-c-close" @click="removeNote(index)">&times;</button>
++            <i data-testid="mn-c-date">{{note.date}}</i>
+             {{note.text}}
+             {{note.color}}
+         </div>
+     </div>
++    <script src="rb-probe.js"></script>
+     <script>
+         document.getElementById("app").style.height = document.documentElement.clientHeight + "px";
+         var app = new Vue({
+diff --git a/index.html b/index.html
+index 68f297a..fa97dc7 100644
+--- a/index.html
++++ b/index.html
+@@ -136,22 +136,23 @@
+ </head>
+ 
+ <body>
+-    <div id="app">
++    <div id="app" data-testid="mn-a-app">
+ 
+-        <h2>{{title}}</h2>
++        <h2 data-testid="mn-a-title">{{title}}</h2>
+ 
+-        <textarea autofocus placeholder="insert your note .." v-model="note.text"></textarea>
++        <textarea autofocus placeholder="insert your note .." data-testid="mn-a-composer" v-model="note.text"></textarea>
+ 
+-        <button class="button" @click="addNote">Submit</button>
++        <button class="button" data-testid="mn-a-submit" @click="addNote">Submit</button>
+ 
+-        <div v-for="(note, index) in notes">
++        <div data-testid="mn-a-card" v-for="(note, index) in notes">
+             <div class ="top">
+-                <button class="close" @click="removeNote(index)"></button>
+-                <i>{{note.date}}</i>
++                <button class="close" :data-testid="'mn-a-close-'+index" @click="removeNote(index)"></button>
++                <i data-testid="mn-a-date">{{note.date}}</i>
+             </div>
+             {{note.text}}
+         </div>
+     </div>
++    <script src="rb-probe.js"></script>
+     <script>
+         var app = new Vue({
+             el: '#app',
+diff --git a/rb-probe.js b/rb-probe.js
+new file mode 100644
+index 0000000..b0c0d37
+--- /dev/null
++++ b/rb-probe.js
+@@ -0,0 +1,216 @@
++/* RepairBench instrumentation probe (minimal-notes).
++ *
++ * Added by environment/instrumentation.patch. It touches NO application logic and
++ * writes NO application state. It does exactly two things:
++ *
++ *   (a) installs passive global listeners so an uncaught exception anywhere in the
++ *       page (including the boot statement that runs before the Vue instance is
++ *       constructed) is recorded as a readable count instead of vanishing; and
++ *   (b) publishes window.__MN__ as a READ-ONLY getter object, recomputed on every
++ *       call, over facts that are already in the DOM / in the browser's own APIs:
++ *       whether the Vue instance mounted, whether uncompiled mustaches are still on
++ *       screen, which Vue build actually loaded, how many requests left this origin,
++ *       what the page wrote to storage / URL / cookies / globals, and how many
++ *       instrumented note cards are on screen.
++ *
++ * Discipline: every getter is safe-wrapped and returns the ERR sentinel instead of
++ * throwing, so a broken page state surfaces as a failed assertion (behaviour
++ * evidence) and never as a second crash inside the probe. Nothing is cached between
++ * calls, no expectation lives in this file, and the probe never mutates the
++ * application's data, its localStorage, its DOM or its event wiring.
++ */
++(function () {
++    "use strict";
++
++    var ERR = "__mn_probe_error__";
++    var captured = [];
++
++    try {
++        // capture phase so the listener also sees errors thrown by scripts that run
++        // before the probe's own body finishes (there are none today, but the
++        // contract must not depend on insertion order inside <body>).
++        window.addEventListener("error", function (e) {
++            try {
++                captured.push({
++                    kind: "error",
++                    message: String((e && e.message) || ""),
++                    source: String((e && e.filename) || "").split("/").pop(),
++                    line: Number((e && e.lineno) || 0)
++                });
++            } catch (ignore) { /* the probe must never become the second failure */ }
++        }, true);
++        window.addEventListener("unhandledrejection", function (e) {
++            try {
++                captured.push({
++                    kind: "rejection",
++                    message: String((e && e.reason && e.reason.message) || (e && e.reason) || "")
++                });
++            } catch (ignore) { /* ditto */ }
++        });
++    } catch (ignore) { /* ditto */ }
++
++    function safe(fn) {
++        try { return fn(); } catch (e) { return ERR; }
++    }
++
++    function appEl() { return document.getElementById("app"); }
++
++    // Vue 2 stamps the mounted root element with __vue__; reading it is a pure
++    // observation of the framework's own bookkeeping and works identically whether
++    // the instance was constructed or the boot script died before `new Vue(...)`.
++    function vueMounted() {
++        return safe(function () {
++            var e = appEl();
++            return !!(e && e.__vue__);
++        });
++    }
++
++    // An uncompiled in-DOM template is the visible signature of "Vue never mounted":
++    // the mustache delimiters are still literal text inside #app.
++    function mustacheOnScreen() {
++        return safe(function () {
++            var e = appEl();
++            if (!e) return false;
++            return /\{\{|\}\}/.test(String(e.textContent || ""));
++        });
++    }
++
++    // Requests that left this origin. Same-origin fetches, data: and blob: URLs do
++    // not count, so a fully vendored tree reports 0 without any allow-listing.
++    function externalRequests() {
++        return safe(function () {
++            var n = 0;
++            var entries = (window.performance && performance.getEntriesByType)
++                ? (performance.getEntriesByType("resource") || []) : [];
++            for (var i = 0; i < entries.length; i++) {
++                var name = String(entries[i].name || "");
++                if (!name) continue;
++                if (name.indexOf(location.origin) === 0) continue;
++                if (name.indexOf("data:") === 0 || name.indexOf("blob:") === 0) continue;
++                n++;
++            }
++            return n;
++        });
++    }
++
++    function externalHosts() {
++        return safe(function () {
++            var seen = [];
++            var entries = (window.performance && performance.getEntriesByType)
++                ? (performance.getEntriesByType("resource") || []) : [];
++            for (var i = 0; i < entries.length; i++) {
++                var name = String(entries[i].name || "");
++                if (!name || name.indexOf(location.origin) === 0) continue;
++                if (name.indexOf("data:") === 0 || name.indexOf("blob:") === 0) continue;
++                var host = name.replace(/^[a-z]+:\/\//i, "").split("/")[0];
++                if (seen.indexOf(host) < 0) seen.push(host);
++            }
++            return seen.join("|");
++        });
++    }
++
++    function storageKeys(which) {
++        return safe(function () {
++            var s = window[which];
++            if (!s) return "";
++            var out = [];
++            for (var i = 0; i < s.length; i++) out.push(s.key(i));
++            return out.sort().join("|");
++        });
++    }
++
++    function residueGlobals() {
++        return safe(function () {
++            var hits = [];
++            var keys = Object.keys(window);
++            for (var i = 0; i < keys.length; i++) {
++                if (/^__(rb|wlb|repair|bench|hint|answer|gold|oracle)/i.test(keys[i])) hits.push(keys[i]);
++            }
++            return hits.sort().join("|");
++        });
++    }
++
++    function cardCount() {
++        return safe(function () {
++            return document.querySelectorAll('[data-testid$="-card"]').length;
++        });
++    }
++
++    function headBackground(testid) {
++        return safe(function () {
++            var e = document.querySelector('[data-testid="' + testid + '"]');
++            if (!e) return ERR;
++            return String(window.getComputedStyle(e).backgroundColor || "");
++        });
++    }
++
++    window.__MN__ = function () {
++        return {
++            // ---- boot / framework lifecycle ----
++            ready: safe(function () { return typeof window.Vue === "function" && document.readyState !== "loading"; }),
++            vueMounted: vueMounted(),
++            mustache: mustacheOnScreen(),
++            vueVersion: safe(function () { return String((window.Vue && window.Vue.version) || ""); }),
++            vueCdnScripts: safe(function () {
++                var n = 0, s = document.getElementsByTagName("script");
++                for (var i = 0; i < s.length; i++) {
++                    var src = String(s[i].getAttribute("src") || "");
++                    if (/^https?:|^\/\//.test(src)) n++;
++                }
++                return n;
++            }),
++            errors: captured.length,
++            errorMessages: captured.map(function (c) { return c.kind + ":" + c.message; }).join("|"),
++
++            // ---- network self-sufficiency ----
++            extRequests: externalRequests(),
++            extHosts: externalHosts(),
++            resourceCount: safe(function () {
++                return (window.performance && performance.getEntriesByType)
++                    ? (performance.getEntriesByType("resource") || []).length : -1;
++            }),
++
++            // ---- storage / URL / global residue (state-isolation asserts) ----
++            ls: safe(function () { return window.localStorage.length; }),
++            ss: safe(function () { return window.sessionStorage.length; }),
++            lsKeys: storageKeys("localStorage"),
++            ssKeys: storageKeys("sessionStorage"),
++            notesRaw: safe(function () {
++                var v = window.localStorage.getItem("notes");
++                return v === null ? "<null>" : String(v);
++            }),
++            notesLen: safe(function () {
++                var v = window.localStorage.getItem("notes");
++                if (v === null) return -1;
++                var p = JSON.parse(v);
++                return Array.isArray(p) ? p.length : -2;
++            }),
++            cookie: safe(function () { return String(document.cookie || ""); }),
++            hash: safe(function () { return String(location.hash || ""); }),
++            search: safe(function () { return String(location.search || ""); }),
++            pathname: safe(function () { return String(location.pathname || ""); }),
++            residue: residueGlobals(),
++
++            // ---- instrumented DOM facts ----
++            cards: cardCount(),
++            title: safe(function () { return String(document.title || ""); }),
++            headingText: safe(function () {
++                var e = document.querySelector('[data-testid$="-title"]');
++                return e ? String(e.textContent || "") : ERR;
++            }),
++            composerValue: safe(function () {
++                var e = document.querySelector('[data-testid$="-composer"]');
++                return e ? String(e.value === undefined || e.value === null ? "" : e.value) : ERR;
++            }),
++            appInlineHeight: safe(function () {
++                var e = appEl();
++                return e ? String(e.style.height || "") : ERR;
++            }),
++            clientHeight: safe(function () { return Number(document.documentElement.clientHeight); }),
++            scrollY: safe(function () { return Number(window.scrollY || 0); }),
++
++            // ---- one-off computed-style reader (used by the colour-page guards) ----
++            bgOf: headBackground
++        };
++    };
++})();

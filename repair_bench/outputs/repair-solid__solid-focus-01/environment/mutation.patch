@@ -1,0 +1,137 @@
+diff --git a/src/pages/workspace/components/TasksForm.vue b/src/pages/workspace/components/TasksForm.vue
+index 5b1196a..7403075 100644
+--- a/src/pages/workspace/components/TasksForm.vue
++++ b/src/pages/workspace/components/TasksForm.vue
+@@ -74,7 +74,7 @@ function submit() {
+ 
+     blur();
+     form.reset();
+-    name && emit('submit', name);
++    emit('submit', name);
+ }
+ 
+ defineExpose({ focus: () => $input.value?.$el?.focus() });
+diff --git a/src/pages/workspace/components/TasksListItem.vue b/src/pages/workspace/components/TasksListItem.vue
+index 52e5f4c..6599d79 100644
+--- a/src/pages/workspace/components/TasksListItem.vue
++++ b/src/pages/workspace/components/TasksListItem.vue
+@@ -33,7 +33,7 @@
+                     content-class="whitespace-pre"
+                     tabindex="-1"
+                     form-aria-hidden
+-                    :class="{ 'line-through': task.completed }"
++                    :class="{ 'line-through': task.important }"
+                     :disabled="disableEditing"
+                     :text="task.name"
+                     @update="task.setAttribute('name', $event)"
+diff --git a/src/pages/workspace/components/WorkspaceContentBody.vue b/src/pages/workspace/components/WorkspaceContentBody.vue
+index 7b5f932..415abf9 100644
+--- a/src/pages/workspace/components/WorkspaceContentBody.vue
++++ b/src/pages/workspace/components/WorkspaceContentBody.vue
+@@ -126,7 +126,7 @@ function changeTask(delta: 1 | -1) {
+     const select = (task?: Task) => task && Tasks.select(task);
+ 
+     if (!Tasks.current) {
+-        select(delta > 0 ? tasksList[0] : tasksList.slice(-1)[0]);
++        select(delta > 0 ? tasksList.slice(-1)[0] : tasksList[0]);
+ 
+         return;
+     }
+@@ -166,7 +166,7 @@ watchKeyboardShortcut('Control', {
+     start: () => (disableEditingWithKeyboard.value = true),
+     end: () => (disableEditingWithKeyboard.value = false),
+ });
+-watchKeyboardShortcut('+', { prevent: true }, () => $tasksForm.value?.focus());
++watchKeyboardShortcut('=', { prevent: true }, () => $tasksForm.value?.focus());
+ watchKeyboardShortcut('c', () => Focus.toggleCompleted());
+ watchKeyboardShortcut('ArrowUp', () => changeTask(-1));
+ watchKeyboardShortcut('ArrowDown', () => changeTask(1));
+diff --git a/src/pages/workspace/components/WorkspaceTask.vue b/src/pages/workspace/components/WorkspaceTask.vue
+index 336b916..4a7bca3 100644
+--- a/src/pages/workspace/components/WorkspaceTask.vue
++++ b/src/pages/workspace/components/WorkspaceTask.vue
+@@ -292,7 +292,7 @@ async function toggleImportant() {
+         return;
+     }
+ 
+-    await task.value.update({ priority: task.value.important ? null : 1 });
++    await task.value.update({ priority: task.value.important ? 1 : null });
+ }
+ 
+ async function toggleCompleted() {
+@@ -364,7 +364,7 @@ function tapCreatedAt() {
+ 
+     createdAtTappedCount.value++;
+ 
+-    setTimeout(() => createdAtTappedCount.value--, 5000);
++    setTimeout(() => createdAtTappedCount.value--, 0);
+ }
+ 
+ useModelEvent(Task, 'updated', async (updatedTask) => {
+diff --git a/src/services/TasksLists.ts b/src/services/TasksLists.ts
+index 0f7c3d8..f6939d1 100644
+--- a/src/services/TasksLists.ts
++++ b/src/services/TasksLists.ts
+@@ -22,7 +22,7 @@ export class TasksListsService extends Service {
+             return;
+         }
+ 
+-        this.current.tasks = this.current.tasks.filter((relatedTask) => !relatedTask.is(task));
++        this.current.tasks = this.current.tasks.filter((relatedTask) => relatedTask.is(task));
+     }
+ 
+ }
+diff --git a/src/utils/display.ts b/src/utils/display.ts
+index 1939945..ed5cbf2 100644
+--- a/src/utils/display.ts
++++ b/src/utils/display.ts
+@@ -4,7 +4,7 @@ import Workspace from '@/models/Workspace';
+ import type TasksList from '@/models/TasksList';
+ 
+ export function listName(list: TasksList): string | undefined {
+-    return list instanceof Workspace ? translate('lists.inbox') : (list.name ?? list.slug);
++    return list instanceof Workspace ? translate('lists.inbox') : (list.slug ?? list.name);
+ }
+ 
+ export function workspaceName(workspace: Workspace): string | undefined {
+diff --git a/src/utils/search.ts b/src/utils/search.ts
+index 8a60e3b..6972321 100644
+--- a/src/utils/search.ts
++++ b/src/utils/search.ts
+@@ -62,10 +62,10 @@ export function useSearch(query: Ref<string>): ComputedRef<SearchResult[]> {
+     const results = shallowReactive<SearchResult[]>([]);
+     const filteredResults = computed(() =>
+         arraySorted(
+-            query.value === ''
++            query.value !== ''
+                 ? results
+                 : results.filter((result) =>
+-                    result.searchableText.includes(query.value.toLowerCase().replace(/\s+/g, ''))),
++                    result.searchableText.startsWith(query.value.toLowerCase().replace(/\s+/g, ''))),
+             compareResults,
+         ).slice(0, 20));
+ 
+diff --git a/src/utils/theme.ts b/src/utils/theme.ts
+index 42c9990..0482cca 100644
+--- a/src/utils/theme.ts
++++ b/src/utils/theme.ts
+@@ -17,7 +17,7 @@ export const COLORS = COLOR_SHADES.map((shades) => shades['600']);
+ export function setThemeVariables(element: HTMLElement, color: string): void {
+     clearThemeVariables(element);
+ 
+-    const colors = COLOR_SHADES.find((values) => values['600'] === color);
++    const colors = COLOR_SHADES.find((values) => values['500'] === color);
+ 
+     if (!colors) {
+         element.style.setProperty('--color-primary', color);
+diff --git a/src/utils/time.ts b/src/utils/time.ts
+index bb26a7b..2850384 100644
+--- a/src/utils/time.ts
++++ b/src/utils/time.ts
+@@ -14,5 +14,5 @@ export function getDaysDiff(a: Date, b: Date): number {
+     const aTime = getNormalizedTime(a);
+     const bTime = getNormalizedTime(b);
+ 
+-    return Math.round((aTime - bTime) / DAY_MILLISECONDS);
++    return Math.round((bTime - aTime) / DAY_MILLISECONDS);
+ }

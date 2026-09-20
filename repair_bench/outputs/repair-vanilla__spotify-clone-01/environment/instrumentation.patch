@@ -1,0 +1,122 @@
+diff --git a/src/scripts/app.js b/src/scripts/app.js
+index 61f89cf..4cc5734 100644
+--- a/src/scripts/app.js
++++ b/src/scripts/app.js
+@@ -454,3 +454,117 @@ document.querySelector(".logoutbtn2").addEventListener("click", function () {
+   userMenuArea.classList.add("hidden");
+   logopt.classList.remove("hidden");
+ });
++
++// --- RepairBench instrumentation: read-only observation handles -------------------------
++// Observation only. Nothing here writes to the application's own state, no setter, no
++// prototype patching, no event suppressed, no cached reading: every handle re-reads the
++// live document, the live queue binding or the live computed style at call time. The one
++// thing it adds to the page is (a) a data prefetch of the three JSON files the page
++// already fetches for itself, so a checkpoint can recompute an expectation from the
++// shipped data instead of hard-coding a number, and (b) two passive error collectors so a
++// known shipped error can be told apart from a defect-induced one.
++(function () {
++  if (!window.__rbSpotify) {
++    window.__rbSpotify = {
++      bootCount: 0,
++      errors: [],
++      rejections: [],
++      data: { songs: null, artists: null, moods: null },
++      probe: {},
++    };
++    window.addEventListener("error", function (e) {
++      try { window.__rbSpotify.errors.push(String((e && e.message) || e)); } catch (_) {}
++    });
++    window.addEventListener("unhandledrejection", function (e) {
++      try {
++        var r = e && e.reason;
++        window.__rbSpotify.rejections.push(String((r && r.message) || r || e));
++      } catch (_) {}
++    });
++    [["song", "songs"], ["artist", "artists"], ["mood", "moods"]].forEach(function (pair) {
++      fetch("src/assets/data/" + pair[0] + ".json")
++        .then(function (r) { return r.json(); })
++        .then(function (d) { window.__rbSpotify.data[pair[1]] = d; })
++        .catch(function () {});
++    });
++  }
++  var R = window.__rbSpotify;
++  R.bootCount += 1;
++
++  R.norm = function (s) { return String(s === null || s === undefined ? "" : s).split(/\s+/).join(" ").replace(/^\s+|\s+$/g, ""); };
++  R.sleep = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
++  R.ready = function () {
++    return !!(R.data.songs && R.data.artists && R.data.moods && R.songs().length > 0);
++  };
++  R.waitReady = async function (ms) {
++    var t0 = Date.now();
++    while (Date.now() - t0 < (ms || 10000)) { if (R.ready()) return true; await R.sleep(100); }
++    return R.ready();
++  };
++  R.songs = function () { try { return songdata.slice(); } catch (e) { return []; } };
++  R.songCount = function () { try { return songdata.length; } catch (e) { return -1; } };
++  R.songByName = function (t) {
++    var d = R.data.songs; if (!d) return null;
++    for (var i = 0; i < d.length; i++) if (R.norm(d[i].title) === R.norm(t)) return d[i];
++    return null;
++  };
++  R.matchCountForTitle = function (t) {
++    var d = R.data; if (!d.songs || !d.artists) return -1;
++    var s = R.songByName(t); if (!s) return -1;
++    var wanted = String(s.artist).split(",").map(function (x) { return R.norm(x); }).filter(Boolean);
++    return d.artists.filter(function (a) {
++      var an = String(a.name).toLowerCase();
++      return wanted.some(function (x) { var xn = x.toLowerCase(); return an.indexOf(xn) >= 0 || xn.indexOf(an) >= 0; });
++    }).length;
++  };
++  R.title = function () { var e = document.querySelector(".songtitle"); return e ? R.norm(e.textContent) : ""; };
++  R.idxOfCurrent = function () {
++    var sd = R.songs(), t = R.title();
++    for (var i = 0; i < sd.length; i++) if (R.norm(sd[i].title) === t) return i;
++    return -1;
++  };
++  R.artistNames = function () {
++    return [].slice.call(document.querySelectorAll("#dynamic-artists .artist-info-card .artist-info-details h4")).map(function (e) { return R.norm(e.textContent); });
++  };
++  R.loaded = function () {
++    return !!document.querySelector(".songtitle") && !!document.getElementById("dynamic-artists") && !!document.getElementById("lyrics");
++  };
++  R.waitSong = async function (t, ms) {
++    var t0 = Date.now();
++    while (Date.now() - t0 < (ms || 12000)) { if (R.loaded() && R.title() === R.norm(t)) return true; await R.sleep(100); }
++    return R.loaded() && R.title() === R.norm(t);
++  };
++  R.waitTitleChange = async function (from, ms) {
++    var t0 = Date.now();
++    while (Date.now() - t0 < (ms || 8000)) { if (R.title() !== R.norm(from)) return true; await R.sleep(80); }
++    return R.title() !== R.norm(from);
++  };
++  R.pickCard = function (mode) {
++    var cards = [].slice.call(document.querySelectorAll(".song-card .card"));
++    for (var i = 0; i < cards.length; i++) {
++      var h = cards[i].querySelector("h4"); if (!h) continue;
++      var t = R.norm(h.textContent); var m = R.matchCountForTitle(t);
++      if (m < 0) continue;
++      if (mode === "none" && m === 0) { cards[i].click(); return t; }
++      if (mode === "some" && m > 0) { cards[i].click(); return t; }
++      if (mode === "other" && m === 0 && t !== R.probe.pickA) { cards[i].click(); return t; }
++    }
++    return "";
++  };
++  R.settle = async function (el, ms) {
++    var last = -1, same = 0, t0 = Date.now();
++    while (Date.now() - t0 < (ms || 5000)) {
++      var v = el.scrollLeft;
++      if (v === last) { same++; if (same >= 3) return v; } else { same = 0; last = v; }
++      await R.sleep(100);
++    }
++    return el.scrollLeft;
++  };
++  R.recentCount = function () { var u = document.getElementById("recentList"); return u ? u.querySelectorAll("li").length : -1; };
++  Object.defineProperty(R, "handles", {
++    value: Object.freeze(["norm", "sleep", "ready", "waitReady", "songs", "songCount", "songByName",
++      "matchCountForTitle", "title", "idxOfCurrent", "artistNames", "loaded", "waitSong",
++      "waitTitleChange", "pickCard", "settle", "recentCount"]),
++    enumerable: true,
++  });
++})();

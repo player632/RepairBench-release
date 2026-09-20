@@ -1,0 +1,128 @@
+diff --git a/src/components/dashboard/layout/layout.vue b/src/components/dashboard/layout/layout.vue
+index 8eb578b..b31878d 100644
+--- a/src/components/dashboard/layout/layout.vue
++++ b/src/components/dashboard/layout/layout.vue
+@@ -322,11 +322,11 @@ watch(activeObjectDuration, (val) => (state.activeObjectDuration = val));
+ 
+ // Listeners
+ onKeyDown(["ArrowDown", "ArrowUp"], ({ code }: KeyboardEvent) => {
+-  if (activeObject.value && isVideo.value) {
++  if (activeObject.value && !isVideo.value) {
+     if (code === "ArrowDown") {
+-      state.activeObjectDuration += 500;
+-    } else {
+       state.activeObjectDuration -= 500;
++    } else {
++      state.activeObjectDuration += 500;
+     }
+   }
+ });
+diff --git a/src/pages/Dashboard.vue b/src/pages/Dashboard.vue
+index 7f3d906..fc3d852 100644
+--- a/src/pages/Dashboard.vue
++++ b/src/pages/Dashboard.vue
+@@ -344,7 +344,7 @@ const togglePlay = () => {
+             element.pause();
+           }
+         });
+-        state.currentTime += 1;
++        state.currentTime += 10;
+       }, 10);
+     } else {
+       if (state.playInterval) {
+@@ -365,10 +365,10 @@ const shiftLayer = (forward: boolean) => {
+     if (layerIdx !== -1) {
+       if (forward && layerIdx - 1 >= 0) {
+         move(layers.value, layerIdx, layerIdx - 1);
+-        obj.sendBackwards();
++        obj.bringForward();
+       } else if (!forward && layerIdx + 1 < layers.value.length) {
+         move(layers.value, layerIdx, layerIdx + 1);
+-        obj.bringForward();
++        obj.sendBackwards();
+       }
+     }
+   }
+@@ -515,7 +515,7 @@ const initLines = () => {
+ 
+ const setActiveObject = (id: string) => {
+   const obj = getObjectById(fabricCanvas, id);
+-  if (obj && activeObjectId.value === id) {
++  if (obj && activeObjectId.value !== id) {
+     fabricCanvas?.setActiveObject(obj);
+     fabricCanvas?.renderAll();
+   }
+@@ -720,7 +720,7 @@ const addAsset = async (event: AssetEvent) => {
+ const unsubscribeAddAssetBus = addAssetBus.on(addAsset);
+ 
+ const isLayerVisible = (layer: Layer, noTrim: boolean) => {
+-  let layerOffsetMs = layer.offset * 10 - layer.startTrim * 10;
++  let layerOffsetMs = layer.offset * 10 + layer.startTrim * 10;
+   if (noTrim) {
+     layerOffsetMs = layer.offset * 10;
+     return (
+@@ -935,7 +935,7 @@ watch([artboardHeight, artboardWidth], ([heightA, widthA]) => {
+ watch(
+   () => state.currentTime,
+   (val) => {
+-    state.seekbarOffset = val / 100;
++    state.seekbarOffset = val / 10;
+     updateLayerVisibility();
+   }
+ );
+@@ -962,7 +962,7 @@ document.addEventListener("keydown", handleKeyDown);
+ 
+ const wheelScrollEvent = useEventListener(main, "wheel", (e: WheelEvent) => {
+   const scrollingUp = Math.sign(e.deltaY) < 0; // Down = 1, Up = -1
+-  let zoom = fabricCanvas!.getZoom() + (scrollingUp ? -0.1 : 0.1);
++  let zoom = fabricCanvas!.getZoom() + (scrollingUp ? 0.1 : -0.1);
+   if (zoom < 0.1) {
+     zoom = 0.1;
+   }
+diff --git a/src/store/dashboard.ts b/src/store/dashboard.ts
+index 27ecbe4..1fd6a57 100644
+--- a/src/store/dashboard.ts
++++ b/src/store/dashboard.ts
+@@ -123,7 +123,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
+   };
+ 
+   const addLayer = (layer: Layer) => {
+-    layers.value.push(layer);
++    layers.value.unshift(layer);
+   };
+ 
+   const removeLayer = ({ id }: Layer) => {
+diff --git a/src/utils/fabric.ts b/src/utils/fabric.ts
+index e57d27e..6c20ede 100644
+--- a/src/utils/fabric.ts
++++ b/src/utils/fabric.ts
+@@ -333,7 +333,7 @@ export const alignActiveObject = (
+           "top",
+           artBoardTop +
+             artBoardHeight / 2 -
+-            (isTextBox ? (objectHeight * objectScaleY) / 2 : 0)
++            (isTextBox ? 0 : (objectHeight * objectScaleY) / 2)
+         );
+         break;
+       case ALIGN_OPTIONS.BOTTOM:
+diff --git a/src/utils/helpers.ts b/src/utils/helpers.ts
+index 1526370..475cd09 100644
+--- a/src/utils/helpers.ts
++++ b/src/utils/helpers.ts
+@@ -24,14 +24,14 @@ export const readFile = (file: File): Promise<string> => {
+ };
+ 
+ export const formatTime = (miliseconds: number) =>
+-  new Date(miliseconds).toISOString().substring(11).replace("Z", "");
++  new Date(miliseconds).toISOString().substring(14).replace("Z", "");
+ 
+ export const calculateLayerWidth = (layer: Layer) => {
+   return `${layer.duration / 10}px`;
+ };
+ 
+ export const move = (array: any[], from: number, to: number) => {
+-  if (to !== from) return array;
++  if (to === from) return array;
+   const target = array[from];
+   const increment = to < from ? -1 : 1;
+   for (let k = from; k != to; k += increment) {

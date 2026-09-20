@@ -1,0 +1,395 @@
+diff --git a/src/instrumentation.ts b/src/instrumentation.ts
+new file mode 100644
+index 0000000..c52d0f6
+--- /dev/null
++++ b/src/instrumentation.ts
+@@ -0,0 +1,366 @@
++/* eslint-disable @typescript-eslint/camelcase */
++// Read-only instrumentation bridge for repair-vue__vue-maze-01 (seed vue-maze).
++// Publishes window.__rb_maze: one Object.freeze'd facade of read-only members over the live
++// Vue 2 component tree (App + Maze) and the four render canvases, plus a pass-through
++// fetch/XHR recorder used by the "no external request" assertion. It OBSERVES only: every
++// member re-reads the app's own reactive state fresh on each access and none of them writes
++// to the app, dispatches an event, or mutates seed state, so a checkpoint cannot repair a
++// defect by touching the bridge. Nothing is deleted and no seed behaviour is changed.
++//
++// Two measurement rules shaped this facade:
++//  1. Every member returns a SCALAR (number / boolean / string) or a JSON-safe copy, because
++//     evaluation/dsl_runner.mjs:787-790 compares a js_eval result with a loose `==` against the
++//     declared `expected`, so an object or array expectation can never match.
++//  2. Nothing here depends on the maze LAYOUT. Both generators call Math.random() and ignore the
++//     seed argument Maze.vue:resetMaze passes (getMaze.ts:9 constructor signature is (lx, ly)),
++//     so a fresh layout appears on every load and every reset. Each derived member therefore
++//     recomputes from the bond arrays the app is holding right now.
++const w = window as any;
++
++// ---------- pass-through network recorder (installed before the app boots) ----------
++const netLog: Array<{ url: string; external: boolean; kind: string }> = [];
++function isExternal(url: string): boolean {
++  try {
++    if (!url) { return false; }
++    if (/^(data:|blob:|about:|javascript:)/i.test(url)) { return false; }
++    const u = new URL(url, window.location.href);
++    const host = u.hostname;
++    if (host === "") { return false; }
++    return !(host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === window.location.hostname);
++  } catch (e) {
++    return /^(https?:)?\/\//i.test(url);
++  }
++}
++const origFetch = typeof w.fetch === "function" ? w.fetch.bind(window) : null;
++if (origFetch) {
++  w.fetch = function (input: any, init?: any): any {
++    try {
++      const url = typeof input === "string" ? input : (input && input.url) || String(input);
++      netLog.push({ url, external: isExternal(url), kind: "fetch" });
++    } catch (e) { /* the recorder must never break the app */ }
++    return origFetch(input, init);
++  };
++}
++if (w.XMLHttpRequest && w.XMLHttpRequest.prototype) {
++  const origOpen = w.XMLHttpRequest.prototype.open;
++  w.XMLHttpRequest.prototype.open = function (this: any, method: any, url: any, ...rest: any[]): any {
++    try { netLog.push({ url: String(url), external: isExternal(String(url)), kind: "xhr" }); } catch (e) { /* noop */ }
++    return origOpen.apply(this, [method, url].concat(rest));
++  };
++}
++
++// ---------- component resolution (Vue 2 sets __vue__ on each component root element) ----------
++let cached: any = null;
++function resolve(): any {
++  if (cached && cached.maze && cached.maze._isBeingDestroyed === false) { return cached; }
++  const el = document.querySelector("#app") as any;
++  let root = el ? el.__vue__ : null;
++  if (!root) { return null; }
++  while (root.$parent) { root = root.$parent; }
++  let app: any = null;
++  let maze: any = null;
++  const queue: any[] = [root];
++  while (queue.length) {
++    const c = queue.shift();
++    if (!c) { continue; }
++    const name = c.$options ? c.$options.name : null;
++    if (name === "maze" && !maze) { maze = c; }
++    if (!app && c.$data && ("difficulty" in c.$data) && ("time" in c.$data) && ("startTime" in c.$data)) { app = c; }
++    const kids = c.$children || [];
++    for (let i = 0; i < kids.length; i++) { queue.push(kids[i]); }
++  }
++  if (!maze) { return null; }
++  cached = { root, app, maze };
++  return cached;
++}
++function mz(): any { const r = resolve(); return r ? r.maze : null; }
++function ap(): any { const r = resolve(); return r ? r.app : null; }
++
++// ---------- bond-array index arithmetic (mirrors Maze.vue canReach / renderMaze exactly) ----------
++function expH(): any { const m = mz(); return m ? (m.lx + 1) * m.ly : null; }
++function expV(): any { const m = mz(); return m ? m.lx * (m.ly + 1) : null; }
++function bondHArr(): any { const m = mz(); return m && m.maze && m.maze.bondH ? m.maze.bondH : null; }
++function bondVArr(): any { const m = mz(); return m && m.maze && m.maze.bondV ? m.maze.bondV : null; }
++// Counters read the CANONICAL index range only. D01 writes one past the end of bondH, which in JS
++// EXTENDS the array, so a counter that walked bondH.length would let a generator-layer defect move
++// a render-layer reading and two F2P detectors would stop being independent.
++function openCount(arr: any, n: any): any {
++  if (!arr || typeof n !== "number") { return null; }
++  let c = 0;
++  for (let i = 0; i < n; i++) { if (arr[i]) { c++; } }
++  return c;
++}
++
++// ---------- canvas helpers (both sprites are 153 B / 161 B PNGs, so vue-cli inlines them as
++// data: URLs and no canvas is ever tainted - getImageData stays legal) ----------
++function refCanvas(name: string): any {
++  const m = mz();
++  if (!m || !m.$refs) { return null; }
++  const cv = m.$refs[name];
++  if (!cv || typeof cv.getContext !== "function") { return null; }
++  return cv;
++}
++function refCtx(name: string): any {
++  const cv = refCanvas(name);
++  if (!cv) { return null; }
++  const ctx = cv.getContext("2d");
++  return ctx || null;
++}
++function imgOf(name: string): any {
++  const ctx = refCtx(name);
++  if (!ctx) { return null; }
++  const cw = ctx.canvas.width;
++  const ch = ctx.canvas.height;
++  if (!cw || !ch) { return null; }
++  return { ctx, cw, ch, data: ctx.getImageData(0, 0, cw, ch).data };
++}
++function inkStats(im: any): any {
++  if (!im) { return null; }
++  const d = im.data, cw = im.cw, ch = im.ch;
++  let count = 0, minX = -1, minY = -1, sx = 0, sy = 0;
++  for (let y = 0; y < ch; y++) {
++    for (let x = 0; x < cw; x++) {
++      if (d[(y * cw + x) * 4 + 3] > 0) {
++        count++;
++        if (minX < 0) { minX = x; minY = y; }
++        sx += x; sy += y;
++      }
++    }
++  }
++  return { count, minX, minY, centroidX: count ? sx / count : -1, centroidY: count ? sy / count : -1 };
++}
++// Alpha at one sample point, tolerant of the non-integer geometry this maze actually uses. At the
++// pinned 1280x720 viewport marginLeft/marginTop are 13.5/11.5, so a wall midpoint lands on a half
++// pixel and the nearest device pixel is ambiguous by half a pixel on each axis; the caller therefore
++// samples py-1, py and py+1 and treats any hit as ink. Non-finite and out-of-bounds inputs read as 0
++// (no ink) instead of throwing, so a checkpoint degrades to a red reading, never to a setup_failure.
++function alphaAt(im: any, x: any, y: any): number {
++  if (!im) { return 0; }
++  const ix = Math.round(Number(x)), iy = Math.round(Number(y));
++  if (!Number.isFinite(ix) || !Number.isFinite(iy)) { return 0; }
++  if (ix < 0 || iy < 0 || ix >= im.cw || iy >= im.ch) { return 0; }
++  return im.data[(iy * im.cw + ix) * 4 + 3];
++}
++// modal colour over a bounded window, so one antialiased edge pixel can never decide a reading
++function modalRgb(im: any, winW: number, winH: number): any {
++  if (!im) { return null; }
++  const d = im.data, cw = im.cw, ch = im.ch;
++  const xb = Math.min(cw, winW), yb = Math.min(ch, winH);
++  const tally: any = {};
++  let best = -1, bestN = 0;
++  for (let y = 0; y < yb; y++) {
++    for (let x = 0; x < xb; x++) {
++      const o = (y * cw + x) * 4;
++      if (d[o + 3] <= 0) { continue; }
++      const key = d[o] * 65536 + d[o + 1] * 256 + d[o + 2];
++      tally[key] = (tally[key] || 0) + 1;
++      if (tally[key] > bestN) { bestN = tally[key]; best = key; }
++    }
++  }
++  return best < 0 ? null : best;
++}
++
++// ---------- the frozen read-only facade ----------
++const facade: any = {
++  // readiness
++  ready(): boolean { const r = resolve(); return !!(r && r.maze && r.app); },
++  // geometry (Maze.vue computed / data)
++  lx(): any { const m = mz(); return m ? m.lx : null; },
++  ly(): any { const m = mz(); return m ? m.ly : null; },
++  cellWidth(): any { const m = mz(); return m ? m.cellWidth : null; },
++  cellHeight(): any { const m = mz(); return m ? m.cellHeight : null; },
++  marginLeft(): any { const m = mz(); return m ? m.marginLeft : null; },
++  marginTop(): any { const m = mz(); return m ? m.marginTop : null; },
++  width(): any { const m = mz(); return m ? m.width : null; },
++  height(): any { const m = mz(); return m ? m.height : null; },
++  margin(): any { const m = mz(); return m ? m.margin : null; },
++  rootOffsetWidth(): any { const m = mz(); return m && m.$el ? m.$el.offsetWidth : null; },
++  rootOffsetHeight(): any { const m = mz(); return m && m.$el ? m.$el.offsetHeight : null; },
++  rootTabIndex(): any { const e = document.querySelector(".maze"); return e ? e.getAttribute("tabindex") : null; },
++  timeText(): any { const e = document.querySelector(".time"); return e ? String(e.textContent || "").replace(/\s+/g, " ").trim() : null; },
++  // bond arrays (JSON-safe copies) + the derived invariants a checkpoint may assert
++  bondH(): any { const a = bondHArr(); return a ? Array.prototype.slice.call(a) : null; },
++  bondV(): any { const a = bondVArr(); return a ? Array.prototype.slice.call(a) : null; },
++  bondHLen(): any { const a = bondHArr(); return a ? a.length : null; },
++  bondVLen(): any { const a = bondVArr(); return a ? a.length : null; },
++  expHLen(): any { return expH(); },
++  expVLen(): any { return expV(); },
++  lenOk(): any { const h = expH(), v = expV(), a = bondHArr(), b = bondVArr(); return a && b && typeof h === "number" && typeof v === "number" ? (a.length === h && b.length === v) : null; },
++  openH(): any { return openCount(bondHArr(), expH()); },
++  openV(): any { return openCount(bondVArr(), expV()); },
++  openTotal(): any { const a = openCount(bondHArr(), expH()), b = openCount(bondVArr(), expV()); return typeof a === "number" && typeof b === "number" ? a + b : null; },
++  cells(): any { const m = mz(); return m ? m.lx * m.ly : null; },
++  loops(): any { const t = facade.openTotal(), c = facade.cells(); return typeof t === "number" && typeof c === "number" ? t - c - 1 : null; },
++  bondAllBoolean(): any {
++    const a = bondHArr(), b = bondVArr(), h = expH(), v = expV();
++    if (!a || !b || typeof h !== "number" || typeof v !== "number") { return null; }
++    for (let i = 0; i < h; i++) { if (typeof a[i] !== "boolean") { return false; } }
++    for (let i = 0; i < v; i++) { if (typeof b[i] !== "boolean") { return false; } }
++    return true;
++  },
++  entranceOpen(): any { const a = bondHArr(); return a ? a[0] === true : null; },
++  exitOpen(): any { const a = bondHArr(), h = expH(); return a && typeof h === "number" ? a[h - 1] === true : null; },
++  topBoundaryOpen(): any {
++    const m = mz(), b = bondVArr();
++    if (!m || !b) { return null; }
++    let n = 0; for (let x = 0; x < m.lx; x++) { if (b[x] === true) { n++; } }
++    return n;
++  },
++  bottomBoundaryOpen(): any {
++    const m = mz(), b = bondVArr();
++    if (!m || !b) { return null; }
++    let n = 0; const base = m.lx * m.ly;
++    for (let x = 0; x < m.lx; x++) { if (b[base + x] === true) { n++; } }
++    return n;
++  },
++  // reachability over the bonds the app is holding right now (same index arithmetic as canReach)
++  reachGoal(): any {
++    const m = mz(), a = bondHArr(), b = bondVArr();
++    if (!m || !a || !b || !m.maze || !m.maze.goal) { return null; }
++    const lx = m.lx, ly = m.ly, cells = lx * ly;
++    const gx = m.maze.goal.x, gy = m.maze.goal.y;
++    if (!(gx >= 0 && gx < lx && gy >= 0 && gy < ly)) { return false; }
++    const seen: number[] = [];
++    for (let i = 0; i < cells; i++) { seen.push(0); }
++    const stack: number[] = [0];
++    seen[0] = 1;
++    let reached = 0;
++    while (stack.length) {
++      const c = stack.pop() as number;
++      const x = c % lx, y = Math.floor(c / lx);
++      reached++;
++      if (x + 1 < lx && a[(lx + 1) * y + x + 1] && !seen[c + 1]) { seen[c + 1] = 1; stack.push(c + 1); }
++      if (x - 1 >= 0 && a[(lx + 1) * y + x] && !seen[c - 1]) { seen[c - 1] = 1; stack.push(c - 1); }
++      if (y + 1 < ly && b[(y + 1) * lx + x] && !seen[c + lx]) { seen[c + lx] = 1; stack.push(c + lx); }
++      if (y - 1 >= 0 && b[y * lx + x] && !seen[c - lx]) { seen[c - lx] = 1; stack.push(c - lx); }
++    }
++    return seen[gy * lx + gx] === 1;
++  },
++  reachedCells(): any {
++    const m = mz(), a = bondHArr(), b = bondVArr();
++    if (!m || !a || !b) { return null; }
++    const lx = m.lx, ly = m.ly, cells = lx * ly;
++    const seen: number[] = [];
++    for (let i = 0; i < cells; i++) { seen.push(0); }
++    const stack: number[] = [0];
++    seen[0] = 1;
++    let reached = 0;
++    while (stack.length) {
++      const c = stack.pop() as number;
++      const x = c % lx, y = Math.floor(c / lx);
++      reached++;
++      if (x + 1 < lx && a[(lx + 1) * y + x + 1] && !seen[c + 1]) { seen[c + 1] = 1; stack.push(c + 1); }
++      if (x - 1 >= 0 && a[(lx + 1) * y + x] && !seen[c - 1]) { seen[c - 1] = 1; stack.push(c - 1); }
++      if (y + 1 < ly && b[(y + 1) * lx + x] && !seen[c + lx]) { seen[c + lx] = 1; stack.push(c + lx); }
++      if (y - 1 >= 0 && b[y * lx + x] && !seen[c - lx]) { seen[c - lx] = 1; stack.push(c - lx); }
++    }
++    return reached;
++  },
++  // goal / player / flags
++  goalX(): any { const m = mz(); return m && m.maze && m.maze.goal ? m.maze.goal.x : null; },
++  goalY(): any { const m = mz(); return m && m.maze && m.maze.goal ? m.maze.goal.y : null; },
++  playerX(): any { const m = mz(); return m && m.player ? m.player.x : null; },
++  playerY(): any { const m = mz(); return m && m.player ? m.player.y : null; },
++  isFinished(): any { const m = mz(); return m ? m.isFinished === true : null; },
++  isStarted(): any { const m = mz(); return m ? m.isStarted === true : null; },
++  seed(): any { const m = mz(); return m ? m.seed : null; },
++  mazeStrategy(): any { const m = mz(); return m ? m.strategy : null; },
++  mazeDifficulty(): any { const m = mz(); return m ? m.difficulty : null; },
++  // App-level data
++  appDifficulty(): any { const a = ap(); return a ? a.difficulty : null; },
++  appStrategy(): any { const a = ap(); return a ? a.strategy : null; },
++  startTime(): any { const a = ap(); return a ? a.startTime : null; },
++  time(): any { const a = ap(); return a ? a.time : null; },
++  effectDisplay(): any { const cv = refCanvas("effectCanvas"); return cv ? cv.style.display : null; },
++  // mazeCanvas (walls only - the player and the goal live on their own canvases)
++  mazeInkCount(): any { const s = inkStats(imgOf("mazeCanvas")); return s ? s.count : null; },
++  mazeInkMinX(): any { const s = inkStats(imgOf("mazeCanvas")); return s ? s.minX : null; },
++  mazeInkMinY(): any { const s = inkStats(imgOf("mazeCanvas")); return s ? s.minY : null; },
++  wallRgbPacked(): any { return modalRgb(imgOf("mazeCanvas"), 480, 480); },
++  // Polarity witness. renderMaze SKIPS a bond when it is open, so on a correct face every CLOSED
++  // horizontal bond carries a stroke through its own midpoint. Sampling only HORIZONTAL bonds is
++  // deliberate: D10 drops offsetLeft from drawLine's start X, which turns a vertical bond into a
++  // diagonal but leaves a horizontal bond covering the whole of its correct span, so this ratio
++  // measures render polarity alone and cannot be moved by the offset defect.
++  closedHMidInkRatio(): any {
++    const m = mz(), b = bondVArr(), im = imgOf("mazeCanvas");
++    if (!m || !b || !im) { return null; }
++    const lx = m.lx, ly = m.ly, cw = m.cellWidth, ch = m.cellHeight;
++    let total = 0, ink = 0;
++    for (let j = 0; j < lx * (ly + 1); j++) {
++      if (b[j] === true) { continue; }
++      const x1 = j % lx, y1 = Math.floor(j / lx);
++      const px = m.marginLeft + (x1 + 0.5) * cw;
++      const py = m.marginTop + y1 * ch;
++      if (px < 0 || py < 0 || px >= im.cw || py >= im.ch) { continue; }
++      total++;
++      if (alphaAt(im, px, py) > 0 || alphaAt(im, px, py - 1) > 0 || alphaAt(im, px, py + 1) > 0) { ink++; }
++    }
++    return total ? ink / total : null;
++  },
++  closedHMidTotal(): any {
++    const m = mz(), b = bondVArr(), im = imgOf("mazeCanvas");
++    if (!m || !b || !im) { return null; }
++    const lx = m.lx, ly = m.ly, cw = m.cellWidth, ch = m.cellHeight;
++    let total = 0;
++    for (let j = 0; j < lx * (ly + 1); j++) {
++      if (b[j] === true) { continue; }
++      const x1 = j % lx, y1 = Math.floor(j / lx);
++      const px = m.marginLeft + (x1 + 0.5) * cw;
++      const py = m.marginTop + y1 * ch;
++      if (px < 0 || py < 0 || px >= im.cw || py >= im.ch) { continue; }
++      total++;
++    }
++    return total;
++  },
++  // sprite canvases
++  playerInkCount(): any { const s = inkStats(imgOf("playerCanvas")); return s ? s.count : null; },
++  playerInkCentroidCellX(): any {
++    const m = mz(), s = inkStats(imgOf("playerCanvas"));
++    if (!m || !s || s.count === 0) { return null; }
++    return Math.floor((s.centroidX - m.marginLeft) / m.cellWidth);
++  },
++  playerInkCentroidCellY(): any {
++    const m = mz(), s = inkStats(imgOf("playerCanvas"));
++    if (!m || !s || s.count === 0) { return null; }
++    return Math.floor((s.centroidY - m.marginTop) / m.cellHeight);
++  },
++  goalInkCount(): any { const s = inkStats(imgOf("goalCanvas")); return s ? s.count : null; },
++  goalInkCentroidCellX(): any {
++    const m = mz(), s = inkStats(imgOf("goalCanvas"));
++    if (!m || !s || s.count === 0) { return null; }
++    return Math.floor((s.centroidX - m.marginLeft) / m.cellWidth);
++  },
++  goalInkCentroidCellY(): any {
++    const m = mz(), s = inkStats(imgOf("goalCanvas"));
++    if (!m || !s || s.count === 0) { return null; }
++    return Math.floor((s.centroidY - m.marginTop) / m.cellHeight);
++  },
++  effectInkCount(): any { const s = inkStats(imgOf("effectCanvas")); return s ? s.count : null; },
++  canvasCount(): number {
++    const m = mz(); if (!m || !m.$refs) { return 0; }
++    let n = 0; const r = m.$refs;
++    for (const k of ["mazeCanvas", "goalCanvas", "effectCanvas", "playerCanvas"]) { if (r[k]) { n++; } }
++    return n;
++  },
++  canvasWidth(): any { const cv = refCanvas("mazeCanvas"); return cv ? cv.width : null; },
++  canvasHeight(): any { const cv = refCanvas("mazeCanvas"); return cv ? cv.height : null; },
++  // network recorder
++  netExternalCount(): number { let n = 0; for (let i = 0; i < netLog.length; i++) { if (netLog[i].external) { n++; } } return n; },
++  netAllCount(): number { return netLog.length; },
++  netLog(): any { return netLog.slice(); },
++  // state-isolation probes
++  storageKeyCount(): number {
++    let n = 0;
++    try { n += window.localStorage.length; } catch (e) { /* blocked storage counts as 0 keys */ }
++    try { n += window.sessionStorage.length; } catch (e) { /* blocked storage counts as 0 keys */ }
++    return n;
++  },
++  locationSearch(): string { return window.location.search; },
++  locationHash(): string { return window.location.hash; },
++  locationPathname(): string { return window.location.pathname; },
++  rbGlobalCount(): number { let n = 0; for (const k in window) { if (k.indexOf("__rb") === 0) { n++; } } return n; },
++  bridgeFrozen(): boolean { return Object.isFrozen(w.__rb_maze); }
++};
++w.__rb_maze = Object.freeze(facade);
++export {};
+diff --git a/src/main.ts b/src/main.ts
+index a3fd06b..1fb316c 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,5 +1,6 @@
+ import Vue from "vue";
+ import App from "./App.vue";
++import "./instrumentation";
+ 
+ Vue.config.productionTip = false;
+ 
+diff --git a/.eslintrc.js b/.eslintrc.js
+index 1489cc8494ae2d8c71b4e9d21ee65918aa9e579a..dc98d5ead9f1321ccf42188928717af092907671 100644
+--- a/.eslintrc.js
++++ b/.eslintrc.js
+@@ -14,6 +14,7 @@
+     ecmaVersion: 2020
+   },
+   rules: {
++    "@typescript-eslint/no-empty-function": "off",
+     "no-console": process.env.NODE_ENV === "production" ? "warn" : "off",
+     "no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off"
+   },

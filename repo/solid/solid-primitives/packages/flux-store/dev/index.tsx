@@ -1,0 +1,54 @@
+import { type Component, createMemo } from "solid-js";
+import { For, render } from "solid-js/web";
+import { counterStore } from "./stores/counter-store.js";
+import { getPeople, getWizards } from "./stores/ages-store.js";
+import { CounterControls, BoxesDemo } from "./components/index.js";
+
+const App: Component = () => {
+  const {
+    state,
+    getters: { get: count, isNegative, isPositive, isZero },
+    actions: { setState },
+  } = counterStore;
+
+  const increment = () => setState({ value: count() + 1 });
+
+  const getBoxCount = createMemo(() => (!isPositive() ? 25 : count()), 0);
+
+  return (
+    <div class="box-border flex min-h-screen w-full flex-col items-center justify-center space-y-4 bg-gray-800 p-24 text-white" data-rb-root="flux-store">
+      <div class="wrapper-v select-none">
+        <h4>Ages</h4>
+        <ul>
+          <For each={getPeople()}>
+            {person => (
+              <li data-rb-count="fs-person">
+                <span class="hover:text-green-400" data-rb-click="fs-birthday" onClick={() => person.actions.birthday}>
+                  {person.state.name}
+                </span>
+                : {person.getters.yearsOld()}{" "}
+                {person.getters.isWizard() && <i class="text-green-200"> wizard</i>}
+              </li>
+            )}
+          </For>
+        </ul>
+        <footer data-rb-text="fs-wizards">Wizards: {getWizards().length}</footer>
+      </div>
+      <div class="wrapper-v">
+        <h4 data-rb-text="fs-counter">Counter Information {state.value}</h4>
+        <ul>
+          <li>isZero: {isZero().toString()}</li>
+          <li>isNegative: {isNegative().toString()}</li>
+          <li>isPositive: {isPositive().toString()}</li>
+        </ul>
+        <CounterControls />
+        <button type="button" class="btn" data-rb-click="fs-increment" onClick={increment}>
+          {count()}
+        </button>
+        <BoxesDemo boxes={getBoxCount()} />
+      </div>
+    </div>
+  );
+};
+
+export default App;

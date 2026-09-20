@@ -1,0 +1,109 @@
+<script lang="ts">
+    import Navbar from '$cmp/shared/layout/Navbar.svelte'
+    import ButtonLink from '$cmp/shared/button/ButtonLink.svelte'
+    import FaStar from '~icons/fa-solid/star'
+    import Icon from '$cmp/shared/layout/Icon.svelte'
+    import Row from './Row.svelte'
+    import SparklesIcon from '../agent/SparklesIcon.svelte'
+    import { resolve } from '$app/paths'
+
+    interface Props {
+        children?: import('svelte').Snippet
+        exclude?: 'ai-chat'[]
+    }
+
+    let { children, exclude }: Props = $props()
+</script>
+
+<Navbar>
+    <Row style="gap: 0.6rem; align-items:center; flex: 1">
+        <a
+            class="icon"
+            style="width: 2.2rem; height: 2.2rem;"
+            href={resolve('/', {})}
+            title="Go to the home"
+        >
+            <img src="/favicon.png" alt="logo" />
+        </a>
+        <a class="icon" href={resolve('/projects', {})} title="Go to your projects"> Projects </a>
+        <a class="icon" href={resolve('/documentation', {})} title="Go to the docs"> Docs </a>
+        <a class="icon" href={resolve('/learn/courses', {})} title="Learn assembly"> Learn </a>
+        <a class="icon hidden-on-mobile" href={resolve('/embed', {})} title="Embed the website">
+            Embed
+        </a>
+    </Row>
+    <Row gap="0.5rem" align="center">
+        <div class="hidden-on-mobile">
+            <ButtonLink
+                style="gap: 0.5rem; padding: 0.5rem 1rem"
+                cssVar="secondary"
+                href="https://github.com/Specy/asm-editor"
+                target="_blank"
+                title="Star the project on github"
+            >
+                <Icon>
+                    <FaStar />
+                </Icon>
+                Star on github
+            </ButtonLink>
+        </div>
+        {@render children?.()}
+        {#if !exclude?.includes('ai-chat')}
+            <a class="icon ai" href={resolve('/chat', {})} title="AI Chat">
+                <div class="hidden-very-small">
+                    <SparklesIcon />
+                </div>
+                AI Chat
+            </a>
+        {/if}
+    </Row>
+</Navbar>
+
+<style lang="scss">
+    .icon {
+        height: 2.2rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+
+        img {
+            height: 100%;
+        }
+
+        &:hover {
+            color: var(--accent);
+        }
+    }
+
+    .ai {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--accent);
+        padding: 0.3rem 0.8rem;
+        border-radius: 1.5rem;
+        border-bottom-right-radius: 0.4rem;
+        background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    @media (max-width: 600px) {
+        .hidden-on-mobile {
+            display: none;
+        }
+        .icon {
+            font-size: 0.9rem;
+        }
+        .ai {
+            font-size: 0.9rem;
+        }
+    }
+
+    .hidden-very-small {
+        display: flex;
+    }
+    @media (max-width: 370px) {
+        .hidden-very-small {
+            display: none;
+        }
+    }
+</style>

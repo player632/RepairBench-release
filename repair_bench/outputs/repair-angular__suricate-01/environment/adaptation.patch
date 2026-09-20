@@ -1,0 +1,1045 @@
+diff --git a/src/main/webapp/app/app.config.ts b/src/main/webapp/app/app.config.ts
+index e35ce72..89f7c85 100644
+--- a/src/main/webapp/app/app.config.ts
++++ b/src/main/webapp/app/app.config.ts
+@@ -8,12 +8,13 @@ import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
+ import { appRoutes } from './app.routes';
+ import { errorInterceptor } from './shared/interceptors/error-interceptor';
+ import { tokenInterceptor } from './shared/interceptors/token-interceptor';
++import { offlineBackendInterceptor } from './shared/services/frontend/offline/offline-backend';
+ 
+ export const appConfig: ApplicationConfig = {
+ 	providers: [
+ 		provideBrowserGlobalErrorListeners(),
+ 		provideZoneChangeDetection({ eventCoalescing: true }),
+-		provideHttpClient(withInterceptors([tokenInterceptor, errorInterceptor])),
++		provideHttpClient(withInterceptors([offlineBackendInterceptor, tokenInterceptor, errorInterceptor])),
+ 		provideRouter(appRoutes),
+ 		provideTranslateService({
+ 			loader: provideTranslateHttpLoader({ prefix: './assets/i18n/', suffix: '.json' })
+diff --git a/src/main/webapp/app/shared/services/frontend/offline/offline-backend.ts b/src/main/webapp/app/shared/services/frontend/offline/offline-backend.ts
+new file mode 100644
+index 0000000..23f1f92
+--- /dev/null
++++ b/src/main/webapp/app/shared/services/frontend/offline/offline-backend.ts
+@@ -0,0 +1,1003 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++import { HttpErrorResponse, HttpEvent, HttpInterceptorFn, HttpResponse } from '@angular/common/http';
++import { Observable, of, throwError } from 'rxjs';
++import { delay } from 'rxjs/operators';
++
++/**
++ * Deterministic offline back-end.
++ *
++ * Suricate is normally driven by its Spring Boot API. This interceptor answers every
++ * `/api/**` request from an in-memory fixture set so the front-end has a stable,
++ * reproducible data面 without any network access. It is registered first in the
++ * interceptor chain (see app.config.ts) so requests never reach the transport layer.
++ *
++ * State is mutable for the lifetime of the page: create/update/delete really change the
++ * fixtures, so lists reflect what the user just did. A page reload restores the seed data.
++ */
++
++/* eslint-disable @typescript-eslint/no-explicit-any */
++
++const API_PREFIX = '/api';
++
++function clone<T>(value: T): T {
++	return value === undefined || value === null ? value : (JSON.parse(JSON.stringify(value)) as T);
++}
++
++/* ------------------------------------------------------------------ fixtures */
++
++const ROLES: any[] = [
++	{ id: 1, name: 'ROLE_ADMIN', description: 'Administrator' },
++	{ id: 2, name: 'ROLE_USER', description: 'User' }
++];
++
++function role(name: string): any {
++	return clone(ROLES.find((candidate: any) => candidate.name === name));
++}
++
++const USERS: any[] = [
++	{
++		id: 1,
++		username: 'admin@suricate.local',
++		firstname: 'Ada',
++		lastname: 'Lovelace',
++		email: 'admin@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_ADMIN')]
++	},
++	{
++		id: 2,
++		username: 'grace.hopper@suricate.local',
++		firstname: 'Grace',
++		lastname: 'Hopper',
++		email: 'grace.hopper@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_USER')]
++	},
++	{
++		id: 3,
++		username: 'alan.turing@suricate.local',
++		firstname: 'Alan',
++		lastname: 'Turing',
++		email: 'alan.turing@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_USER')]
++	},
++	{
++		id: 4,
++		username: 'katherine.johnson@suricate.local',
++		firstname: 'Katherine',
++		lastname: 'Johnson',
++		email: 'katherine.johnson@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_ADMIN')]
++	},
++	{
++		id: 5,
++		username: 'linus.torvalds@suricate.local',
++		firstname: 'Linus',
++		lastname: 'Torvalds',
++		email: 'linus.torvalds@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_USER')]
++	},
++	{
++		id: 6,
++		username: 'marie.curie@suricate.local',
++		firstname: 'Marie',
++		lastname: 'Curie',
++		email: 'marie.curie@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_USER')]
++	},
++	{
++		id: 7,
++		username: 'richard.stallman@suricate.local',
++		firstname: 'Richard',
++		lastname: 'Stallman',
++		email: 'richard.stallman@suricate.local',
++		avatarUrl: null,
++		mode: 'DATABASE',
++		password: 'Suricate1!',
++		roles: [role('ROLE_USER')]
++	}
++];
++
++const SETTINGS: any[] = [
++	{
++		id: 1,
++		description: 'Theme',
++		constrained: true,
++		dataType: 'COMBO',
++		type: 'THEME',
++		allowedSettingValues: [
++			{ id: 11, title: 'Light', value: 'light-theme', default: true },
++			{ id: 12, title: 'Dark', value: 'dark-theme', default: false }
++		]
++	},
++	{
++		id: 2,
++		description: 'Language',
++		constrained: true,
++		dataType: 'COMBO',
++		type: 'LANGUAGE',
++		allowedSettingValues: [
++			{ id: 21, title: 'English', value: 'en', default: true },
++			{ id: 22, title: 'Francais', value: 'fr', default: false }
++		]
++	}
++];
++
++const CATEGORIES: any[] = [
++	{ id: 1, name: 'Continuous integration', technicalName: 'continuous-integration', assetToken: null, categoryParameters: [] },
++	{ id: 2, name: 'Code quality', technicalName: 'code-quality', assetToken: null, categoryParameters: [] },
++	{ id: 3, name: 'Cloud', technicalName: 'cloud', assetToken: null, categoryParameters: [] },
++	{ id: 4, name: 'Social', technicalName: 'social', assetToken: null, categoryParameters: [] }
++];
++
++function category(id: number): any {
++	return clone(CATEGORIES.find((candidate: any) => candidate.id === id));
++}
++
++function widget(id: number, name: string, description: string, technicalName: string, categoryId: number, delay: number): any {
++	return {
++		id,
++		name,
++		description,
++		technicalName,
++		cssContent: '',
++		info: '',
++		delay,
++		timeout: 'PT30S',
++		imageToken: null,
++		widgetAvailability: 'ACTIVATED',
++		category: category(categoryId),
++		repositoryId: 1,
++		params: []
++	};
++}
++
++const WIDGETS: any[] = [
++	widget(1, 'Build status', 'Last build result of the watched job', 'build-status', 1, 60000),
++	widget(2, 'Pipeline duration', 'Duration of the latest pipeline', 'pipeline-duration', 1, 120000),
++	widget(3, 'Count merge requests', 'Open merge requests on the repository', 'count-merge-requests', 1, 300000),
++	widget(4, 'Code coverage', 'Line coverage of the main branch', 'code-coverage', 2, 300000),
++	widget(5, 'Static analysis issues', 'Open issues reported by the analyser', 'static-analysis-issues', 2, 300000),
++	widget(6, 'Technical debt', 'Estimated technical debt ratio', 'technical-debt', 2, 3600000),
++	widget(7, 'Kubernetes pods', 'Pod readiness of the watched namespace', 'kubernetes-pods', 3, 60000),
++	widget(8, 'Cloud cost', 'Monthly spend of the billing account', 'cloud-cost', 3, 3600000),
++	widget(9, 'Service health', 'Aggregated health of the registered services', 'service-health', 3, 30000),
++	widget(10, 'Count issues', 'Open issues of the tracker project', 'count-issues', 4, 300000),
++	widget(11, 'Team activity', 'Commits pushed during the last week', 'team-activity', 4, 600000),
++	widget(12, 'Release notes', 'Notes of the latest published release', 'release-notes', 4, 3600000)
++];
++
++const PROJECTS: any[] = [
++	{
++		token: 'atlasops',
++		name: 'Atlas operations',
++		gridProperties: { maxColumn: 5, widgetHeight: 360, cssStyle: '' },
++		screenshotToken: null,
++		librariesToken: [],
++		image: null,
++		grids: [
++			{ id: 1, time: 10 },
++			{ id: 2, time: 30 }
++		],
++		displayProgressBar: true
++	},
++	{
++		token: 'beaconci',
++		name: 'Beacon CI',
++		gridProperties: { maxColumn: 4, widgetHeight: 300, cssStyle: '' },
++		screenshotToken: null,
++		librariesToken: [],
++		image: null,
++		grids: [{ id: 3, time: 15 }],
++		displayProgressBar: false
++	},
++	{
++		token: 'cirruscloud',
++		name: 'Cirrus cloud',
++		gridProperties: { maxColumn: 6, widgetHeight: 240, cssStyle: '' },
++		screenshotToken: null,
++		librariesToken: [],
++		image: null,
++		grids: [{ id: 4, time: 20 }],
++		displayProgressBar: true
++	},
++	{
++		token: 'deltasocial',
++		name: 'Delta social',
++		gridProperties: { maxColumn: 3, widgetHeight: 400, cssStyle: '' },
++		screenshotToken: null,
++		librariesToken: [],
++		image: null,
++		grids: [{ id: 5, time: 25 }],
++		displayProgressBar: false
++	}
++];
++
++const REPOSITORIES: any[] = [
++	{
++		id: 1,
++		name: 'Core widget repository',
++		url: 'https://widgets.internal.invalid/suricate/core.git',
++		branch: 'main',
++		login: 'reader',
++		password: 'reader-secret',
++		localPath: '',
++		type: 'REMOTE',
++		enabled: true,
++		priority: 1,
++		createdDate: '2026-01-12T09:15:00.000Z'
++	},
++	{
++		id: 2,
++		name: 'Community widgets',
++		url: 'https://widgets.internal.invalid/community/widgets.git',
++		branch: 'develop',
++		login: '',
++		password: '',
++		localPath: '',
++		type: 'REMOTE',
++		enabled: true,
++		priority: 2,
++		createdDate: '2026-02-03T14:40:00.000Z'
++	},
++	{
++		id: 3,
++		name: 'Local archive',
++		url: '',
++		branch: '',
++		login: '',
++		password: '',
++		localPath: '/var/lib/suricate/widgets',
++		type: 'LOCAL',
++		enabled: false,
++		priority: 3,
++		createdDate: '2026-03-21T08:05:00.000Z'
++	}
++];
++
++const CONFIGURATIONS: any[] = [
++	{
++		key: 'gitlab.access.token',
++		value: 'glpat-demo-value',
++		description: 'GitLab access token',
++		export: false,
++		dataType: 'PASSWORD',
++		category: category(1),
++		showValue: false
++	},
++	{
++		key: 'github.access.token',
++		value: 'ghp-demo-value',
++		description: 'GitHub access token',
++		export: false,
++		dataType: 'PASSWORD',
++		category: category(1),
++		showValue: false
++	},
++	{
++		key: 'sonar.base.url',
++		value: 'https://sonar.internal.invalid',
++		description: 'SonarQube base URL',
++		export: true,
++		dataType: 'TEXT',
++		category: category(2),
++		showValue: true
++	},
++	{
++		key: 'smtp.relay.host',
++		value: 'mail.internal.invalid',
++		description: 'SMTP relay host',
++		export: true,
++		dataType: 'TEXT',
++		category: category(4),
++		showValue: true
++	}
++];
++
++function projectWidget(id: number, projectToken: string, gridId: number, widgetId: number, column: number, row: number): any {
++	return {
++		id,
++		data: '{}',
++		widgetPosition: { gridColumn: column, gridRow: row, width: 1, height: 1 },
++		customStyle: '',
++		instantiateHtml: '<div class="widget-demo"></div>',
++		backendConfig: '',
++		log: '',
++		lastExecutionDate: '2026-05-04T07:30:00.000Z',
++		lastSuccessDate: '2026-05-04T07:30:00.000Z',
++		globalConfigOverridden: false,
++		state: 'RUNNING',
++		projectToken,
++		widgetId,
++		gridId
++	};
++}
++
++const PROJECT_WIDGETS: any[] = [
++	projectWidget(101, 'atlasops', 1, 1, 0, 0),
++	projectWidget(102, 'atlasops', 1, 7, 1, 0),
++	projectWidget(103, 'atlasops', 2, 9, 0, 0),
++	projectWidget(104, 'beaconci', 3, 2, 0, 0),
++	projectWidget(105, 'cirruscloud', 4, 8, 0, 0),
++	projectWidget(106, 'deltasocial', 5, 10, 0, 0)
++];
++
++const PROJECT_USERS: any[] = [
++	{ id: 1, username: 'admin@suricate.local', firstname: 'Ada', lastname: 'Lovelace' },
++	{ id: 2, username: 'grace.hopper@suricate.local', firstname: 'Grace', lastname: 'Hopper' }
++];
++
++/* --------------------------------------------------------------------- state */
++
++const state = {
++	users: clone(USERS),
++	projects: clone(PROJECTS),
++	widgets: clone(WIDGETS),
++	repositories: clone(REPOSITORIES),
++	configurations: clone(CONFIGURATIONS),
++	projectWidgets: clone(PROJECT_WIDGETS),
++	tokens: [
++		{ name: 'ci-deploy', value: null, createdDate: '2026-04-02T10:00:00.000Z' },
++		{ name: 'nightly-report', value: null, createdDate: '2026-04-19T16:45:00.000Z' }
++	] as any[],
++	userSettings: {} as Record<string, any[]>,
++	screens: {} as Record<string, number>,
++	nextUserId: 8,
++	nextProjectWidgetId: 200,
++	nextRepositoryId: 4,
++	nextGridId: 6
++};
++
++/**
++ * Saved preferences of the fixture users, as index into the setting's allowedSettingValues.
++ * Everybody who is not listed here keeps the catalogue default (Light theme, English).
++ */
++const USER_SETTING_PREFERENCES: Record<string, { theme?: number; language?: number }> = {
++	'grace.hopper@suricate.local': { theme: 1 }
++};
++
++function userSettingsOf(username: string): any[] {
++	if (!state.userSettings[username]) {
++		const user = state.users.find((candidate: any) => candidate.username === username);
++		const preferences = USER_SETTING_PREFERENCES[username] || {};
++		const themeIndex = preferences.theme === undefined ? 0 : preferences.theme;
++		const languageIndex = preferences.language === undefined ? 0 : preferences.language;
++		state.userSettings[username] = [
++			{
++				id: 1,
++				userId: user ? user.id : 0,
++				setting: clone(SETTINGS[0]),
++				settingValue: clone(SETTINGS[0].allowedSettingValues[themeIndex])
++			},
++			{
++				id: 2,
++				userId: user ? user.id : 0,
++				setting: clone(SETTINGS[1]),
++				settingValue: clone(SETTINGS[1].allowedSettingValues[languageIndex])
++			}
++		];
++	}
++	return state.userSettings[username];
++}
++
++function publicUser(user: any): any {
++	const published = clone(user);
++	delete published.password;
++	return published;
++}
++
++/* --------------------------------------------------------------- url helpers */
++
++interface ParsedRequest {
++	path: string;
++	query: URLSearchParams;
++	segments: string[];
++}
++
++function parseRequest(url: string): ParsedRequest {
++	const withoutOrigin = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/]+/, '');
++	const questionMark = withoutOrigin.indexOf('?');
++	const path = (questionMark >= 0 ? withoutOrigin.substring(0, questionMark) : withoutOrigin).replace(/\/+$/, '');
++	const query = new URLSearchParams(questionMark >= 0 ? withoutOrigin.substring(questionMark + 1) : '');
++	return { path, query, segments: path.split('/').filter((segment: string) => segment.length > 0) };
++}
++
++function sortValue(item: any, propertyPath: string): any {
++	return propertyPath.split('.').reduce((current: any, key: string) => (current === null || current === undefined ? current : current[key]), item);
++}
++
++function applySort(items: any[], sortParameters: string[]): any[] {
++	if (!sortParameters || sortParameters.length === 0) {
++		return items;
++	}
++	const tokens: string[] = [];
++	sortParameters.forEach((parameter: string) => parameter.split(',').forEach((token: string) => tokens.push(token)));
++	if (tokens.length === 0) {
++		return items;
++	}
++	const direction = tokens[tokens.length - 1].toLowerCase() === 'desc' ? -1 : 1;
++	const properties = tokens.slice(0, tokens.length - 1);
++	if (properties.length === 0) {
++		return items;
++	}
++	return items.slice().sort((left: any, right: any) => {
++		for (const property of properties) {
++			const leftValue = sortValue(left, property);
++			const rightValue = sortValue(right, property);
++			if (leftValue === rightValue) {
++				continue;
++			}
++			if (leftValue === null || leftValue === undefined) {
++				return -1 * direction;
++			}
++			if (rightValue === null || rightValue === undefined) {
++				return 1 * direction;
++			}
++			if (typeof leftValue === 'number' && typeof rightValue === 'number') {
++				return (leftValue - rightValue) * direction;
++			}
++			return String(leftValue).localeCompare(String(rightValue)) * direction;
++		}
++		return 0;
++	});
++}
++
++function applySearch(items: any[], search: string): any[] {
++	if (!search) {
++		return items;
++	}
++	const needle = search.toLowerCase();
++	const matches = (value: any): boolean => {
++		if (value === null || value === undefined) {
++			return false;
++		}
++		if (Array.isArray(value)) {
++			return value.some((entry: any) => matches(entry));
++		}
++		if (typeof value === 'object') {
++			return Object.keys(value).some((key: string) => key !== 'password' && matches(value[key]));
++		}
++		return String(value).toLowerCase().includes(needle);
++	};
++	return items.filter((item: any) => matches(item));
++}
++
++function paginate(items: any[], query: URLSearchParams): any {
++	const size = Number(query.get('size') || '10');
++	const page = Number(query.get('page') || '0');
++	const sortParameters = query.getAll('sort');
++	const sorted = applySort(items, sortParameters);
++	const start = page * size;
++	return {
++		content: clone(sorted.slice(start, start + size)),
++		page: { number: page, size, totalElements: sorted.length }
++	};
++}
++
++function filtered(items: any[], query: URLSearchParams): any {
++	return paginate(applySearch(clone(items), query.get('search')), query);
++}
++
++/* ------------------------------------------------------------------ responses */
++
++function respond(body: any, status = 200, url = ''): Observable<HttpEvent<any>> {
++	return of(new HttpResponse<any>({ body: clone(body), status, url })).pipe(delay(0));
++}
++
++function errorResponse(status: number, key: string, url = ''): Observable<HttpEvent<any>> {
++	return throwError(() => new HttpErrorResponse({ error: { key }, status, statusText: 'Error', url })).pipe(delay(0));
++}
++
++function emptyResponse(status = 200, url = ''): Observable<HttpEvent<any>> {
++	return of(new HttpResponse<any>({ body: null, status, url })).pipe(delay(0));
++}
++
++function issueToken(user: any): string {
++	const header = { alg: 'none', typ: 'JWT' };
++	const payload = {
++		sub: user.username,
++		email: user.email,
++		firstname: user.firstname,
++		lastname: user.lastname,
++		avatar_url: user.avatarUrl || '',
++		mode: user.mode || 'DATABASE',
++		roles: (user.roles || []).map((entry: any) => entry.name),
++		iat: Math.floor(Date.now() / 1000),
++		exp: Math.floor(Date.now() / 1000) + 86400
++	};
++	const encode = (value: any) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value)))).replace(/=+$/, '');
++	return encode(header) + '.' + encode(payload) + '.offline-signature';
++}
++
++function createProject(request: any): any {
++	const token = String(request.name || 'dashboard')
++		.toLowerCase()
++		.replace(/[^a-z0-9]+/g, '')
++		.substring(0, 24);
++	const gridId = state.nextGridId++;
++	const project = {
++		token,
++		name: request.name,
++		gridProperties: {
++			maxColumn: request.maxColumn || 5,
++			widgetHeight: request.widgetHeight || 360,
++		 cssStyle: request.cssStyle || ''
++		},
++		screenshotToken: null as string,
++		librariesToken: [] as string[],
++		image: null as any,
++		grids: [{ id: gridId, time: 10 }],
++		displayProgressBar: false
++	};
++	state.projects.push(project);
++	return clone(project);
++}
++
++/* --------------------------------------------------------------------- router */
++
++function handle(request: any, parsed: ParsedRequest): Observable<HttpEvent<any>> {
++	const method = String(request.method).toUpperCase();
++	const rest = parsed.segments.slice(1); // drop the leading 'api' segment
++	const version = rest[0];
++	const resource = rest[1];
++	const tail = rest.slice(2);
++	const query = parsed.query;
++	const body = request.body;
++
++	if (version !== 'v1') {
++		return errorResponse(404, 'not.found', request.url);
++	}
++
++	/* ---------------------------------------------------------- configurations */
++	if (resource === 'configurations' || resource === 'category-parameters') {
++		if (resource === 'configurations' && tail[0] === 'authentication-providers') {
++			return respond(['DATABASE', 'GITHUB', 'GITLAB'], 200, request.url);
++		}
++		if (tail.length === 0) {
++			if (method === 'GET') {
++				return respond(filtered(state.configurations, query), 200, request.url);
++			}
++			if (method === 'POST') {
++				const created = {
++					key: body && body.key ? body.key : 'configuration-' + (state.configurations.length + 1),
++					value: body ? body.value : '',
++					description: body && body.description ? body.description : '',
++					export: body ? !!body.export : true,
++					dataType: body && body.dataType ? body.dataType : 'TEXT',
++					category: category(1),
++					showValue: body ? !!body.showValue : true
++				};
++				state.configurations.push(created);
++				return respond(created, 201, request.url);
++			}
++		}
++		const key = decodeURIComponent(tail[0]);
++		const index = state.configurations.findIndex((entry: any) => entry.key === key);
++		if (method === 'GET') {
++			return index >= 0 ? respond(state.configurations[index], 200, request.url) : errorResponse(404, 'not.found', request.url);
++		}
++		if (method === 'PUT') {
++			if (index >= 0 && body) {
++				state.configurations[index].value = body.value;
++			}
++			return emptyResponse(204, request.url);
++		}
++		if (method === 'DELETE') {
++			if (index >= 0) {
++				state.configurations.splice(index, 1);
++			}
++			return emptyResponse(204, request.url);
++		}
++	}
++
++	/* -------------------------------------------------------------- categories */
++	if (resource === 'categories') {
++		if (tail.length === 2 && tail[1] === 'widgets') {
++			const categoryId = Number(tail[0]);
++			return respond(clone(state.widgets.filter((entry: any) => entry.category.id === categoryId)), 200, request.url);
++		}
++		return respond(filtered(CATEGORIES, query), 200, request.url);
++	}
++
++	/* ------------------------------------------------------------------ roles */
++	if (resource === 'roles') {
++		return respond(filtered(ROLES, query), 200, request.url);
++	}
++
++	/* ---------------------------------------------------------------- settings */
++	if (resource === 'settings') {
++		return respond(clone(SETTINGS), 200, request.url);
++	}
++
++	/* -------------------------------------------------------------------- auth */
++	if (resource === 'auth') {
++		const user = state.users.find(
++			(candidate: any) => candidate.username === (body ? body.username : '') && candidate.password === (body ? body.password : '')
++		);
++		if (!user) {
++			return errorResponse(401, 'authentication.bad.credentials', request.url);
++		}
++		return respond({ accessToken: issueToken(user) }, 200, request.url);
++	}
++
++	/* ------------------------------------------------------------------ users */
++	if (resource === 'users') {
++		if (tail.length === 0) {
++			if (method === 'GET') {
++				return respond(filtered(state.users.map(publicUser), query), 200, request.url);
++			}
++			if (method === 'POST') {
++				const exists = state.users.some((candidate: any) => candidate.username === (body ? body.username : ''));
++				if (exists) {
++					return errorResponse(400, 'user.username.duplicate', request.url);
++				}
++				const created = {
++					id: state.nextUserId++,
++					username: body.username,
++					firstname: body.firstname,
++					lastname: body.lastname,
++					email: body.email,
++					avatarUrl: null as string,
++					mode: 'DATABASE',
++					password: body.password,
++					roles: body.roles && body.roles.length ? clone(body.roles) : [role('ROLE_USER')]
++				};
++				state.users.push(created);
++				return respond(publicUser(created), 201, request.url);
++			}
++		}
++		if (tail[0] === 'signup' && method === 'POST') {
++			const exists = state.users.some((candidate: any) => candidate.username === (body ? body.username : ''));
++			if (exists) {
++				return errorResponse(400, 'user.username.duplicate', request.url);
++			}
++			const created = {
++				id: state.nextUserId++,
++				username: body.username,
++				firstname: body.firstname,
++				lastname: body.lastname,
++				email: body.email,
++				avatarUrl: null as string,
++				mode: 'DATABASE',
++				password: body.password,
++				roles: [role('ROLE_USER')]
++			};
++			state.users.push(created);
++			return respond(publicUser(created), 201, request.url);
++		}
++		if (tail[0] === 'personal-access-token') {
++			if (method === 'GET') {
++				return respond(clone(state.tokens), 200, request.url);
++			}
++			if (method === 'POST') {
++				const name = body ? body.name : '';
++				if (state.tokens.some((entry: any) => entry.name === name)) {
++					return errorResponse(400, 'settings.security.token.created.duplicated.name', request.url);
++				}
++				const created = { name, value: 'sur_pat_' + Math.abs(hashCode(name)).toString(36), createdDate: new Date().toISOString() };
++				state.tokens.push({ name: created.name, value: null, createdDate: created.createdDate });
++				return respond(created, 201, request.url);
++			}
++			if (method === 'DELETE') {
++				const name = decodeURIComponent(tail[1]);
++				const index = state.tokens.findIndex((entry: any) => entry.name === name);
++				if (index >= 0) {
++					state.tokens.splice(index, 1);
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++		const identifier = decodeURIComponent(tail[0]);
++		if (tail[1] === 'settings') {
++			if (method === 'GET') {
++				return respond(clone(userSettingsOf(identifier)), 200, request.url);
++			}
++			if (method === 'PUT') {
++				const settingId = Number(tail[2]);
++				const settings = userSettingsOf(identifier);
++				const entry = settings.find((candidate: any) => candidate.setting.id === settingId);
++				if (entry && body) {
++					if (body.allowedSettingValueId) {
++						entry.settingValue = clone(entry.setting.allowedSettingValues.find((value: any) => value.id === body.allowedSettingValueId));
++					} else {
++						entry.unconstrainedValue = body.unconstrainedValue;
++					}
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++		const byName = state.users.find((candidate: any) => candidate.username === identifier);
++		const byId = state.users.find((candidate: any) => String(candidate.id) === identifier);
++		const target = byId || byName;
++		if (method === 'GET') {
++			return target ? respond(publicUser(target), 200, request.url) : errorResponse(404, 'not.found', request.url);
++		}
++		if (method === 'PUT') {
++			if (target && body) {
++				target.firstname = body.firstname !== undefined ? body.firstname : target.firstname;
++				target.lastname = body.lastname !== undefined ? body.lastname : target.lastname;
++				target.email = body.email !== undefined ? body.email : target.email;
++				if (body.password) {
++					target.password = body.password;
++				}
++				if (body.roles && body.roles.length) {
++					target.roles = clone(body.roles);
++				}
++			}
++			return emptyResponse(204, request.url);
++		}
++		if (method === 'DELETE') {
++			const index = state.users.findIndex((candidate: any) => target && candidate.id === target.id);
++			if (index >= 0) {
++				state.users.splice(index, 1);
++			}
++			return emptyResponse(204, request.url);
++		}
++	}
++
++	/* ------------------------------------------------------------- admin users */
++	if (resource === 'admin' && tail[0] === 'users') {
++		return respond(filtered(state.users.map(publicUser), query), 200, request.url);
++	}
++
++	/* ---------------------------------------------------------------- projects */
++	if (resource === 'projects') {
++		if (tail[0] === 'currentUser') {
++			return respond(clone(state.projects), 200, request.url);
++		}
++		if (tail.length === 0) {
++			if (method === 'GET') {
++				return respond(filtered(state.projects, query), 200, request.url);
++			}
++			if (method === 'POST') {
++				return respond(createProject(body || {}), 201, request.url);
++			}
++		}
++		const token = decodeURIComponent(tail[0]);
++		const index = state.projects.findIndex((candidate: any) => candidate.token === token);
++		if (tail.length === 1) {
++			if (method === 'GET') {
++				return index >= 0 ? respond(state.projects[index], 200, request.url) : errorResponse(404, 'not.found', request.url);
++			}
++			if (method === 'PUT') {
++				if (index >= 0 && body) {
++					state.projects[index].name = body.name !== undefined ? body.name : state.projects[index].name;
++					state.projects[index].gridProperties.maxColumn = body.maxColumn || state.projects[index].gridProperties.maxColumn;
++					state.projects[index].gridProperties.widgetHeight = body.widgetHeight || state.projects[index].gridProperties.widgetHeight;
++					state.projects[index].gridProperties.cssStyle = body.cssStyle || '';
++				}
++				return emptyResponse(204, request.url);
++			}
++			if (method === 'DELETE') {
++				if (index >= 0) {
++					state.projects.splice(index, 1);
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++		if (tail[1] === 'users') {
++			if (method === 'GET') {
++				return respond(clone(PROJECT_USERS), 200, request.url);
++			}
++			if (method === 'POST') {
++				const user = state.users.find((candidate: any) => candidate.username === (body ? body.username : ''));
++				if (user) {
++					PROJECT_USERS.push({ id: user.id, username: user.username, firstname: user.firstname, lastname: user.lastname });
++				}
++				return emptyResponse(201, request.url);
++			}
++			if (method === 'DELETE') {
++				const userId = Number(tail[2]);
++				const position = PROJECT_USERS.findIndex((candidate: any) => candidate.id === userId);
++				if (position >= 0) {
++					PROJECT_USERS.splice(position, 1);
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++		if (tail[1] === 'websocket' && tail[2] === 'clients') {
++			return respond([], 200, request.url);
++		}
++		if (tail[1] === 'screenshot' || tail[1] === 'projectWidgetPositions') {
++			return emptyResponse(204, request.url);
++		}
++	}
++
++	/* ----------------------------------------------------------------- widgets */
++	if (resource === 'widgets') {
++		if (tail.length === 0) {
++			return respond(filtered(state.widgets, query), 200, request.url);
++		}
++		const widgetId = Number(tail[0]);
++		const index = state.widgets.findIndex((candidate: any) => candidate.id === widgetId);
++		if (method === 'GET') {
++			return index >= 0 ? respond(state.widgets[index], 200, request.url) : errorResponse(404, 'not.found', request.url);
++		}
++		if (method === 'PUT') {
++			if (index >= 0 && body && body.widgetAvailability) {
++				state.widgets[index].widgetAvailability = body.widgetAvailability;
++			}
++			return emptyResponse(204, request.url);
++		}
++		if (method === 'DELETE') {
++			if (index >= 0) {
++				state.widgets.splice(index, 1);
++			}
++			return emptyResponse(204, request.url);
++		}
++	}
++
++	/* ------------------------------------------------------------ repositories */
++	if (resource === 'repositories') {
++		if (tail.length === 0) {
++			if (method === 'GET') {
++				return respond(filtered(state.repositories, query), 200, request.url);
++			}
++			if (method === 'POST') {
++				const created = Object.assign({ id: state.nextRepositoryId++, createdDate: new Date().toISOString() }, clone(body || {}));
++				state.repositories.push(created);
++				return respond(created, 201, request.url);
++			}
++		}
++		if (tail[0] === 'synchronize') {
++			return emptyResponse(204, request.url);
++		}
++		const repositoryId = Number(tail[0]);
++		const index = state.repositories.findIndex((candidate: any) => candidate.id === repositoryId);
++		if (method === 'GET') {
++			return index >= 0 ? respond(state.repositories[index], 200, request.url) : errorResponse(404, 'not.found', request.url);
++		}
++		if (method === 'PUT') {
++			if (index >= 0 && body) {
++				state.repositories[index] = Object.assign(clone(state.repositories[index]), clone(body));
++			}
++			return emptyResponse(204, request.url);
++		}
++		if (method === 'DELETE') {
++			if (index >= 0) {
++				state.repositories.splice(index, 1);
++			}
++			return emptyResponse(204, request.url);
++		}
++	}
++
++	/* ----------------------------------------------------------- project grids */
++	if (resource === 'projectGrids') {
++		const token = decodeURIComponent(tail[0]);
++		const project = state.projects.find((candidate: any) => candidate.token === token);
++		if (tail.length === 1) {
++			if (method === 'POST') {
++				const grid = { id: state.nextGridId++, time: body ? body.time : 10 };
++				if (project) {
++					project.grids.push(grid);
++				}
++				return respond(grid, 201, request.url);
++			}
++			if (method === 'PUT') {
++				if (project && body && body.grids) {
++					project.grids = clone(body.grids).map((grid: any) => ({ id: grid.id, time: grid.time }));
++					project.displayProgressBar = !!body.displayProgressBar;
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++		if (tail.length === 2) {
++			const gridId = Number(tail[1]);
++			const grid = project ? project.grids.find((candidate: any) => candidate.id === gridId) : undefined;
++			if (method === 'GET') {
++				return grid ? respond(clone(grid), 200, request.url) : errorResponse(404, 'not.found', request.url);
++			}
++			if (method === 'DELETE') {
++				if (project) {
++					project.grids = project.grids.filter((candidate: any) => candidate.id !== gridId);
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++	}
++
++	/* -------------------------------------------------------- project widgets */
++	if (resource === 'projectWidgets') {
++		if (tail.length === 2 && tail[1] === 'projectWidgets') {
++			return respond(clone(state.projectWidgets.filter((entry: any) => entry.projectToken === decodeURIComponent(tail[0]))), 200, request.url);
++		}
++		if (tail.length === 3 && tail[2] === 'projectWidgets') {
++			const created = projectWidget(state.nextProjectWidgetId++, decodeURIComponent(tail[0]), Number(tail[1]), body ? body.widgetId : 0, 0, 0);
++			state.projectWidgets.push(created);
++			return respond(created, 201, request.url);
++		}
++		if (tail.length === 1) {
++			const projectWidgetId = Number(tail[0]);
++			const index = state.projectWidgets.findIndex((candidate: any) => candidate.id === projectWidgetId);
++			if (method === 'GET') {
++				return index >= 0 ? respond(state.projectWidgets[index], 200, request.url) : errorResponse(404, 'not.found', request.url);
++			}
++			if (method === 'PUT') {
++				if (index >= 0 && body) {
++					state.projectWidgets[index] = Object.assign(clone(state.projectWidgets[index]), clone(body));
++				}
++				return respond(index >= 0 ? state.projectWidgets[index] : null, 200, request.url);
++			}
++			if (method === 'DELETE') {
++				if (index >= 0) {
++					state.projectWidgets.splice(index, 1);
++				}
++				return emptyResponse(204, request.url);
++			}
++		}
++	}
++
++	/* ----------------------------------------------------------------- screens */
++	if (resource === 'screens') {
++		const token = decodeURIComponent(tail[0]);
++		const action = tail[1];
++		if (action === 'connect') {
++			state.screens[token] = Number(query.get('screenCode') || '0');
++			return emptyResponse(204, request.url);
++		}
++		if (action === 'disconnect') {
++			delete state.screens[token];
++			return emptyResponse(204, request.url);
++		}
++		return emptyResponse(204, request.url);
++	}
++
++	/* ------------------------------------------------------------------ assets */
++	if (resource === 'assets') {
++		return emptyResponse(404, request.url);
++	}
++
++	return errorResponse(404, 'not.found', request.url);
++}
++
++function hashCode(value: string): number {
++	let hash = 0;
++	for (let index = 0; index < value.length; index++) {
++		hash = (hash * 31 + value.charCodeAt(index)) | 0;
++	}
++	return hash;
++}
++
++/* --------------------------------------------------------------- interceptor */
++
++export const offlineBackendInterceptor: HttpInterceptorFn = (request: any, next: any): Observable<HttpEvent<any>> => {
++	const parsed = parseRequest(String(request.url || ''));
++	if (!parsed.path.startsWith(API_PREFIX + '/')) {
++		return next(request);
++	}
++	return handle(request, parsed);
++};
+diff --git a/src/main/webapp/index.html b/src/main/webapp/index.html
+index 4dbc340..a90851e 100644
+--- a/src/main/webapp/index.html
++++ b/src/main/webapp/index.html
+@@ -6,12 +6,6 @@
+ 		<base href="/" />
+ 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+ 		<link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+-		<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+-		<link rel="preconnect" href="https://fonts.gstatic.com" />
+-		<link
+-			href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+-			rel="stylesheet"
+-		/>
+ 	</head>
+ 	<body class="mat-typography">
+ 		<suricate-root></suricate-root>

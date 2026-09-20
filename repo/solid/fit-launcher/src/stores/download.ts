@@ -1,0 +1,63 @@
+import { createRoot } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
+import { DM } from "../api/manager/api";
+import type { Job } from "../bindings";
+
+export const createDownloadsStore = () => {
+  const jobsMap = new Map<string, Job>();
+
+  const [state, setState] = createStore<{ jobs: Job[] }>({ jobs: [] });
+
+  const syncState = (updatedJobs: Job[]) => {
+    let changed = false;
+    for (const job of updatedJobs) {
+      const existing = jobsMap.get(job.id);
+      if (existing) {
+        Object.assign(existing, job);
+        jobsMap.set(job.id, existing);
+      } else {
+        jobsMap.set(job.id, job);
+        changed = true;
+      }
+    }
+    if (changed) {
+      setState("jobs", Array.from(jobsMap.values()));
+    }
+  };
+
+  const unsubscribes: (() => void)[] = [];
+
+  unsubscribes.push(
+    DM.onUpdated((job) => {
+      syncState([job]);
+    })
+  );
+
+  unsubscribes.push(
+    DM.onCompleted((job) => {
+      syncState([job]);
+    })
+  );
+
+  unsubscribes.push(
+    DM.onRemoved((id) => {
+      if (jobsMap.delete(id)) {
+        setState("jobs", Array.from(jobsMap.values()));
+      }
+    })
+  );
+
+  syncState(DM.getAll());
+
+  return {
+    dispose: () => {
+      unsubscribes.forEach((fn) => fn());
+      jobsMap.clear();
+    },
+    getJob: (id: string) => jobsMap.get(id),
+    jobs: () => state.jobs,
+  };
+};
+
+export const DownloadsStore = createRoot(createDownloadsStore);
+

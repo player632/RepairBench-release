@@ -1,0 +1,144 @@
+diff --git a/src/components/CountTo/CountTo.vue b/src/components/CountTo/CountTo.vue
+--- a/src/components/CountTo/CountTo.vue
++++ b/src/components/CountTo/CountTo.vue
+@@ -94,7 +94,7 @@
+     let x1 = x[0];
+     const x2 = x.length > 1 ? decimal + x[1] : '';
+ 
+-    const rgx = /(\d+)(\d{3})/;
++    const rgx = /(\d+)(\d{2})/;
+     if (separator && !isNumber(separator)) {
+       while (rgx.test(x1)) {
+         x1 = x1.replace(rgx, '$1' + separator + '$2');
+diff --git a/src/components/Form/src/hooks/useFormEvents.ts b/src/components/Form/src/hooks/useFormEvents.ts
+--- a/src/components/Form/src/hooks/useFormEvents.ts
++++ b/src/components/Form/src/hooks/useFormEvents.ts
+@@ -70,7 +70,7 @@
+ 
+     const formEl = unref(formElRef);
+     if (!formEl) return;
+-    Object.keys(formModel).forEach((key) => {
++    Object.keys(unref(defaultFormModel)).forEach((key) => {
+       formModel[key] = unref(defaultFormModel)[key] || null;
+     });
+     await clearValidate();
+diff --git a/src/components/Table/src/Table.vue b/src/components/Table/src/Table.vue
+--- a/src/components/Table/src/Table.vue
++++ b/src/components/Table/src/Table.vue
+@@ -137,7 +137,7 @@
+   const tableElRef = ref<ComponentRef>(null);
+   const wrapRef = ref<Nullable<HTMLDivElement>>(null);
+   let paginationEl: HTMLElement | null;
+-  const isStriped = ref(props.striped || false);
++  const isStriped = ref(props.striped && false);
+   const tableData = ref<Recordable[]>([]);
+   const innerPropsRef = ref<Partial<BasicTableProps>>();
+ 
+diff --git a/src/components/Table/src/hooks/useColumns.ts b/src/components/Table/src/hooks/useColumns.ts
+--- a/src/components/Table/src/hooks/useColumns.ts
++++ b/src/components/Table/src/hooks/useColumns.ts
+@@ -92,7 +92,7 @@
+   function handleActionColumn(propsRef: ComputedRef<BasicTableProps>, columns: BasicColumn[]) {
+     const { actionColumn } = unref(propsRef);
+     if (!actionColumn) return;
+-    !columns.find((col) => col.key === 'action') &&
++    columns.find((col) => col.key === 'action') &&
+       columns.push({
+         ...(actionColumn as any),
+       });
+diff --git a/src/components/Table/src/hooks/usePagination.ts b/src/components/Table/src/hooks/usePagination.ts
+--- a/src/components/Table/src/hooks/usePagination.ts
++++ b/src/components/Table/src/hooks/usePagination.ts
+@@ -32,7 +32,7 @@
+       pageSizes: PAGESIZES, // 每页条数
+       showSizePicker: true,
+       showQuickJumper: true,
+-      prefix: (pagingInfo) => `共 ${pagingInfo.itemCount} 条`, // 不需要可以通过 pagination 重置或者删除
++      prefix: (pagingInfo) => `共 ${pagingInfo.pageCount} 条`, // 不需要可以通过 pagination 重置或者删除
+       ...(isBoolean(pagination) ? {} : pagination),
+       ...unref(configRef),
+     };
+diff --git a/src/directives/debounce.ts b/src/directives/debounce.ts
+--- a/src/directives/debounce.ts
++++ b/src/directives/debounce.ts
+@@ -14,7 +14,7 @@
+     }
+     let timer: NodeJS.Timeout | null = null;
+     el.__handleClick__ = function () {
+-      if (timer) {
++      if (timer === null) {
+         clearInterval(timer);
+       }
+       timer = setTimeout(() => {
+diff --git a/src/directives/throttle.ts b/src/directives/throttle.ts
+--- a/src/directives/throttle.ts
++++ b/src/directives/throttle.ts
+@@ -27,7 +27,7 @@
+         el.disabled = true;
+         binding.value();
+         timer = setTimeout(() => {
+-          el.disabled = false;
++          el.disabled = true;
+         }, 1000);
+       }
+     };
+diff --git a/src/layout/components/Header/index.vue b/src/layout/components/Header/index.vue
+--- a/src/layout/components/Header/index.vue
++++ b/src/layout/components/Header/index.vue
+@@ -216,7 +216,7 @@
+       };
+ 
+       const breadcrumbList = computed(() => {
+-        return generator(route.matched);
++        return generator(route.matched.slice(1));
+       });
+ 
+       const dropdownSelect = (key) => {
+diff --git a/src/layout/components/Menu/index.vue b/src/layout/components/Menu/index.vue
+--- a/src/layout/components/Menu/index.vue
++++ b/src/layout/components/Menu/index.vue
+@@ -104,7 +104,7 @@
+         const matched = currentRoute.matched;
+         state.openKeys = matched.map((item) => item.name);
+         const activeMenu: string = (currentRoute.meta?.activeMenu as string) || '';
+-        selectedKeys.value = activeMenu ? (activeMenu as string) : (currentRoute.name as string);
++        selectedKeys.value = activeMenu ? (currentRoute.name as string) : (activeMenu as string);
+       }
+ 
+       function updateMenu() {
+diff --git a/src/utils/index.ts b/src/utils/index.ts
+--- a/src/utils/index.ts
++++ b/src/utils/index.ts
+@@ -61,7 +61,7 @@
+     const currentMenu = {
+       ...info,
+       ...info.meta,
+-      label: info.meta?.title,
++      title: info.name,
+       key: info.name,
+       icon: isRoot ? item.meta?.icon : info.meta?.icon,
+     };
+diff --git a/src/views/dashboard/console/console.vue b/src/views/dashboard/console/console.vue
+--- a/src/views/dashboard/console/console.vue
++++ b/src/views/dashboard/console/console.vue
+@@ -356,7 +356,7 @@
+     saleroom.value = data.saleroom;
+     orderLarge.value = data.orderLarge;
+     volume.value = data.volume;
+-    loading.value = false;
++    loading.value = true;
+   });
+ </script>
+ 
+diff --git a/src/views/list/basicList/index.vue b/src/views/list/basicList/index.vue
+--- a/src/views/list/basicList/index.vue
++++ b/src/views/list/basicList/index.vue
+@@ -149,7 +149,7 @@
+       label: '预约时间',
+       defaultValue: 1183135260000,
+       componentProps: {
+-        type: 'date',
++        type: 'datetime',
+         clearable: true,
+         onUpdateValue: (e: any) => {
+           console.log(e);

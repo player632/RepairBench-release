@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>MTR PIDS Simulator</title>
+
+    <!-- RepairBench instrumentation: read-only measurement probe. Classic script in <head>, so it runs
+         before every type="module" script below (all of the application's scripts are deferred modules),
+         which is what lets its pass-through window.fetch recorder see the application's first request. -->
+    <script src="./rbProbe.js"></script>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="./assets/css/reset.css">
+    <link rel="stylesheet" href="./assets/css/overlay.css">
+    <link rel="stylesheet" href="./assets/css/main.css">
+    <link rel="stylesheet" href="./assets/css/header-bar.css">
+    <link rel="stylesheet" href="./assets/font/font.css">
+    
+    <!-- JS Libraries -->
+    <script src="./assets/lib/vue@3.5.17/dist/vue.global.prod.js"></script>
+    <script src="./assets/lib/vue-i18n@11.1.9/dist/vue-i18n.global.prod.js"></script>
+    <script src="./assets/lib/jquery@3.7.1/dist/jquery.min.js"></script>
+    
+    <!-- JS -->
+    <script src="./assets/js/main.js" type="module"></script>
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:locale" content="zh_HK" />
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://hktss.github.io/mtr-pids">
+    <meta property="og:title" content="港鐵願景資訊顯示屏模擬器">
+    <meta property="og:description" content="Hong Kong MTR Railway Vision PIDS Simulator">
+    <meta property="og:image" content="https://hktss.github.io/mtr-pids/assets/img/thumb.png">
+    <meta property="og:image:width" content="960">
+    <meta property="og:image:height" content="468">
+
+    <!-- Twitter -->
+    <meta property="twitter:url" content="https://hktss.github.io/mtr-pids">
+    <meta property="twitter:title" content="MTR Railway Vision PIDS Simulator">
+    <meta property="twitter:description" content=" ">
+    <meta property="twitter:image" content="https://hktss.github.io/mtr-pids/assets/img/thumb.png">
+    <!-- Include this to make the og:image larger -->
+    <meta name="twitter:card" content="summary_large_image">
+</head>
+
+<body>
+    <div id="width-check-wrapper">
+        <span id="check-content"></span>
+    </div>
+    <div id="overlay" class="hidden" data-testid="rb-overlay">
+        <section class="intro">
+            <div id="lang">
+                <h2>{{ $t('intro.languages') }}</h2>
+                <div id="lang-select">
+                    <button :class="locale == $i18n.locale ? 'selected' : null" v-for="locale in $i18n.availableLocales"
+                        :key="`locale-${locale}`" @click="$i18n.locale = locale">{{ $t(`intro.language.${locale}`)
+                        }}</button>
+                </div>
+            </div>
+
+            <h1>{{ $t('intro.welcome') }}</h1>
+            <p>{{ $t('intro.description_1') }}</p>
+            <p>{{ $t('intro.description_2') }}</p>
+            <p>{{ $t('intro.description_3') }}</p>
+            <img class="pids-preview" alt="A preview of the MTR PIDS in real life" src="./assets/img/preview.png">
+            <a href="https://hktss.github.io"><img height="42" src="./assets/img/hktss_3d.png" alt="HKTSS Homepage"></a>
+            <p>{{ $t('intro.disclaimer') }}</p>
+            <p>{{ $t('intro.enquiries') }}</p>
+            <a href="https://github.com/HKTSS/mtr-pids">{{ $t('intro.oss') }}</a>
+        </section>
+        <section class="settings">
+            <h1>{{ $t('settings.title') }}</h1>
+            <form>
+                <fieldset>
+                    <legend>{{ $t('settings.sections.data.title') }}</legend>
+                    <div>
+                        <label for="source">{{ $t('settings.sections.data.source.name') }}</label>
+                        <select id="source" data-testid="rb-source-select" v-model="dataSourceReference">
+                            <option value="ONLINE">{{ $t('settings.sections.data.source.online') }}</option>
+                            <option value="OFFLINE">{{ $t('settings.sections.data.source.offline') }}</option>
+                        </select>
+                    </div>
+
+                    <div v-if="dataSourceReference == 'ONLINE'">
+                        <div>
+                            <label for="route">{{ $t('settings.sections.data.route') }}</label>
+                            <select id="route" data-testid="rb-route-select" v-model="routeReference">
+                                <option v-for="route in Object.values(RouteList).filter(e => !e.hidden)" :key="route.initials" :value="route.initials">{{ $t(`data.routes.${route.initials}`) }}
+                                </option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="station">{{ $t('settings.sections.data.station') }}</label>
+                            <select id="station" data-testid="rb-station-select" v-model="stationReference">
+                                <option v-for="stationCode in getRoute(routeReference).stations" :value="stationCode">{{ $t(`data.stations.${stationCode}`) }}</option>
+                            </select>
+                        </div>
+                        <div v-if="!getRoute(routeReference).isLRT">
+                            <label for="direction">{{ $t('settings.sections.data.direction.name') }}</label>
+                            <select id="direction" data-testid="rb-direction-select" v-model="SETTINGS.direction">
+                                <option value="UP">{{ $t('settings.sections.data.direction.to', { dir: `${getRoute(routeReference).directionInfo[0].split(";").map(e => $t(`data.stations.${e}`)).join("/")}` }) }}</option>
+                                <option value="DOWN">{{ $t('settings.sections.data.direction.to', { dir: `${getRoute(routeReference).directionInfo[1].split(";").map(e => $t(`data.stations.${e}`)).join("/")}` }) }}</option>
+                                <option value="BOTH">{{ $t('settings.sections.data.direction.both') }}</option>
+                                <option value="BOTH_SPLIT">{{ $t('settings.sections.data.direction.both_split') }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div v-else>
+                        <fieldset>
+                            <legend>{{ $t('settings.sections.data.custom.name') }}</legend>
+                            <p class="section-box">
+                                {{ $t('settings.sections.data.custom.tips_1') }}
+                                <br>
+                                {{ $t('settings.sections.data.custom.tips_2') }}
+                            </p>
+                            <table>
+                                <tr>
+                                    <td>{{ $t('settings.sections.data.custom.destination') }}</td>
+                                    <td class="centeredItem">{{ $t('settings.sections.data.custom.platform') }}</td>
+                                    <td class="centeredItem">{{ $t('settings.sections.data.custom.eta') }}</td>
+                                </tr>
+                                <tr v-for="(arrival, idx) in API.customArrivalData">
+                                    <td><input type="text" autocomplete="off" :id="`destination-${idx}`" v-model="arrival.dest"></input></td>
+                                    <td><input type="text" size="1" autocomplete="off" :id="`platform-${idx}`" v-model="arrival.plat"></input></td>
+                                    <td><input type="number" size="2" min="0" :max="idx == 0 ? 19 : 99" autocomplete="off" :id="`ttnt-${idx}`" v-model="arrival.ttnt"></input></td>
+                                </tr>
+                            </table>
+                        </fieldset>
+                        <section>
+                            <label for="route-color">{{ $t('settings.sections.data.custom.route_color') }}</label>
+                            <input type="color" maxlength="6" size="6" id="route-color"
+                                v-model="API.customRoute.color"></input>
+                        </section>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>{{ $t('settings.sections.display.title') }}</legend>
+                    <section>
+                        <label for="adhoc">{{ $t('settings.sections.display.adhoc.name') }}</label>
+                        <select id="adhoc" data-testid="rb-adhoc-select" v-model="SETTINGS.adhoc">
+                            <option v-for="adhoc in promotionData.special" :key="adhoc.id" :value="adhoc.id">{{ $t(`settings.sections.display.adhoc.${adhoc.id}`) }}</option>
+                        </select>
+                    </section>
+                    <section>
+                        <label>{{ $t('settings.sections.display.mode.name') }}</label>
+                        <select data-testid="rb-display-mode" v-model="SETTINGS.displayMode">
+                            <option v-for="[key, mode] in Object.entries(DisplayMode)" :key="key" :value="mode">{{ $t(`settings.sections.display.mode.${key}`) }}</option>
+                        </select>
+                    </section>
+                    <section>
+                        <label>{{ $t('settings.sections.display.first_train_cutoff.name') }}</label>
+                        <input data-testid="rb-first-train-cutoff" type="number" min="0" step="1" v-model.number="SETTINGS.firstTrainCutoff"/>
+                    </section>
+                    <section>
+                        <div>
+                            <input id="show-platform" data-testid="rb-show-platform" type="checkbox" v-model="SETTINGS.showPlatform"></input>
+                            <label for="show-platform" attr-inline>{{ $t('settings.sections.display.platform_number') }}</label>
+                        </div>
+                        <div>
+                            <input id="route-header" data-testid="rb-route-header" type="checkbox" v-model="SETTINGS.rtHeader"></input>
+                            <label for="route-header" attr-inline>{{ $t('settings.sections.display.line') }}</label>
+                        </div>
+                    </section>
+                </fieldset>
+                <div @click="toggleFullscreen">
+                    <button>{{ $t('settings.sections.generic.fullscreen.' + (isFullscreen ? "entered" : "exited") )
+                        }}</button>
+                </div>
+                <div>
+                    <button data-testid="rb-start" @click="close">{{ $t('settings.sections.generic.start') }}</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <main>
+        <div id="header-bar" data-testid="rb-header-bar">
+            <button id="configure-button" data-testid="rb-configure" title="Configure PIDS">Configure PIDS</button>
+            <div class="t2">
+                <span class="rtname"></span>
+            </div>
+            <div class="t1 weather">
+                <span id="weather-icon" data-testid="rb-weather-icon"><noscript>Javascript is required for this page</noscript></span>
+                <span id="temperature" class="notranslate" data-testid="rb-temperature"></span>
+            </div>
+            <div class="t1 clock" data-testid="rb-clock">
+            </div>
+        </div>
+
+        <div id="promo" data-testid="rb-promo">
+        </div>
+
+        <div id="arrivals">
+            <div id="arrivalBackground">
+                <div>&nbsp</div>
+                <div>&nbsp</div>
+                <div>&nbsp</div>
+                <div>&nbsp</div>
+            </div>
+            <table id="arrivalOverlay" data-testid="rb-arrivals">
+                <tr>
+                    <td class="destination scalable"></td>
+                    <td class="plat"><span class="platcircle"></span></td>
+                    <td class="eta scalable"></td>
+                </tr>
+                <tr>
+                    <td class="destination scalable"></td>
+                    <td class="plat"><span class="platcircle"></span></td>
+                    <td class="eta scalable"></td>
+                </tr>
+                <tr>
+                    <td class="destination scalable"></td>
+                    <td class="plat"><span class="platcircle"></span></td>
+                    <td class="eta scalable"></td>
+                </tr>
+                <tr>
+                    <td class="destination scalable"></td>
+                    <td class="plat"><span class="platcircle"></span></td>
+                    <td class="eta scalable"></td>
+                </tr>
+            </table>
+            <div class="divider" data-testid="rb-divider"></div>
+        </div>
+    </main>
+</body>
+<script src="./assets/js/local_storage.js" type="module"></script>
+<script src="./assets/js/config/new_config.js" type="module"></script>
+
+</html>

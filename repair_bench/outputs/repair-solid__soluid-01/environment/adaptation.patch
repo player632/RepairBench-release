@@ -1,0 +1,49 @@
+diff --git a/src/dev/componentsVersion.ts b/src/dev/componentsVersion.ts
+index 9da5c9c..d8adefb 100644
+--- a/src/dev/componentsVersion.ts
++++ b/src/dev/componentsVersion.ts
+@@ -18,15 +18,15 @@ const [version, setVersion] = createSignal(FALLBACK_COMPONENTS_VERSION);
+ let started = false;
+ 
+ async function load(): Promise<void> {
+-  try {
+-    const res = await fetch(RELEASES_URL);
+-    if (!res.ok) return;
+-    const releases = (await res.json()) as Array<{ tag_name: string }>;
+-    const latest = releases.find((release) => release.tag_name.startsWith(TAG_PREFIX));
+-    if (latest) setVersion(latest.tag_name.slice(TAG_PREFIX.length));
+-  } catch {
+-    // Keep the fallback; a missing version is not worth an error on the page.
+-  }
++  // WLB adaptation (offline answering environment; task.toml [environment]
++  // allow_internet = false). The seed resolves the components release tag from the
++  // GitHub releases API on the first read of componentsVersion(). With no network that
++  // request never settles and the route that reads it stalls for the whole browser
++  // timeout, so the lookup is retired and the FALLBACK_COMPONENTS_VERSION shipped in
++  // this very file is what every reader sees. Nothing the checkpoints observe depends
++  // on the fetched tag: it only feeds two badge strings on the top and getting-started
++  // routes, and the catalog route under test never reads it.
++  return Promise.resolve();
+ }
+ 
+ /** Reactive; starts the single fetch on first read. */
+diff --git a/src/dev/pages/TopPage.tsx b/src/dev/pages/TopPage.tsx
+index edc2c90..791b329 100644
+--- a/src/dev/pages/TopPage.tsx
++++ b/src/dev/pages/TopPage.tsx
+@@ -134,10 +134,13 @@ export function TopPage() {
+         </pre>
+         <p class="top-badges">
+           <a href="https://www.npmjs.com/package/soluid" target="_blank" rel="noopener noreferrer">
+-            <img src="https://img.shields.io/npm/v/soluid" alt="npm version" width="80" height="20" />
++            {/* WLB adaptation: the seed embeds two img.shields.io badges here. The answering
++                environment has no network, so the remote images are replaced by the local
++                text they render. Layout and copy are otherwise untouched. */}
++            <span class="top-badge-local">npm v{componentsVersion()}</span>
+           </a>
+           <a href="https://github.com/misebox/soluid/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">
+-            <img src="https://img.shields.io/npm/l/soluid" alt="license" width="78" height="20" />
++            <span class="top-badge-local">MIT license</span>
+           </a>
+           {/* Drawn here rather than fetched from shields.io: components ship as
+               GitHub releases, and shields would print the whole

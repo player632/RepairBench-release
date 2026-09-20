@@ -1,0 +1,156 @@
+import { Component, computed, inject, input, ChangeDetectionStrategy } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import type { Editor } from "@tiptap/core";
+import { AteColorPickerService } from "../../services/ate-color-picker.service";
+import { AteButtonComponent } from "../ui/ate-button.component";
+import { AteI18nService } from "../../services/ate-i18n.service";
+import { AteEditorCommandsService } from "../../services/ate-editor-commands.service";
+
+import { AteTooltipDirective } from "../../directives/ate-tooltip.directive";
+
+export type ColorPickerMode = "text" | "highlight";
+
+@Component({
+  selector: "ate-color-picker",
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [AteButtonComponent, CommonModule, AteTooltipDirective],
+  template: `
+    <div class="color-picker-wrapper">
+      <div class="color-picker-container" [class.is-highlight]="mode() === 'highlight'">
+        <ate-button
+          [icon]="buttonIcon()"
+          [title]="mode() === 'text' ? t().textColor : t().highlight"
+          [color]="buttonTextColor()"
+          [backgroundColor]="buttonBgColor()"
+          [disabled]="disabled() || !state().isEditable"
+          (buttonClick)="onToggle($event)" />
+
+        @if (hasColorApplied()) {
+          <button
+            class="btn-clear-badge"
+            type="button"
+            [ateTooltip]="t().clear"
+            [attr.aria-label]="t().clear"
+            (click)="onClear($event)">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        }
+      </div>
+    </div>
+  `,
+  styles: [
+    `
+      .color-picker-wrapper {
+        position: relative;
+        display: inline-block;
+      }
+
+      .color-picker-container {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .btn-clear-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 14px;
+        height: 14px;
+        padding: 0;
+        border: none;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.75);
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+      }
+
+      .color-picker-container:hover .btn-clear-badge {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .btn-clear-badge .material-symbols-outlined {
+        font-size: 10px;
+        line-height: 1;
+      }
+    `,
+  ],
+})
+export class AteColorPickerComponent {
+  editor = input.required<Editor>();
+  mode = input<ColorPickerMode>("text");
+  disabled = input<boolean>(false);
+  anchorToText = input<boolean>(false);
+
+  private colorPickerSvc = inject(AteColorPickerService);
+  private i18nService = inject(AteI18nService);
+  private editorCommands = inject(AteEditorCommandsService);
+
+  readonly t = this.i18nService.toolbar;
+  readonly state = this.editorCommands.editorState;
+
+  readonly currentColor = computed(() => {
+    const marks = this.state().marks;
+    const color = this.mode() === "text" ? marks.computedColor : marks.computedBackground;
+    return color || (this.mode() === "text" ? "#000000" : "#ffff00");
+  });
+
+  readonly hasColorApplied = computed(() => {
+    const marks = this.state().marks;
+    return (this.mode() === "text" ? marks.color : marks.background) !== null;
+  });
+
+  readonly buttonIcon = computed(() => {
+    return this.mode() === "text" ? "format_color_text" : "format_color_fill";
+  });
+
+  readonly buttonBgColor = computed(() => {
+    const color = this.currentColor();
+    if (this.mode() === "highlight") {
+      return this.hasColorApplied() ? color : "";
+    }
+    // For text mode, add contrast background if current color is too light
+    if (this.colorPickerSvc.getLuminance(color) > 200) {
+      return "#030617";
+    }
+    return "";
+  });
+
+  readonly buttonTextColor = computed(() => {
+    const color = this.currentColor();
+    if (this.mode() === "text") {
+      return color;
+    }
+    if (this.hasColorApplied()) {
+      return this.colorPickerSvc.getLuminance(color) > 128 ? "#000000" : "#ffffff";
+    }
+    return "var(--ate-text-secondary)";
+  });
+
+  onToggle(event: Event) {
+    // If anchorToText is true, we don't pass the event so it defaults to text selection anchoring
+    this.colorPickerSvc.toggle(this.editor(), this.mode(), this.anchorToText() ? undefined : event);
+  }
+
+  onClear(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const editor = this.editor();
+    if (this.mode() === "text") {
+      this.colorPickerSvc.unsetColor(editor);
+    } else {
+      this.colorPickerSvc.unsetHighlight(editor);
+    }
+
+    this.colorPickerSvc.close();
+  }
+}

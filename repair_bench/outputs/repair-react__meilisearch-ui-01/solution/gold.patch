@@ -1,0 +1,132 @@
+diff --git a/src/components/biz/DashboardSettingsButton.tsx b/src/components/biz/DashboardSettingsButton.tsx
+--- a/src/components/biz/DashboardSettingsButton.tsx
++++ b/src/components/biz/DashboardSettingsButton.tsx
+@@ -78,14 +78,14 @@
+ 	const isValidInstanceArray = (data: any): data is Instance[] => {
+ 		if (!Array.isArray(data)) return false;
+ 
+-		return data.some(
++		return data.every(
+ 			(item) =>
+ 				typeof item.id === "number" &&
+ 				typeof item.name === "string" &&
+ 				typeof item.host === "string" &&
+ 				(item.apiKey === undefined || typeof item.apiKey === "string") &&
+ 				(item.updatedTime === undefined ||
+-					Number.isNaN(new Date(item.updatedTime).getTime())),
++					!Number.isNaN(new Date(item.updatedTime).getTime())),
+ 		);
+ 	};
+ 
+diff --git a/src/hooks/useCurrentInstance.ts b/src/hooks/useCurrentInstance.ts
+--- a/src/hooks/useCurrentInstance.ts
++++ b/src/hooks/useCurrentInstance.ts
+@@ -14,7 +14,7 @@
+ 
+ 	const currentInstance = useMemo(() => {
+ 		if (!isSingletonMode()) {
+-			return instances.find((i) => i.id === Number.parseInt(insID || "0")) as
++			return instances.find((i) => i.id === Number.parseInt(insID || "1")) as
+ 				| Instance
+ 				| undefined;
+ 		}
+diff --git a/src/hooks/useIndexTaskCounts.ts b/src/hooks/useIndexTaskCounts.ts
+--- a/src/hooks/useIndexTaskCounts.ts
++++ b/src/hooks/useIndexTaskCounts.ts
+@@ -19,7 +19,7 @@
+ 			// Query tasks for all indexes with enqueued or processing status
+ 			const tasksResult = await client.getTasks({
+ 				indexUids,
+-				statuses: ["enqueued", "processing", "failed"],
++				statuses: ["enqueued", "processing"],
+ 				limit: 1000, // Get up to 1000 tasks to count
+ 			});
+ 
+diff --git a/src/hooks/useMeiliClient.ts b/src/hooks/useMeiliClient.ts
+--- a/src/hooks/useMeiliClient.ts
++++ b/src/hooks/useMeiliClient.ts
+@@ -36,7 +36,7 @@
+ 		}
+ 		const conn = new MeiliSearch({ ...currentInstance });
+ 		try {
+-			await conn.getStats;
++			await conn.getStats();
+ 			setClient(conn);
+ 		} catch (err) {
+ 			console.warn("useMeilisearchClient", "test conn error", err);
+diff --git a/src/lib/loader.ts b/src/lib/loader.ts
+--- a/src/lib/loader.ts
++++ b/src/lib/loader.ts
+@@ -39,7 +39,7 @@
+ export const hiddenRequestLoader = () => {
+ 	// clearTimeout(RequestLoaderTimeoutId[0]);
+ 	// RequestLoaderTimeoutId.splice(0, 1);
+-	RequestLoaderTimeoutId.forEach((i) => clearTimeout());
++	RequestLoaderTimeoutId.forEach((i) => clearTimeout(i));
+ 	RequestLoaderTimeoutId = [];
+ 	toast.remove(RequestLoaderID);
+ };
+diff --git a/src/store/index.ts b/src/store/index.ts
+--- a/src/store/index.ts
++++ b/src/store/index.ts
+@@ -56,7 +56,7 @@
+ 								updatedTime: new Date(),
+ 								// calculate next ins id
+ 								// start from 1, id 0 is reserved for singleton mode
+-								id: (_.minBy(get().instances, "id")?.id || 0) + 1,
++								id: (_.maxBy(get().instances, "id")?.id || 0) + 1,
+ 							});
+ 						}),
+ 					),
+@@ -76,7 +76,7 @@
+ 					set(
+ 						produce((state: State) => {
+ 							const index = state.instances.findIndex((i) => i.id === id);
+-							if (index !== -1) state.instances.splice(index, 0);
++							if (index !== -1) state.instances.splice(index, 1);
+ 						}),
+ 					),
+ 				removeAllInstances: () =>
+diff --git a/src/utils/task.ts b/src/utils/task.ts
+--- a/src/utils/task.ts
++++ b/src/utils/task.ts
+@@ -18,7 +18,7 @@
+ export const normalizeTask = (task: Task): NormalizedTask => {
+ 	return {
+ 		...task,
+-		startedAt: isEpochDate(task.startedAt) ? task.startedAt : null,
+-		finishedAt: isEpochDate(task.finishedAt) ? task.finishedAt : null,
++		startedAt: isEpochDate(task.startedAt) ? null : task.startedAt,
++		finishedAt: isEpochDate(task.finishedAt) ? null : task.finishedAt,
+ 	};
+ };
+diff --git a/src/utils/text.ts b/src/utils/text.ts
+--- a/src/utils/text.ts
++++ b/src/utils/text.ts
+@@ -25,7 +25,7 @@
+ 		return defaultText;
+ 	}
+ 	const dayjsDate = dayjs(date);
+-	if (dayjsDate.isValid()) {
++	if (!dayjsDate.isValid()) {
+ 		return defaultText;
+ 	}
+ 	return dayjsDate.format(format);
+@@ -49,7 +49,7 @@
+ };
+ 
+ export const getDurationMs = (date: string): string => {
+-	return dayjs.duration(date).asSeconds().toString();
++	return dayjs.duration(date).asMilliseconds().toString();
+ };
+ 
+ // stringify json pretty
+@@ -90,7 +90,7 @@
+ 	try {
+ 		const url = new URL(str);
+ 		return (
+-			(url.protocol === "http:" && url.protocol === "https:") &&
++			(url.protocol === "http:" || url.protocol === "https:") &&
+ 			/\.(jpg|jpeg|png|gif|webp)$/i.test(url.pathname)
+ 		);
+ 	} catch {

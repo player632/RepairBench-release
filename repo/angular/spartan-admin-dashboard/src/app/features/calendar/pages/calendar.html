@@ -1,0 +1,162 @@
+<div *transloco="let t; prefix: 'calendar'" class="flex h-full w-full gap-5 sm:px-6">
+  <!-- Main Content -->
+  <div class="flex min-w-0 flex-1 flex-col">
+    <!-- Header -->
+    <div class="mb-6 flex flex-col gap-4">
+      <!-- Custom Calendar Navigation -->
+      <div class="flex flex-col justify-between gap-4 rounded-lg border-2 p-4 lg:flex-row lg:items-center">
+        <div class="flex items-center gap-x-4 gap-y-2">
+          <!-- Title -->
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-semibold">
+              @if (currentView() === 'timeGridDay') {
+                {{ currentStart() | date: 'MMMM yyyy' }}
+              } @else {
+                {{ currentTitle() }}
+              }
+            </h1>
+            <span hlmBadge> {{ visibleEventCount() }} {{ t('events') }} </span>
+          </div>
+
+          <!-- Date Range -->
+
+          <span class="text-muted-foreground hidden items-center gap-2 text-sm md:flex">
+            @if (currentView() === 'timeGridDay') {
+              {{ currentStart() | date: 'mediumDate' }}
+            } @else {
+              {{ currentStart() | date: 'mediumDate' }} - {{ currentEnd() | date: 'mediumDate' }}
+            }
+          </span>
+        </div>
+
+        <!--  Settings and View Switcher -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-4">
+          <!-- Navigation Buttons -->
+          <hlm-button-group>
+            <button
+              type="button"
+              hlmBtn
+              variant="outline"
+              size="icon"
+              [attr.aria-label]="t('ariaLabels.previousPeriod')"
+              (click)="previousMonth()"
+            >
+              <ng-icon name="lucideChevronLeft" class="rtl:rotate-180" />
+            </button>
+            <!-- Today Button -->
+            <button type="button" hlmBtn variant="outline" (click)="goToToday()">
+              {{ t('today') }}
+            </button>
+            <button
+              type="button"
+              hlmBtn
+              variant="outline"
+              size="icon"
+              [attr.aria-label]="t('ariaLabels.nextPeriod')"
+              (click)="nextMonth()"
+            >
+              <ng-icon name="lucideChevronRight" class="rtl:rotate-180" />
+            </button>
+          </hlm-button-group>
+
+          <button
+            type="button"
+            class="hidden sm:flex"
+            hlmBtn
+            variant="outline"
+            size="icon"
+            [attr.aria-label]="t('ariaLabels.filterEvents')"
+            [hlmDropdownMenuTrigger]="typesMenu"
+          >
+            <ng-icon name="lucideFilter" />
+          </button>
+
+          <ng-template #typesMenu>
+            <hlm-dropdown-menu>
+              <hlm-dropdown-menu-label>{{ t('filter-menu.title') }}</hlm-dropdown-menu-label>
+              <hlm-dropdown-menu-separator />
+
+              <hlm-dropdown-menu-group>
+                @for (type of eventTypes; track type.value) {
+                  <button
+                    type="button"
+                    hlmDropdownMenuCheckbox
+                    [checked]="selectedTypes().includes(type.value)"
+                    (triggered)="toggleFilter(type.value)"
+                  >
+                    <span class="flex items-center gap-2">
+                      <span class="mr-1 size-3 rounded-full" [style.backgroundColor]="type.color"></span>
+                      {{ t(`filter-menu.labels.${type.value}`) }}
+                    </span>
+                    <hlm-dropdown-menu-checkbox-indicator />
+                  </button>
+                }
+              </hlm-dropdown-menu-group>
+              <hlm-dropdown-menu-separator />
+              <button type="button" hlmDropdownMenuItem (click)="clearFilters()">{{ t('filter-menu.clear') }}</button>
+            </hlm-dropdown-menu>
+          </ng-template>
+
+          <button
+            type="button"
+            class="hidden sm:flex"
+            hlmBtn
+            variant="outline"
+            size="icon"
+            [attr.aria-label]="t('ariaLabels.settings')"
+            [hlmDropdownMenuTrigger]="settingsMenu"
+          >
+            <ng-icon name="lucideSettings" />
+          </button>
+          <ng-template #settingsMenu>
+            <hlm-dropdown-menu>
+              <hlm-dropdown-menu-label>{{ t('settings.title') }}</hlm-dropdown-menu-label>
+              <hlm-dropdown-menu-separator />
+
+              <hlm-dropdown-menu-group>
+                <button type="button" hlmDropdownMenuCheckbox [checked]="use24HourFormat()" (click)="toggleTimeFormat()">
+                  <hlm-dropdown-menu-checkbox-indicator />
+                  {{ t('settings.use24HourFormat') }}
+                </button>
+
+                <button
+                  type="button"
+                  hlmDropdownMenuCheckbox
+                  [checked]="eventDisplayMode() === 'block'"
+                  (click)="toggleEventDisplayMode()"
+                >
+                  <hlm-dropdown-menu-checkbox-indicator />
+                  {{ t('settings.cardView') }}
+                </button>
+              </hlm-dropdown-menu-group>
+            </hlm-dropdown-menu>
+          </ng-template>
+
+          @if (showDatePicker()) {
+            <hlm-date-picker [date]="selectedDate()" [autoCloseOnSelect]="true" (dateChange)="onDatePickerChange($event)">
+              <hlm-date-picker-trigger class="w-fit" buttonId="date" />
+            </hlm-date-picker>
+          }
+          <!--  View Switcher -->
+          <hlm-toggle-group type="single" variant="outline" [value]="currentView()" (valueChange)="changeView($event)">
+            @for (view of availableViews(); track $index) {
+              <button type="button" hlmToggleGroupItem [value]="view.value" [attr.aria-label]="t(`labels.${view.label}`)">
+                <ng-icon [name]="view.icon" />
+                <span class="hidden md:inline">{{ t(`labels.${view.label}`) }}</span>
+              </button>
+            }
+          </hlm-toggle-group>
+
+          <!-- Add new event -->
+          <button type="button" hlmBtn [attr.aria-label]="t('addEvent')" (click)="addEvent()">
+            <ng-icon name="lucidePlus" />
+            <span>{{ t('addEvent') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calendar -->
+    <full-calendar #calendar [options]="calendarOptions()" />
+  </div>
+</div>

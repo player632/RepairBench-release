@@ -1,0 +1,358 @@
+diff --git a/src/lib/rb-probe.js b/src/lib/rb-probe.js
+new file mode 100644
+--- /dev/null
++++ b/src/lib/rb-probe.js
+@@ -0,0 +1,344 @@
++/**
++ * RepairBench instrumentation probe — fluid-type-scale-calculator.
++ *
++ * WHY THIS FILE EXISTS: the face is graded offline (allow_internet = false) against a static serve
++ * of `build/`, so three things have to be observable from inside the page rather than inferred from
++ * the source: (1) that nothing reaches the network, (2) that the app actually booted instead of
++ * dying silently in hydration, and (3) that no checkpoint is reading state another checkpoint left
++ * behind. This module publishes those three facts as STRING getters on `window.__rb` and does
++ * nothing else.
++ *
++ * NEUTRALITY CONTRACT (checked by tests/dsl.json P24): it renders nothing, adds no element, no
++ * class, no attribute and ZERO data-testid. It holds no selector, no constant and no expectation
++ * belonging to any of the twelve defects. Deleting this file would fix no defect; it would only
++ * turn P18/P19/P20 red, which is exactly what makes those three checkpoints territory guards on the
++ * environment itself rather than on the application.
++ *
++ * Every value published is a STRING, because evaluation/dsl_runner.mjs compares a js_eval result
++ * with a loose `==` against the `expected` field and every expectation in this face is written as a
++ * string. Getters recompute on read, so nothing can go stale between setup and assert.
++ *
++ * PLAIN .js, NOT .ts: scripts.check is not part of scripts.build on this face, so a TypeScript
++ * probe could only ever add risk and never add evidence. The whole body is wrapped in try/catch:
++ * a probe that throws would poison errorCount and launder a behavioural red into an
++ * infrastructure red, which is the one thing this file must never do.
++ */
++import { browser } from '$app/environment';
++
++/** Storage keys the SEED itself writes. There are none: grep over src/ for
++ *  localStorage|sessionStorage|indexedDB|document.cookie returns 0 hits. The wipe loop is kept (not
++ *  deleted) so that P20 asserts a MEASURED empty rather than an unimplemented one, and so that a
++ *  "repair" which starts persisting state is caught by a real reading instead of by silence. */
++const SEED_STORAGE_KEYS = [];
++
++const PROBE_VERSION = 'rb-probe/1.0.0-fluid-type-scale-calculator';
++
++const state = {
++	installed: false,
++	requests: [],
++	hosts: [],
++	windowOpened: 0,
++	scriptErrors: [],
++	resourceErrors: []
++};
++
++const pushHost = (raw) => {
++	try {
++		const host = new URL(String(raw), window.location.href).host;
++		if (host && state.hosts.indexOf(host) < 0) state.hosts.push(host);
++	} catch {
++		/* an unparseable URL is still a fact: it was recorded in requests */
++	}
++};
++
++const isExternal = (raw) => {
++	try {
++		const url = new URL(String(raw), window.location.href);
++		if (url.protocol === 'data:' || url.protocol === 'blob:' || url.protocol === 'about:') return false;
++		return url.origin !== window.location.origin;
++	} catch {
++		return false;
++	}
++};
++
++const record = (raw, via) => {
++	try {
++		state.requests.push(via + ' ' + String(raw).slice(0, 300));
++		pushHost(raw);
++	} catch {
++		/* never let the probe be the thing that breaks the page */
++	}
++};
++
++const EXT_SELECTORS = 'link[href],script[src],iframe[src],img[src],audio[src],video[src],source[src],source[srcset],embed[src],object[data]';
++
++const censusExternalRefs = () => {
++	const found = [];
++	try {
++		for (const el of document.querySelectorAll(EXT_SELECTORS)) {
++			const raw = el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('data') || el.getAttribute('srcset');
++			if (!raw) continue;
++			for (const candidate of String(raw).split(',')) {
++				const trimmed = candidate.trim().split(/\s+/)[0];
++				if (trimmed && isExternal(trimmed)) found.push(el.tagName.toLowerCase() + ' ' + trimmed.slice(0, 200));
++			}
++		}
++	} catch {
++		/* a malformed DOM is not the probe's problem */
++	}
++	return found;
++};
++
++const storageSnapshot = () => {
++	const out = { writable: 'false', keys: [], length: 'ERR' };
++	try {
++		const probeKey = '__rb_probe_write_test__';
++		window.localStorage.setItem(probeKey, '1');
++		window.localStorage.removeItem(probeKey);
++		out.writable = 'true';
++	} catch {
++		out.writable = 'false';
++	}
++	try {
++		out.length = String(window.localStorage.length);
++		for (let i = 0; i < window.localStorage.length; i++) {
++			const k = window.localStorage.key(i);
++			if (k) out.keys.push(k);
++		}
++	} catch {
++		/* storage disabled: length stays ERR and that is itself the reading */
++	}
++	return out;
++};
++
++const wipeSeedKeys = () => {
++	const wiped = [];
++	try {
++		for (const k of SEED_STORAGE_KEYS) {
++			try {
++				if (window.localStorage.getItem(k) !== null) wiped.push(k);
++				window.localStorage.removeItem(k);
++			} catch {
++				/* per-key best effort */
++			}
++			try {
++				window.sessionStorage.removeItem(k);
++			} catch {
++				/* per-key best effort */
++			}
++		}
++	} catch {
++		/* whole-loop best effort */
++	}
++	return wiped;
++};
++
++const install = () => {
++	// ---- 1. network transports. Only NON-same-origin calls are recorded, so a same-origin
++	//         /__data.json fetch (SvelteKit's own prerendered-data load) never inflates the count.
++	try {
++		const nativeFetch = window.fetch;
++		if (typeof nativeFetch === 'function') {
++			window.fetch = function (input, init) {
++				try {
++					const raw = typeof input === 'string' ? input : input && input.url ? input.url : String(input);
++					if (isExternal(raw)) record(raw, 'fetch');
++				} catch {
++					/* record nothing rather than break the call */
++				}
++				return nativeFetch.apply(this, arguments);
++			};
++		}
++	} catch {
++		/* fetch not wrappable */
++	}
++
++	try {
++		const nativeOpen = window.XMLHttpRequest.prototype.open;
++		window.XMLHttpRequest.prototype.open = function (method, url) {
++			try {
++				if (isExternal(url)) record(url, 'xhr');
++			} catch {
++				/* record nothing rather than break the call */
++			}
++			return nativeOpen.apply(this, arguments);
++		};
++	} catch {
++		/* XHR not wrappable */
++	}
++
++	try {
++		const NativeEventSource = window.EventSource;
++		if (NativeEventSource) {
++			const WrappedEventSource = function (url, config) {
++				try {
++					if (isExternal(url)) record(url, 'eventsource');
++				} catch {
++					/* record nothing rather than break the call */
++				}
++				return config === undefined ? new NativeEventSource(url) : new NativeEventSource(url, config);
++			};
++			WrappedEventSource.prototype = NativeEventSource.prototype;
++			Object.defineProperty(window, 'EventSource', { value: WrappedEventSource, writable: true, configurable: true });
++		}
++	} catch {
++		/* EventSource not wrappable */
++	}
++
++	try {
++		const NativeWebSocket = window.WebSocket;
++		if (NativeWebSocket) {
++			const WrappedWebSocket = function (url, protocols) {
++				try {
++					if (isExternal(url)) record(url, 'websocket');
++				} catch {
++					/* record nothing rather than break the call */
++				}
++				return protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
++			};
++			WrappedWebSocket.prototype = NativeWebSocket.prototype;
++			Object.defineProperty(window, 'WebSocket', { value: WrappedWebSocket, writable: true, configurable: true });
++		}
++	} catch {
++		/* WebSocket not wrappable */
++	}
++
++	// HTMLImageElement.prototype.src is deliberately NOT redefined: overriding a native accessor
++	// risks breaking the very image loads it would observe, and it would add no evidence, because
++	// the extRefs census below enumerates every img[src] on every read (statically and after any
++	// later DOM mutation).
++
++	try {
++		const nativeWindowOpen = window.open;
++		window.open = function (url) {
++			try {
++				state.windowOpened += 1;
++				if (url !== undefined && isExternal(url)) record(url, 'window.open');
++			} catch {
++				/* record nothing rather than break the call */
++			}
++			return nativeWindowOpen.apply(this, arguments);
++		};
++	} catch {
++		/* window.open not wrappable */
++	}
++
++	// ---- 2. error split. errorCount is ONLY uncaught script errors and unhandled rejections;
++	//         element load failures are tallied separately as resourceErrorCount, because a failed
++	//         <img>/<link> is a network fact and must not be laundered into "the app threw".
++	try {
++		window.addEventListener(
++			'error',
++			(event) => {
++				try {
++					const target = event && event.target;
++					if (target && target !== window && (target.src || target.href)) {
++						state.resourceErrors.push((target.tagName || '?').toLowerCase() + ' ' + String(target.src || target.href).slice(0, 200));
++					} else {
++						state.scriptErrors.push(String((event && event.message) || 'error').slice(0, 200));
++					}
++				} catch {
++					/* never rethrow from a listener */
++				}
++			},
++			true
++		);
++	} catch {
++		/* listener not attachable */
++	}
++
++	try {
++		window.addEventListener('unhandledrejection', (event) => {
++			try {
++				state.scriptErrors.push('unhandledrejection ' + String((event && event.reason) || '').slice(0, 200));
++			} catch {
++				/* never rethrow from a listener */
++			}
++		});
++	} catch {
++		/* listener not attachable */
++	}
++
++	// ---- 3. state isolation: wipe the seed's own keys (there are none) before anything reads them.
++	try {
++		state.wiped = wipeSeedKeys();
++	} catch {
++		state.wiped = [];
++	}
++
++	state.installed = true;
++};
++
++if (browser) {
++	try {
++		install();
++	} catch {
++		state.installed = false;
++	}
++}
++
++const str = (v) => (v === undefined || v === null ? '' : String(v));
++
++const api = {
++	get ready() {
++		return state.installed ? 'true' : 'false';
++	},
++	get probeVersion() {
++		return PROBE_VERSION;
++	},
++	get egressCount() {
++		return str(state.requests.length);
++	},
++	get netHosts() {
++		return state.hosts.slice().sort().join(',');
++	},
++	get netRequests() {
++		return state.requests.slice(0, 8).join(' ;; ');
++	},
++	get windowOpened() {
++		return str(state.windowOpened);
++	},
++	get errorCount() {
++		return str(state.scriptErrors.length);
++	},
++	get errorText() {
++		return state.scriptErrors.slice(0, 4).join(' ;; ');
++	},
++	get resourceErrorCount() {
++		return str(state.resourceErrors.length);
++	},
++	get resourceErrorText() {
++		return state.resourceErrors.slice(0, 4).join(' ;; ');
++	},
++	get extRefsCount() {
++		return str(censusExternalRefs().length);
++	},
++	get extRefsSample() {
++		return censusExternalRefs().slice(0, 5).join(' ;; ');
++	},
++	get storageWritable() {
++		return storageSnapshot().writable;
++	},
++	get storageKeys() {
++		return storageSnapshot().keys.slice().sort().join(',');
++	},
++	get storageLength() {
++		return storageSnapshot().length;
++	},
++	get wipedKeys() {
++		return (state.wiped || []).slice().sort().join(',');
++	},
++	get seedStorageKeyCount() {
++		return str(SEED_STORAGE_KEYS.length);
++	}
++};
++
++if (browser) {
++	try {
++		Object.defineProperty(window, '__rb', { value: api, writable: true, configurable: true });
++	} catch {
++		window.__rb = api;
++	}
++}
++
++export default api;
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -1,4 +1,5 @@
+ <script>
++	import '$lib/rb-probe';
+ 	import '$lib/styles/main.scss';
+ 	import site from '$lib/data/site.json';
+ 	import { page } from '$app/stores';

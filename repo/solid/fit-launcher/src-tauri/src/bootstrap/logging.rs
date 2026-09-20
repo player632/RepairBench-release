@@ -1,0 +1,59 @@
+use std::{fs, sync::OnceLock};
+use tracing::info;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{EnvFilter, prelude::*};
+
+static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+
+pub fn init_logging() {
+    let logs_dir = directories::BaseDirs::new()
+        .expect("Could not determine base directories")
+        .config_dir()
+        .join("com.fitlauncher.carrotrub")
+        .join("logs");
+
+    let settings_dir = directories::BaseDirs::new()
+        .expect("Could not determine base directories")
+        .config_dir()
+        .join("com.fitlauncher.carrotrub")
+        .join("fitgirlConfig");
+
+    if let Err(e) = fs::create_dir_all(&logs_dir) {
+        eprintln!("Failed to create logs dir {:?}: {:?}", logs_dir, e);
+    }
+    if let Err(e) = fs::create_dir_all(&settings_dir) {
+        eprintln!("Failed to create settings dir {:?}: {:?}", settings_dir, e);
+    }
+
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("app")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&logs_dir)
+        .expect("Failed to build rolling file appender");
+    let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    LOG_GUARD.set(guard).unwrap();
+
+    // Filter to reduce spam from aria2_ws websocket reconnection attempts
+    let env_filter = std::env::var("RUST_LOG").ok();
+    let filter = match env_filter {
+        Some(env) if !env.is_empty() => EnvFilter::new(env),
+        _ => EnvFilter::new("info,aria2_ws=warn"),
+    };
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(file_writer)
+                .with_ansi(false),
+        )
+        .with(filter)
+        .try_init()
+        .unwrap_or_else(|_| {
+            eprintln!("Global tracing subscriber already set");
+        });
+
+    info!("Logging initialized, logs_dir: {}", logs_dir.display());
+    info!("init_logging complete");
+}

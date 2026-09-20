@@ -1,0 +1,198 @@
+diff --git a/app/src/components/CommandPalette.tsx b/app/src/components/CommandPalette.tsx
+index 32c154d..81a95a4 100644
+--- a/app/src/components/CommandPalette.tsx
++++ b/app/src/components/CommandPalette.tsx
+@@ -167,6 +167,7 @@ export default function CommandPalette() {
+               value={query()}
+               onInput={(e) => {
+                 setQuery(e.currentTarget.value);
++                setCursor(0);
+               }}
+               onKeyDown={onKey}
+             />
+diff --git a/app/src/components/DeviceList.tsx b/app/src/components/DeviceList.tsx
+index c6c1eea..94a7716 100644
+--- a/app/src/components/DeviceList.tsx
++++ b/app/src/components/DeviceList.tsx
+@@ -60,7 +60,10 @@ export default function DeviceList() {
+   // keyboard navigation must follow the exact visual (grouped) order, or j/k
+   // jump between rows that sit far apart on screen
+   let scrollBody: HTMLDivElement | undefined;
+-  const navList = createMemo(() => deviceIndex.map((d) => d.slug));
++  const navList = createMemo(() => {
++    const g = grouped();
++    return APP_ORDER.flatMap((app) => (g[app] ?? []).map((d) => d.slug));
++  });
+   const step = (delta: number) => {
+     const list = navList();
+     if (!list.length) return;
+diff --git a/app/src/components/GenerativeBar.tsx b/app/src/components/GenerativeBar.tsx
+index 1277d72..1d042c9 100644
+--- a/app/src/components/GenerativeBar.tsx
++++ b/app/src/components/GenerativeBar.tsx
+@@ -33,9 +33,7 @@ export default function GenerativeBar(props: Props) {
+   const [rotate, setRotate] = createSignal(0);
+   const [amount, setAmount] = createSignal(30);
+ 
+-  // pattern length the generators work on
+-  const lenAtMount = props.state().length;
+-  const len = () => lenAtMount;
++  const len = () => props.state().length;
+   const rowName = () =>
+     props.state().rows[props.selRow()]?.label ?? `row ${props.selRow() + 1}`;
+ 
+diff --git a/app/src/components/Sequencer.tsx b/app/src/components/Sequencer.tsx
+index 93e4317..5f661d5 100644
+--- a/app/src/components/Sequencer.tsx
++++ b/app/src/components/Sequencer.tsx
+@@ -302,6 +302,7 @@ export default function SequencerView(props: Props) {
+   // flush on unmount (during playback every tick resets the debounce)
+   onCleanup(() => {
+     clearTimeout(saveTimer);
++    persistNow();
+   });
+ 
+   // selection for the inspector
+diff --git a/app/src/components/SettingControl.tsx b/app/src/components/SettingControl.tsx
+index 090363d..4d087af 100644
+--- a/app/src/components/SettingControl.tsx
++++ b/app/src/components/SettingControl.tsx
+@@ -23,8 +23,8 @@ export default function SettingControl(props: Props) {
+     paramKey(props.fnName, props.setting, props.position),
+   );
+ 
+-  // read this device's cached params
+-  const params = () => actions().params[props.slug] ?? {};
++  // subscribe to this device's cached params
++  const params = useApp((s) => s.params[props.slug] ?? {});
+ 
+   const valueOf = (sub: SubControl): number => {
+     const k = `${baseKey()}:${sub.id}`;
+diff --git a/app/src/components/controls/Widgets.tsx b/app/src/components/controls/Widgets.tsx
+index b835d0a..331a8aa 100644
+--- a/app/src/components/controls/Widgets.tsx
++++ b/app/src/components/controls/Widgets.tsx
+@@ -80,26 +80,19 @@ export function Dropdown(props: BaseProps & { options: string[] }) {
+   );
+ }
+ 
+-export function Toggle({
+-  value,
+-  onInput,
+-  disabled,
+-  id,
+-  label,
+-  options,
+-}: BaseProps & { options?: string[] }) {
+-  const on = () => value > 0;
+-  const labels = () => options ?? ['Off', 'On'];
++export function Toggle(props: BaseProps & { options?: string[] }) {
++  const on = () => props.value > 0;
++  const labels = () => props.options ?? ['Off', 'On'];
+   return (
+-    <Field label={label} id={id}>
++    <Field label={props.label} id={props.id}>
+       <button
+         type="button"
+         data-testid="rb-toggle"
+         class={`toggle wheelable ${on() ? 'on' : ''}`}
+-        id={id}
+-        disabled={disabled}
++        id={props.id}
++        disabled={props.disabled}
+         title={on() ? labels()[1] : labels()[0]}
+-        onClick={() => onInput(on() ? 0 : 1)}
++        onClick={() => props.onInput(on() ? 0 : 1)}
+         aria-pressed={on()}
+       >
+         <span class="track">
+diff --git a/app/src/lib/generative.ts b/app/src/lib/generative.ts
+index 1f42d23..e5c9a50 100644
+--- a/app/src/lib/generative.ts
++++ b/app/src/lib/generative.ts
+@@ -21,7 +21,7 @@ export function euclid(pulses: number, steps: number, rotate = 0): boolean[] {
+     }
+   }
+   const r = ((rotate % steps) + steps) % steps;
+-  return out.map((_, i) => out[(i + r) % steps]);
++  return out.map((_, i) => out[(i - r + steps) % steps]);
+ }
+ 
+ // gate mask -> mono step patches (notes/velocities untouched)
+diff --git a/app/src/lib/hotkeys.ts b/app/src/lib/hotkeys.ts
+index 1b68721..5a9dcff 100644
+--- a/app/src/lib/hotkeys.ts
++++ b/app/src/lib/hotkeys.ts
+@@ -135,7 +135,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
+ // stack; Space / digits / brackets / ? / Esc keep working.
+ let letterSuspend = 0;
+ export function suspendLetterHotkeys(on: boolean) {
+-  if (on) letterSuspend = letterSuspend + 1;
++  letterSuspend = Math.max(0, letterSuspend + (on ? 1 : -1));
+ }
+ export function letterHotkeysSuspended(): boolean {
+   return letterSuspend > 0;
+diff --git a/app/src/lib/idb.ts b/app/src/lib/idb.ts
+index a2f9e37..670a2a4 100644
+--- a/app/src/lib/idb.ts
++++ b/app/src/lib/idb.ts
+@@ -58,8 +58,12 @@ export function idbAll<T>(store: StoreName): Promise<T[]> {
+   return tx(store, 'readonly', (os) => os.getAll() as IDBRequest<T[]>);
+ }
+ 
+-export function idbBySlug<T>(store: StoreName, _slug: string): Promise<T[]> {
+-  return tx(store, 'readonly', (os) => os.getAll() as IDBRequest<T[]>);
++export function idbBySlug<T>(store: StoreName, slug: string): Promise<T[]> {
++  return tx(
++    store,
++    'readonly',
++    (os) => os.index('slug').getAll(slug) as IDBRequest<T[]>,
++  );
+ }
+ 
+ export function newId(): string {
+diff --git a/app/src/lib/nav.ts b/app/src/lib/nav.ts
+index ceb3fab..09a18a0 100644
+--- a/app/src/lib/nav.ts
++++ b/app/src/lib/nav.ts
+@@ -28,9 +28,11 @@ export function syncUrl(slug: string | null): void {
+     userNav = false;
+     return;
+   }
++  const push = userNav;
+   userNav = false;
+   const state = { slug };
+-  window.history.replaceState(state, '', desired);
++  if (push) window.history.pushState(state, '', desired);
++  else window.history.replaceState(state, '', desired);
+ }
+ 
+ // true when a left-click should be handled in-app (unmodified primary button)
+diff --git a/app/src/lib/sequencer.ts b/app/src/lib/sequencer.ts
+index ce77ac6..f2adb39 100644
+--- a/app/src/lib/sequencer.ts
++++ b/app/src/lib/sequencer.ts
+@@ -606,6 +606,8 @@ export class Sequencer {
+   serialize(): PersistedSequence {
+     const slots: PersistedSequence['slots'] = {};
+     for (const [key, slot] of this.slots) slots[key] = slot;
++    // include the ACTIVE slot's live content
++    slots[this.slotKey()] = this.captureSlot();
+     return {
+       v: 1,
+       tempo: this.st.tempo,
+diff --git a/app/src/lib/ui.ts b/app/src/lib/ui.ts
+index 1049a7f..af21345 100644
+--- a/app/src/lib/ui.ts
++++ b/app/src/lib/ui.ts
+@@ -8,7 +8,9 @@ export const toggleDrawer = () => setDrawerOpen((v) => !v);
+ 
+ // monitor/log column visibility (persisted); hidden = device panel goes wide
+ const LOG_KEY = 'ui:log-open';
+-export const [logOpen, setLogOpen] = createSignal(true);
++export const [logOpen, setLogOpen] = createSignal(
++  typeof localStorage === 'undefined' || localStorage.getItem(LOG_KEY) !== '0',
++);
+ export const toggleLog = () =>
+   setLogOpen((v) => {
+     try {

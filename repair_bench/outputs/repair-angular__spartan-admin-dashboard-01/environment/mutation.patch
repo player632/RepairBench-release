@@ -1,0 +1,162 @@
+diff --git a/src/app/core/auth/auth-service.ts b/src/app/core/auth/auth-service.ts
+index 1ed35af..a7e6cf1 100644
+--- a/src/app/core/auth/auth-service.ts
++++ b/src/app/core/auth/auth-service.ts
+@@ -18,7 +18,6 @@ export class AuthService {
+ 
+   logout(): Promise<boolean> {
+     this._currentUser.set(null);
+-    this._localStorage?.removeItem('token');
+     return this._router.navigate(['/login']);
+   }
+ }
+diff --git a/src/app/core/config/breadcrumb-service.ts b/src/app/core/config/breadcrumb-service.ts
+index 54a536e..a0dfcdb 100644
+--- a/src/app/core/config/breadcrumb-service.ts
++++ b/src/app/core/config/breadcrumb-service.ts
+@@ -50,7 +50,7 @@ export class BreadcrumbService {
+   private _buildBreadcrumbs(): Breadcrumb[] {
+     // Get the deepest activated child route
+     let route = this._activatedRoute.root;
+-    while (route.firstChild) {
++    if (route.firstChild) {
+       route = route.firstChild;
+     }
+ 
+diff --git a/src/app/core/config/directionality-service.ts b/src/app/core/config/directionality-service.ts
+index 7297b69..e50fa7e 100644
+--- a/src/app/core/config/directionality-service.ts
++++ b/src/app/core/config/directionality-service.ts
+@@ -15,7 +15,7 @@ export class DirectionalityService {
+     this._dir.valueSignal.set(dir);
+     this._dir.change.emit(dir);
+     if (isPlatformBrowser(this._platformId)) {
+-      this._document.documentElement.dir = dir;
++      this._document.body.dir = dir;
+     }
+   }
+ }
+diff --git a/src/app/core/config/language-service.ts b/src/app/core/config/language-service.ts
+index a3946ef..24b3f77 100644
+--- a/src/app/core/config/language-service.ts
++++ b/src/app/core/config/language-service.ts
+@@ -52,12 +52,9 @@ export class LanguageService {
+   constructor() {
+     // Keep <html lang> in sync with the active language (index.html hardcodes
+     // "en") so screen readers pick the right speech synthesis for fr/ar.
+-    effect(() => {
+-      const lang = this.currentLang();
+-      if (isPlatformBrowser(this._platformId)) {
+-        this._document.documentElement.lang = lang;
+-      }
+-    });
++    if (isPlatformBrowser(this._platformId)) {
++      this._document.documentElement.lang = this.currentLang();
++    }
+ 
+     afterNextRender(() => {
+       const browserLang = navigator.language?.split('-')[0];
+diff --git a/src/app/core/config/theme-service.ts b/src/app/core/config/theme-service.ts
+index d5fda88..1348f24 100644
+--- a/src/app/core/config/theme-service.ts
++++ b/src/app/core/config/theme-service.ts
+@@ -25,7 +25,7 @@ export class ThemeService {
+   constructor() {
+     const savedTheme = this._localStorage?.getItem(STORAGE_KEY) as Theme | null;
+ 
+-    this._selectedTheme.set(savedTheme && THEMES.includes(savedTheme) ? savedTheme : 'system');
++    this._selectedTheme.set(savedTheme && !THEMES.includes(savedTheme) ? savedTheme : 'system');
+ 
+     const onSystemThemeChange = (e: MediaQueryListEvent) => this._systemPrefersDark.set(e.matches);
+     this._mediaQuery?.addEventListener('change', onSystemThemeChange);
+diff --git a/src/app/features/auth/two-step-verification/two-step-verification.ts b/src/app/features/auth/two-step-verification/two-step-verification.ts
+index c59e015..6d00e8a 100644
+--- a/src/app/features/auth/two-step-verification/two-step-verification.ts
++++ b/src/app/features/auth/two-step-verification/two-step-verification.ts
+@@ -125,7 +125,7 @@ export default class TwoStepVerification {
+   private startCountdown(): void {
+     this.stopCountdown();
+     this._intervalId = setInterval(() => {
+-      this.countdown.update((countdown) => Math.max(0, countdown - 1));
++      this.countdown.update((countdown) => Math.max(0, countdown + 1));
+       if (this.countdown() === 0) {
+         this.stopCountdown();
+       }
+diff --git a/src/app/features/users/service/user-service.ts b/src/app/features/users/service/user-service.ts
+index 3af5508..59cedcc 100644
+--- a/src/app/features/users/service/user-service.ts
++++ b/src/app/features/users/service/user-service.ts
+@@ -32,8 +32,7 @@ export class UserService {
+       const matchesSearch =
+         !term ||
+         user.name.toLowerCase().includes(term) ||
+-        user.email.toLowerCase().includes(term) ||
+-        user.phoneNumber.toLowerCase().includes(term);
++        user.email.toLowerCase().includes(term);
+       const matchesRole = roles.length === 0 || roles.includes(user.role);
+       const matchesStatus = statuses.length === 0 || statuses.includes(user.status);
+       return matchesSearch && matchesRole && matchesStatus;
+diff --git a/src/app/layout/app/components/notifications/notifications.ts b/src/app/layout/app/components/notifications/notifications.ts
+index 053e82e..87af71a 100644
+--- a/src/app/layout/app/components/notifications/notifications.ts
++++ b/src/app/layout/app/components/notifications/notifications.ts
+@@ -132,7 +132,7 @@ export class Notifications {
+ 
+   protected readonly notifications = signal<Notification[]>(structuredClone(STATIC_NOTIFICATIONS));
+ 
+-  protected readonly unreadCount = computed(() => this.notifications().filter((notification) => notification.unread).length);
++  protected readonly unreadCount = computed(() => this.notifications().filter((notification) => !notification.unread).length);
+ 
+   // ==========================================
+   // Public Methods
+diff --git a/src/app/shared/components/theme-switch/theme-switch.ts b/src/app/shared/components/theme-switch/theme-switch.ts
+index 8e3f782..6a0c8c8 100644
+--- a/src/app/shared/components/theme-switch/theme-switch.ts
++++ b/src/app/shared/components/theme-switch/theme-switch.ts
+@@ -36,7 +36,7 @@ export class ThemeSwitch {
+   // Public Methods
+   // ==========================================
+   protected toggleTheme(): void {
+-    this._themeService.setTheme(this._themeService.resolvedTheme() === 'dark' ? 'light' : 'dark');
++    this._themeService.setTheme(this._themeService.resolvedTheme() === 'light' ? 'light' : 'dark');
+   }
+ 
+   protected onKeydown(event: KeyboardEvent): void {
+diff --git a/src/app/shared/datatable/pagination/pagination.ts b/src/app/shared/datatable/pagination/pagination.ts
+index 21d646e..1b09d6e 100644
+--- a/src/app/shared/datatable/pagination/pagination.ts
++++ b/src/app/shared/datatable/pagination/pagination.ts
+@@ -150,6 +150,6 @@ export class DataTablePagination {
+   handlePageSizeChange(value: string | number) {
+     const size = Number(value);
+     if (!Number.isFinite(size) || size <= 0) return;
+-    this.table().setPagination({ pageIndex: 0, pageSize: size });
++    this.table().setPagination({ pageIndex: this.table().atoms.pagination.get().pageIndex, pageSize: size });
+   }
+ }
+diff --git a/src/app/shared/pipes/bytes/bytes.pipe.ts b/src/app/shared/pipes/bytes/bytes.pipe.ts
+index 5c86e91..a19f594 100644
+--- a/src/app/shared/pipes/bytes/bytes.pipe.ts
++++ b/src/app/shared/pipes/bytes/bytes.pipe.ts
+@@ -52,7 +52,7 @@ export class BytesPipe implements PipeTransform {
+       return `0 ${unitLabels[0]}`;
+     }
+ 
+-    const index = Math.floor(Math.log(bytes) / Math.log(base));
++    const index = Math.ceil(Math.log(bytes) / Math.log(base));
+     // Prevent index out of bounds for very large numbers
+     const unitIndex = Math.min(index, unitLabels.length - 1);
+ 
+diff --git a/src/app/shared/pipes/timeago/time-ago.pipe.ts b/src/app/shared/pipes/timeago/time-ago.pipe.ts
+index 6a6a238..c234349 100644
+--- a/src/app/shared/pipes/timeago/time-ago.pipe.ts
++++ b/src/app/shared/pipes/timeago/time-ago.pipe.ts
+@@ -31,7 +31,7 @@ export class TimeAgoPipe implements PipeTransform {
+       return '';
+     }
+     const { always, justNow } = this.formattersFor(lang ?? this.transloco.activeLang());
+-    const diffSeconds = Math.round((timestamp - Date.now()) / 1000);
++    const diffSeconds = Math.round((Date.now() - timestamp) / 1000);
+     const absDiff = Math.abs(diffSeconds);
+ 
+     if (absDiff < 5) return justNow.format(0, 'second');

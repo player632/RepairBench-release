@@ -1,0 +1,49 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -5,7 +5,12 @@
+     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <title>ArchitectUI Vue 3 - Admin Dashboard Template v2.2</title>
+-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900">
++    <!-- OFFLINE ADAPTATION (repair-bench): the Google Fonts stylesheet that stood here was the only real
++         runtime request in the document head, and [environment] allow_internet=false forbids it. Nothing
++         under src/ asks for a Roboto webfont (grep-verified: the single "Roboto" in the built CSS is the
++         4th name in Bootstrap's --bs-font-sans-serif stack, which resolves from locally installed fonts),
++         so removing the link changes no application behaviour - the stack simply resolves one entry later,
++         exactly as it already does upstream whenever the CDN is unreachable. -->
+   </head>
+   <body>
+     <noscript>
+diff --git a/src/router/index.js b/src/router/index.js
+--- a/src/router/index.js
++++ b/src/router/index.js
+@@ -1,7 +1,11 @@
+ import { createRouter, createWebHistory } from 'vue-router'
+ 
+ export default createRouter({
+-  history: createWebHistory(import.meta.env.PROD ? '/architectui-vue-free/' : '/'),
++  // OFFLINE ADAPTATION (repair-bench): the history base must match the vite `base` above. Upstream couples
++  // both to "/architectui-vue-free/" in production; the benchmark serves the built app at the origin root,
++  // so a production history base of "/architectui-vue-free/" would make every route resolve to a path the
++  // server never maps to a route record (blank page). Route records, names and order are untouched.
++  history: createWebHistory('/'),
+   scrollBehavior() {
+     return { top: 0, behavior: 'smooth' }
+   },
+diff --git a/vite.config.ts b/vite.config.ts
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -5,7 +5,11 @@
+ // https://vitejs.dev/config/
+ export default defineConfig({
+   plugins: [vue()],
+-  base: process.env.NODE_ENV === 'production' ? '/architectui-vue-free/' : '/',
++  // OFFLINE ADAPTATION (repair-bench): upstream ships base "/architectui-vue-free/" for the GitHub-Pages
++  // deployment, which makes every emitted asset URL absolute under that prefix. The benchmark serves the
++  // build output directory at the origin root, so the page would 404 on its own bundle, preloads and CSS.
++  // A root base keeps the emitted module graph identical in shape while resolving against the served origin.
++  base: '/',
+ 
+   resolve: {
+     alias: {

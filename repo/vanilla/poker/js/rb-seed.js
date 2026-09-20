@@ -1,0 +1,205 @@
+/**
+ * RepairBench adaptation face - deterministic entropy source + same-origin network accounting.
+ * Added by the harness (environment/adaptation.patch). NOT authored by the designer of this task,
+ * and NOT part of the defect surface: no application logic, data, control flow or call site changes.
+ *
+ * WHY THIS FILE EXISTS
+ *
+ * 1) ENTROPY. The pristine tree has no seedable RNG and no seed knob: js/gameEngine.js:1567
+ *    advanceDealer(players, randomValue = Math.random()) picks the dealer button, js/gameEngine.js
+ *    shuffleArray() deals the deck, and js/bot.js draws Math.random() in ~10 decision gates
+ *    (js/bot.js:2184, 2201, 4111, 4251, 4301, 4720, 4755, 4793, 4810, 4933, 5029, 5048, 5093 ...).
+ *    Every one of those is a per-run divergence, so without a reproducible stream no checkpoint could
+ *    ever state an expected value for anything that happens after the first bot decision, and the
+ *
+ *    This file installs ONE reproducible stream underneath all of them. It replaces the entropy
+ *    source and nothing else: mulberry32 (32-bit state, full period, no dependency).
+ *
+ *    The stream is global and never reset: one closure variable advanced once per draw, not re-seeded
+ *    per hand, per click or per checkpoint. Consecutive draws therefore still differ exactly as they
+ *    did in the pristine tree - they are just the same draws on every run. Each checkpoint in
+ *    tests/dsl.json runs in its own fresh browser context (evaluation/dsl_runner.mjs
+ *    runCheckpointOnce -> browser.newContext), which reloads the document and so restarts the stream
+ *    from the same constant; that is what makes each checkpoint's expectation reproducible without
+ *    any cross-checkpoint coordination.
+ *
+ *    There is NO seed knob: no query parameter, no hash, no setter, no reset function, no global
+ *    that can be written to change the stream. The seed is the constant below, so an answering model
+ *    can neither tune it nor use it as a cheat handle, and a repair cannot perturb it.
+ *
+ *    Belt and braces: the 12 F2P expectations in tests/dsl.json are additionally RNG-INVARIANT by
+ *
+ *    14-state x 6-dealer-rotation matrix and only accepted where all 6 rotations agree, so even a
+ *    different dealer rotation or a different shuffle yields the same expected scalar. The stream
+ *    here removes the remaining nondeterminism (which bot acts when, and how many hands a checkpoint
+ *    has to wait through), it is not what makes the expectations correct.
+ *
+ * 2) OFFLINE ACCOUNTING. The pristine entry document pulled two third-party origins: a Google Fonts
+ *    stylesheet plus its two preconnects (index.html:34-36 -> fonts.googleapis.com / fonts.gstatic.com)
+ *    and an umami analytics script (index.html:38-41 -> cloud.umami.is). Both are neutralised by this
+ *    same adaptation face (the stylesheet link is repointed at the local inert stand-in
+ *    css/fonts-inert.css, the two preconnects and the analytics script are removed). js/app.js:240-241
+ *    and js/remoteTable.js:82-83 / js/singleView.js:54-55 hold a fourth origin
+ *    (https://poker.tehes.deno.net) for the multiplayer state/action sync, but that transport is
+ *    gated: hasStateSyncEnabled() is false whenever tableId is null, which is always the case for the
+ *    solo table this task is served from, so no request is ever made. The transports are hooked here
+ *    anyway - defensively - so that "the served face makes zero cross-origin requests" is a READING
+ *    (window.__RB_SEED_FACE__.blocked stays empty, .same_origin_only stays true, asserted by a P2P
+ *    checkpoint) rather than a claim. CSS-initiated and document-initiated subresource loads do not
+ *    travel through any JS transport, so those are accounted statically: after this face the served
+ *    document contains 0 request-causing references to any non-loopback origin (the census is printed
+ *
+ *
+ *    The service worker is separately removed from the served face (js/serviceWorkerRegistration.js
+ *    initServiceWorker early-returns under this face) because its ALLOWED_ORIGINS set
+ *    (service-worker.js:32-36) contains fonts.googleapis.com and fonts.gstatic.com, its fetch handler
+ *    caches opaque cross-origin responses cache-first, and its activate handler calls
+ *    self.clients.claim() (service-worker.js:148), i.e. it would insert a caching interceptor between
+ *    the harness and the tree under test.
+ *
+ * WHAT THIS FILE DELIBERATELY DOES NOT DO
+ *   - it does not freeze or fake the clock: Date.now()/performance.now() keep running, because the
+ *     app uses them for label/reaction expiry (js/shared/syncViewModel.js getLivePlayerActionState,
+ *
+ *   - it does not expose any handle into application state. window.__RB_SEED_FACE__ describes ONLY
+ *     this file's own bookkeeping (draw count, request/block ledger, hooked transports). It is not a
+ *     probe: it cannot read gameState, cannot call into the app, and no checkpoint derives a defect
+ *     verdict from anything but the document's own DOM.
+ *   - it does not change fonts, layout, geometry, colours or hit testing. css/fonts-inert.css contains
+ *     no @font-face and no src: url(...), so the two 'Secular One' declarations in css/style.css:41,90
+ *     simply fall back to the generic sans-serif they already list. Glyph identity and font family are
+ *     NOT observable on this face and NO checkpoint in tests/dsl.json reads them.
+ */
+(function () {
+	"use strict";
+	if (globalThis.__RB_SEED_FACE__) {
+		return;
+	}
+
+	// ---- 1) deterministic entropy -------------------------------------------------------------
+	var SEED_CONSTANT = 1347243077; // 0x504F4B45 = "POKE"; a constant, with no knob anywhere
+	var streamState = SEED_CONSTANT >>> 0;
+	function mulberry32() {
+		streamState = (streamState + 0x6d2b79f5) >>> 0;
+		var t = streamState;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	}
+	var randomCalls = 0;
+	Object.defineProperty(Math, "random", {
+		configurable: true,
+		writable: true,
+		value: function () {
+			randomCalls++;
+			return mulberry32();
+		},
+	});
+
+	// ---- 2) same-origin network accounting ----------------------------------------------------
+	var face = {
+		schema: "wlb-rb-seed-face/v1",
+		purpose: "adaptation-face bookkeeping only: deterministic entropy draw count + request ledger",
+		requests: [],
+		blocked: [],
+		same_origin_only: true,
+		transports_hooked: [],
+	};
+	Object.defineProperty(face, "random_calls", {
+		enumerable: true,
+		get: function () { return randomCalls; },
+	});
+	Object.defineProperty(face, "seed_constant", {
+		enumerable: true,
+		get: function () { return SEED_CONSTANT; },
+	});
+	globalThis.__RB_SEED_FACE__ = face;
+
+	function originOf(url) {
+		try {
+			return new URL(String(url), globalThis.location.href).origin;
+		} catch (error) {
+			return "<unparsable>";
+		}
+	}
+	function account(transport, url) {
+		var record = {
+			transport: transport,
+			url: String(url),
+			origin: originOf(url),
+			seq: face.requests.length + face.blocked.length,
+		};
+		if (record.origin === globalThis.location.origin) {
+			face.requests.push(record);
+			return true;
+		}
+		face.blocked.push(record);
+		face.same_origin_only = false;
+		return false;
+	}
+	function refusal(transport, url) {
+		return new TypeError(
+			"RepairBench adaptation face: cross-origin " + transport + " refused (" + url + ")",
+		);
+	}
+
+	if (typeof globalThis.fetch === "function") {
+		var nativeFetch = globalThis.fetch;
+		globalThis.fetch = function (input) {
+			var url = typeof input === "string"
+				? input
+				: (input && (input.url || input.href)) || String(input);
+			if (!account("fetch", url)) {
+				return Promise.reject(refusal("fetch", url));
+			}
+			return nativeFetch.apply(this, arguments);
+		};
+		face.transports_hooked.push("fetch");
+	}
+
+	if (typeof globalThis.XMLHttpRequest === "function") {
+		var nativeOpen = globalThis.XMLHttpRequest.prototype.open;
+		globalThis.XMLHttpRequest.prototype.open = function (method, url) {
+			if (!account("xhr", url)) {
+				throw refusal("XMLHttpRequest.open", url);
+			}
+			return nativeOpen.apply(this, arguments);
+		};
+		face.transports_hooked.push("XMLHttpRequest.open");
+	}
+
+	if (typeof globalThis.WebSocket === "function") {
+		var NativeWebSocket = globalThis.WebSocket;
+		globalThis.WebSocket = function (url) {
+			if (!account("websocket", url)) {
+				throw refusal("WebSocket", url);
+			}
+			return new NativeWebSocket(url, arguments[1]);
+		};
+		globalThis.WebSocket.prototype = NativeWebSocket.prototype;
+		face.transports_hooked.push("WebSocket");
+	}
+
+	if (typeof globalThis.EventSource === "function") {
+		var NativeEventSource = globalThis.EventSource;
+		globalThis.EventSource = function (url) {
+			if (!account("eventsource", url)) {
+				throw refusal("EventSource", url);
+			}
+			return new NativeEventSource(url, arguments[1]);
+		};
+		globalThis.EventSource.prototype = NativeEventSource.prototype;
+		face.transports_hooked.push("EventSource");
+	}
+
+	if (globalThis.navigator && typeof globalThis.navigator.sendBeacon === "function") {
+		var nativeBeacon = globalThis.navigator.sendBeacon.bind(globalThis.navigator);
+		globalThis.navigator.sendBeacon = function (url) {
+			if (!account("sendBeacon", url)) {
+				return false;
+			}
+			return nativeBeacon.apply(null, arguments);
+		};
+		face.transports_hooked.push("navigator.sendBeacon");
+	}
+})();

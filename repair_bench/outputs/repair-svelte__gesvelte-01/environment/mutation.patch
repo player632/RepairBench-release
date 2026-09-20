@@ -1,0 +1,144 @@
+diff --git a/src/lib/actions.ts b/src/lib/actions.ts
+index 49b9f3e..ee4ddae 100644
+--- a/src/lib/actions.ts
++++ b/src/lib/actions.ts
+@@ -1,7 +1,7 @@
+ export function createPortal(element: HTMLElement, elName: string) {
+ 	const modalSlot = document.getElementById(elName);
+ 
+-	modalSlot?.appendChild(element);
++	document.body.appendChild(element);
+ 
+ 	return {
+ 		destroy() {
+diff --git a/src/lib/components/SlidingPanel.svelte b/src/lib/components/SlidingPanel.svelte
+index f75a377..5b4f467 100644
+--- a/src/lib/components/SlidingPanel.svelte
++++ b/src/lib/components/SlidingPanel.svelte
+@@ -18,7 +18,7 @@
+ 	<div
+ 		{id}
+ 		class="flyout-panel flex flex-column half-width glass-bg"
+-		transition:fly={{ x: 600, duration: 1000 }}
++		in:fly={{ x: 600, duration: 1000 }}
+ 	>
+ 		<!-- svelte-ignore a11y-click-events-have-key-events -->
+ 		<span class="close" on:click={() => close()}>X</span>
+diff --git a/src/lib/components/base/Checkbox.svelte b/src/lib/components/base/Checkbox.svelte
+index 73b30be..cbbc967 100644
+--- a/src/lib/components/base/Checkbox.svelte
++++ b/src/lib/components/base/Checkbox.svelte
+@@ -18,7 +18,7 @@
+ 
+ <fieldset>
+   {#each fields as field}
+-    <input type="checkbox" id={`${id}-${field.value}`} bind:group={checked} {name} value={field.value} checked={field.checked}>
++    <input type="checkbox" id={`${id}`} bind:group={checked} {name} value={field.value} checked={field.checked}>
+     <label for={`${id}-${field.value}`}>{field.label}</label>
+   {/each}
+ </fieldset>
+\ No newline at end of file
+diff --git a/src/lib/components/base/Input.svelte b/src/lib/components/base/Input.svelte
+index 0000644..d232374 100644
+--- a/src/lib/components/base/Input.svelte
++++ b/src/lib/components/base/Input.svelte
+@@ -21,5 +21,5 @@
+ 	export let name: string = '';
+ </script>
+ 
+-<label class={labelClass} for={name}>{labelText}</label>
+-<input type={inputType} id={`${id}`} {name} {placeholder} />
++<label class={labelClass} for={name}>{placeholder}</label>
++<input type="text" id={`${id}`} {name} {placeholder} />
+diff --git a/src/lib/components/base/Radio.svelte b/src/lib/components/base/Radio.svelte
+index c504f3a..a2b629a 100644
+--- a/src/lib/components/base/Radio.svelte
++++ b/src/lib/components/base/Radio.svelte
+@@ -23,7 +23,7 @@
+   ];
+ 
+   let selected: string | null | undefined;
+-  if (fields.length) selected = fields[0].value;
++  if (fields.length) selected = fields[fields.length - 1].value;
+ </script>
+ 
+ <fieldset class="radio-group {styleClass}">
+diff --git a/src/lib/components/base/index.js b/src/lib/components/base/index.js
+index cec2cd5..1c4abe8 100644
+--- a/src/lib/components/base/index.js
++++ b/src/lib/components/base/index.js
+@@ -2,7 +2,7 @@
+  * Export libary of base components to be used in Wrappers/Builder functions
+  */
+ 
+-import Input from './Input.svelte';
++import Input from './Select.svelte';
+ import Radio from './Radio.svelte';
+ import Select from './Select.svelte';
+ import Button from './Button.svelte';
+diff --git a/src/lib/components/premade/LoginForm.svelte b/src/lib/components/premade/LoginForm.svelte
+index a4a2e46..58ea17e 100644
+--- a/src/lib/components/premade/LoginForm.svelte
++++ b/src/lib/components/premade/LoginForm.svelte
+@@ -17,7 +17,7 @@
+ 		<Input
+ 			labelClass="default"
+ 			labelText="Password"
+-			inputType="password"
++			inputType="text"
+ 			inputId="password"
+ 			inputName="password"
+ 			placeholder="Enter Password"
+diff --git a/src/lib/stores/componentStores.ts b/src/lib/stores/componentStores.ts
+index c01d88a..988cc25 100644
+--- a/src/lib/stores/componentStores.ts
++++ b/src/lib/stores/componentStores.ts
+@@ -13,7 +13,7 @@ function createCustomForm() {
+     addField: (type: 'Radio' | 'Checkbox' | 'Input' | 'Button') : void => {
+       update(previousState => {
+         const newId = ++id;
+-        const initialProps = Object.assign({}, structuredClone(defaultProps[type]), {name: type + `-${newId}`, id: newId});
++        const initialProps = Object.assign({}, defaultProps[type], {name: type + `-${newId}`, id: newId});
+         const updatedState = Object.assign({}, previousState, {
+           [newId] : {
+             component: base[type],
+@@ -30,7 +30,7 @@ function createCustomForm() {
+         const lookup = id as unknown as keyof typeof updatedState;
+         const updatedState = Object.assign({}, previousState);
+ 
+-        updatedState[lookup].props?.fields?.push(newInput);
++        updatedState[lookup].props?.fields?.unshift(newInput);
+ 
+         return updatedState;
+       })
+@@ -53,7 +53,7 @@ function createCustomForm() {
+         const arrWithoutDeleted: Array<LabelValue | Checked> = [];
+ 
+         updatedState[lookup].props?.fields?.forEach((input, index) => {
+-          if (index !== deletedIndex) arrWithoutDeleted.push(input);
++          if (index !== deletedIndex + 1) arrWithoutDeleted.push(input);
+         });
+ 
+         updatedState[lookup].props.fields = arrWithoutDeleted;
+diff --git a/src/lib/ui/Modal.svelte b/src/lib/ui/Modal.svelte
+index 8737817..18dba6f 100644
+--- a/src/lib/ui/Modal.svelte
++++ b/src/lib/ui/Modal.svelte
+@@ -22,7 +22,7 @@
+ 	// }
+ 
+ 	const addInput = (storeField) => {
+-		customForm.addInput($lookup, structuredClone(defaultProps[storeField.type].fields[0]));
++		customForm.addInput(lookup, structuredClone(defaultProps[storeField.type].fields[0]));
+ 	};
+ 
+ 	const deleteInput = (index: number) => {
+@@ -69,7 +69,7 @@
+ 									class="mr3"
+ 									type="text"
+ 									placeholder="Field Name"
+-									bind:value={$customForm[$lookup].props.fields[index][component]}
++									value={$customForm[$lookup].props.fields[index][component]}
+ 									/>
+ 								{/if}
+ 							{/each}

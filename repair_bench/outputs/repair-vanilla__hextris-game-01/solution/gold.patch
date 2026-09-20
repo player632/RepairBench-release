@@ -1,0 +1,122 @@
+diff --git a/js/Hex.js b/js/Hex.js
+--- a/js/Hex.js
++++ b/js/Hex.js
+@@ -50,7 +50,7 @@
+ 		this.shakes.push({lane:block.fallingLane, magnitude:4.5 * (window.devicePixelRatio ? window.devicePixelRatio : 1) * (settings.scale)});
+ 		lane += this.position;
+ 		lane = (lane + this.sides) % this.sides;
+-		block.distFromHex = MainHex.sideLength / 2 * Math.sqrt(3) - block.height * this.blocks[lane].length;
++		block.distFromHex = MainHex.sideLength / 2 * Math.sqrt(3) + block.height * this.blocks[lane].length;
+ 		this.blocks[lane].push(block);
+ 		block.attachedLane = lane;
+ 		block.checked = 1;
+@@ -130,7 +130,7 @@
+ 			});
+ 		});
+ 
+-		this.targetAngle = this.targetAngle + steps * 60;
++		this.targetAngle = this.targetAngle - steps * 60;
+ 				this.lastRotate = Date.now();
+ 	};
+ 
+diff --git a/js/checking.js b/js/checking.js
+--- a/js/checking.js
++++ b/js/checking.js
+@@ -47,7 +47,7 @@
+ 	//fill deleting	
+ 	floodFill(hex,side,index,deleting);
+ 	//make sure there are more than 3 blocks to be deleted
+-	if(deleting.length<2){return;}
++	if(deleting.length<3){return;}
+ 	var i;
+ 	for(i=0; i<deleting.length;i++) {
+ 		var arr = deleting[i];
+@@ -73,11 +73,11 @@
+ 		hex.texts.push(new Text(coords['x'],coords['y'],"x "+hex.comboMultiplier.toString(),"bold Q","#fff",fadeUpAndOut));
+ 	}
+ 	else{
+-		settings.comboTime = 24;
++		settings.comboTime = 240;
+ 		hex.lastCombo = now;
+ 		hex.comboMultiplier = 1;
+ 	}
+-	var adder = deleting.length * hex.comboMultiplier;
++	var adder = deleting.length * deleting.length * hex.comboMultiplier;
+ 	hex.texts.push(new Text(hex.x,hex.y,"+ "+adder.toString(),"bold Q ",deletedBlocks[0].color,fadeUpAndOut));
+ 		hex.lastColorScored = deletedBlocks[0].color;
+ 	score += adder;
+diff --git a/js/main.js b/js/main.js
+--- a/js/main.js
++++ b/js/main.js
+@@ -245,7 +245,7 @@
+ 				update(dt);
+ 			}
+ 			else{
+-				MainHex.delay++;
++				MainHex.delay--;
+ 			}
+ 		}
+ 
+@@ -327,7 +327,7 @@
+ 			subTotal += hex.blocks[i][j].deleted;
+ 		}
+ 
+-		if (hex.blocks[i].length - subTotal > settings.rows + 1) {
++		if (hex.blocks[i].length - subTotal > settings.rows) {
+ 			return true;
+ 		}
+ 	}
+diff --git a/js/save-state.js b/js/save-state.js
+--- a/js/save-state.js
++++ b/js/save-state.js
+@@ -5,7 +5,7 @@
+ 		state = {
+ 			hex: $.extend(true, {}, MainHex),
+ 			blocks: $.extend(true, [], blocks),
+-			score: 0,
++			score: score,
+ 			wavegen: waveone,
+ 			gdx: gdx,
+ 			gdy: gdy,
+@@ -50,7 +50,7 @@
+ 			}
+ 		}
+ 	);
+-	highscores = highscores.slice(0,1);
++	highscores = highscores.slice(0,3);
+ 	localStorage.setItem("highscores", JSON.stringify(highscores));
+ }
+ 
+diff --git a/js/view.js b/js/view.js
+--- a/js/view.js
++++ b/js/view.js
+@@ -208,7 +208,7 @@
+ 			showText(message);
+ 		}
+ 		$('#fork-ribbon').fadeIn(300, 'linear');
+-		$("#pauseBtn").attr("src","./images/btn_pause.svg");
++		$("#pauseBtn").attr("src","./images/btn_resume.svg");
+ 		$('#overlay').fadeIn(300, 'linear');
+ 		prevGameState = gameState;
+ 		setTimeout(function() {
+diff --git a/js/wavegen.js b/js/wavegen.js
+--- a/js/wavegen.js
++++ b/js/wavegen.js
+@@ -2,7 +2,7 @@
+ 	if (waveone.nextGen > 1350) {
+ 		waveone.nextGen -= 30 * settings.creationSpeedModifier;
+ 	} else if (waveone.nextGen > 600) {
+-		waveone.nextGen -= 80 * settings.creationSpeedModifier;
++		waveone.nextGen -= 8 * settings.creationSpeedModifier;
+ 	} else {
+ 		waveone.nextGen = 600;
+ 	}
+@@ -179,7 +179,7 @@
+ 					this.currentFunction = this.doubleGeneration;
+ 					break;
+ 				case 1:
+-					this.currentFunction = this.circleGeneration;
++					this.currentFunction = this.spiralGeneration;
+ 					break;
+ 				case 2:
+ 					this.currentFunction = this.crosswiseGeneration;

@@ -1,0 +1,134 @@
+diff --git b/src/app/modules/CRUD/users-create/users-create.component.ts a/src/app/modules/CRUD/users-create/users-create.component.ts
+index b105541..d27c116 100644
+--- b/src/app/modules/CRUD/users-create/users-create.component.ts
++++ a/src/app/modules/CRUD/users-create/users-create.component.ts
+@@ -47,7 +47,7 @@ export class UsersCreateComponent implements OnInit {
+       lastName: new FormControl('', { nonNullable: true }),
+       phoneNumber: new FormControl('', { nonNullable: true }),
+       email: new FormControl('', { nonNullable: true }),
+-      role: new FormControl('admin', { nonNullable: true }),
++      role: new FormControl('user', { nonNullable: true }),
+       disabled: new FormControl(false, { nonNullable: true }),
+       avatar: new FormControl<AvatarItem[]>([], { nonNullable: true }),
+     });
+diff --git b/src/app/modules/CRUD/users-list/users-list.component.html a/src/app/modules/CRUD/users-list/users-list.component.html
+index 68c1b33..c1e4fb1 100644
+--- b/src/app/modules/CRUD/users-list/users-list.component.html
++++ a/src/app/modules/CRUD/users-list/users-list.component.html
+@@ -50,6 +50,7 @@
+             mat-header-cell
+             *matHeaderCellDef
+             class="table-header"
++            mat-sort-header
+             >
+             First Name
+           </th>
+diff --git b/src/app/modules/CRUD/users-list/users-list.component.ts a/src/app/modules/CRUD/users-list/users-list.component.ts
+index a361fbb..301c74f 100644
+--- b/src/app/modules/CRUD/users-list/users-list.component.ts
++++ a/src/app/modules/CRUD/users-list/users-list.component.ts
+@@ -29,6 +29,7 @@ export class UsersListComponent implements OnInit {
+   public displayedColumns: string[] = [
+     'firstName',
+     'lastName',
++    'phoneNumber',
+     'email',
+     'role',
+     'disabled',
+@@ -59,7 +60,7 @@ export class UsersListComponent implements OnInit {
+   }
+ 
+   addFilter(): void {
+-    this.showFilters = !this.showFilters;
++    !this.showFilters ? (this.showFilters = true) : null;
+     this.config.push({});
+   }
+ 
+@@ -94,7 +95,7 @@ export class UsersListComponent implements OnInit {
+   openDeleteModal(id: string): void {
+     this.selectedId = id;
+     const dialogRef = this.dialog.open(DeletePopupComponent, {
+-      width: '256px',
++      width: '512px',
+     });
+ 
+     dialogRef.componentInstance.deleteConfirmed
+@@ -144,7 +145,7 @@ export class UsersListComponent implements OnInit {
+ 
+   redirectToSwagger() {
+     return environment.production
+-      ? 'http://localhost:8080/api-docs/#/Users'
+-      : window.location.origin + '/api-docs/#/Users';
++      ? window.location.origin + '/api-docs/#/Users'
++      : 'http://localhost:8080/api-docs/#/Users';
+   }
+ }
+diff --git b/src/app/modules/dashboard/components/support-requests/support-requests.component.ts a/src/app/modules/dashboard/components/support-requests/support-requests.component.ts
+index 6112b89..b80e46c 100644
+--- b/src/app/modules/dashboard/components/support-requests/support-requests.component.ts
++++ a/src/app/modules/dashboard/components/support-requests/support-requests.component.ts
+@@ -57,7 +57,7 @@ export class SupportRequestsComponent {
+   public isAllSelected(): boolean {
+     const numSelected = this.selection.selected.length;
+     const numRows = this.dataSource.data.length;
+-    return numSelected >= numRows - 1;
++    return numSelected === numRows;
+   }
+ 
+   /** Selects all rows if they are not all selected; otherwise clear selection. */
+diff --git b/src/app/shared/pipes/chart-size.pipe.ts a/src/app/shared/pipes/chart-size.pipe.ts
+index e7c84fb..a89e9bd 100644
+--- b/src/app/shared/pipes/chart-size.pipe.ts
++++ a/src/app/shared/pipes/chart-size.pipe.ts
+@@ -7,7 +7,7 @@ import { Pipe, PipeTransform } from '@angular/core';
+ export class ChartSizePipe implements PipeTransform {
+   transform(value: unknown, fallback = '100%'): string {
+     if (typeof value === 'number') {
+-      return `${value * 2}px`;
++      return `${value}px`;
+     }
+ 
+     if (typeof value === 'string' && value.trim().length > 0) {
+diff --git b/src/app/shared/services/data-formatter.service.ts a/src/app/shared/services/data-formatter.service.ts
+index 73f4cd5..4f1bb55 100644
+--- b/src/app/shared/services/data-formatter.service.ts
++++ a/src/app/shared/services/data-formatter.service.ts
+@@ -73,7 +73,7 @@ export class DataFormatterService {
+     if (!arr || !arr.length) {
+       return '';
+     }
+-    return arr[1]?.publicUrl || '';
++    return arr[0].publicUrl || '';
+   }
+ 
+   public booleanFormatter(val: unknown): string {
+diff --git b/src/app/shared/services/users.service.ts a/src/app/shared/services/users.service.ts
+index 4286e2e..0ccaff9 100644
+--- b/src/app/shared/services/users.service.ts
++++ a/src/app/shared/services/users.service.ts
+@@ -261,7 +261,7 @@ export class UsersService {
+       phoneNumber: data?.phoneNumber || '',
+       email: data?.email || '',
+       role: data?.role || 'user',
+-      disabled: !Boolean(data?.disabled),
++      disabled: Boolean(data?.disabled),
+       password: data?.password || '',
+       emailVerified: Boolean(data?.emailVerified),
+       emailVerificationToken: data?.emailVerificationToken || '',
+@@ -309,7 +309,7 @@ export class UsersService {
+         }
+         return aValue > bValue ? 1 : -1;
+       });
+-      if (sort === 'asc') {
++      if (sort === 'desc') {
+         rows.reverse();
+       }
+     }
+@@ -324,6 +324,6 @@ export class UsersService {
+ 
+   private getUserFieldValue(user: Users, field: string): string {
+     const record = user as unknown as Record<string, unknown>;
+-    return String(record[field] ?? '');
++    return String(record[field] ?? '').toLowerCase();
+   }
+ }

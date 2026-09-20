@@ -1,0 +1,217 @@
+diff --git a/index.html b/index.html
+index e089d3f..7ee1b36 100644
+--- a/index.html
++++ b/index.html
+@@ -73,16 +73,16 @@
+ <nav style="display: flex; align-items: center; gap: 20px; max-width: 720px; margin: 0 auto;">
+   <div style="display: flex; justify-content: center; align-items: center; gap: 10px;">
+     <img src="favicon.png" alt="cow" style="max-width: 30px;">
+-    <p style="color: white; font-size: 18px;">Not My Cows</p>
++    <p data-testid="nav-title" style="color: white; font-size: 18px;">Not My Cows</p>
+   </div>
+   <div style="flex: 1; display: flex; justify-content: center;">
+-    <button id="mute-button" style="padding: 10px 15px; border-radius: 8px; background: white; border: 0; font-size: 16px; cursor: pointer;">Mute Music</button>
++    <button id="mute-button" data-testid="mute-button" style="padding: 10px 15px; border-radius: 8px; background: white; border: 0; font-size: 16px; cursor: pointer;">Mute Music</button>
+   </div>
+-  <a href="https://twitter.com/notmycowsgame" style="color: white; padding: 25px 0px; font-size: 18px; display: flex; justify-content: center; align-items: center; gap: 10px;" target="_blank">
++  <a href="https://twitter.com/notmycowsgame" data-testid="nav-follow" style="color: white; padding: 25px 0px; font-size: 18px; display: flex; justify-content: center; align-items: center; gap: 10px;" target="_blank">
+     Follow
+     <svg style="width: 100%; max-width: 24px; fill: white;" viewBox="0 0 24 24" aria-hidden="true"><g><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></g></svg>
+   </a>
+-  <a href="https://github.com/jonfranco224/not-my-cows/blob/master/index.html" style="display: flex; justify-content: center; align-items: center; color: white; fill: white; gap: 10px; font-size: 18px;" target="_blank">
++  <a href="https://github.com/jonfranco224/not-my-cows/blob/master/index.html" data-testid="nav-code" style="display: flex; justify-content: center; align-items: center; color: white; fill: white; gap: 10px; font-size: 18px;" target="_blank">
+     Code 
+     <svg style="max-width: 24px;" height="24" aria-hidden="true" viewBox="0 0 16 16" version="1.1" width="24" data-view-component="true" class="octicon octicon-mark-github v-align-middle">
+       <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path>
+@@ -90,7 +90,7 @@
+   </a>
+ </nav>
+ <div style="position: relative; width: 720px; height: 550px; margin: 0 auto;">
+-  <div id='splash-screen' style="position: absolute; width: 100%; margin-top: 70px; z-index: 2; top: 0; left: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;">
++  <div id='splash-screen' data-testid="splash-screen" style="position: absolute; width: 100%; margin-top: 70px; z-index: 2; top: 0; left: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+     <h1 style="font-size: 55px; color: #34495e;">Not My Cows!</h1>
+     <p style="width: 600px; text-align: center; font-size: 16px;">Outer space has unleashed its fury! Protect your live stock, your livelihood, your home. It's all you've got left...</p>
+     <div style="width: 400px; padding: 15px 0px;">
+@@ -100,7 +100,7 @@
+     </div>
+     <h3 style="padding: 5px 0px; display: block; font-size: 16px;">-- Press Enter To Begin --</h3>
+   </div>
+-  <canvas style="position: absolute; z-index: 1; background: center / cover no-repeat url('/assets/img/farm-bg.png'); image-rendering: pixelated;" id="myCanvas" width="720" height="550" />
++  <canvas style="position: absolute; z-index: 1; background: center / cover no-repeat url('/assets/img/farm-bg.png'); image-rendering: pixelated;" id="myCanvas" data-testid="game-canvas" width="720" height="550" />
+ </div>
+ 
+ <!-- <img id="farm-bg" style="display: none;" src="" /> -->
+@@ -755,12 +755,16 @@ function drawStats () {
+ }
+ 
+ let lastTimestamp = 0; // To track the timestamp of the last frame
++// instrumentation: probe halt flag. false by default, so the ambient
++// requestAnimationFrame loop advances the game exactly as shipped; a
++// frame-counting checkpoint freezes it and steps the simulation itself.
++let __nmcHalted = false
+ 
+ function loop(timestamp) {
+   const deltaTime = timestamp - lastTimestamp // Calculate time elapsed since the last frame
+   lastTimestamp = timestamp
+   
+-  if (deltaTime >= 16) {
++  if (deltaTime >= 16 && !__nmcHalted) {
+     tracker++
+     ctx.clearRect(0, 0, canvas.width, canvas.height)
+     setGameState(tracker)
+@@ -769,6 +773,154 @@ function loop(timestamp) {
+   window.requestAnimationFrame(loop)
+ }
+ window.requestAnimationFrame(loop)
++
++// ===== repair-bench instrumentation bridge (window.__NMC__) =================
++// Appended INSIDE the page's own inline script so the probe closes over the
++// live game variables instead of mirroring them. Two strictly separated halves:
++//
++//   __NMC__.state    - PURE READS. Every member is a getter (or a plain
++//                      expression over the live variables) that re-reads them
++//                      at access time. Nothing is cached, snapshotted, copied
++//                      or subscribed to, and reading state never mutates the
++//                      game. Every assert in tests/dsl.json reads only this.
++//   __NMC__.scenario - SIDE EFFECTS, for checkpoint SETUP steps only. It calls
++//                      the page's own functions (startGame / stopGame /
++//                      setGameState / fireBullet / checkCollisions /
++//                      spawnMeteors / initMeteors) and dispatches real
++//                      KeyboardEvent / click() objects, so what runs is the
++//                      production listener chain, not a re-implementation.
++//                      No assertion ever calls into scenario.
++//
++// __nmcHalted (declared above, next to the ambient loop) defaults to false, so
++// an uninstrumented-looking page behaves exactly as shipped; frame-counting
++// checkpoints freeze the ambient requestAnimationFrame loop and advance the
++// simulation themselves, while timeline checkpoints leave it running.
++;(function () {
++  var marks = { farmerX: null, score: null, bulletY: null }
++  var rnd2 = function (n) { return (typeof n === 'number' && isFinite(n)) ? Math.round(n * 100) / 100 : null }
++  var isSpawned = function (m) { return !!m && typeof m.x === 'number' }
++  var liveMeteors = function () { return meteors.filter(function (m) { return isSpawned(m) && m.blown_up === 0 }) }
++  var liveBullets = function () { return bullets.filter(function (b) { return b && b.dur > 0 }) }
++  var aliveCows = function () { return cowsLeft.filter(function (c) { return c && c.dead === 0 }).length }
++  var keyEvent = function (code, down) {
++    document.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: code, bubbles: true }))
++  }
++  var frame = function () { tracker++; setGameState(tracker) }
++  var ALL_KEYS = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'Space', 'KeyD', 'KeyA', 'Enter']
++
++  var state = {
++    get score () { return score },
++    get scoreSinceMark () { return marks.score === null ? null : score - marks.score },
++    get cowsTotal () { return cowsLeft.length },
++    get cowsAlive () { return aliveCows() },
++    get farmerX () { return rnd2(farmer ? farmer.x : null) },
++    get farmerY () { return rnd2(farmer ? farmer.y : null) },
++    get farmerMovedSinceMark () { return (marks.farmerX === null || !farmer) ? null : rnd2(farmer.x - marks.farmerX) },
++    get gunDeg () { return rnd2(gun ? gun.deg : null) },
++    get gunAbsDeg () { return gun ? Math.abs(Math.round(gun.deg)) : null },
++    get gunX () { return rnd2(gun ? gun.x : null) },
++    get gunY () { return rnd2(gun ? gun.y : null) },
++    get gunCanFire () { return gun ? gun.can_fire : null },
++    get gunFollowsFarmer () {
++      return !!(farmer && gun && rnd2(gun.x) === rnd2(farmer.x + (farmer.w / 2) - (gun.w / 2)))
++    },
++    get bulletsLive () { return liveBullets().length },
++    get bulletX0 () { var b = liveBullets()[0]; return b ? rnd2(b.x) : null },
++    get bulletY0 () { var b = liveBullets()[0]; return b ? rnd2(b.y) : null },
++    get bulletY0SinceMark () {
++      var b = liveBullets()[0]
++      return (marks.bulletY === null || !b) ? null : rnd2(b.y - marks.bulletY)
++    },
++    get muzzleAboveFarmer () { var b = liveBullets()[0]; return !!(b && farmer && b.y < farmer.y) },
++    get meteorsOnScreen () { return liveMeteors().filter(function (m) { return m.y < GAME_HEIGHT }).length },
++    get meteorsBlown () { return meteors.filter(function (m) { return isSpawned(m) && m.blown_up === 1 }).length },
++    get meteorsAllFalling () { return liveMeteors().every(function (m) { return m.y_dir > 0 }) },
++    get outwardDrifters () {
++      return liveMeteors().filter(function (m) {
++        return m.x > (GAME_WIDTH / 2) ? m.x_dir >= 0 : m.x_dir <= 0
++      }).length
++    },
++    get particlesLive () { return particles.filter(function (p) { return p && p.dur > 0 }).length },
++    get tracker () { return tracker },
++    get gameActive () { return game_is_active },
++    get gameInitialized () { return game_is_initialized },
++    get enterHeld () { return enterPressed },
++    get splashDisplay () { return splash.style.display },
++    get canvasWidth () { return canvas.width },
++    get canvasHeight () { return canvas.height },
++    get musicVolume () { return bluegrass_sfx ? bluegrass_sfx.volume : null },
++    get soundsLoaded () { return soundsLoaded },
++    get muteButtonLabel () {
++      var el = document.getElementById('mute-button')
++      return el ? el.textContent : null
++    },
++    get halted () { return __nmcHalted }
++  }
++
++  var scenario = {
++    halt: function () { __nmcHalted = true },
++    run: function () { __nmcHalted = false },
++    frame: frame,
++    step: function (n) { for (var i = 0; i < n; i++) frame() },
++    boot: function () { scenario.clearKeys(); stopGame(); startGame(); frame(); return state.gameInitialized },
++    toSplash: function () { scenario.clearKeys(); stopGame(); return state.gameActive },
++    key: function (code, down) { keyEvent(code, down) },
++    clearKeys: function () { ALL_KEYS.forEach(function (c) { keyEvent(c, false) }) },
++    pressEnterOnce: function () { keyEvent('Enter', true); frame(); keyEvent('Enter', false) },
++    holdEnter: function () { keyEvent('Enter', true) },
++    fire: function () { fireBullet() },
++    clearMeteors: function () { initMeteors() },
++    spawnWave: function (n) { spawnMeteors(typeof n === 'number' ? n : 10) },
++    placeMeteor: function (i, o) {
++      var m = meteors[i] || (meteors[i] = {})
++      m.x = o.x; m.y = o.y; m.w = o.w; m.h = o.h
++      m.x_dir = (o.x_dir === undefined ? 0 : o.x_dir)
++      m.y_dir = (o.y_dir === undefined ? 0 : o.y_dir)
++      m.t = 0; m.blown_up = 0
++      return i
++    },
++    placeCow: function (i, o) {
++      var c = cowsLeft[i]
++      if (!c) return -1
++      if (o.x !== undefined) c.x = o.x
++      if (o.y !== undefined) c.y = o.y
++      if (o.dead !== undefined) c.dead = o.dead
++      if (o.x_speed !== undefined) c.x_speed = o.x_speed
++      if (o.switch_dur !== undefined) c.switch_dur = o.switch_dur
++      return i
++    },
++    killCowsBut: function (keep) {
++      for (var i = 0; i < cowsLeft.length; i++) cowsLeft[i].dead = (i < keep) ? 0 : 1
++      return aliveCows()
++    },
++    setFarmerX: function (x) { if (farmer) farmer.x = x },
++    setGunDeg: function (d) { if (gun) gun.deg = d },
++    hitMeteor: function (i) {
++      var b = liveBullets()[0]
++      if (!b) return false
++      var m = meteors[i] || (meteors[i] = {})
++      m.x = b.x - 5; m.y = b.y - 5; m.w = b.w + 10; m.h = b.h + 10
++      m.x_dir = 0; m.y_dir = 0; m.t = 0; m.blown_up = 0
++      checkCollisions()
++      return m.blown_up === 1
++    },
++    clickMute: function () {
++      var el = document.getElementById('mute-button')
++      if (!el) return false
++      el.click()
++      return true
++    },
++    markFarmerX: function () { marks.farmerX = farmer ? farmer.x : null; return marks.farmerX },
++    markScore: function () { marks.score = score; return marks.score },
++    markBulletY: function () { var b = liveBullets()[0]; marks.bulletY = b ? b.y : null; return marks.bulletY },
++    resetMarks: function () { marks.farmerX = null; marks.score = null; marks.bulletY = null }
++  }
++
++  Object.defineProperty(window, '__NMC__', {
++    value: { state: state, scenario: scenario, marks: marks, version: 'instrumentation-1' },
++    writable: true, configurable: true, enumerable: false
++  })
++})()
+ </script>
+ </body>
+ </html>
+\ No newline at end of file

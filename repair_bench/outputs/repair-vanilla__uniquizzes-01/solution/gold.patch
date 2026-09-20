@@ -1,0 +1,112 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -64,7 +64,7 @@
+                     for (var key in jsonFiles) {
+                         var value = jsonFiles[key];
+ 
+-                        i == 1 ? createSelectBox("quiz-version", value, key, true) : createSelectBox("quiz-version", value, key)
++                        i == 0 ? createSelectBox("quiz-version", value, key, true) : createSelectBox("quiz-version", value, key)
+                         i++
+                     }
+                 }
+@@ -86,7 +86,7 @@
+     <div class="form-check">
+         <input type="checkbox" class="form-check-input" id="chk-shuffle-questions" data-testid="rb-chk-shuffle-questions" name="chk-shuffle-questions"
+             title="Shuffle Questions" checked />
+-        <label class="form-check-label" for="chk-shuffle-answers" data-testid="rb-label-shuffle-questions">Shuffle Questions</label>
++        <label class="form-check-label" for="chk-shuffle-questions" data-testid="rb-label-shuffle-questions">Shuffle Questions</label>
+     </div>
+ 
+     <div class="form-check">
+@@ -105,7 +105,7 @@
+     <div class="form-group"  style="margin-top: 10px;">
+         <!-- bootstrap slider -->
+         <label for="sliderQuestionsNumber" data-testid="rb-label-slider">Number of questions:  </label> <span id="sliderText" data-testid="rb-slider-text"></span>
+-        <input type="range" autocomplete="off" min="0" step="5" class="form-range" min="5" max="200" value="40" id="sliderQuestionsNumber" data-testid="rb-slider" name="sliderQuestionsNumber" onmouseup="restart()" ontouchend="changeAnswers()">
++        <input type="range" autocomplete="off" min="0" step="5" class="form-range" min="5" max="200" value="40" id="sliderQuestionsNumber" data-testid="rb-slider" name="sliderQuestionsNumber" onmouseup="changeAnswers()" ontouchend="changeAnswers()">
+     </div>
+ 
+ 
+@@ -118,7 +118,7 @@
+     
+     <div id="container" data-testid="rb-container"></div>
+ 
+-    <button type="button" id="btn-send" data-testid="rb-send" class="btn btn-success" onclick="restart()">Send</button>
++    <button type="button" id="btn-send" data-testid="rb-send" class="btn btn-success" onclick="validate()">Send</button>
+ 
+     <!-- Bootstrap Modal -->
+     <div class="modal fade" id="resultModal" data-testid="rb-result-modal" tabindex="-1" aria-labelledby="resultModalLabel" aria-hidden="true">
+diff --git a/js/config.js b/js/config.js
+--- a/js/config.js
++++ b/js/config.js
+@@ -3,9 +3,9 @@
+ ////////////
+ var nMinutes = 25; // 25, suggested
+ var correctAnswerPoints = 2
+-var wrongAnswerPoints = 0
++var wrongAnswerPoints = 1
+ var noAnswerPoints = 0
+-var numberOfQuestions = 4 // default number of questions that you want to show
++var numberOfQuestions = 40 // default number of questions that you want to show
+ var title = "UniQuizzes"
+ var disclaimerText = "The simulator is not updated automatically. Have a look at the source on Github, and if necessary propose new changes!"
+ var infoText = "If you like this project, consider starring the repo on <a href='https://github.com/dag7dev/UniQuizzes'>Github</a>!"
+diff --git a/js/main.js b/js/main.js
+--- a/js/main.js
++++ b/js/main.js
+@@ -11,7 +11,7 @@
+ var outslider
+ var h3Explaination
+ 
+-const format = (num, places) => String(num).padEnd(places, '0') // one-line: prints zeros before strings
++const format = (num, places) => String(num).padStart(places, '0') // one-line: prints zeros before strings
+ 
+ // func: if it is a string, return true
+ function isString(x) {
+@@ -364,7 +364,9 @@
+         tmp1 = obj1[index];
+         tmp2 = obj2[index];
+         obj1[index] = obj1[rnd];
++        obj2[index] = obj2[rnd];
+         obj1[rnd] = tmp1;
++        obj2[rnd] = tmp2;
+     }
+ }
+ 
+@@ -466,7 +468,7 @@
+         }
+ 
+         // let's calculate the correct answer
+-        var correctAnswerText = questions[i]['correct'].toLowerCase().charCodeAt(0) - 96 // number from letter
++        var correctAnswerText = questions[i]['correct'].toLowerCase().charCodeAt(0) - 97 // number from letter
+         correctAnswerText = replyNumber.findIndex((element) => element == correctAnswerText) // retrieve from shuffled array and save the new "correct answer" from shuffled indexes 
+ 
+         // if question has source code, then renderize it into a div
+@@ -488,7 +490,7 @@
+             radiobox.classList.add('form-check-input');
+             radiobox.id = 'answer' + i + "." + j;
+             radiobox.type = 'radio';
+-            radiobox.name = 'radioBtns' + j;
++            radiobox.name = 'radioBtns' + i;
+             radiobox.value = replyNumber[j];
+ 
+             var lblAnswer = document.createElement('label');
+@@ -570,7 +572,7 @@
+ 
+         // let's cycle our buttons
+         // if last button has been selected, then the answer has been skipped
+-        if (buttons[0].checked) {
++        if (buttons[buttons.length - 1].checked) {
+             contSkip++
+             noAnswerPoints++
+ 
+@@ -606,7 +608,7 @@
+                 if(lblElement.firstChild.nodeName === "TEXTAREA") {
+                     lblElement.firstChild.style.backgroundColor = "#00FF00";
+                 }
+-                score -= correctAnswerPoints;
++                score += correctAnswerPoints;
+                 contCorrect++;
+             } else {
+                 // it's the wrong answer, then, color the label will be red

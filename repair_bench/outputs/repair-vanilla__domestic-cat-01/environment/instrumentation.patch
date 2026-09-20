@@ -1,0 +1,309 @@
+diff --git a/stuff/scripts/rb-probe.js b/stuff/scripts/rb-probe.js
+new file mode 100644
+--- /dev/null
++++ b/stuff/scripts/rb-probe.js
+@@ -0,0 +1,293 @@
++/**
++ * RepairBench instrumentation probe - read-only measurement surface for the domestic-cat seed
++ * (upstream lytexdev/Domestic-Cat, "Die Hauskatze", a German multi-page static site about domestic
++ * cats with a ten-question quiz; ZERO-BUILD static tree - no package.json, no lockfile, no bundler,
++ * no transpiler, no framework, four classic <script> tags).
++ *
++ * Added by environment/instrumentation.patch together with ONE `<script src="stuff/scripts/rb-probe.js">`
++ * line in index.html, placed immediately after the adaptation face's stuff/scripts/rb-seed.js and
++ * BEFORE the first application script stuff/scripts/main.js. Nothing in this file reads an application
++ * global at evaluation time - every model read happens inside a function, at call time - so loading
++ * first is safe and buys one thing that loading last could not: the setInterval/clearInterval
++ * accounting below is installed BEFORE the application scripts run, so the live-interval count is
++ * exact from the first timer the quiz starts.
++ *
++ * It touches NO application logic and contains NO copy of any logic under test:
++ *   - it never reimplements showQuetions, optionSelected, showResult, startTimer, startTimerLine,
++ *     queCounter, changeImg, getRandomNumber, handleLogoClick, openNavigator, goToTop or the
++ *     window.onscroll handler;
++ *   - every value is read back from the seed's OWN elements (by the same CSS selectors the seed's own
++ *     scripts use) or from the seed's OWN top-level bindings (the classic-script global lexical
++ *     environment holds `questions`, which stuff/scripts/questions.js:1 declares);
++ *   - the only computation done here is NORMALISATION, COUNTING and SERIALISATION of values the seed
++ *     already produced: collapsing whitespace runs in a text node, counting matching elements, taking
++ *     the last path segment of a src the seed itself wrote, joining a list into a comparable string,
++ *     parsing the leading integer out of a string the seed itself rendered.
++ *   - it performs 0 writes to application state, 0 dispatched events, 0 clicks, 0 timers of its own
++ *     and 0 busy-waits. All interaction lives in the setup side of tests/dsl.json.
++ *
++ * ONE GLOBAL IS PUBLISHED, and it is the only one this file adds: window.__RB_CAT__, a plain object of
++ * pure read functions. Every one of them is safe-wrapped and yields the sentinel "__rb_probe_error__"
++ * instead of throwing, so a half-booted or broken tree surfaces as a FAILED ASSERTION (behaviour
++ * evidence) and never as a page crash or a runner setup_failure. Every function returns a SCALAR
++ * (string, number or boolean) because the official runner compares js_eval assertions with a loose ==
++ * and an object/array expectation is always false (assertion discipline 1).
++ *
++ * NO data-testid is injected anywhere in this tree. The seed already addresses every graded node by a
++ * stable class or id of its own (.que_text, .option_list .option, .option.disabled, .timer .timer_sec,
++ * .timer .time_left_txt, footer .total_que, footer .next_btn, header .time_line, .result_box
++ * .score_text, .result_box .complete_text, .info_box/.quiz_box/.result_box active-state classes,
++ * #navigator, #go-to-top, #cat_image, #logo, #random_cat_btn, #top), so the probe reads those and the
++ * answering model is never handed a synthetic hook it could special-case.
++ *
++ * 0 defect knowledge. 0 expected values. 0 hardcoded answers, scores, filenames or question numbers.
++ */
++(function () {
++    'use strict';
++
++    var ERR = '__rb_probe_error__';
++
++    function safe(fn) {
++        return function () {
++            try { return fn.apply(null, arguments); } catch (e) { return ERR; }
++        };
++    }
++
++    function norm(s) { return String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim(); }
++
++    function q(sel) { return document.querySelector(sel); }
++    function qa(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
++
++    function text(sel) { var e = q(sel); return e ? norm(e.textContent) : ''; }
++
++    function basename(u) {
++        var s = String(u || '');
++        var i = s.indexOf('?'); if (i >= 0) s = s.slice(0, i);
++        var j = s.lastIndexOf('/');
++        return j >= 0 ? s.slice(j + 1) : s;
++    }
++
++    function dirname(u) {
++        var s = String(u || '');
++        var i = s.indexOf('?'); if (i >= 0) s = s.slice(0, i);
++        var j = s.lastIndexOf('/');
++        return j >= 0 ? s.slice(0, j + 1) : '';
++    }
++
++    function computed(el, prop) { return el ? window.getComputedStyle(el)[prop] : ''; }
++
++    function leadingInt(s) {
++        var m = /^(\d+)/.exec(norm(s));
++        return m ? parseInt(m[1], 10) : -1;
++    }
++
++    /* ---- interval accounting: the ONLY host APIs this file wraps -----------------------------
++       The wrapper returns the real id, so clearInterval keeps working and the application cannot
++       observe the hook. Nothing else is wrapped: no Math.random (that is the adaptation face's
++       stuff/scripts/rb-seed.js), no DOM API, no event dispatch. */
++    var live = [];                       /* [{id, period}] */
++    var nativeSet = window.setInterval;
++    var nativeClear = window.clearInterval;
++    window.setInterval = function (fn, period) {
++        var id = nativeSet.apply(window, arguments);
++        try { live.push({ id: id, period: Number(period) }); } catch (e) { /* accounting only */ }
++        return id;
++    };
++    window.clearInterval = function (id) {
++        try { live = live.filter(function (r) { return r.id !== id; }); } catch (e) { /* accounting only */ }
++        return nativeClear.apply(window, arguments);
++    };
++
++    function seedFace() { return window.__RB_SEED_FACE__ || null; }
++
++    function questionsArray() {
++        /* `questions` is a top-level `let` in stuff/scripts/questions.js:1 - a classic-script global
++           lexical binding, readable by bare name from another classic script but NOT a window prop. */
++        return (typeof questions !== 'undefined' && questions) ? questions : null;
++    }
++
++    var R = {};
++
++    /* document / data face */
++    R.title = safe(function () { return document.title; });
++    R.questions_len = safe(function () { var a = questionsArray(); return a ? a.length : -1; });
++    R.questions_numbs = safe(function () {
++        var a = questionsArray(); return a ? a.map(function (x) { return x && x.numb; }).join('|') : ERR;
++    });
++    R.questions_answers_len = safe(function () {
++        var a = questionsArray(); return a ? a.filter(function (x) { return x && typeof x.answer === 'string'; }).length : -1;
++    });
++
++    /* question rendering */
++    R.que_text_has_span = safe(function () { return !!q('.que_text span'); });
++    R.que_text_text = safe(function () { return text('.que_text'); });
++    R.que_text_leading_number = safe(function () { return leadingInt(text('.que_text span') || text('.que_text')); });
++    /* D01-immune question number: the seed renders "<n>. <question>" into .que_text; when the
++       number arrives through the element's own textContent the leading-integer read above still
++       works, and when the surrounding markup is emitted as literal text (html-sink defect) the
++       first "<digit>. " run is still present in the container text. This read is therefore
++       invariant across the D01 states and can carry a question-index assertion on its own. */
++    R.que_text_number_before_question = safe(function () {
++        var m = /(\d+)\.\s/.exec(text('.que_text'));
++        return m ? parseInt(m[1], 10) : -1;
++    });
++    R.option_count = safe(function () { return qa('.option_list .option').length; });
++    R.option_texts = safe(function () { return qa('.option_list .option').map(function (e) { return norm(e.textContent); }).join('|'); });
++    R.option_classes = safe(function () { return qa('.option_list .option').map(function (e) { return e.getAttribute('class') || ''; }).join('|'); });
++    R.option_onclick_bound_count = safe(function () {
++        return qa('.option_list .option').filter(function (e) { return e.hasAttribute('onclick'); }).length;
++    });
++
++    /* answer feedback / disabled state */
++    R.correct_option_count = safe(function () { return qa('.option_list .option.correct').length; });
++    R.incorrect_option_count = safe(function () { return qa('.option_list .option.incorrect').length; });
++    R.tick_icon_count = safe(function () { return qa('.option_list .option .icon.tick').length; });
++    R.cross_icon_count = safe(function () { return qa('.option_list .option .icon.cross').length; });
++    R.disabled_option_count = safe(function () { return qa('.option_list .option.disabled').length; });
++    R.first_disabled_option_pointer_events = safe(function () {
++        var e = q('.option_list .option.disabled');
++        return e ? computed(e, 'pointerEvents') : 'MISSING';
++    });
++    R.disabled_pointer_events_all = safe(function () {
++        return qa('.option_list .option.disabled').map(function (e) { return computed(e, 'pointerEvents'); }).join('|');
++    });
++
++    /* footer / advance control */
++    R.next_btn_in_footer = safe(function () { return !!q('.quiz_box footer .next_btn'); });
++    R.next_btn_count = safe(function () { return qa('.quiz_box .next_btn').length; });
++    R.next_btn_show = safe(function () { var e = q('.quiz_box .next_btn'); return e ? e.classList.contains('show') : false; });
++    R.total_que_first_p = safe(function () { var p = qa('footer .total_que p')[0]; return p ? leadingInt(p.textContent) : -1; });
++    R.total_que_second_p = safe(function () { var p = qa('footer .total_que p')[1]; return p ? leadingInt(p.textContent) : -1; });
++    R.total_que_text = safe(function () { return text('.quiz_box footer .total_que'); });
++
++    /* countdown face */
++    R.timer_sec_text = safe(function () { return text('.quiz_box .timer .timer_sec'); });
++    R.timer_sec_numeric = safe(function () {
++        var t = text('.quiz_box .timer .timer_sec');
++        var n = parseInt(t, 10);
++        return isNaN(n) ? -1 : n;
++    });
++    R.timer_sec_under_9 = safe(function () { var n = R.timer_sec_numeric(); return typeof n === 'number' && n >= 0 && n < 9; });
++    R.timer_sec_zero_padded = safe(function () { return /^0[0-9]/.test(text('.quiz_box .timer .timer_sec')); });
++    R.time_left_txt = safe(function () { return text('.quiz_box .timer .time_left_txt'); });
++
++    /* progress line face (stuff/scripts/quiz.js writes el.style.width, so the INLINE style is read,
++       never the computed one: quiz.css:349 rewrites the box widths under 800px and layout would clamp
++       a computed width back into the box) */
++    R.time_line_in_header = safe(function () { return !!q('.quiz_box header .time_line'); });
++    R.time_line_exists_anywhere = safe(function () { return !!q('.quiz_box .time_line'); });
++    R.time_line_width_is_px = safe(function () {
++        var e = q('.quiz_box header .time_line');
++        return !!e && /^[0-9]+px$/.test(String(e.style.width || ''));
++    });
++    R.time_line_width_px = safe(function () {
++        var e = q('.quiz_box header .time_line');
++        if (!e) return -1;
++        var n = parseInt(String(e.style.width || ''), 10);
++        return isNaN(n) ? -1 : n;
++    });
++
++    /* box activation state machine */
++    R.info_active = safe(function () { var e = q('.info_box'); return e ? e.classList.contains('activeInfo') : false; });
++    R.quiz_active = safe(function () { var e = q('.quiz_box'); return e ? e.classList.contains('activeQuiz') : false; });
++    R.result_active = safe(function () { var e = q('.result_box'); return e ? e.classList.contains('activeResult') : false; });
++    R.info_box_pointer_events = safe(function () { return computed(q('.info_box'), 'pointerEvents'); });
++    R.quiz_box_pointer_events = safe(function () { return computed(q('.quiz_box'), 'pointerEvents'); });
++
++    /* result face */
++    R.score_text = safe(function () { return text('.result_box .score_text'); });
++    R.score_text_top_tier = safe(function () { return /^stark!/.test(text('.result_box .score_text')); });
++    R.score_number = safe(function () { var p = qa('.result_box .score_text p')[0]; return p ? leadingInt(p.textContent) : -1; });
++    R.score_denominator = safe(function () { var p = qa('.result_box .score_text p')[1]; return p ? leadingInt(p.textContent) : -1; });
++    R.complete_text = safe(function () { return text('.result_box .complete_text'); });
++    R.result_icon_count = safe(function () { return qa('.result_box .icon').length; });
++
++    /* static quiz markup */
++    R.header_title = safe(function () { return text('.quiz_box header .title'); });
++    R.header_child_count = safe(function () { var e = q('.quiz_box header'); return e ? e.children.length : -1; });
++    R.quiz_box_count = safe(function () { return qa('.quiz_box').length; });
++    R.info_rule_count = safe(function () { return qa('.info_box .info-list .info').length; });
++    R.quiz_start_btn_count = safe(function () { return qa('.quiz_start_btn').length; });
++
++    /* navigation face */
++    R.nav_anchor_count = safe(function () { return qa('#navigator a').length; });
++    R.navigator_class = safe(function () { var e = document.getElementById('navigator'); return e ? e.className : ERR; });
++    R.navigator_has_topnav = safe(function () { var e = document.getElementById('navigator'); return e ? e.classList.contains('topnav') : false; });
++    R.hamburger_count = safe(function () { return qa('#navigator a.icon').length; });
++
++    /* scroll face */
++    R.gototop_exists = safe(function () { return !!document.getElementById('go-to-top'); });
++    R.gototop_display = safe(function () { return computed(document.getElementById('go-to-top'), 'display'); });
++    R.scroll_y = safe(function () {
++        return Math.round(window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
++    });
++    R.scroll_past_20 = safe(function () { return R.scroll_y() > 20; });
++    R.doc_scrollable = safe(function () {
++        return document.documentElement.scrollHeight > window.innerHeight;
++    });
++
++    /* image faces */
++    R.cat_image_basename = safe(function () { var e = document.getElementById('cat_image'); return e ? basename(e.getAttribute('src')) : ERR; });
++    R.cat_image_current_basename = safe(function () { var e = document.getElementById('cat_image'); return e ? basename(e.src) : ERR; });
++    R.cat_image_dir = safe(function () { var e = document.getElementById('cat_image'); return e ? dirname(e.getAttribute('src')) : ERR; });
++    R.cat_image_natural_width = safe(function () { var e = document.getElementById('cat_image'); return e ? e.naturalWidth : -1; });
++    R.cat_image_loaded = safe(function () {
++        var e = document.getElementById('cat_image');
++        return !!e && e.naturalWidth > 0;
++    });
++    R.cat_image_has_onclick = safe(function () { var e = document.getElementById('cat_image'); return e ? e.hasAttribute('onclick') : false; });
++    R.logo_basename = safe(function () { var e = document.getElementById('logo'); return e ? basename(e.src) : ERR; });
++    R.logo_transform = safe(function () { var e = document.getElementById('logo'); return e ? String(e.style.transform || '') : ERR; });
++    R.random_cat_btn_title = safe(function () { var e = document.getElementById('random_cat_btn'); return e ? e.getAttribute('title') : ERR; });
++
++    /* offline face: CSS-initiated fetches never travel through a JS transport, so they are read back
++       from the computed style the browser resolved, plus a DOM census of the stylesheet links */
++    R.top_background_image = safe(function () { return computed(document.getElementById('top'), 'backgroundImage'); });
++    R.top_background_same_origin = safe(function () {
++        var v = computed(document.getElementById('top'), 'backgroundImage');
++        if (!v || v === 'none') return false;
++        return /^url\(["']?https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/)/.test(v) && !/\/\/(ximmanuel\.github\.io|immanuelm\.de|cdnjs\.cloudflare\.com)/.test(v);
++    });
++    R.stylesheet_link_count = safe(function () { return qa('link[rel="stylesheet"]').length; });
++    R.stylesheet_link_cross_origin_count = safe(function () {
++        return qa('link[rel="stylesheet"]').filter(function (l) {
++            var h = l.getAttribute('href') || '';
++            return /^https?:\/\//.test(h) && new URL(h, location.href).origin !== location.origin;
++        }).length;
++    });
++    R.script_src_cross_origin_count = safe(function () {
++        return qa('script[src]').filter(function (s) {
++            var h = s.getAttribute('src') || '';
++            return /^https?:\/\//.test(h) && new URL(h, location.href).origin !== location.origin;
++        }).length;
++    });
++
++    /* adaptation-face accounting (stuff/scripts/rb-seed.js) */
++    R.seed_blocked_len = safe(function () { var f = seedFace(); return f ? f.blocked.length : -1; });
++    R.seed_blocked_first = safe(function () { var f = seedFace(); return f && f.blocked.length ? f.blocked[0] : ''; });
++    R.seed_same_origin_only = safe(function () { var f = seedFace(); return f ? f.same_origin_only === true : false; });
++    R.seed_same_origin_count = safe(function () { var f = seedFace(); return f ? f.same_origin : -1; });
++    R.seed_draws = safe(function () { var f = seedFace(); return f ? f.draws : -1; });
++    R.seed_native_random_replaced = safe(function () { var f = seedFace(); return f ? f.native_random_replaced === true : false; });
++
++    /* interval accounting reads */
++    R.live_intervals = safe(function () { return live.length; });
++    R.interval_periods = safe(function () {
++        return live.map(function (r) { return r.period; }).sort(function (a, b) { return a - b; }).join('|');
++    });
++
++    /**/
++    R.storage_residue = safe(function () {
++        return window.localStorage.length === 0 && window.sessionStorage.length === 0 &&
++            String(document.cookie || '') === '' && String(location.hash || '') === '';
++    });
++    R.storage_detail = safe(function () {
++        return 'ls=' + window.localStorage.length + ';ss=' + window.sessionStorage.length +
++            ';ck=' + String(document.cookie || '').length + ';hash=' + String(location.hash || '');
++    });
++    R.rb_attr_count = safe(function () {
++        return qa('[data-testid],[data-rb],[id^="rb-"]').length;
++    });
++
++    window.__RB_CAT__ = R;
++})();
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -151,6 +151,7 @@
+     </section>
+ </body>
+ <script src="stuff/scripts/rb-seed.js"></script>
++<script src="stuff/scripts/rb-probe.js"></script>
+ <script src="stuff/scripts/main.js"></script>
+ <script src="stuff/scripts/index.js"></script>
+ <script src="stuff/scripts/questions.js"></script>

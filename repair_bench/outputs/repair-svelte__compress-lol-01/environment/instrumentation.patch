@@ -1,0 +1,239 @@
+diff --git a/src/lib/components/ui/selector/language-selector.svelte b/src/lib/components/ui/selector/language-selector.svelte
+--- a/src/lib/components/ui/selector/language-selector.svelte
++++ b/src/lib/components/ui/selector/language-selector.svelte
+@@ -60,7 +60,7 @@
+ </script>
+ 
+ <Select.Root type="single" value={currentLang} onValueChange={handleLanguageChange}>
+-	<Select.Trigger class="flex h-8 w-20 items-center gap-2">
++	<Select.Trigger class="flex h-8 w-20 items-center gap-2" data-testid="rb-lang-trigger">
+ 		<Languages class="h-4 w-4" />
+ 		{#if languages.find((lang) => lang.value === currentLang)?.flagSrc}
+ 			<img
+diff --git a/src/lib/components/ui/selector/theme-selector.svelte b/src/lib/components/ui/selector/theme-selector.svelte
+--- a/src/lib/components/ui/selector/theme-selector.svelte
++++ b/src/lib/components/ui/selector/theme-selector.svelte
+@@ -50,7 +50,7 @@
+ </script>
+ 
+ <Select.Root type="single" value={selectedTheme} onValueChange={handleThemeChange}>
+-	<Select.Trigger class="flex h-8 w-20 items-center gap-2">
++	<Select.Trigger class="flex h-8 w-20 items-center gap-2" data-testid="rb-theme-trigger">
+ 		<span
+ 			class="inline-flex h-4 w-4 items-center justify-center text-base leading-none"
+ 			style="font-variant-emoji: emoji; visibility: {hydrated ? 'visible' : 'hidden'};"
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -614,6 +614,63 @@
+ 			}
+ 		}
+ 	};
++	// ---- RepairBench instrumentation bridge (design-time observation surface) ----
++	// Added by environment/instrumentation.patch. It publishes READ-ONLY access to this page's own
++	// pure helpers plus a per-key getter over the reactive state the page already keeps, under
++	// window.__rb, so the graded checkpoints can observe the compression-settings arithmetic that the
++	// UI otherwise only reveals after a real multi-minute encode. It changes no behaviour: every entry
++	// is either a reference to a function this page already defines or a getter that reads state this
++	// page already maintains, and __rb.meta() is a FIXED design-time input record (not application
++	// data). It is not an answer key: it exposes exactly the same values to the answering model that
++	// the application computes for itself, faulty or repaired alike.
++	if (typeof window !== 'undefined') {
++		(window as any).__rb = {
++			probe: 'rb-instrumentation-bridge/v1',
++			fmtSize: formatFileSize,
++			fmtDuration: formatDuration,
++			fmtRemaining: formatTimeRemaining,
++			reso: calculateOptimalResolution,
++			settings: calculateCompressionSettings,
++			threads: getOptimalThreadCount,
++			chromium: isChromiumByFeatures,
++			meta: (over?: Record<string, unknown>) => ({
++				duration: 120,
++				bitrate: 8000,
++				resolution: '3840x2160',
++				codec: 'h264',
++				size: 120000000,
++				fps: 60,
++				hasMotion: true,
++				...(over || {})
++			}),
++			targets: (i: number, k: 'label' | 'value' | 'description') => compressionTargets[i]?.[k] ?? null,
++			targetCount: () => compressionTargets.length,
++			get: (k: string) =>
++				({
++					isLoaded,
++					isProcessing,
++					progress,
++					muteSound,
++					audioOnlyMode,
++					preserveOriginalFps,
++					trimVideo,
++					skipFirstSeconds,
++					skipLastSeconds,
++					selectedTargetValue,
++					selectedTargetLabel: selectedTarget?.label ?? null,
++					selectedTargetBytes: selectedTarget?.value ?? null,
++					originalSize,
++					compressedSize,
++					hasFile: !!selectedFile,
++					fileName: selectedFile?.name ?? null,
++					errorMessage,
++					message,
++					showAdvancedSettings,
++					compressionRatio,
++					isFileSmallerThanTarget
++				})[k as never] ?? null
++		};
++	}
+ </script>
+ 
+ <svelte:head>
+@@ -637,23 +694,23 @@
+ 
+ <div class="container mx-auto max-w-4xl p-6">
+ 	<div class="mb-2 flex items-center justify-center gap-2">
+-		<h1 class="mr-4 mb-2 text-4xl font-bold">{m.app_title()}</h1>
++		<h1 class="mr-4 mb-2 text-4xl font-bold" data-testid="rb-app-title">{m.app_title()}</h1>
+ 		<LanguageSelector />
+ 		<ThemeSelector />
+ 	</div>
+ 	<div class="mb-8 text-center">
+-		<p class="text-muted-foreground">{m.app_subtitle()}</p>
++		<p class="text-muted-foreground" data-testid="rb-app-subtitle">{m.app_subtitle()}</p>
+ 	</div>
+ 
+ 	{#if !isLoaded}
+-		<div class="mb-6 flex items-center justify-center gap-1">
++		<div class="mb-6 flex items-center justify-center gap-1" data-testid="rb-loading">
+ 			<Loader class="h-5 w-5 animate-spin text-primary" />
+ 			<span class="text-sm text-muted-foreground">{m.loading()}</span>
+ 		</div>
+ 	{/if}
+ 
+ 	{#if errorMessage}
+-		<Alert.Root class="mb-6 border-destructive">
++		<Alert.Root class="mb-6 border-destructive" data-testid="rb-error-alert">
+ 			<Alert.Description>{errorMessage}</Alert.Description>
+ 		</Alert.Root>
+ 	{/if}
+@@ -661,7 +718,7 @@
+ 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+ 		<Card.Root>
+ 			<Card.Header>
+-				<Card.Title>{m.upload_video()}</Card.Title>
++				<Card.Title data-testid="rb-upload-title">{m.upload_video()}</Card.Title>
+ 				<Card.Description>{m.upload_description()}</Card.Description>
+ 			</Card.Header>
+ 			<Card.Content class="space-y-4">
+@@ -669,6 +726,7 @@
+ 					<Label for="video-upload">{m.choose_video_file()}</Label>
+ 					<Input
+ 						id="video-upload"
++						data-testid="rb-file-input"
+ 						type="file"
+ 						accept="video/*"
+ 						onchange={handleFileSelect}
+@@ -679,7 +737,7 @@
+ 
+ 				{#if videoMetadata}
+ 					<div class="space-y-2">
+-						<h4 class="font-medium">{m.video_information()}</h4>
++						<h4 class="font-medium" data-testid="rb-video-info">{m.video_information()}</h4>
+ 						<div class="grid grid-cols-2 gap-2 text-sm">
+ 							<div>{m.duration()}: {formatDuration(videoMetadata.duration)}</div>
+ 							<div>{m.resolution()}: {videoMetadata.resolution}</div>
+@@ -698,7 +756,7 @@
+ 				<div>
+ 					<Label>{m.target_size()}</Label>
+ 					<Select.Root type="single" value={selectedTargetValue} onValueChange={handleTargetChange}>
+-						<Select.Trigger class="mt-2 w-full">
++						<Select.Trigger class="mt-2 w-full" data-testid="rb-target-trigger">
+ 							{selectedTargetValue || m.select_target_size()}
+ 						</Select.Trigger>
+ 						<Select.Content>
+@@ -713,6 +771,7 @@
+ 				<div class="rounded-lg border">
+ 					<button
+ 						onclick={() => (showAdvancedSettings = !showAdvancedSettings)}
++						data-testid="rb-adv-toggle"
+ 						class="flex w-full items-center justify-between rounded-t-lg p-3 text-left transition-colors hover:bg-accent/50"
+ 					>
+ 						<div class="flex items-center gap-2">
+@@ -728,6 +787,7 @@
+ 
+ 					<div
+ 						class="overflow-hidden transition-all duration-300 ease-in-out"
++						data-testid="rb-adv-panel"
+ 						style="max-height: {showAdvancedSettings ? '350px' : '0px'};"
+ 					>
+ 						<div class="space-y-4 border-t p-3">
+@@ -836,13 +896,14 @@
+ 				{#if isFileSmallerThanTarget}
+ 					<Alert.Root
+ 						class="border-yellow-500/70 bg-yellow-500/10 text-yellow-900 dark:text-yellow-100"
++						data-testid="rb-small-warning"
+ 					>
+ 						<Alert.Description>{m.small_video_warning()}</Alert.Description>
+ 					</Alert.Root>
+ 				{/if}
+ 
+ 				{#if isChromium}
+-					<Alert.Root class="mt-2">
++					<Alert.Root class="mt-2" data-testid="rb-chromium-alert">
+ 						<Alert.Description>
+ 							{m.chromium_warning()}
+ 						</Alert.Description>
+@@ -851,6 +912,7 @@
+ 
+ 				<Button
+ 					onclick={compressVideo}
++					data-testid="rb-compress-btn"
+ 					disabled={!selectedFile || !isLoaded || isProcessing}
+ 					class="w-full"
+ 				>
+@@ -874,7 +936,7 @@
+ 								{/if}
+ 							</div>
+ 						</div>
+-						<Progress value={progress} class="w-full" />
++						<Progress value={progress} class="w-full" data-testid="rb-progress" />
+ 						<p class="text-center text-xs text-muted-foreground">{message}</p>
+ 					</div>
+ 				{/if}
+@@ -883,7 +945,7 @@
+ 
+ 		<Card.Root>
+ 			<Card.Header>
+-				<Card.Title>{audioOnlyMode ? m.audio_processing_results() : m.results()}</Card.Title>
++				<Card.Title data-testid="rb-results-title">{audioOnlyMode ? m.audio_processing_results() : m.results()}</Card.Title>
+ 				<Card.Description>{m.results_description()}</Card.Description>
+ 			</Card.Header>
+ 			<Card.Content class="space-y-4">
+@@ -926,7 +988,7 @@
+ 						</Button>
+ 					</div>
+ 				{:else}
+-					<div class="py-8 text-center text-muted-foreground">
++					<div class="py-8 text-center text-muted-foreground" data-testid="rb-results-empty">
+ 						{m.upload_compress_message()}
+ 					</div>
+ 				{/if}
+@@ -936,7 +998,7 @@
+ 
+ 	<Card.Root class="mt-6">
+ 		<Card.Header>
+-			<Card.Title>{m.how_it_works()}</Card.Title>
++			<Card.Title data-testid="rb-how-title">{m.how_it_works()}</Card.Title>
+ 		</Card.Header>
+ 		<Card.Content>
+ 			<div class="space-y-3">
+@@ -956,7 +1018,7 @@
+ 		</Card.Content>
+ 	</Card.Root>
+ 
+-	<footer class="mt-6 pb-6 text-center text-sm text-muted-foreground">
++	<footer class="mt-6 pb-6 text-center text-sm text-muted-foreground" data-testid="rb-footer">
+ 		<p>{@html m.footer_text()}</p>
+ 		<p class="italic">{m.footer_subtext()}</p>
+ 	</footer>

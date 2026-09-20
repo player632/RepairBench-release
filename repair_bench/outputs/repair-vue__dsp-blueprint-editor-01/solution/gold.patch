@@ -1,0 +1,116 @@
+diff --git a/src/App.vue b/src/App.vue
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -48,7 +48,7 @@
+                         <button @click="parseBp('')" :disabled="working"
+                                 style="position: relative; flex: auto; width: 50px;" >
+                             {{ bpStr ? t("清空") : t("选择文件") }}
++                            <input v-if="!bpStr" @change="onBpFile" :disabled="working"
+-                            <input v-if="bpStr" @change="onBpFile" :disabled="working"
+                                 type="file" accept="text/plain" id="blueprint-file"
+                                 style="position: absolute; inset: 0; opacity: 0;" />
+                         </button>
+@@ -213,7 +213,7 @@
+     if (codeExpired.value)
+         return 'BLUEPRINT:...';
+     const len = bpStr.value.length
++    if (len < 1000)
+-    if (len < 100)
+         return bpStr.value;
+     return bpStr.value.substring(0, 400) + '\n...\n' + bpStr.value.substring(len - 400, len);
+ }
+@@ -243,7 +243,7 @@
+ const parseBp = (s: string) => {
+     if (s) {
+         try {
++            data.value = shallowReactive(fromStr(s.trim()));
+-            data.value = shallowReactive(fromStr(s));
+             data.value.header = reactive(data.value.header);
+             parseErrorMessage.value = '';
+             watch(data.value, () => codeExpired.value = true);
+diff --git a/src/blueprint/md5.ts b/src/blueprint/md5.ts
+--- a/src/blueprint/md5.ts
++++ b/src/blueprint/md5.ts
+@@ -75,7 +75,7 @@
+     for (; i <= data.byteLength - BLOCK_SIZE; i += BLOCK_SIZE) {
+         updateBlock(s, new DataView(data, i, BLOCK_SIZE))
+     }
++    const last = new ArrayBuffer(Math.ceil((data.byteLength - i + 9) / BLOCK_SIZE) * BLOCK_SIZE);
+-    const last = new ArrayBuffer(Math.ceil((data.byteLength - i + 8) / BLOCK_SIZE) * BLOCK_SIZE);
+     const dataView = new Uint8Array(data);
+     const lastView = new DataView(last);
+     let j = 0;
+diff --git a/src/blueprint/parser.ts b/src/blueprint/parser.ts
+--- a/src/blueprint/parser.ts
++++ b/src/blueprint/parser.ts
+@@ -882,10 +882,10 @@
+         throw Error('Header too short');
+     const header = {
+         layout: parseInt(cells[1]),
++        icons: cells.slice(2, 7).map(s => parseInt(s)),
+-        icons: cells.slice(2, 6).map(s => parseInt(s)),
+         time: new Date(TIME_BASE + parseInt(cells[8]) / 10000),
+         gameVersion: cells[9],
++        shortDesc: decodeURIComponent(cells[10]),
+-        shortDesc: cells[10],
+         desc: decodeURIComponent(cells[11]),
+     }
+ 
+@@ -962,7 +962,7 @@
+     result += ',';
+     result += bp.header.gameVersion;
+     result += ',';
++    result += encodeURIComponent(bp.header.shortDesc);
+-    result += bp.header.shortDesc;
+     result += ',';
+     result += encodeURIComponent(bp.header.desc);
+     result += '"';
+diff --git a/src/components/BlueprintIcon.vue b/src/components/BlueprintIcon.vue
+--- a/src/components/BlueprintIcon.vue
++++ b/src/components/BlueprintIcon.vue
+@@ -1,5 +1,5 @@
+ <template>
++    <svg class="bp-icon" viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg">
+-    <svg class="bp-icon" viewBox="-50 -50 120 100" xmlns="http://www.w3.org/2000/svg">
+         <template v-if="iconUrls">
+             <template v-for="(l, i) of layout" :key="i">
+             <image v-if="iconUrls[i] !== null" :x="l.x" :y="l.y" :width="l.w" :height="l.w"
+@@ -46,7 +46,7 @@
+     icons?: number[],
+ }>();
+ 
++const layout = computed(() =>  allLayouts.get(props.layoutId) ?? []);
+-const layout = computed(() =>  allLayouts.get(0) ?? []);
+ const iconUrls = ref<(string | null)[] | null>(null);
+ watchEffect(async () => {
+     if (!props.icons) {
+diff --git a/src/components/BuildingIcon.vue b/src/components/BuildingIcon.vue
+--- a/src/components/BuildingIcon.vue
++++ b/src/components/BuildingIcon.vue
+@@ -1,5 +1,5 @@
+ <template>
++    <div class="icon" :class="{'has-count': props.count !== undefined}" :title="props.alt">
+-    <div class="icon" :class="{'has-count': (props.count || 0) > 1}" :title="props.alt">
+         <img :src="src" :alt="props.alt">
+         <div v-if="props.count !== undefined" class="count">{{props.count === 1 ? '' : props.count}}</div>
+     </div>
+diff --git a/src/components/BuildingOverview.vue b/src/components/BuildingOverview.vue
+--- a/src/components/BuildingOverview.vue
++++ b/src/components/BuildingOverview.vue
+@@ -20,14 +20,14 @@
+ const commandQueue = inject(commandQueueKey)!.value!;
+ 
+ const total = computed(() => {
++    return commandQueue.data.buildings.length;
+-    return commandQueue.data.areas.length;
+ });
+ 
+ const buildingCounter = computed(() => {
+     const counter = new Map<number, number>();
+     for (const b of commandQueue.data.buildings) {
+         const count = counter.get(b.itemId) ?? 0;
++        counter.set(b.itemId, count + 1);
+-        counter.set(b.itemId, count);
+     }
+     return counter;
+ });

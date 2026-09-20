@@ -1,0 +1,1885 @@
+{
+ "schema_version": "1.0",
+ "instance_id": "repair-vanilla__zombie-hunter-01",
+ "framework": "vanilla",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "context": {
+  "viewport": {
+   "width": 1280,
+   "height": 720
+  },
+  "locale": "en-US"
+ },
+ "checkpoints": [
+  {
+   "id": "F01",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D01-score-tick-rate-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var h=new zombiegame.Highscore();for(var i=0;i<100;i++){h.update();}window.__rbF01a=h.getScore();window.__rbF01b=Math.round(h.score*100)/100;return 1;}catch(e){window.__rbF01a='ERR:'+e.message;window.__rbF01b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF01a",
+     "expected": 1,
+     "expected_intent": "计分器连续走 100 个计分步之后，对外读出的整数分应当是 1（每步 0.01）。读的是「步长 × 步数」这条累积链的落点，不经过任何显示或持久化分支。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF01b",
+     "expected": 1,
+     "expected_intent": "同一状态的原始累加值（保留两位）应当是 1，与上一条构成一对互证读数：任一条正确的修复方向（把每步增量恢复成 0.01）都同时满足两条。"
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D02-leaderboard-window-left-clamp-sign",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var h=new zombiegame.Highscore();h.globalScore=[{n:0},{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7}];var r=h.getGlobalScoreRange(1,2,2);window.__rbF02a=r.length;window.__rbF02b=(r[0]&&r[0].n===0)?1:0;return 1;}catch(e){window.__rbF02a='ERR:'+e.message;window.__rbF02b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF02a",
+     "expected": 4,
+     "expected_intent": "在一张 8 行榜单上取「第 2 行本人、上面 2 行、下面 2 行」时，返回的窗口应当只有 4 行：上面被榜单顶部截断成 1 行，本人 1 行，下面 2 行。读的是窗口宽度本身。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF02b",
+     "expected": 1,
+     "expected_intent": "同一窗口的第一行应当是榜单的第 1 行（下标 0），不是空洞。与上一条构成互证：截断只能把窗口收窄到顶部为止，不许在窗口前面塞进不存在的行。"
+    }
+   ]
+  },
+  {
+   "id": "F03",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D03-leaderboard-position-one-based",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;g.model.playername='RBTEST';var h=new zombiegame.Highscore();h.score=120;window.__rbF03a='PENDING';window.__rbF03b='PENDING';window.__rbF03c='PENDING';h.receiveTopScores(function(list){try{window.__rbF03a=list[0].position;window.__rbF03b=list.length;window.__rbF03c=(list[1]&&list[1].localplayer===true)?1:0;}catch(e){window.__rbF03a='ERR:'+e.message;}});return 1;}catch(e){window.__rbF03a='ERR2:'+e.message;return 0;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03a",
+     "expected": 1,
+     "expected_intent": "榜单取回之后，排在最前面那一行的名次编号应当是 1（名次是给人看的 1 基序号，不是数组下标）。这条要等榜单回包落地之后才读，所以本检查点带真实等待。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03b",
+     "expected": 8,
+     "expected_intent": "同源榜单替身应当交回完整的 8 行，证明这条读数走的是取榜链路本身而不是空回包。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03c",
+     "expected": 1,
+     "expected_intent": "名字与分数都对上本人那一行时，该行应当被标成本地玩家（1＝是）。这条钉住取榜回调里「认本人」的分支没有在修名次时被顺手动过。"
+    }
+   ]
+  },
+  {
+   "id": "F04",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D04-accuracy-ratio-operands-swapped",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var s=new Stats({time:{now:0}});s.hits=3;s.shots=4;window.__rbF04a=s.getAccuracy();var s2=new Stats({time:{now:0}});s2.hits=1;s2.shots=8;window.__rbF04b=s2.getAccuracy();return 1;}catch(e){window.__rbF04a='ERR:'+e.message;window.__rbF04b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF04a",
+     "expected": "75.00",
+     "expected_intent": "4 发里命中 3 发，命中率读数应当是 \"75.00\"（百分数、两位小数的字符串）。读的是「命中 ÷ 出手」这条比值本身。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF04b",
+     "expected": "12.50",
+     "expected_intent": "8 发里命中 1 发，命中率读数应当是 \"12.50\"。第二组样本与第一组方向相反（命中少于出手），任何把两个计数摆错位置的改法都会在这两条上同时露馅。"
+    }
+   ]
+  },
+  {
+   "id": "F05",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D05-interkill-baseline-not-advanced",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var t={time:{now:1000}};var s=new Stats(t);var seen=[];s.increaseKilledZombies({},function(z,k,ik){seen.push(ik);});t.time.now=1600;s.increaseKilledZombies({},function(z,k,ik){seen.push(ik);});t.time.now=2000;s.increaseKilledZombies({},function(z,k,ik){seen.push(ik);});window.__rbF05a=seen[1];window.__rbF05b=seen[2];return 1;}catch(e){window.__rbF05a='ERR:'+e.message;window.__rbF05b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05a",
+     "expected": 600,
+     "expected_intent": "第二次击杀发生在时钟 1600、上一次在 1000，交给回调的连杀间隔应当是 600。读的是「本次时刻 − 上次时刻」这条差值的基准有没有跟着走。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05b",
+     "expected": 400,
+     "expected_intent": "第三次击杀在 2000、上一次在 1600，间隔应当是 400。两条一起把「基准逐次推进」这件事钉死：基准若停在原点，两条读数会一起变成绝对时刻。"
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D06-clamp-returns-wrong-bound",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{window.__rbF06a=constrain(0,1,3);window.__rbF06b=constrain(5,1,3);return 1;}catch(e){window.__rbF06a='ERR:'+e.message;window.__rbF06b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06a",
+     "expected": 1,
+     "expected_intent": "把 0 夹进 [1,3] 应当得到下界 1。低于下界时必须交回下界本身。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06b",
+     "expected": 3,
+     "expected_intent": "把 5 夹进 [1,3] 应当得到上界 3。高于上界时必须交回上界本身；两条一起排除「两个界被对调」这一类改法。"
+    }
+   ]
+  },
+  {
+   "id": "F07",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D07-recycle-remainder-dropped",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var grp={children:[{x:-60,width:50},{x:100,width:50}]};zombiegame.world.rotate(grp);window.__rbF07a=grp.children[0].x;window.__rbF07b=grp.children[1].x;return 1;}catch(e){window.__rbF07a='ERR:'+e.message;window.__rbF07b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07a",
+     "expected": 790,
+     "expected_intent": "一个宽 50、已经滑到 x=-60 的物件回卷时，应当被放到 790：画面宽度 800 加上它当时超出左缘的那 -10，超出的余量要接着算进去，画面才不会有缝。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07b",
+     "expected": 100,
+     "expected_intent": "同一组里还在画面内（x=100）的物件不该被动过。这条把「只对越过左缘的物件回卷」这个前提钉住。"
+    }
+   ]
+  },
+  {
+   "id": "F08",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D08-zombie-velocity-direction-term-sign",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var gz={children:[{body:{velocity:{x:0}},speed:5,direction:1,scale:{x:1}},{body:{velocity:{x:0}},speed:5,direction:-1,scale:{x:1}}]};zombiegame.world.updateZombiesSpeed(gz,130);window.__rbF08a=gz.children[0].body.velocity.x;window.__rbF08b=gz.children[1].body.velocity.x;window.__rbF08c=gz.children[0].scale.x;window.__rbF08d=gz.children[1].scale.x;return 1;}catch(e){window.__rbF08a='ERR:'+e.message;window.__rbF08b='ERR';window.__rbF08c='ERR';window.__rbF08d='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08a",
+     "expected": -125,
+     "expected_intent": "世界左移 130、这只僵尸自身朝正向挪 5，合成后的水平速度应当是 -125（自身那一项是加上去的，不是减掉的）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08b",
+     "expected": -135,
+     "expected_intent": "自身朝负向挪 5 的那只应当是 -135。两只方向相反的僵尸一起把「自身项的符号」钉死。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08c",
+     "expected": 1,
+     "expected_intent": "速度还没到「比世界左移更快」的那只应当保持正向朝向（scale.x=1）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08d",
+     "expected": -1,
+     "expected_intent": "速度已经快到往回走的那只应当翻成反向朝向（scale.x=-1）。这两条读的是由速度推导出来的朝向，速度算错它们会跟着错。"
+    }
+   ]
+  },
+  {
+   "id": "F09",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D09-magazine-indicator-index-off-by-one",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Game,w=st.player.weapon;g.time.now=600000;w.nextFire=0;w.remainingBullets=w.size;w.magBullets.setAll('body.velocity.y',0);st.player.shoot();window.__rbF09a=w.magBullets.getAt(0).body.velocity.y;window.__rbF09b=w.magBullets.getAt(1).body.velocity.y;window.__rbF09c=w.remainingBullets;}catch(e){window.__rbF09a='ERR:'+e.message;window.__rbF09b='ERR';window.__rbF09c='ERR';}try{var g2=zombiegame.game,st2=g2.state.states.Game,w2=st2.player.weapon;g2.time.now=601000;w2.nextFire=0;w2.remainingBullets=1;st2.player.shoot();window.__rbF09d=w2.nextFire;window.__rbF09e=w2.remainingBullets;}catch(e){window.__rbF09d='ERR:'+e.message;window.__rbF09e='ERR';}return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09a",
+     "expected": -1000,
+     "expected_intent": "打满弹匣后的第一发，应当把弹匣指示位上的第 1 颗（下标 0）弹出来（速度 -1000）。读的是「已打出的发数 → 指示位下标」这条换算。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09b",
+     "expected": 0,
+     "expected_intent": "同一发之后，第 2 颗指示弹应当还留在原位（速度 0）。两条一起把下标钉在唯一正确的那一格上。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09c",
+     "expected": 6,
+     "expected_intent": "打完一发之后弹匣余量应当是 6（满匣 7）。这条钉住余量本身没有被顺手改掉，所以前两条的差异只能来自下标换算。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09d",
+     "expected": 602500,
+     "expected_intent": "打掉最后一发时（时钟 601000），下一次可开火时刻应当被推到 602500＝当前时刻＋换弹时长 1500。这条走的是同一个开火函数里的换弹分支。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09e",
+     "expected": 0,
+     "expected_intent": "最后一发之后弹匣余量应当正好是 0。余量归零才允许进入换弹分支，所以这条是前一条的前提读数。"
+    }
+   ]
+  },
+  {
+   "id": "F10",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D10-jump-ground-check-inverted",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var st=zombiegame.game.state.states.Game,p=st.player;p.sprite.body.touching.down=true;p.sprite.body.velocity.y=0;p.jump();window.__rbF10a=p.sprite.body.velocity.y;p.sprite.body.touching.down=false;p.sprite.body.velocity.y=0;p.jump();window.__rbF10b=p.sprite.body.velocity.y;return 1;}catch(e){window.__rbF10a='ERR:'+e.message;window.__rbF10b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10a",
+     "expected": -450,
+     "expected_intent": "脚踩着地面时按跳，应当拿到向上的起跳速度 -450。读的是「接地 → 才给起跳速度」这条闸门。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10b",
+     "expected": 0,
+     "expected_intent": "已经在空中（不接地）时再按跳，速度应当保持 0：不允许二段跳。两条一起把闸门的正反两面都钉住。"
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D11-spawn-clock-base-lost",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Game;st.player.isDead=false;g.time.now=500000;st.zombies.nextSpawnTime=0;var before=st.zombies.countLiving();st.checkZombieSpawn();window.__rbF11a=st.zombies.nextSpawnTime;window.__rbF11b=st.zombies.countLiving()-before;return 1;}catch(e){window.__rbF11a='ERR:'+e.message;window.__rbF11b='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11a",
+     "expected": 501200,
+     "expected_intent": "在时钟 500000 放出一只僵尸之后，下一次出怪时刻应当是 501200＝当前时刻＋出怪间隔 1200。读的是「下一次」这个时刻有没有站在当前时基上。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11b",
+     "expected": 1,
+     "expected_intent": "这一趟确实只放出了一只僵尸。这条钉住读数不是从一条没有真正出怪的路径上取来的。"
+    }
+   ]
+  },
+  {
+   "id": "F12",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D12-playername-min-length-gate-lost",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Menu;if(st){st.update=function(){};}return (g.state.current==='Menu')?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Menu,kb=st.keyboard;localStorage.removeItem('zombiehunter.playername');g.model.playername=null;st.input.text='';kb._onClick('A');kb._onClick('B');window.__rbF12c=(st.input.text.length===2)?1:0;st.onSavePlayername();window.__rbF12a=(g.model.playername===null||g.model.playername===undefined||g.model.playername==='')?1:0;window.__rbF12e=(localStorage.getItem('zombiehunter.playername')===null)?1:0;kb._onClick('C');window.__rbF12d=(st.input.text==='ABC')?1:0;st.onSavePlayername();window.__rbF12b=(g.model.playername==='ABC')?1:0;window.__rbF12f=(localStorage.getItem('zombiehunter.playername')==='ABC')?1:0;return 1;}catch(e){window.__rbF12a='ERR:'+e.message;window.__rbF12b='ERR';window.__rbF12c='ERR';window.__rbF12d='ERR';window.__rbF12e='ERR';window.__rbF12f='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12a",
+     "expected": 1,
+     "expected_intent": "在名字位只敲了两个字母就去点确认时，这一趟不应当被当成「已经取好名字」：内存里记着的玩家名字应当仍然是空的（1＝仍然空）。读的是「太短的名字不予采纳」这道门本身。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12e",
+     "expected": 1,
+     "expected_intent": "同一趟之后，浏览器自己那份存储里也不应当出现玩家名字这一项（1＝确实没有）。与上一条构成一对互证读数：一条看内存、一条看落盘，任一条正确的修复方向都同时满足两条。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12c",
+     "expected": 1,
+     "expected_intent": "点确认之前名字位上确实只有两个字母（1＝确实是两个）。这条钉住读数不是从一条没有真正敲进字符的路径上取来的。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12d",
+     "expected": 1,
+     "expected_intent": "补敲第三个字母之后，名字位上应当是三个字母的完整名字（1＝是）。这条钉住「短名字被挡下」不等于「键盘失灵」：门只挡长度，不挡输入。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12b",
+     "expected": 1,
+     "expected_intent": "名字够长之后再点确认，这一趟应当被采纳：内存里记着的玩家名字应当就是这三个字母（1＝是）。这条挡住「把所有名字一律拒收」这种把症状抹平的修法。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12f",
+     "expected": 1,
+     "expected_intent": "同一次采纳之后，浏览器存储里记下的玩家名字也应当是这三个字母（1＝是），下一次进来才还认得这个名字。"
+    }
+   ]
+  },
+  {
+   "id": "P01",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-score-readout-truncation",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.setItem('zombiehunter.score.best','42');var h=new zombiegame.Highscore();window.__rbP01a=h.getBest();h.score=1.7;window.__rbP01b=h.getScore();h.score=0.99;window.__rbP01c=h.getScore();return 1;}catch(e){window.__rbP01a='ERR:'+e.message;window.__rbP01b='ERR';window.__rbP01c='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP01a",
+     "expected": 42,
+     "expected_intent": "领地守卫：存储里已有的最好成绩 \"42\" 应当被读成整数 42。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP01b",
+     "expected": 1,
+     "expected_intent": "领地守卫：分数读出口应当向下取整（1.7 → 1），不是四舍五入。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP01c",
+     "expected": 0,
+     "expected_intent": "领地守卫：不足 1 分时读出口应当是 0。这三条钉住「读分」这一层，修计分步长时不许顺手改读出口。"
+    }
+   ]
+  },
+  {
+   "id": "P02",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-score-reset-and-best-persistence",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.removeItem('zombiehunter.score.best');var h=new zombiegame.Highscore();h.score=7.5;h.reset();window.__rbP02a=h._lastscore;window.__rbP02b=h.score;window.__rbP02c=(h.scoreImproved===false)?1:0;h.score=9;h.saveScore();window.__rbP02d=h.getBest();window.__rbP02e=localStorage.getItem('zombiehunter.score.best');window.__rbP02f=(h.scoreImproved===true)?1:0;return 1;}catch(e){window.__rbP02a='ERR:'+e.message;window.__rbP02b='ERR';window.__rbP02c='ERR';window.__rbP02d='ERR';window.__rbP02e='ERR';window.__rbP02f='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02a",
+     "expected": 7.5,
+     "expected_intent": "领地守卫：重开一局时应当把上一局的分留作比较基准 7.5。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02b",
+     "expected": 0,
+     "expected_intent": "领地守卫：重开之后当前分应当归零。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02c",
+     "expected": 1,
+     "expected_intent": "领地守卫：刚重开时「破纪录」标志应当是灭的（1＝确实灭着）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02d",
+     "expected": 9,
+     "expected_intent": "领地守卫：打出 9 分并结算之后，最好成绩应当升到 9。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02e",
+     "expected": "9",
+     "expected_intent": "领地守卫：同一个最好成绩应当被写进浏览器自己那份存储，键值 \"9\"。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP02f",
+     "expected": 1,
+     "expected_intent": "领地守卫：这一局确实比上一局好，「破纪录」标志应当亮起来。"
+    }
+   ]
+  },
+  {
+   "id": "P03",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-leaderboard-window-right-clamp",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var h=new zombiegame.Highscore();h.globalScore=[{n:0},{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7}];var r=h.getGlobalScoreRange(5,2,2);window.__rbP03a=r.length;window.__rbP03b=r[0].n;window.__rbP03c=r[r.length-1].n;var q=h.getGlobalScoreRange(0,2,2);window.__rbP03d=q.length;return 1;}catch(e){window.__rbP03a='ERR:'+e.message;window.__rbP03b='ERR';window.__rbP03c='ERR';window.__rbP03d='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP03a",
+     "expected": 5,
+     "expected_intent": "领地守卫：本人排在第 6 行、上下各取 2 行时窗口应当是满的 5 行（这一趟两侧都不需要截断）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP03b",
+     "expected": 3,
+     "expected_intent": "领地守卫：这个满窗口的第一行应当是榜单第 4 行（下标 3）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP03c",
+     "expected": 7,
+     "expected_intent": "领地守卫：最后一行应当是榜单末行（下标 7）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP03d",
+     "expected": 5,
+     "expected_intent": "领地守卫：本人就在榜首时，窗口长度仍然是 5（上侧按原样截断）。这四条钉住窗口函数的其余路径，修左钳位时不许把右钳位或满窗口路径一起改掉。"
+    }
+   ]
+  },
+  {
+   "id": "P04",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-leaderboard-localplayer-match",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;g.model.playername='RBTEST';var h=new zombiegame.Highscore();h.score=999;window.__rbP04a='PENDING';window.__rbP04b='PENDING';h.receiveTopScores(function(list){try{window.__rbP04a=list.filter(function(i){return i.localplayer===true;}).length;window.__rbP04b=list.length;}catch(e){window.__rbP04a='ERR:'+e.message;}});return 1;}catch(e){window.__rbP04a='ERR2:'+e.message;return 0;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP04a",
+     "expected": 0,
+     "expected_intent": "领地守卫：名字对得上但分数对不上（999 不在榜上）时，一行都不该被标成本地玩家。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP04b",
+     "expected": 8,
+     "expected_intent": "领地守卫：同源榜单替身仍然交回完整 8 行。这两条钉住「认本人」这条判定，修名次编号时不许把它改成只看名字。"
+    }
+   ]
+  },
+  {
+   "id": "P05",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-stats-counters",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var s=new Stats({time:{now:0}});window.__rbP05a=s.getAccuracy();s.increaseShots();window.__rbP05b=s.shots;s.increaseHits();window.__rbP05c=s.hits;window.__rbP05d=s.killedZombies;return 1;}catch(e){window.__rbP05a='ERR:'+e.message;window.__rbP05b='ERR';window.__rbP05c='ERR';window.__rbP05d='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP05a",
+     "expected": 0,
+     "expected_intent": "领地守卫：一发都没打时命中率读数是 0（走的是「零出手」早退分支，不进入比值）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP05b",
+     "expected": 1,
+     "expected_intent": "领地守卫：记一次出手之后出手数应当是 1。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP05c",
+     "expected": 1,
+     "expected_intent": "领地守卫：记一次命中之后命中数应当是 1。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP05d",
+     "expected": 0,
+     "expected_intent": "领地守卫：击杀数与出手／命中是各自独立的计数，不该被顺手带上去。"
+    }
+   ]
+  },
+  {
+   "id": "P06",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-kill-callback-argument-order",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var t={time:{now:5000}};var s=new Stats(t);var got=null;s.increaseKilledZombies({tag:'z'},function(z,k,ik){got={tag:z.tag,k:k};});window.__rbP06a=s.killedZombies;window.__rbP06b=got?got.tag:'NONE';window.__rbP06c=got?got.k:-1;return 1;}catch(e){window.__rbP06a='ERR:'+e.message;window.__rbP06b='NONE';window.__rbP06c=-1;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP06a",
+     "expected": 1,
+     "expected_intent": "领地守卫：记一次击杀之后击杀数应当是 1。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP06b",
+     "expected": "z",
+     "expected_intent": "领地守卫：回调第一个参数应当是被击杀的那只僵尸本体（这里读到它的标记 \"z\"）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP06c",
+     "expected": 1,
+     "expected_intent": "领地守卫：回调第二个参数应当是累计击杀数 1。这三条钉住回调的参数次序与内容，修连杀间隔时不许动它们。"
+    }
+   ]
+  },
+  {
+   "id": "P07",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-rotate-in-screen-and-null",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var grp={children:[{x:100,width:50},{x:-10,width:50}]};zombiegame.world.rotate(grp);window.__rbP07a=grp.children[0].x;window.__rbP07b=grp.children[1].x;zombiegame.world.rotate(null);window.__rbP07c=1;return 1;}catch(e){window.__rbP07a='ERR:'+e.message;window.__rbP07b='ERR';window.__rbP07c=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP07a",
+     "expected": 100,
+     "expected_intent": "领地守卫：完全在画面内的物件（x=100）不该被回卷动过。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP07b",
+     "expected": -10,
+     "expected_intent": "领地守卫：宽 50 而 x=-10 的物件右缘还在画面里（40 > 0），所以也不该被回卷。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP07c",
+     "expected": 1,
+     "expected_intent": "领地守卫： handed 一个不存在的组时回卷应当安静返回（1＝没有抛错）。"
+    }
+   ]
+  },
+  {
+   "id": "P08",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-spawn-zombie-physics",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var sv=window.getRandomInt;window.getRandomInt=function(){return 7;};var pool=g.add.group();pool.createMultiple(2,'zombie');var z=zombiegame.world.spawnZombie(pool,700,50,130);window.__rbP08a=(z===null||z===undefined)?'NONE':1;window.__rbP08b=z?z.body.gravity.y:-1;window.__rbP08c=z?z.direction:-1;window.__rbP08d=z?z.body.velocity.x:-9999;zombiegame.world.spawnZombie(pool,700,50,130);var z3=zombiegame.world.spawnZombie(pool,700,50,130);window.__rbP08e=(z3===null||z3===undefined)?1:0;window.getRandomInt=sv;return 1;}catch(e){window.__rbP08a='ERR:'+e.message;window.__rbP08b=-1;window.__rbP08c=-1;window.__rbP08d=-9999;window.__rbP08e=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP08a",
+     "expected": 1,
+     "expected_intent": "领地守卫：池里还有空位时放怪应当交回一只僵尸（1＝交回了）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP08b",
+     "expected": 500,
+     "expected_intent": "领地守卫：新放出的僵尸应当受 500 的重力下落。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP08c",
+     "expected": 1,
+     "expected_intent": "领地守卫：把取随机数的入口钉成 7 之后，朝向判定应当给出正向 1（这条让下面那条速度读数可复现）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP08d",
+     "expected": -123,
+     "expected_intent": "领地守卫：放怪这条路上的合成速度是 -130 + 7 = -123。这是与「改速度时统一改朝向」那条缺陷相邻但不同处的另一条速度算式，它必须原样不动。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP08e",
+     "expected": 1,
+     "expected_intent": "领地守卫：池子取空之后再放怪应当安静地什么也不交回（1＝交回了空）。"
+    }
+   ]
+  },
+  {
+   "id": "P09",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-zombie-out-of-bounds",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var zs={children:[{x:-500,width:22,height:30,alive:true,k:0,kill:function(){this.k=1;this.alive=false;}},{x:10,width:22,height:30,alive:true,k:0,kill:function(){this.k=1;}},{x:-60,width:22,height:30,alive:true,k:0,kill:function(){this.k=1;}}]};zombiegame.world.checkZombieOutOfBounds(zs);window.__rbP09a=zs.children[0].k;window.__rbP09b=zs.children[1].k;window.__rbP09c=zs.children[2].k;zombiegame.world.checkZombieOutOfBounds(null);window.__rbP09d=1;return 1;}catch(e){window.__rbP09a='ERR:'+e.message;window.__rbP09b='ERR';window.__rbP09c='ERR';window.__rbP09d=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP09a",
+     "expected": 0,
+     "expected_intent": "领地守卫：已经远出左缘（x=-500）的僵尸应当被回收（1＝回收了）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP09b",
+     "expected": 0,
+     "expected_intent": "领地守卫：还在画面里的不该被回收。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP09c",
+     "expected": 0,
+     "expected_intent": "领地守卫：只是稍微压着左缘（x=-60、右缘 -38）的还不算出界，不该被回收。这条钉住出界阈值本身。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP09d",
+     "expected": 1,
+     "expected_intent": "领地守卫：交给它一个不存在的组时应当安静返回。"
+    }
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-weapon-normal-shot",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Game,w=st.player.weapon;g.time.now=610000;w.nextFire=0;w.remainingBullets=w.size;st.player.shoot();window.__rbP10a=w.remainingBullets;window.__rbP10b=w.nextFire;window.__rbP10c=w.fireRate;var b=w.bullets.getFirstAlive();window.__rbP10d=b?b.body.velocity.x:-1;window.__rbP10e=(zombiegame.rungame.stats.shots>0)?1:0;return 1;}catch(e){window.__rbP10a='ERR:'+e.message;window.__rbP10b='ERR';window.__rbP10c='ERR';window.__rbP10d='ERR';window.__rbP10e='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP10a",
+     "expected": 6,
+     "expected_intent": "领地守卫：一发之后弹匣余量应当从 7 掉到 6。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP10b",
+     "expected": 610600,
+     "expected_intent": "领地守卫：一发之后下一次可开火时刻应当是当前时刻＋射速间隔（610000＋600）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP10c",
+     "expected": 600,
+     "expected_intent": "领地守卫：射速间隔常量应当还是 600。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP10d",
+     "expected": 800,
+     "expected_intent": "领地守卫：出膛的子弹应当以 800 向右飞。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP10e",
+     "expected": 1,
+     "expected_intent": "领地守卫：这一发应当被记进出手统计（1＝记了）。"
+    }
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-weapon-reload-refill",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Game,w=st.player.weapon;g.time.now=625000;w.nextFire=0;w.remainingBullets=0;w.update();window.__rbP11a=w.remainingBullets;w.remainingBullets=3;w.nextFire=999999999;w.update();window.__rbP11b=w.remainingBullets;w.magBullets.setAll('body.y',20);window.__rbP11c=w.magBullets.getAt(0).body.y;return 1;}catch(e){window.__rbP11a='ERR:'+e.message;window.__rbP11b='ERR';window.__rbP11c='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP11a",
+     "expected": 7,
+     "expected_intent": "领地守卫：换弹时刻已过且弹匣空着时，常规更新应当把弹匣补回满匣 7。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP11b",
+     "expected": 3,
+     "expected_intent": "领地守卫：换弹时刻还没到时不该补弹，余量仍然是 3。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP11c",
+     "expected": 20,
+     "expected_intent": "领地守卫：指示弹的归位坐标仍然是 20。这三条钉住补弹闸门，修指示位下标时不许动它。"
+    }
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-player-release-jump-and-constants",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var st=zombiegame.game.state.states.Game,p=st.player;p.sprite.body.velocity.y=-300;p.releaseJump();window.__rbP12a=p.sprite.body.velocity.y;p.sprite.body.velocity.y=250;p.releaseJump();window.__rbP12b=p.sprite.body.velocity.y;window.__rbP12c=p.jumpStrange;window.__rbP12d=p.sprite.body.gravity.y;window.__rbP12e=(p.isDead===false)?1:0;return 1;}catch(e){window.__rbP12a='ERR:'+e.message;window.__rbP12b='ERR';window.__rbP12c='ERR';window.__rbP12d='ERR';window.__rbP12e='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP12a",
+     "expected": 0,
+     "expected_intent": "领地守卫：松手时如果还在上升（-300），上升速度应当被抹成 0。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP12b",
+     "expected": 250,
+     "expected_intent": "领地守卫：已经在下落（250）时松手不该动它。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP12c",
+     "expected": 450,
+     "expected_intent": "领地守卫：起跳力度常量应当还是 450。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP12d",
+     "expected": 950,
+     "expected_intent": "领地守卫：玩家身上的重力应当还是 950。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP12e",
+     "expected": 1,
+     "expected_intent": "领地守卫：这一趟里玩家应当还活着（1＝活着）。"
+    }
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-spawn-gate-no-op-paths",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Game;st.player.isDead=false;g.time.now=700000;st.zombies.nextSpawnTime=800000;var b1=st.zombies.countLiving();st.checkZombieSpawn();window.__rbP13a=st.zombies.countLiving()-b1;window.__rbP13b=st.zombies.nextSpawnTime;st.zombies.nextSpawnTime=0;st.player.isDead=true;var b2=st.zombies.countLiving();st.checkZombieSpawn();window.__rbP13c=st.zombies.countLiving()-b2;window.__rbP13d=st.zombies.nextSpawnTime;st.player.isDead=false;return 1;}catch(e){window.__rbP13a='ERR:'+e.message;window.__rbP13b='ERR';window.__rbP13c='ERR';window.__rbP13d='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP13a",
+     "expected": 0,
+     "expected_intent": "领地守卫：还没到下一次出怪时刻（700000 < 800000）时不该放怪（0＝没放）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP13b",
+     "expected": 800000,
+     "expected_intent": "领地守卫：这一趟也不该改写下一次出怪时刻，它应当还是 800000。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP13c",
+     "expected": 0,
+     "expected_intent": "领地守卫：玩家已经死了的时候不该再放怪。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP13d",
+     "expected": 0,
+     "expected_intent": "领地守卫：死局那趟同样不该改写时刻。这四条钉住放怪闸门的两条空转路径，修时基时不许把闸门本身放宽。"
+    }
+   ]
+  },
+  {
+   "id": "P14",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-clamp-in-range-and-range-helper",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{window.__rbP14a=constrain(2,1,3);window.__rbP14b=constrain(1,1,3);window.__rbP14c=constrain(3,1,3);window.__rbP14d=range(3,5).join(',');window.__rbP14e=range(0).length;return 1;}catch(e){window.__rbP14a='ERR:'+e.message;window.__rbP14b='ERR';window.__rbP14c='ERR';window.__rbP14d='ERR';window.__rbP14e='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP14a",
+     "expected": 2,
+     "expected_intent": "领地守卫：区间内的值（2 ∈ [1,3]）应当原样交回。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP14b",
+     "expected": 1,
+     "expected_intent": "领地守卫：正好压在下界上应当原样交回 1。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP14c",
+     "expected": 3,
+     "expected_intent": "领地守卫：正好压在上界上应当原样交回 3。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP14d",
+     "expected": "5,6,7",
+     "expected_intent": "领地守卫：序列助手 range(3,5) 应当给出 \"5,6,7\"（3 个、从 5 起）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP14e",
+     "expected": 0,
+     "expected_intent": "领地守卫：range(0) 应当给出空序列。"
+    }
+   ]
+  },
+  {
+   "id": "P15",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-random-sign-helper",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var sv=window.getRandomInt;var q=[-1,0];window.getRandomInt=function(){return q.length?q.shift():0;};window.__rbP15a=getRandomNegativeOrPositiveOne();window.__rbP15b=getRandomNegativeOrPositiveOne();window.getRandomInt=sv;window.__rbP15c=(typeof getRandomInt==='function')?1:0;return 1;}catch(e){window.__rbP15a='ERR:'+e.message;window.__rbP15b='ERR';window.__rbP15c=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP15a",
+     "expected": -1,
+     "expected_intent": "领地守卫：把取随机数的入口按队列钉住之后，第一趟应当给出 -1。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP15b",
+     "expected": 1,
+     "expected_intent": "领地守卫：第二趟应当给出 1。这两条钉住正负号助手与随机入口之间那条约定，任何修复都不许把随机入口换成自己的实现。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP15c",
+     "expected": 1,
+     "expected_intent": "领地守卫：取随机数的入口在用完之后应当还原成原来那个全局函数（1＝还在原位）。"
+    }
+   ]
+  },
+  {
+   "id": "P16",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-language-detection",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var out=[];var set=function(v){Object.defineProperty(navigator,'language',{configurable:true,get:function(){return v;}});};set('de-DE');zombiegame.language.detectLang();out.push(zombiegame.language.values.score);set('fr-FR');zombiegame.language.detectLang();out.push(zombiegame.language.values.score);set('en-US');zombiegame.language.detectLang();out.push(zombiegame.language.values.score);out.push(zombiegame.language.values.jump);window.__rbP16=out.join('|');return 1;}catch(e){window.__rbP16='ERR:'+e.message;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP16",
+     "expected": "PUNKTE|SCORE|SCORE|JUMP",
+     "expected_intent": "领地守卫：语言探测应当对 de-DE 给出德文表（PUNKTE）、对没有翻译的 fr-FR 退回英文（SCORE）、对 en-US 给出英文，并且收尾停在英文表上（JUMP）。这条钉住整张语言表与探测逻辑。"
+    }
+   ]
+  },
+  {
+   "id": "P17",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-name-keyboard-layout",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Menu;if(st){st.update=function(){};}return (g.state.current==='Menu')?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var st=zombiegame.game.state.states.Menu;window.__rbP17a=st.keyboard?st.keyboard.keys.length:-1;window.__rbP17b=st.keyboard?st.keyboard.keys[st.keyboard.keys.length-1].getText():'NONE';window.__rbP17c=st.keyboard?st.keyboard.rows:-1;window.__rbP17d=st.keyboard?st.keyboard.columns:-1;window.__rbP17e=st.input?'YES':'NO';return 1;}catch(e){window.__rbP17a='ERR:'+e.message;window.__rbP17b='NONE';window.__rbP17c=-1;window.__rbP17d=-1;window.__rbP17e='NO';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17a",
+     "expected": 27,
+     "expected_intent": "诱饵守卫：名字键盘应当有 27 个键（26 个字母＋1 个删除键）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17b",
+     "expected": "<",
+     "expected_intent": "诱饵守卫：最后一个键应当是删除键 \"<\"。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17c",
+     "expected": 2,
+     "expected_intent": "诱饵守卫：键盘应当排成 2 行。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17d",
+     "expected": 15,
+     "expected_intent": "诱饵守卫：每行 15 列。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17e",
+     "expected": "YES",
+     "expected_intent": "诱饵守卫：初次进来（还没有存过名字）时名字输入位应当已经建好。"
+    }
+   ]
+  },
+  {
+   "id": "P18",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-name-length-cap-and-backspace",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Menu;if(st){st.update=function(){};}return (g.state.current==='Menu')?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var st=zombiegame.game.state.states.Menu;st.input.text='';var kb=st.keyboard;['A','B','C','D','E','F','G','H'].forEach(function(k){kb._onClick(k);});window.__rbP18a=st.input.text;kb._onClick('<');window.__rbP18b=st.input.text;window.__rbP18c=st.input.text.length;return 1;}catch(e){window.__rbP18a='ERR:'+e.message;window.__rbP18b='ERR';window.__rbP18c=-1;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP18a",
+     "expected": "ABCDEF",
+     "expected_intent": "诱饵守卫：连敲 8 个字母之后名字应当停在 6 个字母 \"ABCDEF\"（6 个是设计上的上限）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP18b",
+     "expected": "ABCDE",
+     "expected_intent": "诱饵守卫：按一次删除键应当去掉最后一个字母。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP18c",
+     "expected": 5,
+     "expected_intent": "诱饵守卫：删完之后长度应当是 5。"
+    }
+   ]
+  },
+  {
+   "id": "P19",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-music-fresh-profile",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Menu;if(st){st.update=function(){};}return (g.state.current==='Menu')?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game,st=g.state.states.Menu;window.__rbP19a=(g.model.isMusicEnabled===null)?1:0;window.__rbP19b=localStorage.length;window.__rbP19c=st.musicBtn?st.musicBtn.frame:'NOBTN';window.__rbP19d=(g.model.music&&g.model.music.isPlaying===false)?1:0;return 1;}catch(e){window.__rbP19a='ERR:'+e.message;window.__rbP19b=-1;window.__rbP19c='NOBTN';window.__rbP19d=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP19a",
+     "expected": 1,
+     "expected_intent": "诱饵守卫：全新档案（存储里还没有音乐开关这一项）时，音乐开关读出来应当是空值（1＝确实是空值），也就是「没有自动开」。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP19b",
+     "expected": 0,
+     "expected_intent": "诱饵守卫：全新档案进来这一趟不该往浏览器存储里写任何东西（0 项）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP19c",
+     "expected": 0,
+     "expected_intent": "诱饵守卫：音乐按钮此时应当显示暗帧（帧号 0）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP19d",
+     "expected": 1,
+     "expected_intent": "诱饵守卫：背景音乐此时应当没有在放（1＝确实没在放）。"
+    }
+   ]
+  },
+  {
+   "id": "P20",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-canvas-mount-and-testids",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var c=document.querySelector('[data-testid=\"rb-canvas\"]');window.__rbP20a=c?1:0;window.__rbP20b=c?c.width:-1;window.__rbP20c=c?c.height:-1;window.__rbP20d=document.querySelectorAll('canvas').length;window.__rbP20e=document.body.getAttribute('data-testid');window.__rbP20f=document.body.children.length;return 1;}catch(e){window.__rbP20a='ERR:'+e.message;window.__rbP20b=-1;window.__rbP20c=-1;window.__rbP20d=-1;window.__rbP20e='NONE';window.__rbP20f=-1;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20a",
+     "expected": 1,
+     "expected_intent": "领地守卫：带检验标识的画布节点应当在位（1＝在位）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20b",
+     "expected": 800,
+     "expected_intent": "领地守卫：画布宽应当还是 800。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20c",
+     "expected": 400,
+     "expected_intent": "领地守卫：画布高应当还是 400。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20d",
+     "expected": 1,
+     "expected_intent": "领地守卫：整页应当只有这一张画布。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20e",
+     "expected": "rb-body",
+     "expected_intent": "领地守卫：页面主体应当带着检验标识。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP20f",
+     "expected": 1,
+     "expected_intent": "领地守卫：页面主体下应当只有画布这一个子节点（不许靠往页面里塞新节点来「修」症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P21",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-states-and-score-api",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;window.__rbP21a=Object.keys(g.state.states).sort().join(',');window.__rbP21b=g.state.current;window.__rbP21c=['reset','update','saveScore','getScore','getBest','getGlobalScoreRange','receiveTopScores','sendScore'].filter(function(k){return typeof g.model.score[k]==='function';}).length;window.__rbP21d=g.cache.getImage('bg')?1:0;window.__rbP21e=(typeof window.Phaser==='object'&&window.Phaser.VERSION)||'NONE';return 1;}catch(e){window.__rbP21a='ERR:'+e.message;window.__rbP21b='NONE';window.__rbP21c=-1;window.__rbP21d=0;window.__rbP21e='NONE';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21a",
+     "expected": "Boot,Game,Menu,Preload",
+     "expected_intent": "领地守卫：四个场景应当都还挂在场景表上。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21b",
+     "expected": "Menu",
+     "expected_intent": "领地守卫：进来之后应当停在主菜单场景。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21c",
+     "expected": 8,
+     "expected_intent": "领地守卫：计分器对外那 8 个方法应当一个不少（含提交分数那个）。这条正是「按单修复」把某个方法删掉时的哨兵。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21d",
+     "expected": 1,
+     "expected_intent": "领地守卫：背景图应当已经在缓存里（离线自足）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21e",
+     "expected": "2.11.1",
+     "expected_intent": "领地守卫：树内自带的引擎版本应当还是 2.11.1（不许换库、不许引外链）。"
+    }
+   ]
+  },
+  {
+   "id": "P22",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-world-update-speed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var grp={children:[{body:{velocity:{x:0}}},{body:{velocity:{x:0}}},{noBody:1}]};zombiegame.world.updateSpeed(grp,65);window.__rbP22a=grp.children[0].body.velocity.x;window.__rbP22b=grp.children[1].body.velocity.x;window.__rbP22c=(grp.children[2].body===undefined)?1:0;zombiegame.world.updateSpeed(null,65);window.__rbP22d=1;return 1;}catch(e){window.__rbP22a='ERR:'+e.message;window.__rbP22b='ERR';window.__rbP22c=0;window.__rbP22d=0;return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP22a",
+     "expected": -65,
+     "expected_intent": "领地守卫：整组提速时第一个成员的水平速度应当是 -65。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP22b",
+     "expected": -65,
+     "expected_intent": "领地守卫：第二个成员同样。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP22c",
+     "expected": 1,
+     "expected_intent": "领地守卫：没有物理体的成员应当被跳过而不是报错（1＝确实被跳过）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP22d",
+     "expected": 1,
+     "expected_intent": "领地守卫：交给它一个不存在的组时应当安静返回。"
+    }
+   ]
+  },
+  {
+   "id": "P23",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-storage-and-global-residue",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{window.__rbP23a=Object.keys(window).filter(function(k){return k.indexOf('__rb')===0;}).length;var g=zombiegame.game;g.model.score.score=11;g.model.score.saveScore();g.model.playername='SOLO';g.model.savePlayername();window.__rbP23b=Object.keys(localStorage).sort().join(',');window.__rbP23c=localStorage.getItem('zombiehunter.playername');window.__rbP23d=g.model.score.getBest();return 1;}catch(e){window.__rbP23a=-1;window.__rbP23b='ERR:'+e.message;window.__rbP23c='ERR';window.__rbP23d='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP23a",
+     "expected": 0,
+     "expected_intent": "状态隔离：本检查点开始驱动之前，全局上不该有任何检验残留（0 个）。任何靠往全局挂旗标来「修」症状的做法都会在这里露馅。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP23b",
+     "expected": "zombiehunter.playername,zombiehunter.score.best",
+     "expected_intent": "状态隔离：驱动一趟之后，浏览器存储里应当只有应用自己那两个键，一个不多一个不少。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP23c",
+     "expected": "SOLO",
+     "expected_intent": "状态隔离：存下来的名字应当就是刚才设的 \"SOLO\"。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP23d",
+     "expected": 11,
+     "expected_intent": "状态隔离：存下来的最好成绩应当是 11。"
+    }
+   ]
+  },
+  {
+   "id": "P24",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-gameover-speed-decay",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{zombiegame.game.state.start('Game');return 1;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var g=zombiegame.game;var st=g.state.states.Game;if(st){st.update=function(){};}return (g.state.current==='Game'&&!!st.player&&!!st.zombies&&!!st.player.weapon)?1:0;}catch(e){return 'ERR:'+e.message;}})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{var st=zombiegame.game.state.states.Game;st.player.isDead=true;zombiegame.rungame.gamespeed=3;st.updateGameOver();window.__rbP24a=zombiegame.rungame.gamespeed;st.updateGameOver();window.__rbP24b=zombiegame.rungame.gamespeed;st.updateGameOver();window.__rbP24c=zombiegame.rungame.gamespeed;st.player.isDead=false;return 1;}catch(e){window.__rbP24a='ERR:'+e.message;window.__rbP24b='ERR';window.__rbP24c='ERR';return 0;}})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP24a",
+     "expected": 1.5,
+     "expected_intent": "领地守卫：玩家死后第一趟收速应当把世界速度从 3 收到 1.5。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP24b",
+     "expected": 0,
+     "expected_intent": "领地守卫：第二趟应当收到 0。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP24c",
+     "expected": 0,
+     "expected_intent": "领地守卫：已经停下之后再收不该变成负数（还是 0）。这三条钉住收速这条与出怪时基相邻的路径。"
+    }
+   ]
+  }
+ ]
+}

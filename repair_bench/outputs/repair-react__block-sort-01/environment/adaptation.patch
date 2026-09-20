@@ -1,0 +1,49 @@
+diff --git a/src/support/schedule.ts b/src/support/schedule.ts
+--- a/src/support/schedule.ts
++++ b/src/support/schedule.ts
+@@ -38,12 +38,24 @@ export const filterInRange = <TItem extends RangedItem>(
+   });
+ 
+ /**
+- * Get the current date.
++ * RepairBench environment adaptation (determinism pin).
+  *
+- * The app uses this function to determine the active theme.
+- * Dates can be overridden for testing purposes.
++ * Every seasonal read in this app goes through getToday(): the theme
++ * (getActiveTheme), the particles, the level modifiers (getActiveModifiers) and the
++ * scheduled actions. Upstream serves a calendar-driven game, so the block colours,
++ * the shapes and the active modifiers of a level change with the wall-clock day the
++ * verifier happens to run on. The seed's own docstring above already states that
++ * "Dates can be overridden for testing purposes"; this pins the production branch to
++ * a fixed date so the level under repair is byte-stable across runs.
+  *
+- * @returns the current date
++ * The pinned date is deliberately inside the "default" theme window (no seasonal
++ * schedule active), so no theme, particle set or modifier is enabled by it.
++ * The development branch keeps the seed's own dateForDevelopment override untouched.
++ * 0 business-logic lines are changed: only the value the clock reports.
+  */
++export const RB_PINNED_TODAY = "2026-09-17T12:00:00.000Z";
++
+ export const getToday = (): Date =>
+-  process.env.NODE_ENV === "production" ? new Date() : dateForDevelopment;
++  process.env.NODE_ENV === "production"
++    ? new Date(RB_PINNED_TODAY)
++    : dateForDevelopment;
+diff --git a/vite.config.ts b/vite.config.ts
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -79,7 +79,11 @@ export default defineConfig({
+       "@": path.resolve(__dirname, "./src")
+     }
+   },
+-  base: "/block-sort/",
++  // RepairBench environment adaptation: the verifier serves the build output at the origin
++  // root (evaluation/serve_static.mjs --dir <src>/dist), not at upstream's GitHub Pages subpath
++  // /block-sort/. Pinning the base here rather than on the command line means the project's own
++  // build script (`npm run build` == `tsc && vite build`) yields the graded bundle as-is.
++  base: "/",
+   build: {
+     target: "esnext",
+     cssMinify: "esbuild"

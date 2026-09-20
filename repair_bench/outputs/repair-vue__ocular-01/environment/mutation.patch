@@ -1,0 +1,138 @@
+diff --git a/src/app/components/feature/budget-pane/BudgetGroups.vue b/src/app/components/feature/budget-pane/BudgetGroups.vue
+--- a/src/app/components/feature/budget-pane/BudgetGroups.vue
++++ b/src/app/components/feature/budget-pane/BudgetGroups.vue
+@@ -102,7 +102,7 @@
+ 
+   for (const { budgets } of groups.value) {
+     for (const { values } of budgets) {
+-      for (let i = 0; i < values.length; i++) {
++      for (let i = 0; i < values.length - 1; i++) {
+         totals[i] += values[i];
+       }
+     }
+diff --git a/src/app/components/feature/budget-pane/BudgetPane.vue b/src/app/components/feature/budget-pane/BudgetPane.vue
+--- a/src/app/components/feature/budget-pane/BudgetPane.vue
++++ b/src/app/components/feature/budget-pane/BudgetPane.vue
+@@ -24,7 +24,7 @@
+ }>();
+ 
+ const { state } = useDataStore();
+-const total = computed(() => totals(state[props.type]));
++const total = computed(() => totals(state.expenses));
+ const amount = computed(() => total.value.reduce((a, b) => a + b, 0));
+ </script>
+ 
+diff --git a/src/app/components/feature/pane/Pane.vue b/src/app/components/feature/pane/Pane.vue
+--- a/src/app/components/feature/pane/Pane.vue
++++ b/src/app/components/feature/pane/Pane.vue
+@@ -4,7 +4,7 @@
+       <h1 :class="$style.title">
+         <slot v-if="$slots.title" name="title" />
+         <span v-else>{{ title }}</span>
+-        <template v-if="amount">
++        <template v-if="!amount">
+           <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
+           <span> - </span>
+           <Currency :testId="`${testId}-amount`" :value="amount" />
+diff --git a/src/app/pages/dashboard/all-time/AllTime.vue b/src/app/pages/dashboard/all-time/AllTime.vue
+--- a/src/app/pages/dashboard/all-time/AllTime.vue
++++ b/src/app/pages/dashboard/all-time/AllTime.vue
+@@ -77,7 +77,7 @@
+   return [
+     {
+       title: t('page.dashboard.allTime.yoyIncomeGrowth'),
+-      text: lastYear ? percent((currentYearIncome - lastYearIncome) / lastYearIncome) : '—',
++      text: lastYear ? percent((currentYearIncome - lastYearIncome) / currentYearIncome) : '—',
+       icon: lastYear ? (currentYearIncome > lastYearIncome ? RiArrowUpDoubleLine : RiArrowDownDoubleLine) : undefined,
+       iconClass: currentYearIncome > lastYearIncome ? styles.iconSuccess : styles.iconDanger,
+       testId: 'yoy-income-growth'
+diff --git a/src/composables/keyboard-navigation/useKeyboardNavigation.ts b/src/composables/keyboard-navigation/useKeyboardNavigation.ts
+--- a/src/composables/keyboard-navigation/useKeyboardNavigation.ts
++++ b/src/composables/keyboard-navigation/useKeyboardNavigation.ts
+@@ -34,7 +34,7 @@
+       case 'ArrowUp':
+         return currentRow > 0 ? (currentRow - 1) * cols + currentCol : currentIndex;
+       case 'ArrowDown':
+-        return currentRow < rows - 1 ? (currentRow + 1) * cols + currentCol : currentIndex;
++        return currentRow < rows - 1 ? (currentRow + 1) * cols + currentCol + 1 : currentIndex;
+       case 'ArrowLeft':
+         return currentCol > 0 ? currentRow * cols + (currentCol - 1) : currentRow * cols + (cols - 1);
+       case 'ArrowRight':
+diff --git a/src/composables/scroll-shadow/useScrollShadow.ts b/src/composables/scroll-shadow/useScrollShadow.ts
+--- a/src/composables/scroll-shadow/useScrollShadow.ts
++++ b/src/composables/scroll-shadow/useScrollShadow.ts
+@@ -16,7 +16,7 @@
+     if (hasShadow && scrollTop < offset) {
+       element.value.style.removeProperty('box-shadow');
+       hasShadow = false;
+-    } else if (scrollTop > offset) {
++    } else if (scrollTop < offset) {
+       element.value.style.setProperty('box-shadow', shadow);
+       hasShadow = true;
+     }
+diff --git a/src/store/state/actions/budgetGroup.actions.ts b/src/store/state/actions/budgetGroup.actions.ts
+--- a/src/store/state/actions/budgetGroup.actions.ts
++++ b/src/store/state/actions/budgetGroup.actions.ts
+@@ -35,7 +35,7 @@
+     const group = getBudgetGroup(id);
+ 
+     if (group) {
+-      group.collapsed = !group.collapsed;
++      group.collapsed = true;
+     }
+   },
+ 
+diff --git a/src/store/state/actions/year.actions.ts b/src/store/state/actions/year.actions.ts
+--- a/src/store/state/actions/year.actions.ts
++++ b/src/store/state/actions/year.actions.ts
+@@ -18,7 +18,7 @@
+ 
+     if (!data) {
+       state.years.push(generateBudgetYear({ year, source: budgetYear.value }));
+-      state.years.sort((a, b) => a.year - b.year);
++      state.years.sort((a, b) => b.year - a.year);
+     }
+ 
+     currentYear.value = year;
+diff --git a/src/store/state/index.ts b/src/store/state/index.ts
+--- a/src/store/state/index.ts
++++ b/src/store/state/index.ts
+@@ -27,7 +27,7 @@
+   const base = migrateApplicationState();
+   const state = reactive<DataState>(generateTemplateData(base.currency, base.locale, t));
+ 
+-  const budgetYear = computed(() => state.years.find((v) => v.year === currentYear.value)!);
++  const budgetYear = computed(() => state.years.at(-1)!);
+   const budgetGroups = computed(() => [...budgetYear.value.expenses, ...budgetYear.value.income]);
+ 
+   const getBudget = (id: string) => budgetGroups.value.flatMap((v) => v.budgets).find((v) => v.id === id);
+@@ -95,7 +95,7 @@
+       }
+     }),
+ 
+-    undoLastAction: () => undoFunctions.pop()?.(),
++    undoLastAction: () => undoFunctions.shift()?.(),
+ 
+     changeLocale: (locale: AvailableLocale) => (state.locale = locale),
+ 
+diff --git a/src/utils/array/array.ts b/src/utils/array/array.ts
+--- a/src/utils/array/array.ts
++++ b/src/utils/array/array.ts
+@@ -1,4 +1,4 @@
+-export const subtract = (a: readonly number[], b: readonly number[]) => a.map((value, index) => value - b[index]);
++export const subtract = (a: readonly number[], b: readonly number[]) => a.map((value, index) => b[index] - value);
+ 
+ export const add = (...arrays: readonly number[][]) => {
+   const sum = new Array(arrays[0]?.length).fill(0);
+diff --git a/src/utils/eval-math-expression/evalMathExpression.ts b/src/utils/eval-math-expression/evalMathExpression.ts
+--- a/src/utils/eval-math-expression/evalMathExpression.ts
++++ b/src/utils/eval-math-expression/evalMathExpression.ts
+@@ -90,7 +90,7 @@
+         while (
+           operatorStack.length > 0 &&
+           operatorStack.at(-1)!.type === 'operator' &&
+-          precedence[operatorStack.at(-1)!.value] >= precedence[token.value as string]
++          precedence[operatorStack.at(-1)!.value] > precedence[token.value as string]
+         ) {
+           output.push(operatorStack.pop()!);
+         }

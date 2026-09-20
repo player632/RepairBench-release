@@ -1,0 +1,71 @@
+import { useAppStore } from "@/store";
+import { isSingletonMode } from "@/lib/conn";
+import _ from "lodash";
+import { MeiliSearch } from "meilisearch";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "../lib/toast";
+import { useCurrentInstance } from "./useCurrentInstance";
+
+export const useMeiliClient = () => {
+	const { t } = useTranslation("instance");
+	const currentInstance = useCurrentInstance();
+
+	const [client, setClient] = useState<MeiliSearch>(
+		new MeiliSearch({
+			...currentInstance,
+		}),
+	);
+
+	const setWarningPageData = useAppStore((state) => state.setWarningPageData);
+
+	const connect = useCallback(async () => {
+		if (_.isEmpty(currentInstance?.host)) {
+			toast.error(t("connection_failed"));
+			console.debug("useMeilisearchClient", "connection config lost");
+			if (!isSingletonMode()) {
+				// do not use useNavigate, because maybe in first render
+				window.location.assign(import.meta.env.BASE_URL ?? "/");
+			} else {
+				setWarningPageData({ prompt: t("instance:singleton_cfg_not_found") });
+				// do not use useNavigate, because maybe in first render
+				const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+				window.location.assign(`${baseUrl}/warning`);
+			}
+			return;
+		}
+		const conn = new MeiliSearch({ ...currentInstance });
+		try {
+			await conn.getStats;
+			setClient(conn);
+		} catch (err) {
+			console.warn("useMeilisearchClient", "test conn error", err);
+			toast.error(t("connection_failed"));
+			if (!isSingletonMode()) {
+				// do not use useNavigate, because maybe in first render
+				window.location.assign(import.meta.env.BASE_URL ?? "/");
+			} else {
+				// config exists but connection failed: the host is unreachable from the
+				// browser (docker-internal hostname, CORS, wrong api key...), show it
+				// instead of misleading "config not set" message. gh-267
+				setWarningPageData({
+					prompt: t("instance:singleton_connection_error", {
+						host: currentInstance?.host,
+					}),
+				});
+				// do not use useNavigate, because maybe in first render
+				const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+				window.location.assign(`${baseUrl}/warning`);
+			}
+		}
+	}, [currentInstance, setWarningPageData, t]);
+
+	// need to use currentInstance as deps, because it should be emitted when instance changed
+	// biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
+	useEffect(() => {
+		console.debug("useMeilisearchClient", "rebuilt meili client");
+		connect().then();
+	}, [connect, currentInstance]);
+
+	return client;
+};

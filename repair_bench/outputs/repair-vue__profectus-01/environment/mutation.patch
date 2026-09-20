@@ -1,0 +1,150 @@
+diff --git a/src/data/projEntry.tsx b/src/data/projEntry.tsx
+index abba816d7ae864879da2ef48831edd3b265bd13a..fdbe089 100644
+--- a/src/data/projEntry.tsx
++++ b/src/data/projEntry.tsx
+@@ -35,7 +35,7 @@
+         nodes: noPersist([[prestige.treeNode]]),
+         branches: [],
+         onReset() {
+-            points.value = toRaw(tree.resettingNode.value) === toRaw(prestige.treeNode) ? 0 : 10;
++            points.value = toRaw(tree.resettingNode.value) === toRaw(prestige.treeNode) ? 10 : 0;
+             best.value = points.value;
+             total.value = points.value;
+         },
+diff --git a/src/data/layers/prestige.tsx b/src/data/layers/prestige.tsx
+index a065db160f2acea11d3d5e6b4aca9b05a2e24628..ccfba49 100644
+--- a/src/data/layers/prestige.tsx
++++ b/src/data/layers/prestige.tsx
+@@ -37,7 +37,7 @@
+         reset
+     }));
+     const tooltip = addTooltip(treeNode, () => ({
+-        display: createResourceTooltip(points),
++        display: () => createResourceTooltip(main.points)(),
+         pinnable: true
+     }));
+ 
+@@ -49,7 +49,7 @@
+ 
+     const hotkey = createHotkey(() => ({
+         description: "Reset for prestige points",
+-        key: "p",
++        key: "o",
+         onPress: resetButton.onClick!
+     }));
+ 
+diff --git a/src/data/common.tsx b/src/data/common.tsx
+index 2d0bf30542d41bdf09e9bfe06bd281b223823577..9f98097 100644
+--- a/src/data/common.tsx
++++ b/src/data/common.tsx
+@@ -116,7 +116,7 @@
+             resetDescription:
+                 processGetter(resetDescription) ??
+                 computed((): string =>
+-                    Decimal.lt(conversion.gainResource.value, 1e3) ? "Reset for " : ""
++                    Decimal.gt(conversion.gainResource.value, 1e3) ? "Reset for " : ""
+                 ),
+             showNextAt: processGetter(showNextAt) ?? true,
+             minimumGain: processGetter(minimumGain) ?? 1,
+@@ -210,7 +210,7 @@
+             ...(props as Omit<typeof props, keyof LayerTreeNodeOptions>),
+             layerID,
+             display: display ?? layerID,
+-            append: processGetter(append) ?? true,
++            append: processGetter(append) ?? false,
+             onClick() {
+                 if (unref<boolean>(layerTreeNode.append)) {
+                     if (player.tabs.includes(layerID)) {
+diff --git a/src/features/resources/resource.ts b/src/features/resources/resource.ts
+index feb5f111a629f2c45474e57f45c3124375f005ef..37b9af4 100644
+--- a/src/features/resources/resource.ts
++++ b/src/features/resources/resource.ts
+@@ -130,7 +130,7 @@
+     });
+ 
+     const oompsString = computed(() => {
+-        if (oompsMag.value === 0) {
++        if (oompsMag.value !== 0) {
+             return pointGain
+                 ? format(pointGain.value, resource.precision, resource.small) +
+                       " " +
+diff --git a/src/components/TPS.vue b/src/components/TPS.vue
+index db73da621b857fbfd1d8cab7dd85d820906cedc1..13305e5 100644
+--- a/src/components/TPS.vue
++++ b/src/components/TPS.vue
+@@ -9,8 +9,8 @@
+ 
+ const tps = computed(() =>
+     Decimal.div(
+-        state.lastTenTicks.length,
+-        state.lastTenTicks.reduce((acc, curr) => acc + curr, 0)
++        state.lastTenTicks.reduce((acc, curr) => acc + curr, 0),
++        state.lastTenTicks.length
+     )
+ );
+ </script>
+diff --git a/src/wrappers/tooltips/Tooltip.vue b/src/wrappers/tooltips/Tooltip.vue
+index 37f1020c8dbea74477b87b5e9b96f334eed9e957..f1fdddc 100644
+--- a/src/wrappers/tooltips/Tooltip.vue
++++ b/src/wrappers/tooltips/Tooltip.vue
+@@ -53,7 +53,7 @@
+ }>();
+ 
+ const isHovered = ref(false);
+-const isShown = computed(() => props.pinned?.value === true || isHovered.value);
++const isShown = computed(() => props.pinned?.value === true && isHovered.value);
+ 
+ const Component = () => render(props.display);
+ 
+diff --git a/src/components/modals/Options.vue b/src/components/modals/Options.vue
+index 908d1a5d4154a784f2182061d62bc8f92f4c03b1..b902452 100644
+--- a/src/components/modals/Options.vue
++++ b/src/components/modals/Options.vue
+@@ -74,7 +74,7 @@
+ const { autosave, offlineProd } = toRefs(player);
+ const isPaused = computed({
+     get() {
+-        return player.devSpeed === 0;
++        return player.devSpeed !== 0;
+     },
+     set(value: boolean) {
+         player.devSpeed = value ? 0 : null;
+diff --git a/src/components/Layer.vue b/src/components/Layer.vue
+index 692ccac893b25784532d6a26fefc750cf9ba9a7a..2e56f7a 100644
+--- a/src/components/Layer.vue
++++ b/src/components/Layer.vue
+@@ -48,7 +48,7 @@
+ const Component = () => render(props.display);
+ const MinimizedComponent = () => props.minimizedDisplay == null ? undefined : render(props.minimizedDisplay);
+ const showGoBack = computed(
+-    () => projInfo.allowGoBack && !unref(props.forceHideGoBack) && props.index > 0 && !unref(props.minimized)
++    () => projInfo.allowGoBack && !unref(props.forceHideGoBack) && props.index > 1 && !unref(props.minimized)
+ );
+ 
+ function goBack() {
+diff --git a/src/game/settings.ts b/src/game/settings.ts
+index 6c94271d0ac954acfffe45265506352c7a93c7c1..04f54bd 100644
+--- a/src/game/settings.ts
++++ b/src/game/settings.ts
+@@ -92,7 +92,7 @@
+             }
+             const settings = JSON.parse(item);
+             if (typeof settings === "object") {
+-                Object.assign(state, settings);
++                Object.assign(settings, state);
+             }
+         }
+         globalBus.emit("loadSettings", state);
+diff --git a/src/components/modals/SavesManager.vue b/src/components/modals/SavesManager.vue
+index b482225ab6dbd9f87c1c63f29f56c198335ddb6c..d462b43 100644
+--- a/src/components/modals/SavesManager.vue
++++ b/src/components/modals/SavesManager.vue
+@@ -218,7 +218,7 @@
+             }
+         });
+     }
+-    settings.saves = settings.saves.filter((save: string) => save !== id);
++    settings.saves = settings.saves.filter((save: string) => save === id);
+     localStorage.removeItem(id);
+     clearCachedSave(id);
+ }

@@ -1,0 +1,127 @@
+diff --git a/src/lib/data-grid-filters.ts b/src/lib/data-grid-filters.ts
+--- a/src/lib/data-grid-filters.ts
++++ b/src/lib/data-grid-filters.ts
+@@ -184,7 +184,7 @@
+ 			return true;
+ 		}
+ 
+-		const cellValueStr = String(cellValue ?? '');
++		const cellValueStr = String(cellValue ?? '').toLowerCase();
+ 		const filterValueStr = typeof value === 'string' ? value.toLowerCase() : String(value);
+ 
+ 		if (operator === 'contains') {
+diff --git a/src/lib/data-grid.ts b/src/lib/data-grid.ts
+--- a/src/lib/data-grid.ts
++++ b/src/lib/data-grid.ts
+@@ -152,7 +152,7 @@
+ }
+ 
+ export function parseTsv(text: string, fallbackColumnCount: number): string[][] {
+-	if (text.startsWith('"')) {
++	if (text.startsWith('"') || text.includes('\t"')) {
+ 		const rows: string[][] = [];
+ 		let currentRow: string[] = [];
+ 		let currentField = '';
+@@ -303,7 +303,7 @@
+ 		}
+ 	}
+ 
+-	const sortedRowIndices = Array.from(rowIndices).sort();
++	const sortedRowIndices = Array.from(rowIndices).sort((a, b) => a - b);
+ 	const tsvData = sortedRowIndices
+ 		.map((rowIndex) =>
+ 			selectedColumnIds
+@@ -330,7 +330,7 @@
+ 	}
+ 
+ 	const selectedCells = Array.from(params.selectedCells);
+-	if (selectedCells.length > 0) {
++	if (rowIndices.size === 0 && selectedCells.length > 0) {
+ 		for (const cellKey of selectedCells) {
+ 			rowIndices.add(parseCellKey(cellKey).rowIndex);
+ 		}
+@@ -394,7 +394,7 @@
+ 	switch (cellVariant) {
+ 		case 'number': {
+ 			if (!pastedValue) return { value: null, shouldSkip: false };
+-			const num = Number.parseInt(pastedValue);
++			const num = Number.parseFloat(pastedValue);
+ 			return Number.isNaN(num)
+ 				? { value: undefined, shouldSkip: true }
+ 				: { value: num, shouldSkip: false };
+@@ -566,6 +566,9 @@
+ 
+ 	const trimmed = urlString.trim();
+ 
++	if (/^(javascript|data|vbscript|file):/i.test(trimmed)) {
++		return '';
++	}
+ 
+ 	if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+ 		return trimmed;
+@@ -582,7 +585,7 @@
+ 	const [year, month, day] = dateValue.split('-').map(Number);
+ 	if (!year || !month || !day) return null;
+ 
+-	const date = new Date(year, month, day);
++	const date = new Date(year, month - 1, day);
+ 	if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+ 		return null;
+ 	}
+diff --git a/src/lib/export.ts b/src/lib/export.ts
+--- a/src/lib/export.ts
++++ b/src/lib/export.ts
+@@ -13,7 +13,7 @@
+ 	const headers = table
+ 		.getAllLeafColumns()
+ 		.map((column) => column.id)
+-		.filter((id) => excludeColumns.includes(id as keyof TData | 'select' | 'actions'));
++		.filter((id) => !excludeColumns.includes(id as keyof TData | 'select' | 'actions'));
+ 
+ 	const rows = onlySelected
+ 		? table.getFilteredSelectedRowModel().rows
+diff --git a/src/lib/hooks/use-badge-overflow.svelte.ts b/src/lib/hooks/use-badge-overflow.svelte.ts
+--- a/src/lib/hooks/use-badge-overflow.svelte.ts
++++ b/src/lib/hooks/use-badge-overflow.svelte.ts
+@@ -193,7 +193,7 @@
+ 
+ 		result = {
+ 			visibleItems: visible,
+-			hiddenCount: Math.max(0, items.length - visible.length - 1),
++			hiddenCount: Math.max(0, items.length - visible.length),
+ 			containerWidth
+ 		};
+ 	});
+diff --git a/src/lib/hooks/use-data-grid-undo-redo.svelte.ts b/src/lib/hooks/use-data-grid-undo-redo.svelte.ts
+--- a/src/lib/hooks/use-data-grid-undo-redo.svelte.ts
++++ b/src/lib/hooks/use-data-grid-undo-redo.svelte.ts
+@@ -146,7 +146,7 @@
+ 
+ 					nextData[rowIndex] = {
+ 						...(row as Record<string, unknown>),
+-						[update.columnId]: cloneHistoryValue(update.newValue)
++						[update.columnId]: cloneHistoryValue(update.previousValue)
+ 					} as TData;
+ 				}
+ 
+diff --git a/src/lib/hooks/use-data-grid.svelte.ts b/src/lib/hooks/use-data-grid.svelte.ts
+--- a/src/lib/hooks/use-data-grid.svelte.ts
++++ b/src/lib/hooks/use-data-grid.svelte.ts
+@@ -1566,7 +1566,7 @@
+ 
+ 				const value = cell.getValue();
+ 				const strValue = String(value ?? '').toLowerCase();
+-				if (strValue.startsWith(lowerQuery)) {
++				if (strValue.includes(lowerQuery)) {
+ 					matches.push({ rowIndex, columnId });
+ 					// Build Set in same loop - single pass
+ 					searchMatchSet.add(getCellKey(rowIndex, columnId));
+@@ -1602,7 +1602,7 @@
+ 	function navigateToPrevMatch() {
+ 		if (searchMatches.length === 0) return;
+ 
+-		const newIndex = Math.max(0, matchIndex - 1);
++		const newIndex = (matchIndex - 1 + searchMatches.length) % searchMatches.length;
+ 		const match = searchMatches[newIndex];
+ 		if (match) {
+ 			virtualizer?.scrollToIndex(match.rowIndex, { align: 'center' });

@@ -2,13 +2,16 @@
 
 ## Protocol
 
-Two models were evaluated over the complete suite. Each model answered every task once and was
-graded once, with the same agent harness, the same tool set, the same task packages and the
-same verifier.
+Two models were evaluated over the suite as it stood when they were graded: the 202 tasks of
+the first release of this distribution. The distribution now contains 300 tasks and the 98
+added since are unscored, so every figure on this page describes that graded cohort of 202.
+Each model answered every task once and was graded once, with the same agent harness, the same
+tool set, the same task packages and the same verifier.
 
 | Item | Value |
 |---|---|
-| Tasks | 202 |
+| Tasks in this distribution | 300 |
+| Tasks graded | 202; the remaining 98 are unscored |
 | Models | `qwen3.8-max`, `qwen3.6-flash` |
 | Graded runs | 404 (202 per model) |
 | Grading rounds | `r7` (197 tasks per model) and `r7fr` (5 tasks per model); the rounds are disjoint |
@@ -77,8 +80,8 @@ Both models were graded on all 202 tasks.
 - The gap between the mean F2P rate (0.505) and the mean P2P rate (0.917) for
   `qwen3.8-max` shows that existing behaviour is largely preserved while roughly half of the
   injected defects remain unrepaired.
-- 45.0% of the labelled defects are not named in the task statement, so full credit requires
-  defects to be located without being pointed out.
+- 45.0% of the labelled defects in the graded cohort are not named in the task statement, so
+  full credit requires defects to be located without being pointed out.
 - Build failures are scored 0 and are concentrated in the larger Angular and Vue workspaces.
   They measure toolchain handling as well as repair quality.
 - 8 tasks scored 0 for both models.
@@ -87,9 +90,9 @@ Both models were graded on all 202 tasks.
 
 | File | Contents |
 |---|---|
-| `results/ledger.json` | Authoritative record: per-run task, model, round, score, build status, F2P and P2P counts and rates, grading timestamp; plus aggregate, per-framework and head-to-head summaries |
-| `results/task-index.csv` | One row per task: framework, language, seed path, defect counts, reported and unreported defect counts, checkpoint counts, verifier timeout, reference repair size, and both models' scores and rates |
-| `results/summary.json` | Suite-level distributions of defects, checkpoint counts, reference repair sizes and verifier timeouts, together with the aggregate result tables |
+| `results/ledger.json` | Authoritative record of the graded cohort: per-run task, model, round, score, build status, F2P and P2P counts and rates, grading timestamp; plus aggregate, per-framework and head-to-head summaries |
+| `results/task-index.csv` | One row per task, for all 300 tasks: framework, language, seed path, defect counts, reported and unreported defect counts, checkpoint counts, verifier timeout, reference repair size, and both models' scores and rates. The score columns are empty for the 98 unscored tasks |
+| `results/summary.json` | Suite-level distributions of defects, checkpoint counts, reference repair sizes and verifier timeouts over all 300 tasks, together with the aggregate result tables for the graded cohort |
 | `results/dependency-install.csv` | Per-task seed path, installation directories, package manager and dependency class |
 | `results/seed-provenance.csv` | Upstream attribution of each seed tree: repository reference, branch, upstream commit and snapshot timestamp where recorded, and how the attribution was established |
 
@@ -98,10 +101,10 @@ Both models were graded on all 202 tasks.
 | Column | Meaning |
 |---|---|
 | `instance_id`, `framework`, `language`, `repository`, `seed_path` | Task identity and location, from `task.toml` |
-| `defects` | Injected defects recorded for the task; empty for the 3 tasks without a defect ledger |
+| `defects` | Injected defects recorded for the task |
 | `reported_defects`, `unreported_defects` | Defects named and not named in the task statement |
 | `defect_type_tags` | Number of `defect_type:` tags in `task.toml` |
 | `f2p_checkpoints`, `p2p_checkpoints`, `total_checkpoints` | Scored checkpoint counts, from `tests/f2p_expected.json` and `tests/p2p_expected.json` |
 | `verifier_timeout_sec` | Verifier timeout from `task.toml` |
 | `gold_patch_files`, `gold_patch_changed_lines` | Size of `solution/gold.patch` |
-| `score_<model>`, `f2p_rate_<model>`, `p2p_rate_<model>`, `build_failed_<model>` | Grading outcome per model, from `results/ledger.json` |
+| `score_<model>`, `f2p_rate_<model>`, `p2p_rate_<model>`, `build_failed_<model>` | Grading outcome per model, from `results/ledger.json`; empty for the 98 tasks that were not graded |

@@ -1,0 +1,145 @@
+diff --git a/frontend/src/components/CheckBox/index.vue b/frontend/src/components/CheckBox/index.vue
+index 575e674..9cf53b1 100644
+--- a/frontend/src/components/CheckBox/index.vue
++++ b/frontend/src/components/CheckBox/index.vue
+@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<Props>(), {
+ 
+ const emit = defineEmits(['change', 'update:modelValue'])
+ 
+-const model = ref<string[]>([])
++const model = ref<string[]>([...props.modelValue])
+ const { t } = useI18n()
+ 
+ let internalUpdate = false
+diff --git a/frontend/src/components/Dropdown/index.vue b/frontend/src/components/Dropdown/index.vue
+index 84697cc..c6280b7 100644
+--- a/frontend/src/components/Dropdown/index.vue
++++ b/frontend/src/components/Dropdown/index.vue
+@@ -108,7 +108,7 @@ const debounceOpen = debounce(open, props.delay)
+ 
+ const onMouseEnter = () => {
+   if (hasTrigger('hover')) {
+-    debounceOpen.cancel()
++    debounceOpen()
+   }
+ }
+ 
+diff --git a/frontend/src/components/Input/index.vue b/frontend/src/components/Input/index.vue
+index 96d1185..f3c87b0 100644
+--- a/frontend/src/components/Input/index.vue
++++ b/frontend/src/components/Input/index.vue
+@@ -75,6 +75,7 @@ const validate = (val: string | number) => {
+ const emitInput = debounce((e: any) => {
+   const val = validate(e.target.value)
+   e.target.value = val
++  emits('update:modelValue', val)
+   emits('change', val)
+ }, props.delay)
+ 
+diff --git a/frontend/src/hooks/useAppBootstrap.ts b/frontend/src/hooks/useAppBootstrap.ts
+index ae737bd..a5cc61a 100644
+--- a/frontend/src/hooks/useAppBootstrap.ts
++++ b/frontend/src/hooks/useAppBootstrap.ts
+@@ -30,6 +30,7 @@ export const useAppBootstrap = () => {
+ 
+     await Promise.all([
+       appSettings.setupAppSettings(),
++      profilesStore.setupProfiles(),
+       subscribesStore.setupSubscribes(),
+       rulesetsStore.setupRulesets(),
+       pluginsStore.setupPlugins(),
+diff --git a/frontend/src/router/routes.ts b/frontend/src/router/routes.ts
+index 8a103b9..babd108 100644
+--- a/frontend/src/router/routes.ts
++++ b/frontend/src/router/routes.ts
+@@ -70,7 +70,7 @@ const routes: RouteRecordRaw[] = [
+     meta: {
+       name: 'router.settings',
+       icon: 'settings2',
+-      hidden: true,
++      hidden: false,
+     },
+   },
+ ]
+diff --git a/frontend/src/stores/appSettings.ts b/frontend/src/stores/appSettings.ts
+index 033c741..6861aa4 100644
+--- a/frontend/src/stores/appSettings.ts
++++ b/frontend/src/stores/appSettings.ts
+@@ -240,6 +240,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
+   const onAppSettingsChange = (settings: App.AppSettings) => {
+     applyAppSettings.theme(settings.theme)
+     applyAppSettings.color(settings.color, settings.primaryColor, settings.secondaryColor)
++    applyAppSettings.lang(settings.lang)
+     applyAppSettings.fontFamily(settings.fontFamily)
+     applyAppSettings.feature(
+       settings.debugOutline,
+@@ -257,7 +258,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
+       saveAppSettings.cancel()
+     }
+   }
+-  watch(app, onAppSettingsChange)
++  watch(app, onAppSettingsChange, { deep: true })
+ 
+   /* Apply AppTheme */
+   const themeMode = ref<Extract<App.Theme, 'light' | 'dark'>>(Theme.Light)
+@@ -277,7 +278,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
+     }
+     WindowSetSystemDefaultTheme()
+   }
+-  watch(themeMode, setAppTheme)
++  watch(themeMode, setAppTheme, { immediate: true })
+ 
+   /* Apply WindowSize */
+   const onWindowSizeChange = debounce(async () => {
+@@ -296,6 +297,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
+       themeMode,
+       appStore.locales,
+       () => app.value.color,
++      () => app.value.lang,
+       () => app.value.addPluginToMenu,
+     ],
+     updateTrayAndMenus,
+diff --git a/frontend/src/views/HomeView/index.vue b/frontend/src/views/HomeView/index.vue
+index fa3b763..3518fdf 100644
+--- a/frontend/src/views/HomeView/index.vue
++++ b/frontend/src/views/HomeView/index.vue
+@@ -97,7 +97,7 @@ watch(showController, (v) => {
+           <Card
+             v-for="p in profilesStore.profiles.slice(0, profilesStore.profiles.length > 4 ? 3 : 4)"
+             :key="p.id"
+-            :selected="appSettingsStore.app.kernel.profile !== p.id"
++            :selected="appSettingsStore.app.kernel.profile === p.id"
+             @click="appSettingsStore.app.kernel.profile = p.id"
+           >
+             <div
+diff --git a/frontend/src/views/ProfilesView/index.vue b/frontend/src/views/ProfilesView/index.vue
+index 54d7c15..1106311 100644
+--- a/frontend/src/views/ProfilesView/index.vue
++++ b/frontend/src/views/ProfilesView/index.vue
+@@ -196,8 +196,6 @@ const isCreatedBySubscription = (id: string) => {
+ 
+ const showAuto = () => alert('Tips', 'profile.auto')
+ 
+-const profilesViewMode = appSettingsStore.app.profilesView
+-
+ const onSortUpdate = debounce(profilesStore.saveProfiles, 1000)
+ </script>
+ 
+@@ -227,7 +225,7 @@ const onSortUpdate = debounce(profilesStore.saveProfiles, 1000)
+ 
+   <div
+     v-draggable="[profilesStore.profiles, { ...DraggableOptions, onUpdate: onSortUpdate }]"
+-    :class="'grid-list-' + profilesViewMode"
++    :class="'grid-list-' + appSettingsStore.app.profilesView"
+   >
+     <Card
+       v-for="p in profilesStore.profiles"
+@@ -250,7 +248,7 @@ const onSortUpdate = debounce(profilesStore.saveProfiles, 1000)
+         </Tag>
+       </template>
+ 
+-      <template v-if="appSettingsStore.app.profilesView !== View.Grid" #extra>
++      <template v-if="appSettingsStore.app.profilesView === View.Grid" #extra>
+         <Dropdown>
+           <Button type="link" size="small" icon="more" />
+           <template #overlay>

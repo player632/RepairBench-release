@@ -1,0 +1,401 @@
+diff --git a/src/rbHost.js b/src/rbHost.js
+new file mode 100644
+--- /dev/null
++++ b/src/rbHost.js
+@@ -0,0 +1,388 @@
++/**
++ * RepairBench offline host fixture (`rbHost`) - __rb_offline_host_fixture__.
++ *
++ * WHY THIS FILE EXISTS
++ * `pointless` is a Tauri 1 desktop app. Its whole persistence surface is the Tauri IPC bridge:
++ * `@tauri-apps/api`'s `invoke()` (v1.3.0, tauri.cjs) resolves through `window.__TAURI_IPC__({cmd,
++ * callback, error, ...args})`, and the plugin modules (`os`/`app`/`dialog`/`fs`/`path`) funnel into
++ * the same entry point as `{cmd: "tauri", __tauriModule, message: {cmd, ...}}`. In a plain browser
++ * `window.__TAURI_IPC__` is undefined, so every call throws synchronously inside the promise
++ * executor: `src/index.js` never dispatches `loadFolders`/`loadSettings`/`setPlatform`/`setAppVersion`
++ * (its four `.then()` chains have no `.catch()`, so each becomes an unhandled rejection), the library
++ * stays empty, and `Paper`'s `mapStateToProps` (`state.library.papers.find(...)`) returns undefined
++ * for any paperId - `constructor` then reads `props.paper.shapes` and the whole view crashes. There is
++ * no way to reach the 1394-line drawing surface without a host.
++ *
++ * WHAT IT IS
++ * An in-repo, build-time fixture module (imported first by `src/index.js`) that provides the host
++ * side of that bridge: the seven `invoke` commands the app defines in `src-tauri/src/main.rs`'s
++ * `invoke_handler` (`load_library_folders`, `load_library_folder_papers`, `load_settings`,
++ * `save_library`, `save_settings`, `delete_library_folder`, `delete_library_paper`) plus the five
++ * plugin calls the front end makes (`Os/platform`, `App/getAppVersion`, `Dialog/confirmDialog`,
++ * `Fs/exists`, `Fs/writeFile`, `Path/resolvePath`). It is the Case-A equivalent for a desktop seed:
++ * no server process, no port, no network - a module inside the tree that the build bundles.
++ *
++ *
++ *
++ *
++ *
++ *  1. static serving only - the served tree is `build/` behind evaluation/serve_static.mjs, no
++ *     --serve-script, no sidecar process.
++ *  2. zero runtime network, measured - no fetch/XHR/WebSocket is added or left; every call the app
++ *     makes terminates inside this module.
++ *  3. deterministic fixture data - fixed `rb-` ids, fixed names, fixed ISO timestamps, fixed shape
++ *     geometry. No Math.random, no Date.now, no monotonic clock value in the data.
++ *  4. no assertion depends on a random outcome; the data below is the only state the app can read.
++ *  5. self-described in meta.json (offline / network / fixture keys).
++ *  6. nothing relaxed: no fabricated *application* behaviour. This module never computes a path, a
++ *     sort order, a bounding box or a stroke - it only answers host questions with host data.
++ *
++ * WHAT IT DELIBERATELY DOES NOT DO
++ *  - `load_settings` returns null (a first run with no saved settings file). Returning a settings
++ *    object would silently paper over the seed's own `libararysortPapersBy` initial-state typo in
++ *    `src/reducers/settings/settingsSlice.js:10` and change the clean-state sort behaviour, i.e. it
++ *    would fabricate a healthier face than the seed has. null keeps the seed exactly as shipped.
++ *  - unknown commands REJECT and are recorded in `unknownCalls()`, so a missing branch shows up as a
++ *    measurement instead of a silent green.
++ *  - `Fs/writeFile` records the payload and resolves; it never touches the real filesystem.
++ */
++
++/* The desktop host this fixture stands in for. Deterministic and declared in meta.json.
++ * `win32` is chosen to MATCH THE MEASURED HARNESS, not to flatter the seed: evaluation/dsl_runner.mjs
++ * pins every context to a Windows Chrome user agent (WIN_UA, :927) and installs an init script that
++ * redefines navigator.platform to "Win32" and navigator.userAgentData.platform to "Windows"
++ * (PLATFORM_INIT, :928-934). The app reads its platform from this host call (src/index.js:50 ->
++ * settingsSlice.setPlatform), and that value decides BOTH `Paper.isCtrlOrMetaKey()`
++ * (src/components/Paper/index.js:1002-1004: darwin -> metaKey, otherwise -> ctrlKey) and
++ * `ctrlOrMetaChar()` (src/helpers.js:31-34: darwin -> U+2318, otherwise -> 'CTRL'). Declaring darwin
++ * inside a context that presents Win32 would be a self-contradicting fixture and would put every
++ * chord checkpoint behind Meta, which this headless context does not deliver as reliably as Control.
++ * MEASURED both ways on the probe leg (r37i/probe.json arms key_ctrl / key_meta). */
++const RB_PLATFORM = 'win32';
++const RB_APP_VERSION = '1.11.0'; /* package.json version of the seed, verbatim */
++const RB_DOWNLOAD_DIR = '/Users/rb/Downloads';
++
++const clone = (value) => JSON.parse(JSON.stringify(value));
++
++/* ---------------------------------------------------------------- fixture data
++ * Two folders, five papers. Names and timestamps are chosen so that all six SORT_BY orders are
++ *
++ * tests/dsl.json asserts three times over (F07 A[0] derivation "clean NAME_ZA sorts descending
++ * (b vs a): Zephyr, Old map, Lantern, Harbor, Anchor"; P07 A[0] the table NAME column compared as a
++ * sorted set; P08 A[0] the card id set after two explicit sorts). The pointer this sentence used to
++ * carry, "(measured in meta.json.fixture.sort_orders)", named a key that has never existed -
++ * meta.json has no `fixture` key at all - so it is superseded here rather than deleted; ruling and
++ *
++ * different orders are what makes the library's sorting observable at all. `rb-paper-02` carries two
++ * pre-existing shapes so a paper can be opened with content already on the canvas (eraser /
++ * selection / zoom-to-fit / export paths) while `rb-paper-01` is the empty canvas the drawing
++ * checkpoints start from.
++ *
++ *
++ * papers are grouped under `rb-folder-01` and `rb-folder-02` is deliberately EMPTY, while
++ * FIXTURE_FOLDERS still declares TWO folders. Two invariants travel together and a future edit must
++ * not split them:
++ *   (1) the grouping key and the paper's own explicit `folderId` field ALWAYS agree. The Library's
++ *       renderPapers() filters a SECOND time on `paper.folderId === currentFolderId`, and Paper's
++ *       onBackButtonClick routes back with `args: { activeFolderId: paper.folderId }`; a paper whose
++ *       field disagreed with its group would sit in the store yet never reach the DOM, and would
++ *       remount the Library on the wrong folder.
++ *   (2) `rb-paper-05` stays at the END of the `rb-folder-01` array, because the declared face reads
++ *       paper names in store array order.
++ * An empty folder is a state the app itself supports: load_library_folder_papers below returns
++ * `clone(host.papers[args.folderId] || [])`, delete_library_paper guards with the same `|| []`, and
++ * the Library renders its own "Nothing to see here" empty state when no folder is selected. */
++const FIXTURE_FOLDERS = [
++  {
++    id: 'rb-folder-01',
++    name: 'Sketches',
++    createdAt: '2024-02-11T09:00:00.000Z',
++    updatedAt: '2024-03-01T09:00:00.000Z',
++  },
++  {
++    id: 'rb-folder-02',
++    name: 'Archive',
++    createdAt: '2024-01-05T09:00:00.000Z',
++    updatedAt: '2024-01-06T09:00:00.000Z',
++  },
++];
++
++const FIXTURE_PAPERS = {
++  'rb-folder-01': [
++    {
++      id: 'rb-paper-01',
++      name: 'Anchor',
++      folderId: 'rb-folder-01',
++      shapes: [],
++      createdAt: '2024-03-02T10:00:00.000Z',
++      updatedAt: '2024-03-02T10:00:00.000Z',
++    },
++    {
++      id: 'rb-paper-02',
++      name: 'Harbor',
++      folderId: 'rb-folder-01',
++      shapes: [
++        {
++          type: 'freehand',
++          color: '#fd5865',
++          linewidth: 2,
++          points: [
++            { x: 100, y: 100 },
++            { x: 140, y: 120 },
++            { x: 180, y: 100 },
++            { x: 220, y: 140 },
++          ],
++        },
++        {
++          type: 'rectangle',
++          color: '#2e9ceb',
++          linewidth: 5,
++          points: [
++            { x: 300, y: 200 },
++            { x: 400, y: 200 },
++            { x: 400, y: 280 },
++            { x: 300, y: 280 },
++            { x: 300, y: 200 },
++          ],
++        },
++      ],
++      createdAt: '2024-03-03T10:00:00.000Z',
++      updatedAt: '2024-03-05T10:00:00.000Z',
++    },
++    {
++      id: 'rb-paper-03',
++      name: 'Lantern',
++      folderId: 'rb-folder-01',
++      shapes: [],
++      createdAt: '2024-03-04T10:00:00.000Z',
++      updatedAt: '2024-03-04T10:00:00.000Z',
++    },
++    {
++      id: 'rb-paper-04',
++      name: 'Zephyr',
++      folderId: 'rb-folder-01',
++      shapes: [],
++      createdAt: '2024-03-01T10:00:00.000Z',
++      updatedAt: '2024-03-06T10:00:00.000Z',
++    },
++    {
++      id: 'rb-paper-05',
++      name: 'Old map',
++      folderId: 'rb-folder-01',
++      shapes: [],
++      createdAt: '2024-01-05T10:00:00.000Z',
++      updatedAt: '2024-01-05T10:00:00.000Z',
++    },
++  ],
++  'rb-folder-02': [],
++};
++
++const host = {
++  folders: clone(FIXTURE_FOLDERS),
++  papers: clone(FIXTURE_PAPERS),
++  settings: null,
++  calls: [],
++  writes: [],
++  dialogs: [],
++  unknown: [],
++};
++
++/* ---------------------------------------------------------------- IPC plumbing
++ * `invoke()` builds the two callback ids first (`transformCallback` defines `window["_" + id]`),
++ * then calls `window.__TAURI_IPC__(...)`. Answering synchronously through those window slots is
++ * exactly how the real host answers, minus the message-channel hop. */
++function answer(callbackId, value) {
++  const fn = window['_' + callbackId];
++  if (typeof fn === 'function') fn(value);
++}
++
++function answerError(errorId, reason) {
++  const fn = window['_' + errorId];
++  if (typeof fn === 'function') fn(reason);
++}
++
++function handleCommand(cmd, args) {
++  switch (cmd) {
++    case 'load_library_folders':
++      return clone(host.folders);
++
++    case 'load_library_folder_papers':
++      return clone(host.papers[args.folderId] || []);
++
++    case 'load_settings':
++      /* null = first run, no saved settings file on the host. See the header: returning an object
++       * here would mask the seed's own settingsSlice initial-state typo. */
++      return host.settings;
++
++    case 'save_settings':
++      host.settings = JSON.parse(args.settings);
++      return null;
++
++    case 'save_library':
++      /* The Rust command returns nothing; the payload is recorded on the call entry by the caller so
++       * a checkpoint can prove the app really persisted (and how much) without inventing a result. */
++      return null;
++
++    case 'delete_library_folder': {
++      host.folders = host.folders.filter((folder) => folder.id !== args.folderId);
++      delete host.papers[args.folderId];
++      return null;
++    }
++
++    case 'delete_library_paper': {
++      const list = host.papers[args.folderId] || [];
++      host.papers[args.folderId] = list.filter((paper) => paper.id !== args.paperId);
++      return null;
++    }
++
++    default:
++      return undefined; /* caller turns this into a recorded rejection */
++  }
++}
++
++function handlePlugin(moduleName, message, args) {
++  const cmd = message && message.cmd;
++
++  if (moduleName === 'Os') {
++    if (cmd === 'platform') return RB_PLATFORM;
++    if (cmd === 'version') return '14.4.0';
++    if (cmd === 'osType') return 'Darwin';
++    if (cmd === 'arch') return 'aarch64';
++    if (cmd === 'tempdir') return '/tmp';
++    return undefined;
++  }
++
++  if (moduleName === 'App') {
++    if (cmd === 'getAppVersion') return RB_APP_VERSION;
++    if (cmd === 'getAppName') return 'pointless';
++    if (cmd === 'getTauriVersion') return '1.5.6';
++    if (cmd === 'show' || cmd === 'hide') return null;
++    return undefined;
++  }
++
++  if (moduleName === 'Dialog') {
++    /* The host's confirm dialog always gets an "Ok" here: a fixture that sometimes answered "Cancel"
++     * would make every deletion/export checkpoint depend on a coin flip. The answer is recorded so a
++     * checkpoint can prove the app really asked (and asked with which message). */
++    host.dialogs.push({ cmd, message: message && message.message, title: (message && message.title) || null });
++    if (cmd === 'confirmDialog' || cmd === 'askDialog') return true;
++    if (cmd === 'messageDialog') return null;
++    if (cmd === 'openDialog' || cmd === 'saveDialog') return null;
++    return undefined;
++  }
++
++  if (moduleName === 'Fs') {
++    if (cmd === 'exists') return false; /* nothing has been exported in this session yet */
++    if (cmd === 'writeFile') {
++      /* writeTextFile (SVG export) and writeBinaryFile (jpeg/png export) both arrive as a byte array
++       * (fs.cjs encodes them that way). The SVG text is kept verbatim because the export path is a
++       * measurement surface (stroke normalisation, bbox padding); a binary payload is kept as a byte
++       * count plus its magic-number prefix only, so a PNG never lands in a reading as mojibake. */
++      const contents = message.contents;
++      const list = Array.isArray(contents) ? contents : [];
++      const head = String.fromCharCode.apply(null, list.slice(0, 8));
++      const isText = head.indexOf('<svg') === 0 || head.indexOf('<?xm') === 0;
++      host.writes.push({
++        path: message.path,
++        bytes: list.length,
++        head,
++        text: isText ? new TextDecoder().decode(new Uint8Array(list)) : null,
++        dir: (message.options && message.options.dir) || null,
++      });
++      return null;
++    }
++    return undefined;
++  }
++
++  if (moduleName === 'Path') {
++    /* BaseDirectory.Download === 8 in @tauri-apps/api v1 (fs.cjs / path.cjs enum). */
++    if (cmd === 'resolvePath') return message.directory === 8 ? RB_DOWNLOAD_DIR : '/Users/rb';
++    return undefined;
++  }
++
++  return undefined;
++}
++
++function ipc(message) {
++  const { cmd, callback, error, __tauriModule, message: pluginMessage } = message || {};
++  const args = {};
++  for (const key of Object.keys(message || {})) {
++    if (!['cmd', 'callback', 'error', '__tauriModule', 'message'].includes(key)) args[key] = message[key];
++  }
++
++  const entry = {
++    seq: host.calls.length + 1,
++    cmd: cmd === 'tauri' ? __tauriModule + '/' + (pluginMessage && pluginMessage.cmd) : cmd,
++    raw: cmd,
++    module: __tauriModule || null,
++    args,
++  };
++  host.calls.push(entry);
++
++  try {
++    const handled = cmd === 'tauri' ? handlePlugin(__tauriModule, pluginMessage, args) : handleCommand(cmd, args);
++    if (handled === undefined) {
++      host.unknown.push(entry.cmd);
++      answerError(error, 'rbHost: no fixture branch for "' + entry.cmd + '"');
++      return;
++    }
++    entry.result = handled === null ? 'null' : typeof handled;
++    if (cmd === 'save_library' && typeof args.libraryState === 'string') {
++      try {
++        const parsed = JSON.parse(args.libraryState);
++        entry.saved = { folders: parsed.folders.length, papers: parsed.papers.length };
++        entry.savedShapeTotals = (parsed.papers || []).map((p) => (p.shapes || []).length);
++      } catch (e) {
++        entry.savedUnparseable = String((e && e.message) || e).slice(0, 120);
++      }
++    }
++    if (cmd === 'save_settings' && typeof args.settings === 'string') {
++      try { entry.savedSettings = JSON.parse(args.settings); } catch (e) { entry.savedUnparseable = String((e && e.message) || e).slice(0, 120); }
++    }
++    answer(callback, handled);
++  } catch (e) {
++    entry.threw = String((e && e.message) || e).slice(0, 160);
++    answerError(error, entry.threw);
++  }
++}
++
++if (typeof window !== 'undefined' && !window.__TAURI_IPC__) {
++  window.__TAURI_IPC__ = ipc;
++}
++
++/* Read-only introspection for the probe bridge. Frozen, and it exposes COPIES, so neither a repair
++ * nor a checkpoint can rewrite what the app believes the host said. */
++const introspection = Object.freeze({
++  installed: () => typeof window.__TAURI_IPC__ === 'function',
++  platform: () => RB_PLATFORM,
++  appVersion: () => RB_APP_VERSION,
++  downloadDir: () => RB_DOWNLOAD_DIR,
++  calls: () => clone(host.calls),
++  savedLibraries: () => clone(host.calls.filter((c) => c.cmd === 'save_library').map((c) => c.saved || null)),
++  callCount: (cmd) => (cmd ? host.calls.filter((c) => c.cmd === cmd).length : host.calls.length),
++  commands: () => [...new Set(host.calls.map((c) => c.cmd))],
++  unknownCalls: () => clone(host.unknown),
++  dialogs: () => clone(host.dialogs),
++  writes: () => clone(host.writes),
++  writePaths: () => host.writes.map((w) => w.path),
++  settingsSaved: () => clone(host.settings),
++  /*
++   * savedSettings() but this frozen introspection object only ever exposed settingsSaved() - the names
++   * are word-order reversals of each other, so the probe's wrap() swallowed the TypeError and handed back
++   * '__ERR__' on every single call. Measured, not inferred: r38i/diag/DIAG_r38i.json D2 records
++   * has_savedSettings_accessor="undefined" / has_settingsSaved_accessor="function" against the live clean
++   * build, and r38i/diag/D2_F08_recompute.json replays both frozen asserts. settingsSaved above is KEPT
++   * verbatim (0 deleted lines) and answers with only the LAST save; the accessor below answers with EVERY
++   * save_settings payload, which is what P09 has to prove ("the save happened and its payload shape is
++   * right"). Those payloads are already parsed onto each call entry by the save_settings branch above -
++   * they were simply never readable from outside the fixture. */
++  savedSettings: () => clone(host.calls.filter((c) => c.cmd === 'save_settings').map((c) => (c.savedSettings === undefined ? null : c.savedSettings))),
++  fixtureFolders: () => clone(FIXTURE_FOLDERS),
++  fixturePapers: () => clone(FIXTURE_PAPERS),
++  liveFolders: () => clone(host.folders),
++  livePapers: () => clone(host.papers),
++});
++
++if (typeof window !== 'undefined' && !window.__rbHostFixture) {
++  Object.defineProperty(window, '__rbHostFixture', { value: introspection, writable: false, configurable: false });
++}
+diff --git a/src/index.js b/src/index.js
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,3 +1,4 @@
++import './rbHost.js';
+ import { os } from '@tauri-apps/api';
+ import { invoke } from '@tauri-apps/api/tauri';
+ import 'rc-tooltip/assets/bootstrap_white.css';

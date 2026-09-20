@@ -1,0 +1,133 @@
+diff --git a/src/components/ColorCard.svelte b/src/components/ColorCard.svelte
+--- a/src/components/ColorCard.svelte
++++ b/src/components/ColorCard.svelte
+@@ -85,7 +85,6 @@
+     }
+   }
+ 
+-  findColorName()
+ </script>
+ 
+ <div
+diff --git a/src/directives/clickoutside.ts b/src/directives/clickoutside.ts
+--- a/src/directives/clickoutside.ts
++++ b/src/directives/clickoutside.ts
+@@ -1,7 +1,7 @@
+ /** Dispatch event on click outside of node */
+ export function clickOutside(node: HTMLElement): any {
+   const handleClick = (event) => {
+-    if (node && !node.contains(event.target) && !event.defaultPrevented) {
++    if (node && node.contains(event.target) && !event.defaultPrevented) {
+       node.dispatchEvent(new CustomEvent('clickoutside'))
+     }
+   }
+diff --git a/src/models/Color.ts b/src/models/Color.ts
+--- a/src/models/Color.ts
++++ b/src/models/Color.ts
+@@ -67,7 +67,7 @@
+ 
+   public update(color: ColorInput): Color {
+     this.tinycolor = new TinyColor(color)
+-    this.chroma = chroma(this.tinycolor.toRgbString())
++    this.chroma = chroma(this.tinycolor.toHexString())
+ 
+     return this
+   }
+diff --git a/src/routes/__layout.svelte b/src/routes/__layout.svelte
+--- a/src/routes/__layout.svelte
++++ b/src/routes/__layout.svelte
+@@ -73,7 +73,7 @@
+   $: if ($isDarkMode !== undefined) {
+     localStorage.setItem('theme', $isDarkMode ? 'dark' : 'light')
+ 
+-    if ($isDarkMode) {
++    if (!$isDarkMode) {
+       document.documentElement.classList.add('dark')
+     } else {
+       document.documentElement.classList.remove('dark')
+@@ -214,7 +214,7 @@
+           <div class="flex items-center">
+             <label for="" class="mr-3 hidden md:block">Output format:</label>
+             <select
+-              bind:value={$outputFormat}
++              value={$outputFormat}
+               class="dark:bg-gray-700 bg-gray-200 transition dark:hover:bg-gray-600 focus:outline-none px-2 py-1 rounded-md cursor-pointer"
+             >
+               <option value="hex" class="bg-transparent">HEX</option>
+diff --git a/src/routes/info.svelte b/src/routes/info.svelte
+--- a/src/routes/info.svelte
++++ b/src/routes/info.svelte
+@@ -115,7 +115,7 @@
+               value={colorInstance.chroma.rgb().join(', ')}
+             />
+             <ColorSpace label="HSL" value={colorInstance.chroma.hsl()} />
+-            <ColorSpace label="HSV" value={colorInstance.chroma.hsv()} />
++            <ColorSpace label="HSV" value={colorInstance.chroma.hsl()} />
+             <ColorSpace label="HSI" value={colorInstance.chroma.hsi()} />
+             <ColorSpace label="LCH" value={colorInstance.chroma.lch()} />
+             <ColorSpace label="LAB" value={colorInstance.chroma.lab()} />
+diff --git a/src/routes/mix.svelte b/src/routes/mix.svelte
+--- a/src/routes/mix.svelte
++++ b/src/routes/mix.svelte
+@@ -41,7 +41,7 @@
+     debouncedCheckStepsCountRange()
+   }
+ 
+-  let showStepsAsGradient = getQueryParam('view') === 'gradient'
++  let showStepsAsGradient = getQueryParam('view') !== 'gradient'
+ 
+   $: updateQuery('view', showStepsAsGradient ? 'gradient' : 'steps')
+ 
+@@ -60,7 +60,7 @@
+ 
+   $: colorSteps = chroma
+     .scale(colorInstances.map((c) => c.hex()))
+-    .gamma(gamma)
++    .gamma(1)
+     .mode(mode)
+     .colors(clamp(stepsCount, colorInstances.length, maxStepCount))
+     .map((c) => new Color(c))
+@@ -85,7 +85,6 @@
+   const addColor = () => {
+     const color = Color.random()
+     colorInstances.push(color)
+-    colorInstances = colorInstances
+     if (stepsCount < colorInstances.length) {
+       stepsCount = colorInstances.length
+     }
+diff --git a/src/routes/modify.svelte b/src/routes/modify.svelte
+--- a/src/routes/modify.svelte
++++ b/src/routes/modify.svelte
+@@ -56,7 +56,7 @@
+       .tint(modifiers.tint)
+       .shade(modifiers.shade)
+       .saturate(modifiers.saturate)
+-      .desaturate(modifiers.desaturate)
++      .saturate(modifiers.desaturate)
+       .lighten(modifiers.lighten)
+       .spin(modifiers.spin)
+   )
+diff --git a/src/store.ts b/src/store.ts
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -23,7 +23,7 @@
+   Color | undefined
+ > = derived(primaryColor, ($primaryColor) =>
+   $primaryColor
+-    ? Color.fromTinyColor($primaryColor?.tinycolor.complement())
++    ? Color.fromTinyColor($primaryColor?.tinycolor)
+     : undefined
+ )
+ 
+diff --git a/src/utils/url.ts b/src/utils/url.ts
+--- a/src/utils/url.ts
++++ b/src/utils/url.ts
+@@ -14,7 +14,7 @@
+ 
+   goto('?' + searchParams.toString(), {
+     keepfocus: true,
+-    replaceState: true,
++    replaceState: false,
+     noscroll: true,
+   })
+ }

@@ -1,0 +1,158 @@
+diff --git a/packages/plugins/fuse-graphql/src/indexer/indexer.ts b/packages/plugins/fuse-graphql/src/indexer/indexer.ts
+--- a/packages/plugins/fuse-graphql/src/indexer/indexer.ts
++++ b/packages/plugins/fuse-graphql/src/indexer/indexer.ts
+@@ -90,8 +90,7 @@ function indexAllTypes(schema: GraphQLSchema, fuse: Fuse<SearchResult>, markdown
+     if (
+       type === schema.getQueryType() ||
+       type === schema.getMutationType() ||
+-      type === schema.getSubscriptionType() ||
+-      type.name.startsWith('__')
++      type === schema.getSubscriptionType()
+     ) {
+       return
+     }
+diff --git a/packages/plugins/query-generator/src/generator/builder/responseBuilder.ts b/packages/plugins/query-generator/src/generator/builder/responseBuilder.ts
+--- a/packages/plugins/query-generator/src/generator/builder/responseBuilder.ts
++++ b/packages/plugins/query-generator/src/generator/builder/responseBuilder.ts
+@@ -11,9 +11,7 @@ export class RootResponseBuilder {
+   }
+ 
+   build(): Record<string, unknown> {
+-    return {
+-      [this.target.name]: this.value.build(),
+-    }
++    return this.value.build() as Record<string, unknown>
+   }
+ }
+ 
+diff --git a/packages/plugins/query-generator/src/generator/queryGenerator.ts b/packages/plugins/query-generator/src/generator/queryGenerator.ts
+--- a/packages/plugins/query-generator/src/generator/queryGenerator.ts
++++ b/packages/plugins/query-generator/src/generator/queryGenerator.ts
+@@ -112,7 +112,7 @@ function generateField(
+   context: GenerationContext,
+ ): QueryBuilder | null {
+   // Go no further
+-  if (context.depth > config.maxDepth) {
++  if (context.depth >= config.maxDepth) {
+     return null
+   }
+ 
+diff --git a/packages/starters/carbon-multi-page/src/lib/components/common/AppExpandButton.svelte b/packages/starters/carbon-multi-page/src/lib/components/common/AppExpandButton.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/components/common/AppExpandButton.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/components/common/AppExpandButton.svelte
+@@ -15,7 +15,7 @@ export let expanded = false
+     size="small"
+     style="border-radius: 20px"
+     icon={expanded ? ArrowUp : ArrowDown}
+-    on:click={() => (expanded = !expanded)}
++    on:click={() => (expanded = true)}
+   >
+     {(expanded ? expandedText : collapsedText) + ` (${totalItems})`}
+   </Button>
+diff --git a/packages/starters/carbon-multi-page/src/lib/components/nav/SelectableNavMenuItem.svelte b/packages/starters/carbon-multi-page/src/lib/components/nav/SelectableNavMenuItem.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/components/nav/SelectableNavMenuItem.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/components/nav/SelectableNavMenuItem.svelte
+@@ -9,6 +9,6 @@ export let currentRef: string
+ <SideNavMenuItem
+   {href}
+   {text}
+-  isSelected={currentRef === href}
++  isSelected={currentRef === href.toLocaleLowerCase()}
+   {...$$restProps}
+ />
+diff --git a/packages/starters/carbon-multi-page/src/lib/components/query/AppQueryTabs.svelte b/packages/starters/carbon-multi-page/src/lib/components/query/AppQueryTabs.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/components/query/AppQueryTabs.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/components/query/AppQueryTabs.svelte
+@@ -11,9 +11,9 @@ export let field: GraphQLField<unknown, unknown, unknown>
+ 
+ let selectedTab = 0
+ 
+-$: {
++onMount(() => {
+   graphqlQuery.setField(field, type)
+-}
++})
+ </script>
+ 
+ {#await $graphqlQuery then query}
+@@ -40,8 +40,8 @@ $: {
+         </TabContent>
+         <TabContent id="third" style="padding:0">
+           <AppPrism
+-            code={query.response
+-              ? JSON.stringify(query.response || {}, null, 2)
++            code={query.value?.variables
++              ? JSON.stringify(query.value?.variables || {}, null, 2)
+               : ''}
+             language={'json'}
+           />
+diff --git a/packages/starters/carbon-multi-page/src/lib/components/query/stores.ts b/packages/starters/carbon-multi-page/src/lib/components/query/stores.ts
+--- a/packages/starters/carbon-multi-page/src/lib/components/query/stores.ts
++++ b/packages/starters/carbon-multi-page/src/lib/components/query/stores.ts
+@@ -97,7 +97,7 @@ export const graphqlQuery = {
+   decreaseDepth: async () => {
+     const current = get(currentQuery)
+     if (!current) return
+-    if (current.depth > MIN_DEPTH) {
++    if (current.depth >= MIN_DEPTH) {
+       const generated = await generateQuery({ ...current, depth: current.depth - 1 })
+       currentQuery.set(generated)
+     }
+diff --git a/packages/starters/carbon-multi-page/src/lib/components/type/list/FieldsList.svelte b/packages/starters/carbon-multi-page/src/lib/components/type/list/FieldsList.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/components/type/list/FieldsList.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/components/type/list/FieldsList.svelte
+@@ -12,7 +12,7 @@ const fieldSorting = getOrDefault(templates.FIELDS_SORTING, 'default')
+ 
+ let tableData: ReadonlyArray<FieldWithPossibleDescriptions> = data
+ $: {
+-  if (fieldSorting === 'alphabetical') {
++  if (fieldSorting) {
+     tableData = _.sortBy(data, (item) => item.field.name)
+   } else {
+     tableData = data
+diff --git a/packages/starters/carbon-multi-page/src/lib/layout/header/search/AppSearchHighlight.svelte b/packages/starters/carbon-multi-page/src/lib/layout/header/search/AppSearchHighlight.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/layout/header/search/AppSearchHighlight.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/layout/header/search/AppSearchHighlight.svelte
+@@ -11,7 +11,7 @@ let croppedHtml: string
+ $: minIndex = Math.min(...indexes.map((index) => index[0]))
+ $: maxIndex = Math.max(...indexes.map((index) => index[1]))
+ $: cropMinIndex = Math.max(minIndex - cropOffset, 0)
+-$: cropMaxIndex = Math.min(maxIndex + cropOffset + 1, text.length)
++$: cropMaxIndex = Math.max(maxIndex + cropOffset + 1, text.length)
+ $: {
+   croppedText = text.slice(cropMinIndex, cropMaxIndex)
+   croppedIndexes = indexes.map(([start, end]) => [start - cropMinIndex, end - cropMinIndex])
+diff --git a/packages/starters/carbon-multi-page/src/lib/layout/nav/AppPageNavigation.svelte b/packages/starters/carbon-multi-page/src/lib/layout/nav/AppPageNavigation.svelte
+--- a/packages/starters/carbon-multi-page/src/lib/layout/nav/AppPageNavigation.svelte
++++ b/packages/starters/carbon-multi-page/src/lib/layout/nav/AppPageNavigation.svelte
+@@ -10,5 +10,5 @@ export let item: Page
+   href={item.href}
+   text={item.title}
+   class={item.deprecated ? 'deprecated' : ''}
+-  currentRef={$page.url.pathname}
++  currentRef={$page.url.href}
+ />
+diff --git a/packages/starters/carbon-multi-page/src/lib/pages.ts b/packages/starters/carbon-multi-page/src/lib/pages.ts
+--- a/packages/starters/carbon-multi-page/src/lib/pages.ts
++++ b/packages/starters/carbon-multi-page/src/lib/pages.ts
+@@ -106,7 +106,7 @@ function asCustomContent(path: string[], page: VariablePage): PageTree {
+     title: page.title,
+     children: page.content.map((child) => ({
+       ...asCustomContent(newPath, child),
+-      section: page.title,
++      section: child.title,
+     })),
+   }
+ }
+diff --git a/packages/starters/carbon-multi-page/src/lib/search.ts b/packages/starters/carbon-multi-page/src/lib/search.ts
+--- a/packages/starters/carbon-multi-page/src/lib/search.ts
++++ b/packages/starters/carbon-multi-page/src/lib/search.ts
+@@ -127,7 +127,7 @@ function mergeResults(
+   second: ReadonlyArray<MagidocSearchResult>,
+ ): ReadonlyArray<MagidocSearchResult> {
+   // The lower the score, the better
+-  return [...first, ...second].sort((a, b) => a.score - b.score).slice(0, 10)
++  return [...first, ...second].sort((a, b) => b.score - a.score).slice(0, 10)
+ }
+ 
+ function collapseIndexes(indexes: ReadonlyArray<ResultRange>): ReadonlyArray<ResultRange> {

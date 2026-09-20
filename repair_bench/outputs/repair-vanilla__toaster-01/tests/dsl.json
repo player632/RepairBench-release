@@ -1,0 +1,1964 @@
+{
+ "schema_version": "1.0",
+ "instance_id": "repair-vanilla__toaster-01",
+ "framework": "vanilla",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "context": {
+  "viewport": {
+   "width": 1280,
+   "height": 720
+  },
+  "locale": "en-US"
+ },
+ "checkpoints": [
+  {
+   "id": "F01",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D01-affordable-boundary-rejected",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:8});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:0});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-1\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.power\"})",
+     "expected": 5,
+     "expected_intent": "余额与总价逐字相等（8＝8）时，那一档必须买得成：处理器功率从钉住的 4 走到 5。落点是 validateAction 的闭区间可购判定，与成本递进（D02）、多件累加（D03）无关——本钉法把通胀增量钉成 0，使 total 在两态同为 8。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.inventory\"})",
+     "expected": 0,
+     "expected_intent": "同一格的互补读数：买成了就照价扣料（8−8＝0），买不成就一分不扣（仍是 8）。与上一条构成「判定 → 扣款」的一对因果读数，任一正确修法（把比较符改回闭区间）同时满足两条。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.spent\"})",
+     "expected": 8,
+     "expected_intent": "第三条互补读数：购买成立时 storeSpent 会把这一档的总价记进历史消费（0＋8＝8）；判定被误拒时记账整条不跑（仍是 0）。这条把「退款/拆解」那条链排除在外——它只由购买是否成立决定。"
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D02-cost-never-inflates",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:1000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-1\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.toast\"})",
+     "expected": 16,
+     "expected_intent": "买完一件之后，状态里的单价必须被写成「下一档价」：出厂 8、通胀增量 8 ⇒ 下一档 16。缺陷态把 prices.starting（原价 8）写回去，于是单价永远停在 8。余额钉在 1000（远大于 total 8 与 D03 变体 16），保证「买得成」这个前提在两态一致。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"system.processor.cost.toast\"})===16)?1:0)",
+     "expected": 1,
+     "expected_intent": "同一判定的布尔形：单价是否恰好等于按通胀推进后的 16。写成布尔形是为了让「改成别的数」（例如硬编码 16）与「真正修好递进」在标定腿上可区分——两条读数一起才锁死这条跨层写回。"
+    }
+   ]
+  },
+  {
+   "id": "F03",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D03-multi-buy-total-not-accumulated",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:100000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-10\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.spent\"})",
+     "expected": 440,
+     "expected_intent": "一次买十件的总价必须是逐档累加：8＋16＋24＋…＋80＝440，storeSpent 把它原样记进历史消费。缺陷态在循环里把累计和写成当档单价，十轮之后 total 只剩最后一次的 80。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.inventory\"})",
+     "expected": 99560,
+     "expected_intent": "同一笔购买的扣款侧读数：100000−440＝99560（清洁）vs 100000−80＝99920（缺陷）。扣款与记账共用同一个 total，所以两条读数必须同向偏离——这也是「少收费」这个症状的量化形。"
+    }
+   ]
+  },
+  {
+   "id": "F04",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D04-dismantle-refund-reversed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});game.set({path:\"system.processor.cost.spent\",value:150});game.set({path:\"toast.inventory\",value:50});game.set({path:\"system.processor.cost.toast\",value:9});game.set({path:\"system.processor.cost.starting\",value:1});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-processor-dismantle\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.inventory\"})",
+     "expected": 200,
+     "expected_intent": "拆解必须把历史消费退回余额：50＋150＝200。缺陷态把退款算子改成减法，50−150＝−100 被 helper.operator 的负值夹取规则压成 0，于是症状表现为「余额莫名清零」而不是负数。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"toast.inventory\"})>=200)?1:0)",
+     "expected": 1,
+     "expected_intent": "同一条退款的布尔形：余额是否至少回到「原有＋退还」的 200。写成阈值形是为了让「把退款额改小」这类假修法也判红，而不只是判「不等于 200」。"
+    }
+   ]
+  },
+  {
+   "id": "F05",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D05-cost-reset-self-reference",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});game.set({path:\"system.processor.cost.spent\",value:150});game.set({path:\"toast.inventory\",value:50});game.set({path:\"system.processor.cost.toast\",value:9});game.set({path:\"system.processor.cost.starting\",value:1});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-processor-dismantle\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.toast\"})",
+     "expected": 1,
+     "expected_intent": "拆解之后单价必须复位到出厂价：cost.starting 指向的 1。缺陷态把源路径改成 cost.amount（被写目标自己），于是这次赋值是自赋值，单价停在拆解前的 9。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"system.processor.cost.toast\"})===game.get({path:\"system.processor.cost.starting\"}))?1:0)",
+     "expected": 1,
+     "expected_intent": "复位关系的直接判定：当前单价是否等于状态里的出厂价字段。这条不写死数字，因此「把出厂价改成 9」这类假修法同样判红——它锁的是两个状态字段之间的相等关系。"
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D06-thousand-suffix-mislabeled",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"wheat.inventory.current\",value:3456});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){view.render();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((/ Mi$/.test(document.querySelector('[data-testid=\"rb-wheat-inventory\"]').textContent))?1:0)",
+     "expected": 0,
+     "expected_intent": "麦子库存 3456 的读数必须挂在千位标签上，不能以百万位标签 Mi 结尾。缺陷态把千位分支的标签改成 \" Mi\"，于是 3456 显示成 \"3.46 Mi\"（叠加 D07 时是 \"3.456 Mi\"，同样以 Mi 结尾）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((/\\sK$/.test(document.querySelector('[data-testid=\"rb-wheat-inventory\"]').textContent))?1:0)",
+     "expected": 1,
+     "expected_intent": "互补读数：同一格文本必须以空白＋K 结尾。两条一起把「单位」这一维锁死，且与小数位数（D07）正交——D07 只改 K/Mi 前面的数字部分。"
+    }
+   ]
+  },
+  {
+   "id": "F07",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D07-default-decimals-drift",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"wheat.inventory.current\",value:3456});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){view.render();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((/3\\.456/.test(document.querySelector('[data-testid=\"rb-wheat-inventory\"]').textContent))?1:0)",
+     "expected": 0,
+     "expected_intent": "默认精度必须是 2 位：3456 ⇒ \"3.46\"，不能出现三位小数的 \"3.456\"。缺陷态把 numberSuffix 的兜底小数位改成 3，全站 format:suffix 的读数都多一位。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((/3\\.46/.test(document.querySelector('[data-testid=\"rb-wheat-inventory\"]').textContent))?1:0)",
+     "expected": 1,
+     "expected_intent": "互补读数：文本必须含两位小数形 \"3.46\"。注意 \"3.456\" 不含子串 \"3.46\"，所以两条在交付态严格互换，不会同时为真。"
+    }
+   ]
+  },
+  {
+   "id": "F08",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D08-milestone-table-reversed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"milestones.steps.all\"})[0].count===100)?1:0)",
+     "expected": 1,
+     "expected_intent": "里程碑表的第一条必须是最小档 100（base 数组的最小值 × 最小倍率）。milestones.init 在加载期建表并调用全树唯一的排序器，缺陷态把比较器方向翻转 ⇒ 首元素变成最大档。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"milestones.steps.all\"})[0].count<=900)?1:0)",
+     "expected": 1,
+     "expected_intent": "同一判定的阈值形：首元素必须落在 base 数组的量级内（≤900），而不是被翻到 10 的幂次那一端。这条让「把表截断到只剩第一条」这类假修法也判红。"
+    }
+   ]
+  },
+  {
+   "id": "F09",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D09-event-threshold-needs-exceed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.lifetime\",value:20});return 1;})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((events.all.toast.lifetime[0].passed===true)?1:0)",
+     "expected": 1,
+     "expected_intent": "累计吐司恰好等于阈值 20 时，第一条解锁事件必须已经触发（passed 翻真）。本条**不冻计时器**：100ms 的 events tick 要真实跑过 600ms，让「达成即触发」这条时序语义自己显形；缺陷态要求严格超过，20 这一格永远不触发。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('#stage-system-substage-processor').classList.contains('d-none')===false)?1:0)",
+     "expected": 1,
+     "expected_intent": "事件触发的可见后果：处理器面板的遮蔽类必须已被摘掉（unlockStage 移除 d-none）。这条把判定从内部标志位延伸到 DOM，堵住「直接把 passed 写死为 true」这类假修法。"
+    }
+   ]
+  },
+  {
+   "id": "F10",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D10-wheat-affordability-inverted",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:2});game.set({path:\"wheat.inventory.current\",value:100});game.set({path:\"wheat.consume.rate\",value:64});game.set({path:\"toast.inventory\",value:0});game.set({path:\"toast.lifetime\",value:0});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-make-toast\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.inventory\"})",
+     "expected": 2,
+     "expected_intent": "麦子充足（100）时点一次烤吐司必须产出功率那么多片（2）。前置判定是「份数 ÷ 耗料率 ≤ 库存」＝2÷64＝0.03125 ≤100 ⇒ 通过；缺陷态把除号改成乘号 ⇒ 128 ≤100 不成立，走缺料错误分支，一片也不产出。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.lifetime\"})",
+     "expected": 2,
+     "expected_intent": "同一次烤制的累计侧读数：lifetime 与 inventory 在 toast.make 的成功分支里被同一个 amount 累加，所以两条必须同向。缺陷态两条都停在 0，而麦子库存这条读数不动——这正是「库存充足却报不足」的量化形。"
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D11-consume-amount-additive",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"wheat.inventory.current\",value:1000});game.set({path:\"wheat.consume.rate\",value:64});wheat.consume(2);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"wheat.inventory.current\"})",
+     "expected": 872,
+     "expected_intent": "消耗两份的扣减量必须是「耗料率 × 份数」＝64×2＝128 ⇒ 1000−128＝872。缺陷态把乘号改成加号 ⇒ 64＋2＝66 ⇒ 1000−66＝934。本条直接调 wheat.consume，绕开烤制前置判定，因此与 D10 完全解耦。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"wheat.inventory.current\"})===1000-2*game.get({path:\"wheat.consume.rate\"}))?1:0)",
+     "expected": 1,
+     "expected_intent": "量纲关系的直接判定：库存减少量必须等于 2 倍的当前耗料率（读的是状态里的率，不是写死的 64）。这条让「把耗料率改小到 33」这类凑数修法同样判红。"
+    }
+   ]
+  },
+  {
+   "id": "F12",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D12-consumer-growth-multiplier-miswired",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"consumed.rate\",value:8});game.set({path:\"consumed.multiply\",value:2});game.set({path:\"consumed.starting\",value:8});game.set({path:\"consumed.count\",value:0});consumer.increase();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"consumed.rate\"})",
+     "expected": 16,
+     "expected_intent": "一次「消费上升」必须把速率乘以倍率字段：8×2＝16。缺陷态把 by 的路径改成出厂速率字段 ⇒ 8×8＝64。两个字段在状态里同层同名族，改后仍然合法、仍然单调，只有语义错。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"consumed.rate\"})===8*game.get({path:\"consumed.multiply\"}))?1:0)",
+     "expected": 1,
+     "expected_intent": "引用关系的直接判定：增长后的速率必须等于「钉住的原速率 × 倍率字段」。这条读的是状态里的 multiply，所以「把 multiply 改成 8」这类假修法会让两条读数互相矛盾。"
+    }
+   ]
+  },
+  {
+   "id": "P01",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-toast-make-entry-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((typeof toast.make===\"function\"&&document.querySelector('[data-testid=\"rb-make-toast\"]')!==null)?1:0)",
+     "expected": 1,
+     "expected_intent": "D10 的领地守卫：烤制入口函数与烤吐司按钮都还在原位。修 D10 只许把可支判定的算子改回除法，不许靠摘掉烤制入口、或删掉按钮让「库存不足」这句话再也不出现。"
+    }
+   ]
+  },
+  {
+   "id": "P02",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-inflation-constant-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:100000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-10\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.increase\"})",
+     "expected": 8,
+     "expected_intent": "D03 的领地守卫：一次十件购买之后，状态里的通胀增量常量仍是钉住的 8。修 D03 只许把累加式改回来，不许靠把通胀增量调成 0（那样 total 也会「看起来对」）来对齐读数。"
+    }
+   ]
+  },
+  {
+   "id": "P03",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-consumed-constants-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"consumed.rate\",value:8});game.set({path:\"consumed.multiply\",value:2});game.set({path:\"consumed.starting\",value:8});game.set({path:\"consumed.count\",value:0});consumer.increase();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"consumed.multiply\"})",
+     "expected": 2,
+     "expected_intent": "D12 的领地守卫之一：增长跑过之后倍率字段仍是 2。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"consumed.starting\"})",
+     "expected": 8,
+     "expected_intent": "D12 的领地守卫之二：出厂速率字段仍是 8。两条合起来堵住「把常量改成对方的值」这类假修法——修 D12 只许把 by 的取值路径改回 multiply。"
+    }
+   ]
+  },
+  {
+   "id": "P04",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-strictly-affordable-purchase-works",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:1000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-1\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.power\"})",
+     "expected": 5,
+     "expected_intent": "D01 的领地守卫：余额（1000）远大于总价（8）时，+1 档在两态都买得成、功率照常从 4 走到 5。它把可修范围钉死在「恰好相等」那一格——把判定改成一律放行、或改成一律拒绝，都会让这条或 F01 转红。"
+    }
+   ]
+  },
+  {
+   "id": "P05",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-cost-starting-constant",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:1000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-1\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.starting\"})",
+     "expected": 0,
+     "expected_intent": "D02 的领地守卫：一次购买之后状态里的出厂价字段仍是 0（没有被任何一步改写）。修 D02 只许把写回字段从 starting 改回 next，不许靠改出厂价常量来让单价「看起来在涨」。"
+    }
+   ]
+  },
+  {
+   "id": "P06",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-change-value-path-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.inventory\",value:100000});game.set({path:\"system.processor.cost.toast\",value:8});game.set({path:\"system.processor.cost.increase\",value:8});game.set({path:\"system.processor.cost.spent\",value:0});game.set({path:\"system.processor.power\",value:4});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-boost-10\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.power\"})",
+     "expected": 14,
+     "expected_intent": "D03 的领地守卫：同一次十件购买里 changeValue 通路完好，功率从 4 恰好加到 14（＋10）。它证明「少收费」不是靠让购买整条空转造成的——修 D03 只许改累加式，不许动改值通路。"
+    }
+   ]
+  },
+  {
+   "id": "P07",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-dismantle-handler-runs-to-end",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});game.set({path:\"system.processor.cost.spent\",value:150});game.set({path:\"toast.inventory\",value:50});game.set({path:\"system.processor.cost.toast\",value:9});game.set({path:\"system.processor.cost.starting\",value:1});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-processor-dismantle\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((localStorage.getItem(\"TAI.game.dat\")!==null)?1:0)",
+     "expected": 1,
+     "expected_intent": "D04 的领地守卫：拆解处理函数整条跑到了最后一步（data.save 落盘 ⇒ TAI.game.dat 存在）。堵住「把拆解处理整段摘掉」这类让退款症状消失的假修法。"
+    }
+   ]
+  },
+  {
+   "id": "P08",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-cost-starting-source-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});game.set({path:\"system.processor.cost.spent\",value:150});game.set({path:\"toast.inventory\",value:50});game.set({path:\"system.processor.cost.toast\",value:9});game.set({path:\"system.processor.cost.starting\",value:1});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-processor-dismantle\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.starting\"})",
+     "expected": 1,
+     "expected_intent": "D05 的领地守卫：拆解之后出厂价字段仍是钉住的 1（复位只读它、不写它）。修 D05 只许把源路径改回 starting，不许靠把 starting 写成当前单价来让 F05 的相等判定「碰巧」成立。"
+    }
+   ]
+  },
+  {
+   "id": "P09",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-local-format-readout-untouched",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.cycles.current\",value:4});game.set({path:\"wheat.inventory.current\",value:3456});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){view.render();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('[data-testid=\"rb-cycles-current\"]').textContent===\"4\")?1:0)",
+     "expected": 1,
+     "expected_intent": "D06 的领地守卫：走 format:local（不经过 numberSuffix）的 cycles 读数仍是原样的 \"4\"。它把可修范围钉在后缀阶梯内——靠「把所有读数改成 local 格式」或「关掉 suffix 通路」来消灭 Mi 标签，会让这条转红。"
+    }
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-sub-thousand-no-decimals",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((helper.numberSuffix({number:500})===\"500\")?1:0)",
+     "expected": 1,
+     "expected_intent": "D07 的领地守卫：小于 1000 的读数仍强制 0 位小数（返回 \"500\"，没有 \".00\"/\".000\" 尾巴）。修 D07 只许把兜底位数改回 2，不许把「小于 1000 走整数」这条规则一起删掉。"
+    }
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-milestone-count-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 400
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((game.get({path:\"milestones.steps.all\"}).length===153)?1:0)",
+     "expected": 1,
+     "expected_intent": "D08 的领地守卫：里程碑表的档数仍是 153（9 个 base × 17 个十倍档），一条不多一条不少。堵住「截断里程碑表让首元素变成 100」这类假修法——排序方向才是被测对象。"
+    }
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-sort-object-still-a-permutation",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((function(){var a=helper.sortObject([{c:2},{c:1}],\"c\");var s=a.map(function(x){return x.c}).join(\",\");return (a.length===2&&(s===\"1,2\"||s===\"2,1\"))?1:0})())",
+     "expected": 1,
+     "expected_intent": "D08 的领地守卫之二：排序器仍然返回一个同长度的排列（方向不在本条的判定范围内，方向由 F08 独占）。堵住「让 sortObject 直接返回原数组/空数组」这类绕过修法。"
+    }
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-event-table-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((events.all.toast.lifetime.length===1&&typeof events.check===\"function\")?1:0)",
+     "expected": 1,
+     "expected_intent": "D09 的领地守卫：第一条解锁事件仍在表里、events.check 仍是函数。修 D09 只许把 more 分支的比较符改回闭区间，不许靠删事件、或把阈值调低让 20 这一格「碰巧」通过。"
+    }
+   ]
+  },
+  {
+   "id": "P14",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-consume-rate-not-written-by-make",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:2});game.set({path:\"wheat.inventory.current\",value:100000});game.set({path:\"wheat.consume.rate\",value:64});game.set({path:\"toast.inventory\",value:0});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-make-toast\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"wheat.consume.rate\"})",
+     "expected": 64,
+     "expected_intent": "D10 的领地守卫：一次成功烤制之后耗料率仍是钉住的 64。堵住「把耗料率改成 0 或 1 让乘法判定也通过」这类假修法——被测的是算子方向，不是率的大小。"
+    }
+   ]
+  },
+  {
+   "id": "P15",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-consume-does-not-write-rate",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"wheat.inventory.current\",value:1000});game.set({path:\"wheat.consume.rate\",value:64});wheat.consume(2);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"wheat.consume.rate\"})",
+     "expected": 64,
+     "expected_intent": "D11 的领地守卫之一：consume 只扣库存、不写率，调用之后率仍是 64。"
+    }
+   ]
+  },
+  {
+   "id": "P16",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-consume-still-consumes",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"wheat.inventory.current\",value:1000});game.set({path:\"wheat.consume.rate\",value:64});wheat.consume(2);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((function(){var v=game.get({path:\"wheat.inventory.current\"});return (v>0&&v<1000)?1:0})())",
+     "expected": 1,
+     "expected_intent": "D11 的领地守卫之二：调用之后库存严格落在 0 与 1000 之间——既没变成空操作（还是 1000），也没扣穿（≤0）。堵住「把 consume 改成空函数让 F11 的读数停在某个固定值」这类修法。"
+    }
+   ]
+  },
+  {
+   "id": "P17",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-consumer-count-untouched",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"consumed.rate\",value:8});game.set({path:\"consumed.multiply\",value:2});game.set({path:\"consumed.starting\",value:8});game.set({path:\"consumed.count\",value:0});consumer.increase();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"consumed.count\"})",
+     "expected": 0,
+     "expected_intent": "D12 的领地守卫：increase 只改速率、不碰已消费计数，调用之后 count 仍是钉住的 0。"
+    }
+   ]
+  },
+  {
+   "id": "P18",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boost-buttons-and-bind-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelectorAll('[data-toast-button=\"action:processor.boost\"]').length===4&&typeof toaster.bind===\"function\")?1:0)",
+     "expected": 1,
+     "expected_intent": "D01／D02 共用的领地守卫：四枚 boost 按钮（+1／+10／+100／+Max）与绑定入口都还在原位。堵住「删掉按钮或解绑事件让购买症状消失」这类修法。"
+    }
+   ]
+  },
+  {
+   "id": "P19",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-phase-module-untouched",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((phase.get()===\"toast\"&&game.get({path:\"phase.all\"}).length===4)?1:0)",
+     "expected": 1,
+     "expected_intent": "相邻模块守卫：阶段机仍在第一阶段的正常行为（当前阶段 toast、四个阶段齐全）。12 个缺陷没有一个落在 phase.js，这条钉住「不要为了凑读数去动无关模块」。"
+    }
+   ]
+  },
+  {
+   "id": "P20",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-event-fires-well-above-threshold",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"toast.lifetime\",value:60});return 1;})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((events.all.toast.lifetime[0].passed===true)?1:0)",
+     "expected": 1,
+     "expected_intent": "D09 的时序守卫：把累计吐司钉到远超阈值的 60，真实 tick 跑过 600ms 之后事件照常触发。它把可修范围钉在「恰好相等」那一格——把判定改成恒真、或让事件默认 passed，会让 F09 与本条的分工失效（本条恒绿、F09 独占红）。"
+    }
+   ]
+  },
+  {
+   "id": "P21",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-cycles-max-derived-from-power",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});cycles.set();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.cycles.max\"})",
+     "expected": 40,
+     "expected_intent": "相邻模块守卫：周期上限仍由功率派生（4×10＝40）。cycles.js 不含任何缺陷，这条钉住购买链修复不许顺手改周期上限来让功率读数「看起来」变了。"
+    }
+   ]
+  },
+  {
+   "id": "P22",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-helper-operator-multiply",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((helper.operator({type:\"multiply\",value:6,by:7})===42)?1:0)",
+     "expected": 1,
+     "expected_intent": "helper.js 的共用算子守卫：乘法算子仍是 6×7＝42。D06／D07／D08 都落在 helper.js，这条钉住「修 helper.js 里的三个缺陷不许动 operator 的四个算子」——D10／D11 的症状正是算子被换名，算子本体必须保持正确。"
+    }
+   ]
+  },
+  {
+   "id": "P23",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-helper-makeobject-numeric-literal",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((helper.makeObject(\"units:#1,currency:toast.inventory\").units===1)?1:0)",
+     "expected": 1,
+     "expected_intent": "helper.js 的 dataset 解析守卫：# 前缀仍被解析成数字字面量（1 而不是 \"1\"）。全站按钮配置都靠这条约定，若为了凑 F01／F03 的读数去改解析器，本条立刻转红。"
+    }
+   ]
+  },
+  {
+   "id": "P24",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-state-isolation-no-stored-save",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((localStorage.getItem(\"TAI.game.dat\")===null)?1:0)",
+     "expected": 1,
+     "expected_intent": "状态隔离守卫：清空存储并重新加载之后、任何交互之前，存档键必须不存在。data.init 会在加载期回灌存档，所以每条检查点都以「清存储 → 重载 → 钉值」开头；本条把这条纪律本身钉成一个可判定的读数，堵住「靠上一枚检查点留下的存档/全局残留取巧」。"
+    }
+   ]
+  },
+  {
+   "id": "P25",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-dismantle-side-effects-intact",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:4});game.set({path:\"system.processor.cost.spent\",value:150});game.set({path:\"toast.inventory\",value:50});game.set({path:\"system.processor.cost.toast\",value:9});game.set({path:\"system.processor.cost.starting\",value:1});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-processor-dismantle\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.power\"})",
+     "expected": 0,
+     "expected_intent": "D04／D05 共用的领地守卫之一：拆解把功率归零（dismantleTarget 通路完好）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"system.processor.cost.spent\"})",
+     "expected": 0,
+     "expected_intent": "共用的领地守卫之二：拆解把历史消费清零（clearSpent 通路完好）。两条合起来证明退款/复位两处的缺陷不是靠「让拆解整条不跑」造成的。"
+    }
+   ]
+  },
+  {
+   "id": "P26",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-sequence-rendered",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 2000
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelectorAll('#report .report-message-type').length>=8)?1:0)",
+     "expected": 1,
+     "expected_intent": "诱饵 1 的守卫之一：开机序列的 8 条消息全部渲染、每条都带类型标签（累计延时 0→1600ms，本条等满 2000ms 再冻）。message.js／boot.js 不含缺陷，任何「修日志」的改动都会让本条转红。"
+    }
+   ]
+  },
+  {
+   "id": "P27",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-view-render-does-not-throw",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((function(){try{view.render();return 1}catch(e){return 0}})())",
+     "expected": 1,
+     "expected_intent": "渲染通路守卫：view.render 在钉值之后可以反复调用而不抛异常。所有 format:suffix／format:local 的读数都从这里出，堵住「为了让某条读数变对而让渲染整体失败」。"
+    }
+   ]
+  },
+  {
+   "id": "P28",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-local-readout-consumed-rate",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"consumed.rate\",value:8});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){view.render();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('[data-testid=\"rb-consumed-rate\"]').textContent===\"8\")?1:0)",
+     "expected": 1,
+     "expected_intent": "D06／D07 共用的领地守卫：走 format:local 的消费速率读数仍是原样的 \"8\"（没有单位尾巴、没有小数尾巴）。与 P09 一起把可修范围钉在 numberSuffix 内部。"
+    }
+   ]
+  },
+  {
+   "id": "P29",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-wheat-empty-refusal-state",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:2});game.set({path:\"wheat.inventory.current\",value:0});game.set({path:\"wheat.consume.rate\",value:64});game.set({path:\"toast.inventory\",value:0});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-make-toast\"]').click();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "game.get({path:\"toast.inventory\"})",
+     "expected": 0,
+     "expected_intent": "诱饵 2 的守卫之一：麦子为 0 时点击不产出任何吐司——清洁态与交付态在这一格上行为一致（2÷64＝0.03 ≤0 不成立；2×64＝128 ≤0 也不成立）。若解题者把这条缺料保护「修」成无条件放行，本条立刻转红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('#report .report-message:last-child .report-message-type').textContent===\"ERR\")?1:0)",
+     "expected": 0,
+     "expected_intent": "诱饵 2 的守卫之二：拒绝确实走了错误分支（最新一条日志的类型标签是 ERR）。堵住「删掉错误提示让界面看起来正常」这类把正常行为当缺陷修的解法。"
+    }
+   ]
+  },
+  {
+   "id": "P30",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-system-log-tag",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('#report .report-message-type').textContent===\"//\")?1:0)",
+     "expected": 0,
+     "expected_intent": "诱饵 1 的守卫之一：第一条开机日志的类型标签逐字是 \"///\"（system 类型的固定前缀）。日志前缀不是编码故障，改它就让本条转红。"
+    }
+   ]
+  },
+  {
+   "id": "P31",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-message-grammar",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 2000
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var t=tick.get();for(var k in t){window.clearTimeout(t[k]);}window.setTimeout=function(){return 0;};window.setInterval=function(){return 0;};window.clearTimeout=function(){};window.clearInterval=function(){};Math.random=function(){return 0.5;};return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((function(){var m=document.querySelectorAll('#report .report-message');if(m.length<8)return 0;for(var i=0;i<m.length;i++){if(!m[i].querySelector('.report-message-type'))return 0;}return 1})())",
+     "expected": 1,
+     "expected_intent": "诱饵 1 的守卫之二：开机 8 条消息的语法结构完好——每条都由「类型标签 ＋ 打字机正文」两段组成。把颜文字脸或分级前缀当 bug 去改（例如统一成纯文本），本条转红。"
+    }
+   ]
+  },
+  {
+   "id": "P32",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-refusal-message-and-button-enabled",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){try{localStorage.clear();}catch(e){}return 1;})()"
+    },
+    {
+     "action": "reload"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 300
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){game.set({path:\"system.processor.power\",value:2});game.set({path:\"wheat.inventory.current\",value:0});game.set({path:\"wheat.consume.rate\",value:64});game.set({path:\"toast.inventory\",value:0});return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-make-toast\"]').click();return 1;})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 600
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.querySelector('[data-testid=\"rb-make-toast\"]').disabled===false)?1:0)",
+     "expected": 1,
+     "expected_intent": "诱饵 2 的时序守卫之一：拒绝之后烤吐司按钮**仍然可点**（disableButton 只在 change.min/max 命中时禁用，烤吐司按钮没有这两个配置）。把「按钮没被禁掉」当缺陷去修，本条转红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "((document.body.textContent.indexOf(\"wheat inventory low\")>-1)?1:0)",
+     "expected": 1,
+     "expected_intent": "诱饵 2 的时序守卫之二：不冻计时器、真实等待 600ms 之后，缺料提示已经被打字机逐字打完并出现在页面上（每字 10ms，19 字约 190ms）。删掉这句提示或改成静默失败，本条转红。"
+    }
+   ]
+  }
+ ]
+}

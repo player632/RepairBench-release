@@ -1,0 +1,830 @@
+diff --git a/.agents/skills/angular-tiptap-editor/SKILL.md b/.agents/skills/angular-tiptap-editor/SKILL.md
+deleted file mode 100644
+index 62957f7..0000000
+--- a/.agents/skills/angular-tiptap-editor/SKILL.md
++++ /dev/null
+@@ -1,329 +0,0 @@
+----
+-name: angular-tiptap-editor
+-description: Expert guide and code reference for integrating, configuring, and extending @flogeez/angular-tiptap-editor in Angular 18+ applications. Use when setting up the editor, configuring toolbars/modes, implementing Reactive Forms, adding Angular NodeViews, Table of Contents, custom slash commands, or image upload handlers.
+----
+-
+-# Angular Tiptap Editor Guide (@flogeez/angular-tiptap-editor)
+-
+-A modern, Signal-powered rich-text editor for Angular (18+), built on top of **Tiptap v3**. Features native `ChangeDetectionStrategy.OnPush`, Notion-style Slash Commands, context-aware Bubble Menus, interactive Angular NodeViews, and built-in i18n.
+-
+----
+-
+-## 🎯 Configuration Best Practices & Architecture Hierarchy
+-
+-The library follows a strict **4-tier configuration hierarchy** (from highest to lowest precedence):
+-
+-1. **Direct Component Inputs** (e.g., `[editable]`, `[seamless]`) — _Use ONLY for dynamic runtime overrides on a specific instance._
+-2. **Component `[config]` Object** — _Recommended for instance-specific configuration._
+-3. **Global Provider `provideAteEditor(config)`** — ⭐ **RECOMMENDED BEST PRACTICE** for application-wide defaults in `app.config.ts`.
+-4. **Library Defaults (`ATE_DEFAULT_CONFIG`)** — _Internal fallbacks._
+-
+-> 🤖 **IMPORTANT AI AGENT INSTRUCTION**:
+-> When generating or setting up an editor for a user, **ALWAYS ask the user first** if they prefer:
+->
+-> - **Option A (Recommended)**: Global configuration via `provideAteEditor({ ... })` in `app.config.ts` (sets consistent defaults across all editors in the application).
+-> - **Option B**: Per-instance configuration via `[config]="editorConfig"` on the `<angular-tiptap-editor>` component.
+->
+-> _Avoid polluting templates with individual boolean inputs (e.g. `[editable]`, `[seamless]`, `[showToolbar]`) unless generating dynamic UI toggles._
+-
+----
+-
+-## 📦 Installation & Essential Setup
+-
+-### 1. Installation
+-
+-```bash
+-npm install @flogeez/angular-tiptap-editor @tiptap/core @tiptap/starter-kit @fontsource/material-symbols-outlined
+-```
+-
+-### 2. Include Styles in `angular.json`
+-
+-Add the library CSS to the `styles` array in `angular.json`:
+-
+-```json
+-{
+-  "styles": [
+-    "node_modules/@fontsource/material-symbols-outlined/index.css",
+-    "node_modules/@flogeez/angular-tiptap-editor/styles/index.css"
+-  ]
+-}
+-```
+-
+-### 3. Global Provider Setup in `app.config.ts` (Recommended Best Practice)
+-
+-Initialize the global provider with application-wide defaults:
+-
+-```typescript
+-import { ApplicationConfig } from "@angular/core";
+-import { provideAteEditor } from "@flogeez/angular-tiptap-editor";
+-
+-export const appConfig: ApplicationConfig = {
+-  providers: [
+-    provideAteEditor({
+-      theme: "auto",
+-      mode: "classic",
+-      placeholder: "Type something...",
+-      showToolbar: true,
+-      showFooter: true,
+-      enableSlashCommands: true,
+-    }),
+-  ],
+-};
+-```
+-
+----
+-
+-## 🚀 Recommended Usage Patterns
+-
+-### Option A: Clean Component Template (Using Global Config or `[config]`)
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import { AngularTiptapEditorComponent, AteEditorConfig } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-editor-demo",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent],
+-  template: `
+-    <!-- Clean template using global provider config or single config object -->
+-    <angular-tiptap-editor
+-      [content]="content"
+-      [config]="editorConfig"
+-      (contentChange)="onContentChange($event)" />
+-  `,
+-})
+-export class EditorDemoComponent {
+-  content = "<p>Welcome to <strong>Angular Tiptap Editor</strong>!</p>";
+-
+-  // Optional instance-specific overrides
+-  editorConfig: AteEditorConfig = {
+-    mode: "seamless",
+-    placeholder: "Start writing...",
+-    blockControls: "inside",
+-  };
+-
+-  onContentChange(html: string) {
+-    console.log("Updated HTML:", html);
+-  }
+-}
+-```
+-
+----
+-
+-## 📝 Reactive Forms Integration
+-
+-The editor component natively implements `ControlValueAccessor`, supporting standard `FormControl` and `FormGroup` bindings:
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import { FormControl, ReactiveFormsModule, Validators } from "@angular/forms";
+-import { AngularTiptapEditorComponent } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-form-demo",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent, ReactiveFormsModule],
+-  template: `
+-    <angular-tiptap-editor [formControl]="contentControl" />
+-    <button [disabled]="contentControl.invalid" (click)="save()">Save</button>
+-  `,
+-})
+-export class FormDemoComponent {
+-  contentControl = new FormControl("<p>Initial form content</p>", [Validators.required]);
+-
+-  save() {
+-    console.log("Form Value:", this.contentControl.value);
+-  }
+-}
+-```
+-
+----
+-
+-## 🎨 Display Modes (Classic vs. Seamless Notion-Style)
+-
+-Set modes cleanly in `provideAteEditor({ mode: ... })` or inside `[config]`:
+-
+-- **`mode: 'classic'`** (Default): Bordered box layout with fixed top toolbar and footer.
+-- **`mode: 'seamless'`**: Clean, frameless, borderless design. Relies on Notion-style Slash Commands (`/`), Drag Handles, and contextual Bubble Menus.
+-
+-```typescript
+-// Inside provideAteEditor() or editorConfig:
+-config: AteEditorConfig = {
+-  mode: "seamless",
+-  blockControls: "inside",
+-  enableSlashCommands: true,
+-};
+-```
+-
+----
+-
+-## 📋 Table of Contents (`AteTableOfContentsComponent`)
+-
+-Supports Notion-style hover expansion (collapses into level-proportional vector dashes until hovered or focused).
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import {
+-  AteTableOfContentsComponent,
+-  AngularTiptapEditorComponent,
+-} from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-article-page",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent, AteTableOfContentsComponent],
+-  template: `
+-    <!-- Floating Notion-Style TOC -->
+-    <ate-table-of-contents
+-      [floating]="true"
+-      position="right"
+-      variant="card"
+-      [hoverExpand]="true"
+-      [maxDepth]="4" />
+-
+-    <angular-tiptap-editor [content]="articleHtml" />
+-  `,
+-})
+-export class ArticlePageComponent {
+-  articleHtml = "<h1>Title</h1><h2>Section 1</h2><p>Content...</p>";
+-}
+-```
+-
+----
+-
+-## 🧩 Custom Angular NodeViews (Embedding Angular Components)
+-
+-Turn any Angular Component into an interactive Tiptap node view with reactive state sync using `AteAngularNodeView`.
+-
+-### Step 1: Create the Component
+-
+-```typescript
+-import { Component, computed } from "@angular/core";
+-import { AteAngularNodeView } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-counter-node",
+-  standalone: true,
+-  template: `
+-    <div class="counter-card">
+-      <span>Count: {{ count() }}</span>
+-      <button type="button" (click)="increment()">+1</button>
+-    </div>
+-  `,
+-})
+-export class CounterNodeComponent extends AteAngularNodeView {
+-  // Access node attributes reactively via Signal
+-  readonly count = computed<number>(() => (this.attributes()["count"] as number) || 0);
+-
+-  increment() {
+-    this.updateAttributes({ count: this.count() + 1 });
+-  }
+-}
+-```
+-
+-### Step 2: Register in `angularNodes` Config
+-
+-```typescript
+-config: AteEditorConfig = {
+-  angularNodes: [
+-    {
+-      component: CounterNodeComponent,
+-      name: "counterNode",
+-      attributes: { count: { default: 0 } },
+-      group: "block",
+-      draggable: true,
+-      selectable: true,
+-    },
+-  ],
+-};
+-```
+-
+----
+-
+-## 🖼️ Custom Image Upload Handler
+-
+-Process image uploads asynchronously (to S3, Cloudinary, etc.) instead of converting to Base64:
+-
+-```typescript
+-import { AteImageUploadHandler } from "@flogeez/angular-tiptap-editor";
+-
+-export class ImageUploaderComponent {
+-  uploadHandler: AteImageUploadHandler = async ctx => {
+-    const formData = new FormData();
+-    formData.append("file", ctx.file);
+-
+-    const response = await fetch("/api/images/upload", {
+-      method: "POST",
+-      body: formData,
+-    });
+-
+-    const data = await response.json();
+-    return { src: data.imageUrl };
+-  };
+-}
+-```
+-
+-Pass in `[config]="{ imageUpload: { handler: uploadHandler } }"` or `[imageUploadHandler]="uploadHandler"`.
+-
+----
+-
+-## ⌨️ Custom Slash Commands (`/`)
+-
+-```typescript
+-config: AteEditorConfig = {
+-  enableSlashCommands: true,
+-  slashCommands: {
+-    custom: [
+-      {
+-        title: "Insert Banner",
+-        description: "Add an announcement banner",
+-        icon: "campaign",
+-        keywords: ["banner", "notice", "announcement"],
+-        command: editor => {
+-          editor.commands.insertContent(
+-            '<blockquote class="banner"><p>📢 Announcement!</p></blockquote>'
+-          );
+-        },
+-      },
+-    ],
+-  },
+-};
+-```
+-
+----
+-
+-## 🗂️ Programmatic Control & Global Registry (`AteEditorRegistry`)
+-
+-Access, control, or switch between multiple editor instances globally:
+-
+-```typescript
+-import { Component, inject } from '@angular/core';
+-import { AteEditorRegistry } from '@flogeez/angular-tiptap-editor';
+-
+-@Component({ ... })
+-export class MultiEditorComponent {
+-  private registry = inject(AteEditorRegistry);
+-
+-  // Active focused editor instance
+-  triggerBoldOnActive() {
+-    const activeRef = this.registry.activeEditor();
+-    activeRef?.commands.toggleBold();
+-  }
+-
+-  // Get specific editor by ID
+-  getMarkdownFromTarget() {
+-    const editorRef = this.registry.get('my-editor-id');
+-    return editorRef?.getContent('markdown');
+-  }
+-}
+-```
+-
+----
+-
+-## 💡 Key Architectural Guidelines for AI Agents
+-
+-1. **Ask User for Config Preference**: ALWAYS ask if the user wants global `provideAteEditor()` settings or a local `[config]` object before generating boilerplate.
+-2. **Avoid Template Input Pollution**: Use `provideAteEditor()` or `[config]` object instead of listing dozens of individual boolean attributes on `<angular-tiptap-editor>`.
+-3. **Readonly Mode (`editable: false`)**: Automatically hides the top toolbar and disables editing while preserving link clicking and selection.
+-4. **Signals & OnPush**: All components use `ChangeDetectionStrategy.OnPush`. NodeViews extending `AteAngularNodeView` expose reactive signals for `attributes`, `node`, `editor`, and `selected`.
+diff --git a/skills/angular-tiptap-editor/SKILL.md b/skills/angular-tiptap-editor/SKILL.md
+deleted file mode 100644
+index 62957f7..0000000
+--- a/skills/angular-tiptap-editor/SKILL.md
++++ /dev/null
+@@ -1,329 +0,0 @@
+----
+-name: angular-tiptap-editor
+-description: Expert guide and code reference for integrating, configuring, and extending @flogeez/angular-tiptap-editor in Angular 18+ applications. Use when setting up the editor, configuring toolbars/modes, implementing Reactive Forms, adding Angular NodeViews, Table of Contents, custom slash commands, or image upload handlers.
+----
+-
+-# Angular Tiptap Editor Guide (@flogeez/angular-tiptap-editor)
+-
+-A modern, Signal-powered rich-text editor for Angular (18+), built on top of **Tiptap v3**. Features native `ChangeDetectionStrategy.OnPush`, Notion-style Slash Commands, context-aware Bubble Menus, interactive Angular NodeViews, and built-in i18n.
+-
+----
+-
+-## 🎯 Configuration Best Practices & Architecture Hierarchy
+-
+-The library follows a strict **4-tier configuration hierarchy** (from highest to lowest precedence):
+-
+-1. **Direct Component Inputs** (e.g., `[editable]`, `[seamless]`) — _Use ONLY for dynamic runtime overrides on a specific instance._
+-2. **Component `[config]` Object** — _Recommended for instance-specific configuration._
+-3. **Global Provider `provideAteEditor(config)`** — ⭐ **RECOMMENDED BEST PRACTICE** for application-wide defaults in `app.config.ts`.
+-4. **Library Defaults (`ATE_DEFAULT_CONFIG`)** — _Internal fallbacks._
+-
+-> 🤖 **IMPORTANT AI AGENT INSTRUCTION**:
+-> When generating or setting up an editor for a user, **ALWAYS ask the user first** if they prefer:
+->
+-> - **Option A (Recommended)**: Global configuration via `provideAteEditor({ ... })` in `app.config.ts` (sets consistent defaults across all editors in the application).
+-> - **Option B**: Per-instance configuration via `[config]="editorConfig"` on the `<angular-tiptap-editor>` component.
+->
+-> _Avoid polluting templates with individual boolean inputs (e.g. `[editable]`, `[seamless]`, `[showToolbar]`) unless generating dynamic UI toggles._
+-
+----
+-
+-## 📦 Installation & Essential Setup
+-
+-### 1. Installation
+-
+-```bash
+-npm install @flogeez/angular-tiptap-editor @tiptap/core @tiptap/starter-kit @fontsource/material-symbols-outlined
+-```
+-
+-### 2. Include Styles in `angular.json`
+-
+-Add the library CSS to the `styles` array in `angular.json`:
+-
+-```json
+-{
+-  "styles": [
+-    "node_modules/@fontsource/material-symbols-outlined/index.css",
+-    "node_modules/@flogeez/angular-tiptap-editor/styles/index.css"
+-  ]
+-}
+-```
+-
+-### 3. Global Provider Setup in `app.config.ts` (Recommended Best Practice)
+-
+-Initialize the global provider with application-wide defaults:
+-
+-```typescript
+-import { ApplicationConfig } from "@angular/core";
+-import { provideAteEditor } from "@flogeez/angular-tiptap-editor";
+-
+-export const appConfig: ApplicationConfig = {
+-  providers: [
+-    provideAteEditor({
+-      theme: "auto",
+-      mode: "classic",
+-      placeholder: "Type something...",
+-      showToolbar: true,
+-      showFooter: true,
+-      enableSlashCommands: true,
+-    }),
+-  ],
+-};
+-```
+-
+----
+-
+-## 🚀 Recommended Usage Patterns
+-
+-### Option A: Clean Component Template (Using Global Config or `[config]`)
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import { AngularTiptapEditorComponent, AteEditorConfig } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-editor-demo",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent],
+-  template: `
+-    <!-- Clean template using global provider config or single config object -->
+-    <angular-tiptap-editor
+-      [content]="content"
+-      [config]="editorConfig"
+-      (contentChange)="onContentChange($event)" />
+-  `,
+-})
+-export class EditorDemoComponent {
+-  content = "<p>Welcome to <strong>Angular Tiptap Editor</strong>!</p>";
+-
+-  // Optional instance-specific overrides
+-  editorConfig: AteEditorConfig = {
+-    mode: "seamless",
+-    placeholder: "Start writing...",
+-    blockControls: "inside",
+-  };
+-
+-  onContentChange(html: string) {
+-    console.log("Updated HTML:", html);
+-  }
+-}
+-```
+-
+----
+-
+-## 📝 Reactive Forms Integration
+-
+-The editor component natively implements `ControlValueAccessor`, supporting standard `FormControl` and `FormGroup` bindings:
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import { FormControl, ReactiveFormsModule, Validators } from "@angular/forms";
+-import { AngularTiptapEditorComponent } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-form-demo",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent, ReactiveFormsModule],
+-  template: `
+-    <angular-tiptap-editor [formControl]="contentControl" />
+-    <button [disabled]="contentControl.invalid" (click)="save()">Save</button>
+-  `,
+-})
+-export class FormDemoComponent {
+-  contentControl = new FormControl("<p>Initial form content</p>", [Validators.required]);
+-
+-  save() {
+-    console.log("Form Value:", this.contentControl.value);
+-  }
+-}
+-```
+-
+----
+-
+-## 🎨 Display Modes (Classic vs. Seamless Notion-Style)
+-
+-Set modes cleanly in `provideAteEditor({ mode: ... })` or inside `[config]`:
+-
+-- **`mode: 'classic'`** (Default): Bordered box layout with fixed top toolbar and footer.
+-- **`mode: 'seamless'`**: Clean, frameless, borderless design. Relies on Notion-style Slash Commands (`/`), Drag Handles, and contextual Bubble Menus.
+-
+-```typescript
+-// Inside provideAteEditor() or editorConfig:
+-config: AteEditorConfig = {
+-  mode: "seamless",
+-  blockControls: "inside",
+-  enableSlashCommands: true,
+-};
+-```
+-
+----
+-
+-## 📋 Table of Contents (`AteTableOfContentsComponent`)
+-
+-Supports Notion-style hover expansion (collapses into level-proportional vector dashes until hovered or focused).
+-
+-```typescript
+-import { Component } from "@angular/core";
+-import {
+-  AteTableOfContentsComponent,
+-  AngularTiptapEditorComponent,
+-} from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-article-page",
+-  standalone: true,
+-  imports: [AngularTiptapEditorComponent, AteTableOfContentsComponent],
+-  template: `
+-    <!-- Floating Notion-Style TOC -->
+-    <ate-table-of-contents
+-      [floating]="true"
+-      position="right"
+-      variant="card"
+-      [hoverExpand]="true"
+-      [maxDepth]="4" />
+-
+-    <angular-tiptap-editor [content]="articleHtml" />
+-  `,
+-})
+-export class ArticlePageComponent {
+-  articleHtml = "<h1>Title</h1><h2>Section 1</h2><p>Content...</p>";
+-}
+-```
+-
+----
+-
+-## 🧩 Custom Angular NodeViews (Embedding Angular Components)
+-
+-Turn any Angular Component into an interactive Tiptap node view with reactive state sync using `AteAngularNodeView`.
+-
+-### Step 1: Create the Component
+-
+-```typescript
+-import { Component, computed } from "@angular/core";
+-import { AteAngularNodeView } from "@flogeez/angular-tiptap-editor";
+-
+-@Component({
+-  selector: "app-counter-node",
+-  standalone: true,
+-  template: `
+-    <div class="counter-card">
+-      <span>Count: {{ count() }}</span>
+-      <button type="button" (click)="increment()">+1</button>
+-    </div>
+-  `,
+-})
+-export class CounterNodeComponent extends AteAngularNodeView {
+-  // Access node attributes reactively via Signal
+-  readonly count = computed<number>(() => (this.attributes()["count"] as number) || 0);
+-
+-  increment() {
+-    this.updateAttributes({ count: this.count() + 1 });
+-  }
+-}
+-```
+-
+-### Step 2: Register in `angularNodes` Config
+-
+-```typescript
+-config: AteEditorConfig = {
+-  angularNodes: [
+-    {
+-      component: CounterNodeComponent,
+-      name: "counterNode",
+-      attributes: { count: { default: 0 } },
+-      group: "block",
+-      draggable: true,
+-      selectable: true,
+-    },
+-  ],
+-};
+-```
+-
+----
+-
+-## 🖼️ Custom Image Upload Handler
+-
+-Process image uploads asynchronously (to S3, Cloudinary, etc.) instead of converting to Base64:
+-
+-```typescript
+-import { AteImageUploadHandler } from "@flogeez/angular-tiptap-editor";
+-
+-export class ImageUploaderComponent {
+-  uploadHandler: AteImageUploadHandler = async ctx => {
+-    const formData = new FormData();
+-    formData.append("file", ctx.file);
+-
+-    const response = await fetch("/api/images/upload", {
+-      method: "POST",
+-      body: formData,
+-    });
+-
+-    const data = await response.json();
+-    return { src: data.imageUrl };
+-  };
+-}
+-```
+-
+-Pass in `[config]="{ imageUpload: { handler: uploadHandler } }"` or `[imageUploadHandler]="uploadHandler"`.
+-
+----
+-
+-## ⌨️ Custom Slash Commands (`/`)
+-
+-```typescript
+-config: AteEditorConfig = {
+-  enableSlashCommands: true,
+-  slashCommands: {
+-    custom: [
+-      {
+-        title: "Insert Banner",
+-        description: "Add an announcement banner",
+-        icon: "campaign",
+-        keywords: ["banner", "notice", "announcement"],
+-        command: editor => {
+-          editor.commands.insertContent(
+-            '<blockquote class="banner"><p>📢 Announcement!</p></blockquote>'
+-          );
+-        },
+-      },
+-    ],
+-  },
+-};
+-```
+-
+----
+-
+-## 🗂️ Programmatic Control & Global Registry (`AteEditorRegistry`)
+-
+-Access, control, or switch between multiple editor instances globally:
+-
+-```typescript
+-import { Component, inject } from '@angular/core';
+-import { AteEditorRegistry } from '@flogeez/angular-tiptap-editor';
+-
+-@Component({ ... })
+-export class MultiEditorComponent {
+-  private registry = inject(AteEditorRegistry);
+-
+-  // Active focused editor instance
+-  triggerBoldOnActive() {
+-    const activeRef = this.registry.activeEditor();
+-    activeRef?.commands.toggleBold();
+-  }
+-
+-  // Get specific editor by ID
+-  getMarkdownFromTarget() {
+-    const editorRef = this.registry.get('my-editor-id');
+-    return editorRef?.getContent('markdown');
+-  }
+-}
+-```
+-
+----
+-
+-## 💡 Key Architectural Guidelines for AI Agents
+-
+-1. **Ask User for Config Preference**: ALWAYS ask if the user wants global `provideAteEditor()` settings or a local `[config]` object before generating boilerplate.
+-2. **Avoid Template Input Pollution**: Use `provideAteEditor()` or `[config]` object instead of listing dozens of individual boolean attributes on `<angular-tiptap-editor>`.
+-3. **Readonly Mode (`editable: false`)**: Automatically hides the top toolbar and disables editing while preserving link clicking and selection.
+-4. **Signals & OnPush**: All components use `ChangeDetectionStrategy.OnPush`. NodeViews extending `AteAngularNodeView` expose reactive signals for `attributes`, `node`, `editor`, and `selected`.
+diff --git a/src/main.ts b/src/main.ts
+index 1504653..346bc36 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,3 +1,4 @@
++import "./rb-probe";
+ import { Component, inject, effect, computed } from "@angular/core";
+ import { bootstrapApplication } from "@angular/platform-browser";
+ import { Editor, Extension, Node, Mark } from "@tiptap/core";
+diff --git a/src/rb-probe.ts b/src/rb-probe.ts
+new file mode 100644
+index 0000000..bcaa7b2
+--- /dev/null
++++ b/src/rb-probe.ts
+@@ -0,0 +1,145 @@
++/**
++ * RepairBench observability probe (instrumentation face) for
++ * repair-angular__angular-tiptap-editor-01.
++ *
++ * Side-effect-only module: src/main.ts imports it as its FIRST statement, so
++ * window.__rb_ate__ exists before bootstrapApplication() runs and before any
++ * Angular component renders.
++ *
++ * Read-only by construction. It holds no reference to any Angular component,
++ * directive or service instance, reads no component-internal field, adds no
++ * data-testid, no class name and no element to the DOM, and registers no
++ * listener. Every member is a getter over live browser state, so calling one
++ * can never mutate application state. The delivery DSL performs every
++ * interaction itself (null-safe js_eval clicks inside checkpoint setup steps)
++ * and uses this bridge only for the three things a DOM query cannot answer
++ * honestly:
++ *
++ *   1. liveness - did the instrumentation actually land in the built bundle?
++ *      P02 asserts probeVersion; without that assert a dead probe would look
++ *      like 24 independent behaviour failures instead of one wiring failure.
++ *   2. locale - is the run really en-US? Every selector on this face reads
++ *      i18n text: aria-label is the raw title() (ate-button.component.ts:35),
++ *      whose English values carry a shortcut suffix on a second line
++ *      (en_ateTranslations.ts:5-6), plus "Insert Table" (:28), the
++ *      "Select options (n)" headline (config-section.component.ts:23) and the
++ *      "Table of Contents" fallback (ate-table-of-contents.component.ts:468).
++ *      A locale drift invalidates all 24 checkpoints silently.
++ *   3. residue - storage / global / URL pollution, the directed counter to
++ *      "global flag" and "hardcoded testid special-case" fixes.
++ *
++ * The DSL reads the residue facts DIRECTLY (Object.keys(localStorage), a
++ * hasOwnProperty sweep over globalThis, location.pathname) rather than through
++ * this bridge, on purpose: a probe that failed to install must not be able to
++ * report "clean". The members below mirror those readings for leg diagnostics.
++ *
++ * Every member degrades to a sentinel ("none" for strings, -1 for numbers)
++ * instead of throwing, so a broken face reports a stable value.
++ */
++
++export {};
++
++const PROBE_VERSION = "ate-probe-1";
++
++/**
++ * The only storage key this application legitimately writes:
++ * editor-configuration.service.ts:388-396 (savePersistedState) persists the
++ * whole editor state plus the toc config under this single key, triggered by
++ * the effect at :336-337 and read back by loadPersistedState() at :369-384.
++ */
++const LEGIT_STORAGE_KEYS = ["ate_demo_config"];
++
++/** Global names that only an injected cheat flag would introduce. */
++const CHEAT_GLOBALS = ["__rb_residue", "__fixed__", "__patched__", "__hack__"];
++
++interface RbAteBridge {
++  readonly probeVersion: string;
++  readonly locale: string;
++  readonly locales: string;
++  readonly storageKeys: string;
++  readonly unexpectedStorageKeys: number;
++  readonly residueGlobals: number;
++  readonly pathAndSearch: string;
++  readonly memberNames: string;
++}
++
++declare global {
++  interface Window {
++    __rb_ate__: RbAteBridge;
++  }
++}
++
++function safeString(read: () => string, sentinel: string): string {
++  try {
++    const value = read();
++    return typeof value === "string" ? value : sentinel;
++  } catch {
++    return sentinel;
++  }
++}
++
++function safeNumber(read: () => number, sentinel: number): number {
++  try {
++    const value = read();
++    return typeof value === "number" && Number.isFinite(value) ? value : sentinel;
++  } catch {
++    return sentinel;
++  }
++}
++
++function storageKeyList(): string[] {
++  try {
++    return Object.keys(localStorage);
++  } catch {
++    return [];
++  }
++}
++
++const bridge: RbAteBridge = {
++  get probeVersion(): string {
++    return PROBE_VERSION;
++  },
++  get locale(): string {
++    return safeString(() => navigator.language, "none");
++  },
++  get locales(): string {
++    return safeString(() => (navigator.languages || []).join(","), "none");
++  },
++  get storageKeys(): string {
++    return safeString(() => storageKeyList().slice().sort().join(","), "none");
++  },
++  get unexpectedStorageKeys(): number {
++    return safeNumber(
++      () => storageKeyList().filter((k) => !LEGIT_STORAGE_KEYS.includes(k)).length,
++      -1,
++    );
++  },
++  get residueGlobals(): number {
++    return safeNumber(
++      () =>
++        CHEAT_GLOBALS.filter((k) =>
++          Object.prototype.hasOwnProperty.call(globalThis, k),
++        ).length,
++      -1,
++    );
++  },
++  get pathAndSearch(): string {
++    return safeString(
++      () => location.pathname + location.search + location.hash,
++      "none",
++    );
++  },
++  get memberNames(): string {
++    return safeString(
++      () => Object.getOwnPropertyNames(bridge).slice().sort().join(","),
++      "none",
++    );
++  },
++};
++
++try {
++  window.__rb_ate__ = Object.freeze(bridge);
++} catch {
++  // A frozen or non-writable window must not abort the bootstrap: the face
++  // still measures, and P02 is the checkpoint that names the real cause.
++}

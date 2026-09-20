@@ -1,0 +1,474 @@
+diff --git a/src/Game.tsx b/src/Game.tsx
+--- a/src/Game.tsx
++++ b/src/Game.tsx
+@@ -13,6 +13,7 @@ import { DogeHQ } from "./interface/doge-hq";
+ import { TwitterFeed } from "./interface/twitter";
+ import { MoonMissionPlanning } from "./interface/moon-launch-pad";
+ import { MoonPanel } from "./interface/moon-panel";
++import { RbProbe } from "./rb-probe";
+ 
+ function Game() {
+   useGameRunner();
+@@ -21,9 +22,9 @@ function Game() {
+ 
+   const body = React.useMemo(
+     () => (
+-      <div className="app">
++      <div className="app" data-testid="rb-app">
+         <AdForTheo />
+-        <div className="gamescreen">
++        <div className="gamescreen" data-testid="rb-gamescreen">
+           <div
+             className="onlyMobile"
+             style={{ paddingTop: "2.5rem", height: 0, width: 10 }}
+@@ -44,6 +45,7 @@ function Game() {
+         </div>
+         {/* Extra stuff */}
+         <DevPanel />
++        <RbProbe />
+         <Backdrop />
+       </div>
+     ),
+diff --git a/src/dev/panel.tsx b/src/dev/panel.tsx
+--- a/src/dev/panel.tsx
++++ b/src/dev/panel.tsx
+@@ -12,6 +12,7 @@ export const DevPanel: React.FC = () => {
+ 
+   return (
+     <div
++      data-testid="rb-dev-panel"
+       style={{
+         position: "absolute",
+         right: -2,
+@@ -25,9 +26,9 @@ export const DevPanel: React.FC = () => {
+       }}
+     >
+       <div style={{ paddingBottom: 10, fontWeight: "bold" }}>Data</div>
+-      <div>Phase: {gameStore.phase}</div>
+-      <div>Luck: {gameStore.luck}</div>
+-      <div>Ticks: {gameStore.ticks}</div>
++      <div data-testid="rb-dev-phase">Phase: {gameStore.phase}</div>
++      <div data-testid="rb-dev-luck">Luck: {gameStore.luck}</div>
++      <div data-testid="rb-dev-ticks">Ticks: {gameStore.ticks}</div>
+       <div style={{ paddingBottom: 10, paddingTop: 10, fontWeight: "bold" }}>
+         Cheats
+       </div>
+diff --git a/src/interface/dogebase.tsx b/src/interface/dogebase.tsx
+--- a/src/interface/dogebase.tsx
++++ b/src/interface/dogebase.tsx
+@@ -24,6 +24,7 @@ export const DogeBase: React.FC = () => {
+   return (
+     <div className="panel">
+       <Header>Dogebase™</Header>
++      <div data-testid="rb-dogebase-panel" />
+       <div
+         style={{
+           padding: 10,
+@@ -46,7 +47,7 @@ export const DogeBase: React.FC = () => {
+               alignItems: "Center",
+             }}
+           >
+-            {gameStore.dogePerUSD.toFixed(2)}
++            <span data-testid="rb-doge-per-usd-line">{gameStore.dogePerUSD.toFixed(2)}</span>
+             <DogeIcon />
+           </div>
+         </div>
+@@ -66,13 +67,14 @@ export const DogeBase: React.FC = () => {
+               alignItems: "Center",
+             }}
+           >
+-            ${(1 / gameStore.dogePerUSD).toFixed(5)}
++            <span data-testid="rb-usd-per-doge-line">${(1 / gameStore.dogePerUSD).toFixed(5)}</span>
+           </div>
+         </div>
+         <DogePriceChart />
+         <div style={{ display: "flex", flexDirection: "column" }}>
+           {buyButton1Guard(gameStore.maxUsd) && (
+             <button
++              data-testid="rb-buy-1"
+               onClick={() => {
+                 gameStore.addCoin(gameStore.dogePerUSD * buyButton1Amount);
+                 gameStore.spendUSD(buyButton1Amount);
+@@ -85,6 +87,7 @@ export const DogeBase: React.FC = () => {
+           )}
+           {buyButton2Guard(gameStore.maxUsd) && (
+             <button
++              data-testid="rb-buy-2"
+               onClick={() => {
+                 gameStore.addCoin(gameStore.dogePerUSD * buyButton2Amount);
+                 gameStore.spendUSD(buyButton2Amount);
+@@ -100,6 +103,7 @@ export const DogeBase: React.FC = () => {
+           )}
+           {buyButton3Guard(gameStore.maxUsd) && (
+             <button
++              data-testid="rb-buy-3"
+               onClick={() => {
+                 gameStore.addCoin(gameStore.dogePerUSD * buyButton3Amount);
+                 gameStore.spendUSD(buyButton3Amount);
+@@ -116,6 +120,7 @@ export const DogeBase: React.FC = () => {
+           {/* Hide at > 100m */}
+           {sellButton1Guard(gameStore.maxDogecoin) && (
+             <button
++              data-testid="rb-sell-1"
+               onClick={() => {
+                 gameStore.spendCoin(sellButton1Amount);
+                 gameStore.addUSD(sellButton1Amount / gameStore.dogePerUSD);
+@@ -129,6 +134,7 @@ export const DogeBase: React.FC = () => {
+           {/* Show at > 1m */}
+           {sellButton2Guard(gameStore.maxDogecoin) && (
+             <button
++              data-testid="rb-sell-2"
+               onClick={() => {
+                 gameStore.spendCoin(sellButton2Amount);
+                 gameStore.addUSD(sellButton2Amount / gameStore.dogePerUSD);
+@@ -143,6 +149,7 @@ export const DogeBase: React.FC = () => {
+           {/* Show at > 100m */}
+           {sellButton3Guard(gameStore.maxDogecoin) && (
+             <button
++              data-testid="rb-sell-3"
+               onClick={() => {
+                 gameStore.spendCoin(sellButton3Amount);
+                 gameStore.addUSD(sellButton3Amount / gameStore.dogePerUSD);
+diff --git a/src/interface/moon-launch-pad.tsx b/src/interface/moon-launch-pad.tsx
+--- a/src/interface/moon-launch-pad.tsx
++++ b/src/interface/moon-launch-pad.tsx
+@@ -18,7 +18,7 @@ export const MoonMissionPlanning: React.FC = () => {
+   if (mission !== "To The Moon") return null;
+ 
+   return (
+-    <div className="panel">
++    <div className="panel" data-testid="rb-mission-panel">
+       <Header>🚀 Moon Mission Planning</Header>
+ 
+       <div style={{ padding: 10 }}>
+@@ -34,6 +34,7 @@ export const MoonMissionPlanning: React.FC = () => {
+       <div style={{ padding: 5, fontWeight: "bold" }}>Miner allocation</div>
+       <div style={{ padding: 10, display: "flex", flexDirection: "column" }}>
+         <input
++          data-testid="rb-allocation-input"
+           type="range"
+           onChange={(change) =>
+             setMinerAllocation(parseFloat(change.currentTarget.value))
+@@ -55,6 +56,7 @@ export const MoonMissionPlanning: React.FC = () => {
+             style={{ padding: 10, display: "flex", flexDirection: "column" }}
+           >
+             <button
++              data-testid="rb-launch-button"
+               style={{ borderColor: "red", color: "red" }}
+               onClick={launch}
+             >
+@@ -69,8 +71,8 @@ export const MoonMissionPlanning: React.FC = () => {
+             Previous Missions
+           </div>
+           <div style={{ paddingLeft: 10, paddingBottom: 5 }}>
+-            <div>Failures: {failures}</div>
+-            <div>Casualties: {casualties}</div>
++            <div data-testid="rb-mission-failures">Failures: {failures}</div>
++            <div data-testid="rb-mission-casualties">Casualties: {casualties}</div>
+           </div>
+         </div>
+       )}
+diff --git a/src/interface/moon-panel.tsx b/src/interface/moon-panel.tsx
+--- a/src/interface/moon-panel.tsx
++++ b/src/interface/moon-panel.tsx
+@@ -14,6 +14,7 @@ export const MoonPanel: React.FC = () => {
+   return (
+     <div
+       className="panel"
++      data-testid="rb-moon-panel"
+       style={{
+         display: "flex",
+         flexDirection: "column",
+@@ -42,15 +43,15 @@ export const MoonPanel: React.FC = () => {
+         }}
+       >
+         {victories.map((victory, index) => (
+-          <div style={{ paddingTop: 10 }} key={index}>
+-            <div style={{ fontWeight: "bold" }}>Victory #{index + 1}</div>
++          <div style={{ paddingTop: 10 }} key={index} data-testid={`rb-victory-card-${index}`}>
++            <div style={{ fontWeight: "bold" }} data-testid={`rb-victory-title-${index}`}>Victory #{index + 1}</div>
+             <div style={{ fontWeight: 300, fontSize: 12, marginTop: "-3px" }}>
+               {new Date(victory.date).toLocaleString()}
+             </div>
+-            <div>Time to complete: {generateTimestamp(victory.ticks / 10)}</div>
+-            <div>Max doge: {victory.maxDoge.toFixed(0)}</div>
+-            <div>Casualties: {victory.casualties}</div>
+-            <div>Failures: {victory.casualties}</div>
++            <div data-testid={`rb-victory-time-${index}`}>Time to complete: {generateTimestamp(victory.ticks / 10)}</div>
++            <div data-testid={`rb-victory-maxdoge-${index}`}>Max doge: {victory.maxDoge.toFixed(0)}</div>
++            <div data-testid={`rb-victory-casualties-${index}`}>Casualties: {victory.casualties}</div>
++            <div data-testid={`rb-victory-failures-${index}`}>Failures: {victory.casualties}</div>
+           </div>
+         ))}
+       </div>
+diff --git a/src/interface/objective-picker.tsx b/src/interface/objective-picker.tsx
+--- a/src/interface/objective-picker.tsx
++++ b/src/interface/objective-picker.tsx
+@@ -12,7 +12,7 @@ export const ObjectivePicker: React.FC = () => {
+     return null;
+ 
+   return (
+-    <div className="panel">
++    <div className="panel" data-testid="rb-objectives-panel">
+       <Header>Company Objectives</Header>
+       <div style={{ padding: 5 }}>Choose wisely</div>
+       <div
+@@ -23,7 +23,7 @@ export const ObjectivePicker: React.FC = () => {
+           flexDirection: "column",
+         }}
+       >
+-        <button onClick={() => setCurrentMission("To The Moon")}>
++        <button data-testid="rb-to-the-moon-button" onClick={() => setCurrentMission("To The Moon")}>
+           To The Moon!
+         </button>
+       </div>
+diff --git a/src/interface/settings-modal.tsx b/src/interface/settings-modal.tsx
+--- a/src/interface/settings-modal.tsx
++++ b/src/interface/settings-modal.tsx
+@@ -11,6 +11,7 @@ export const SettingsModal: React.FC<{ closeModal: () => void }> = ({
+   return (
+     <div style={{ display: "flex", flexDirection: "column" }}>
+       <div
++        data-testid="rb-settings-close"
+         style={{
+           position: "absolute",
+           top: 0,
+@@ -51,7 +52,7 @@ export const SettingsModal: React.FC<{ closeModal: () => void }> = ({
+           0xd35964190805B1210f0265847fE79b5b3AFef5D6
+         </a>
+       </div>
+-      <div style={{ fontSize: 20, fontWeight: "bold", paddingTop: 15 }}>
++      <div style={{ fontSize: 20, fontWeight: "bold", paddingTop: 15 }} data-testid="rb-settings-about">
+         About This Game
+       </div>
+       <div style={{ fontSize: 20 }}>
+@@ -120,6 +121,7 @@ export const SettingsModal: React.FC<{ closeModal: () => void }> = ({
+       </div>
+       <div>
+         <button
++          data-testid="rb-reset-open"
+           onClick={() => {
+             setPage("reset");
+           }}
+@@ -135,7 +137,7 @@ const ResetPage: React.FC<{ closeModal: () => void }> = ({ closeModal }) => {
+   const resetToDefault = useGameStore((state) => state.resetToDefault);
+   return (
+     <div style={{ display: "flex", flexDirection: "column" }}>
+-      <div style={{ width: "100%", textAlign: "center", fontSize: 20 }}>
++      <div style={{ width: "100%", textAlign: "center", fontSize: 20 }} data-testid="rb-reset-confirm-prompt">
+         Are you sure you want to reset?
+       </div>
+       <div style={{ width: "100%", textAlign: "center", fontSize: 20 }}>
+@@ -150,6 +152,7 @@ const ResetPage: React.FC<{ closeModal: () => void }> = ({ closeModal }) => {
+         }}
+       >
+         <button
++          data-testid="rb-reset-confirm"
+           onClick={() => {
+             resetToDefault();
+             closeModal();
+@@ -157,7 +160,7 @@ const ResetPage: React.FC<{ closeModal: () => void }> = ({ closeModal }) => {
+         >
+           Yes, reset me!
+         </button>
+-        <button onClick={() => closeModal()}>No, send me back!</button>
++        <button data-testid="rb-reset-cancel" onClick={() => closeModal()}>No, send me back!</button>
+       </div>
+     </div>
+   );
+diff --git a/src/interface/your-stuff.tsx b/src/interface/your-stuff.tsx
+--- a/src/interface/your-stuff.tsx
++++ b/src/interface/your-stuff.tsx
+@@ -27,7 +27,7 @@ export const MyStuff: React.FC = () => {
+   }, [isResetModalOpen]);
+ 
+   return (
+-    <div className="panel my-panel">
++    <div className="panel my-panel" data-testid="rb-inventory-panel">
+       <Header>
+         <div
+           style={{
+@@ -38,6 +38,7 @@ export const MyStuff: React.FC = () => {
+         >
+           Much Inventory
+           <img
++            data-testid="rb-settings-open"
+             src="/assets/crappy-gear.svg"
+             style={{ height: "1.5rem", cursor: "pointer" }}
+             onClick={() => {
+@@ -76,7 +77,7 @@ export const MyStuff: React.FC = () => {
+             alignItems: "center",
+           }}
+         >
+-          <div style={{ paddingRight: "0.5rem" }}>Dogecoin:</div>
++          <div style={{ paddingRight: "0.5rem" }} data-testid="rb-dogecoin-label">Dogecoin:</div>
+           <DogeCounter dogecoin={gameStore.dogecoin} />
+           <DogeIcon />
+         </div>
+@@ -87,7 +88,7 @@ export const MyStuff: React.FC = () => {
+             alignItems: "center",
+           }}
+         >
+-          USD: ${gameStore.usd.toFixed(2)}
++          <span data-testid="rb-usd-line">USD: ${gameStore.usd.toFixed(2)}</span>
+         </div>
+         <div
+           style={{
+@@ -96,7 +97,7 @@ export const MyStuff: React.FC = () => {
+             alignItems: "center",
+           }}
+         >
+-          Level: {gameStore.phase}
++          <span data-testid="rb-level-line">Level: {gameStore.phase}</span>
+         </div>
+ 
+         {(gameStore.largeMiners > 0 ||
+@@ -119,27 +120,27 @@ export const MyStuff: React.FC = () => {
+                 alignItems: "center",
+               }}
+             >
+-              HASH RATE: {hashRate.toFixed(2)}{" "}
++              <span data-testid="rb-hash-rate-line">HASH RATE: {hashRate.toFixed(2)}</span>{" "}
+               <div style={{ paddingRight: "0.2rem" }} />
+               <DogeIcon /> per sec
+             </div>
+ 
+             {gameStore.smallMiners > 0 && (
+-              <div>Crappy Miners: {gameStore.smallMiners}</div>
++              <div data-testid="rb-crappy-miners-line">Crappy Miners: {gameStore.smallMiners}</div>
+             )}
+             {gameStore.mediumMiners > 0 && (
+-              <div>Decent Miners: {gameStore.mediumMiners}</div>
++              <div data-testid="rb-decent-miners-line">Decent Miners: {gameStore.mediumMiners}</div>
+             )}
+             {gameStore.largeMiners > 0 && (
+-              <div>Good Miners: {gameStore.largeMiners}</div>
++              <div data-testid="rb-good-miners-line">Good Miners: {gameStore.largeMiners}</div>
+             )}
+           </>
+         )}
+         {gameStore.realEstate.length > 0 && (
+           <>
+-            <div style={{ marginTop: 10, fontWeight: "bold" }}>Properties</div>
++            <div style={{ marginTop: 10, fontWeight: "bold" }} data-testid="rb-properties-heading">Properties</div>
+             {gameStore.realEstate.map((place) => (
+-              <div key={place}>{place}</div>
++              <div key={place} data-testid={`rb-property-${place.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{place}</div>
+             ))}
+           </>
+         )}
+diff --git a/src/rb-env.ts b/src/rb-env.ts
+--- a/src/rb-env.ts
++++ b/src/rb-env.ts
+@@ -61,7 +61,11 @@ const api: RbApi = {
+   advanceTime: (ms: number) => rbAdvanceTime(ms),
+   state: () => useGameStore.getState(),
+   setState: (patch: Partial<RbState>) => {
+-    useGameStore.setState(patch);
++    // zustand v3 types setState's argument as Pick<T, K> (every listed key required), so a
++    // Partial is not assignable to it. The functional form is both correctly typed and an
++    // explicit shallow merge, which is the runtime behaviour we want: the patch overrides the
++    // named keys and every action on the store is preserved.
++    useGameStore.setState((previous) => ({ ...previous, ...patch }));
+     return useGameStore.getState();
+   },
+   tick: (n: number) => {
+diff --git a/src/rb-probe.tsx b/src/rb-probe.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/rb-probe.tsx
+@@ -0,0 +1,94 @@
++import React from "react";
++import { useGameStore, useHashRate, useResearchRate } from "./engine/game";
++import { getVictoryStorage } from "./engine/victory-store";
++
++// rb-probe.tsx - observation face for the repair-bench harness.
++//
++// Two rules shaped this file:
++//
++// 1. NOTHING here is recomputed. Every number is either read straight off the store or
++//    obtained from the application's own exported selectors (useHashRate, useResearchRate).
++//    A probe that re-implemented the app's arithmetic would keep producing the correct
++//    answer after a defect changed the app's one, and could therefore never go red.
++//
++// 2. Values that the UI renders through an animated counter (countup.js writes into
++//    #doge-counter and #success-percent imperatively, over 100ms) are exposed here as
++//    exact store numbers instead, so an assertion reads a settled value rather than
++//    racing an animation. The animated elements themselves are left untouched.
++//
++// The strip is fixed to the bottom-left, tiny and click-through: it is readable by a
++// locator (so innerText/text assertions work) without covering any panel of the game.
++
++const fmt = (value: unknown): string => {
++  if (value === null) return "null";
++  if (value === undefined) return "undefined";
++  if (Array.isArray(value)) return value.map((v) => fmt(v)).join("|");
++  if (typeof value === "number") return String(value);
++  if (typeof value === "boolean") return value ? "true" : "false";
++  return String(value);
++};
++
++const Cell: React.FC<{ id: string; value: unknown }> = ({ id, value }) => (
++  <span data-testid={id}>{fmt(value)}</span>
++);
++
++export const RbProbe: React.FC = () => {
++  const store = useGameStore();
++  const hashRate = useHashRate();
++  const researchRate = useResearchRate();
++  const victories = getVictoryStorage();
++
++  return (
++    <div
++      data-testid="rb-probe"
++      style={{
++        position: "fixed",
++        left: 0,
++        bottom: 0,
++        zIndex: 99999,
++        pointerEvents: "none",
++        fontSize: 9,
++        lineHeight: "11px",
++        color: "#777",
++        background: "rgba(255,255,255,0.55)",
++        maxWidth: "42vw",
++        whiteSpace: "normal",
++      }}
++    >
++      <Cell id="rb-ticks" value={store.ticks} />
++      <Cell id="rb-phase" value={store.phase} />
++      <Cell id="rb-luck" value={store.luck} />
++      <Cell id="rb-paused" value={store.paused} />
++      <Cell id="rb-dogecoin" value={store.dogecoin} />
++      <Cell id="rb-usd" value={store.usd} />
++      <Cell id="rb-max-dogecoin" value={store.maxDogecoin} />
++      <Cell id="rb-max-usd" value={store.maxUsd} />
++      <Cell id="rb-small-miners" value={store.smallMiners} />
++      <Cell id="rb-medium-miners" value={store.mediumMiners} />
++      <Cell id="rb-large-miners" value={store.largeMiners} />
++      <Cell id="rb-hash-rate" value={hashRate} />
++      <Cell id="rb-research-rate" value={researchRate} />
++      <Cell id="rb-real-estate" value={store.realEstate} />
++      <Cell id="rb-real-estate-count" value={store.realEstate.length} />
++      <Cell id="rb-unlocks" value={store.unlocks} />
++      <Cell id="rb-tweet-count" value={store.tweetCount} />
++      <Cell id="rb-twitter-followers" value={store.twitterFollowers} />
++      <Cell id="rb-tweet-ids-len" value={store.tweetIDs.length} />
++      <Cell id="rb-current-mission" value={store.currentMission} />
++      <Cell id="rb-current-location" value={store.currentLocation} />
++      <Cell id="rb-engineers" value={store.engineers} />
++      <Cell id="rb-astronauts" value={store.astronauts} />
++      <Cell id="rb-success-chance" value={store.successChance} />
++      <Cell id="rb-miner-allocation" value={store.minerAllocation} />
++      <Cell id="rb-failures" value={store.failures} />
++      <Cell id="rb-casualties" value={store.casualties} />
++      <Cell id="rb-doge-per-usd" value={store.dogePerUSD} />
++      <Cell id="rb-price-history-len" value={store.priceHistory.length} />
++      <Cell id="rb-price-history-last" value={store.priceHistory.length ? store.priceHistory[store.priceHistory.length - 1] : "empty"} />
++      <Cell id="rb-victories-len" value={victories.length} />
++      <Cell id="rb-env-version" value={typeof window !== "undefined" && window.__rb ? window.__rb.version : "absent"} />
++      <Cell id="rb-env-seed" value={typeof window !== "undefined" && window.__rb ? window.__rb.seed : -1} />
++      <Cell id="rb-storage-keys" value={typeof window !== "undefined" ? Object.keys(window.localStorage).sort() : []} />
++    </div>
++  );
++};

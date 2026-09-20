@@ -1,0 +1,2230 @@
+{
+ "schema_version": "1.0",
+ "instance_id": "repair-vanilla__urmusic-01",
+ "framework": "vanilla",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "context": {
+  "viewport": {
+   "width": 1280,
+   "height": 720
+  },
+  "locale": "en-US"
+ },
+ "checkpoints": [
+  {
+   "id": "F01",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D01-lerp-difference-term",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbF01a=lerp(2,10,0.5);window.__rbF01b=lerp(-4,4,0.25);window.__rbF01c=lerp(0,0,0.5);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF01a",
+     "expected": 6,
+     "expected_intent": "插值原语在中点的读数：从 2 走到 10、走一半，应该落在 6。这是全 app 的插值基元（频谱寻址、极坐标绘点、平滑随机都经它），出厂式子是「起点 + 进度 ×（终点 − 起点）」。（设计期预测：clean 6／delivered 8；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF01b",
+     "expected": -2,
+     "expected_intent": "同一原语跨零点、且进度不是 0.5 的另一档读数：从 -4 走到 4、走四分之一，应该落在 -2。它与上一条走的是同一条算式、不同入参 ⇒ 任何把这一项修回「终点 − 起点」的写法同时满足两条，而只把中点那一档硬编成 6 的写法过不了这一条。（设计期预测：clean -2／delivered -4；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF01c",
+     "expected": 0,
+     "expected_intent": "反空转对照：起点与终点相同（都是 0）时，无论那一项写成差还是写成和，读数都是 0，所以这一条在**两个态里都绿**。它存在的意义是证明本检查点不是「凡是读 lerp 就判红」的恒假断言，红的来源确实是那一项的写法。（设计期预测：clean 0／delivered 0，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D02-clamp-nesting-order",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbF02a=clamp(5,0,10);window.__rbF02b=clamp(99,0,10);window.__rbF02c=clamp(7,7,7);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF02a",
+     "expected": 5,
+     "expected_intent": "夹取函数对**区间内**取值的读数：把 5 夹进 [0,10] 应该原样返回 5。出厂写法是「先压上界、再抬下界」，两层嵌套的次序决定了区间内的值必须原样穿过。（设计期预测：clean 5／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF02b",
+     "expected": 10,
+     "expected_intent": "同一函数对**超出上界**取值的读数：把 99 夹进 [0,10] 应该返回上界 10。它与上一条一起钉住两层嵌套的次序 ⇒ 只把区间内那一档硬编成 5 的写法过不了这一条。（设计期预测：clean 10／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF02c",
+     "expected": 7,
+     "expected_intent": "反空转对照：上下界相同（都是 7）时两种嵌套次序同值，故这一条**两个态都绿**，用来证明本检查点的红来自嵌套次序而不是「凡是读 clamp 就判红」。（设计期预测：clean 7／delivered 7，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F03",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D03-exprargs-pi-token-case",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbF03a=new ExpressionProperty('pi').value;window.__rbF03b=new ExpressionProperty('pi*2').value;window.__rbF03c=exprArgs.length;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03a",
+     "expected": 3.141592653589793,
+     "expected_intent": "用户表达式里圆周率这个词的求值结果。表达式先被编译成一个以「词表」为形参名的函数，再按**位置**把实参喂进去（第 18 个实参就是 Math.PI），所以词表里的名字必须与实参顺序逐位对齐；名字一旦对不上，函数体里那个标识符就是未定义的，抛出的错误被求值处的 catch 吞掉、静默返回 0。（设计期预测：clean 3.141592653589793／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03b",
+     "expected": 6.283185307179586,
+     "expected_intent": "同一个词参与运算时的读数（圆周率 × 2）。它与上一条同走「词表名字 ↔ 实参位置」这一处契约、不同表达式 ⇒ 靠「把圆周率这一个表达式硬编成常量」来让上一条变绿的写法过不了这一条。（设计期预测：clean 6.283185307179586／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF03c",
+     "expected": 33,
+     "expected_intent": "反空转对照：词表的**长度**在两个态里都是 33。缺陷改的是一个词的名字、不是词的个数 ⇒ 本条两侧皆绿，它同时钉住「不许靠往词表里增删条目来绕过」这条领地：修的时候只许把那个名字改回去。（设计期预测：clean 33／delivered 33，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F04",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D04-current-song-title-default",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbF04a=currentSongTitle;window.__rbF04b=new ExpressionProperty('songtitle').value;window.__rbF04c=exprArgs.slice(30,31).join('');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF04a",
+     "expected": "Silence",
+     "expected_intent": "没有加载任何曲目时，页面认定的曲名初值。它是顶层变量、脚本解析时就赋好，四趟全新上下文实测恒为同一个值 ⇒ 与音频状态、与随机预置都无关。（设计期预测：clean \"Silence\"／delivered \"Untitled\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF04b",
+     "expected": "Silence",
+     "expected_intent": "同一个初值经**用户表达式通道**读出来的结果：词表第 31 位就是曲名，所以写 songtitle 的表达式求值出来的应当是同一个字符串。它与上一条同走一个变量、不同读取路径 ⇒ 只把变量本身改回去、却在表达式实参那一侧另塞一个字面量的写法过不了这一条。（设计期预测：clean \"Silence\"／delivered \"Untitled\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF04c",
+     "expected": "songtitle",
+     "expected_intent": "反空转对照＋领地守卫：词表第 31 位那个**词的名字**在两个态里都是 songtitle。缺陷改的是这个名字所绑定的那个变量的初值，不是名字本身 ⇒ 本条两侧皆绿，它既证明本检查点不是「凡是读曲名就判红」的恒假断言，也钉住修复不许靠改词表（把 songtitle 换成别的词、或往表里塞一个常量）来绕过。（设计期预测：clean \"songtitle\"／delivered 同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F05",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D05-refresh-domain-on-type-switch",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){loadPreset('Default');var ss=document.getElementById('sectionSettings');window.__rbF05before=ss.children.length;window.__rbF05node=ss.children[0];settings.sections[0].type=sectionType.TEXT;var l=ss.getElementsByClassName('ctrlName'),a=[],i,n=0,T={text:1,fontStyle:1,fontSize:1,fontFamily:1,textAlign:1,textBaseline:1};for(i=0;i<l.length;i+=1){a.push(l[i].textContent);if(T[l[i].textContent]){n+=1;}}window.__rbF05a=ss.children.length;window.__rbF05b=ss.contains(window.__rbF05node)?1:0;window.__rbF05c=n;window.__rbF05d=a.join(',');window.__rbF05e=settings.sections[0].type.name+'/'+settings.sections[0].target.constructor.name;window.__rbF05f=document.getElementById('globalSettings').children.length;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05a",
+     "expected": 17,
+     "expected_intent": "把第一个图层的类型从频谱切到文字之后，图层控件列表里的控件条数。文字类图层出厂有 17 条控件、频谱类有 31 条；类型切换的 setter 末尾会按「标签页域」通知一次刷新，那条通知负责把列表清空再按新类型重建。（设计期预测：clean 17／delivered 31；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05b",
+     "expected": 0,
+     "expected_intent": "切换之前**先 planted 在列表里的那一个节点**，切换之后是否还挂在列表上。出厂路径会整列表清空重建，所以它必须消失（0）；如果刷新通知发错了域，列表根本没被重建，这个节点就还原地留着（1）。这一条与上一条读的是同一件事的两个侧面（条数 vs 身份），靠改计数方式糊弄上一条的写法过不了这一条。（设计期预测：clean 0／delivered 1；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05c",
+     "expected": 6,
+     "expected_intent": "切换之后列表里**文字类专有控件**（text／fontStyle／fontSize／fontFamily／textAlign／textBaseline）的条数，出厂应当是 6 条。它证明重建出来的确实是文字那一套控件，而不是「条数碰巧对上」。（设计期预测：clean 6／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05d",
+     "expected": "visible,opacity,posX,posY,rotation,scaleX,scaleY,color,glowness,type,text,fontStyle,fontSize,fontFamily,textAlign,textBaseline",
+     "expected_intent": "切换之后控件名的**完整有序清单**。两侧都是实测读数：clean 侧是文字那 16 个名字，delivered 侧停在频谱那 31 个名字。它把「面板内容」钉到逐字级别 ⇒ 任何靠隐藏控件、或靠塞入同名空壳来凑条数的写法都会在这一条上现形。（设计期预测：两侧字符串如上，均取自 out/probe_determinism2.json 的 t_ctrl_names_after 与 t_freq_ctrl_names；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05e",
+     "expected": "TEXT/TextSection",
+     "expected_intent": "反空转对照：切换之后**模型层**的类型名与目标对象构造器名。两个态都必须是 TEXT/TextSection ⇒ 数据模型确实切过去了，红只出在「切完之后有没有按新类型刷新界面」这一层。它同时把 D05 与「把类型切换本身改坏」这类误修分开：改坏切换会让这一条也翻红。（设计期预测：clean \"TEXT/TextSection\"／delivered 同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05f",
+     "expected": 6,
+     "expected_intent": "反空转对照＋领地守卫：全局设置列表的控件条数在两个态里都是 6。缺陷改的是「通知哪一个刷新域」，全局设置那一份的条数不该变；把修复写成「两个域都刷」或「改成刷全局域」都会在这一条上留下痕迹。（设计期预测：clean 6／delivered 6，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D06-slider-initial-fill-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var pl=document.getElementById('itsThePlayer');var vs=pl.getElementsByClassName('volume')[0];window.__rbF06a=vs.getElementsByClassName('sliderDot')[0].style.left;window.__rbF06b=vs.getElementsByClassName('sliderFiller')[0].style.width;window.__rbF06c=pl.getElementsByClassName('songPosition')[0].getElementsByClassName('sliderDot')[0].style.left;var d=document.createElement('div');d.className='aPlayer';document.body.appendChild(d);THEPLAYER.setupPlayer(d,{target:document.getElementById('audioElement'),volume:0.25});var dvs=d.getElementsByClassName('volume')[0];window.__rbF06d=dvs.getElementsByClassName('sliderDot')[0].style.left;window.__rbF06e=dvs.getElementsByClassName('sliderFiller')[0].style.width;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06a",
+     "expected": "80%",
+     "expected_intent": "开机时音量滑块**圆点**的位置。音量初值来自音频增益节点（出厂 0.8），装配函数把「比例 → 百分比」换算成内联样式，所以圆点应当停在 80% 处。（设计期预测：clean \"80%\"／delivered \"8%\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06b",
+     "expected": "80%",
+     "expected_intent": "同一次装配里**填充条宽度**的读数：圆点位置与填充条宽度在出厂代码里是同一条赋值语句写出来的两个目标 ⇒ 两条必须同向。它抓住「只把圆点改对、填充条不管」这类半修。（设计期预测：clean \"80%\"／delivered \"8%\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06c",
+     "expected": "",
+     "expected_intent": "反空转对照：**进度**滑块没有传初值（装配函数只在初值是数字时才写内联样式），所以它的圆点位置在两个态里都是空字符串 ⇒ 本条两侧皆绿。它证明本检查点的红来自「比例→百分比」那一处换算，而不是「凡是读滑块样式就判红」，同时钉住领地：修音量滑块的换算不许顺手给进度滑块也塞一个初值。（设计期预测：clean \"\"／delivered \"\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06d",
+     "expected": "25%",
+     "expected_intent": "同一条换算经**第二条驱动路径**的读数：本检查点自己造一个游离的播放器节点，把音量初值 0.25 交给应用自己的装配函数，圆点应当停在 25%。0.25 在浮点里是精确值，所以这一条与上一条互为印证却不共用任何浮点打印巧合 ⇒ 只把开机那一档硬编成 80% 的写法过不了这一条。（设计期预测：clean \"25%\"／delivered \"2.5%\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF06e",
+     "expected": "25%",
+     "expected_intent": "第二条驱动路径上的**填充条宽度**。它与上一条同一次装配、不同目标属性 ⇒ 两条同向，任何只修一个目标的半修都会在这里现形。（设计期预测：clean \"25%\"／delivered \"2.5%\"；预测不是读数。）"
+    }
+   ]
+  },
+  {
+   "id": "F07",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D07-player-initial-state-class",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var pl=document.getElementById('itsThePlayer');window.__rbF07a=pl.className;window.__rbF07b=pl.classList.contains('paused')?1:0;window.__rbF07c=__cs(pl.getElementsByClassName('pauseBtn')[0]).transform;window.__rbF07d=__cs(pl.getElementsByClassName('playBtn')[0]).transform;window.__rbF07e=pl.children.length;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07a",
+     "expected": "aPlayer paused",
+     "expected_intent": "播放器节点装配完成之后的**状态类名**。出厂装配会先给它打上「暂停中」这一个状态类（因为还没有任何曲目在放），呈现层再按这个类决定两个图标谁正谁反。（设计期预测：clean \"aPlayer paused\"／delivered \"aPlayer playing\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07b",
+     "expected": 1,
+     "expected_intent": "同一条契约的**类列表**读法：播放器是否带着「暂停中」这个类。它与上一条读同一个类列表、不同读法（整串 vs 单词），所以靠「额外再加一个类把整串改对」的写法过不了这一条。（设计期预测：clean 1／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07c",
+     "expected": "matrix3d(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1)",
+     "expected_intent": "**跨层**读数之一：暂停图标当前的变换矩阵。呈现规则写在同一文件末尾注入的那张样式表里——带「暂停中」类时暂停图标绕 X 轴翻 180°，不带时回到基规则的 0°。树里没有任何显式契约把这两个文件串起来，所以修它必须把「JS 打哪个类」与「注入样式表里哪条规则」对上。（设计期预测：clean 侧取实测的 matrix3d 值；delivered 侧是同一对实测值在相反类名下的那一个，即 matrix(1, 0, 0, 1, 0, 0)；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07d",
+     "expected": "matrix(1, 0, 0, 1, 0, 0)",
+     "expected_intent": "**跨层**读数之二：播放图标的变换矩阵，与上一条恰好互换。两条一起把「状态类 ↔ 注入样式表」这一对契约钉死 ⇒ 靠直接改注入样式表里的矩阵、而不去修那个类名的写法，会在别的态类下现形；靠只修一个图标的写法过不了另一条。（设计期预测：clean matrix(1, 0, 0, 1, 0, 0)／delivered 取实测的 matrix3d 值；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF07e",
+     "expected": 2,
+     "expected_intent": "反空转对照：播放器节点的**子节点数**在两个态里都是 2（时间条与控件条）。装配确实跑完了、内部结构确实建起来了 ⇒ 本检查点的红不是「装配没跑」造成的假红。（设计期预测：clean 2／delivered 2，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F08",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D08-hidden-state-selector-name",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "document.getElementById('settingsNav').classList.add('hidden');"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var nav=document.getElementById('settingsNav');window.__rbF08a=__cs(nav).opacity;window.__rbF08b=__cs(nav).pointerEvents;window.__rbF08c=nav.classList.contains('hidden')?1:0;window.__rbF08d=__cs(document.getElementById('musicApps')).opacity;window.__rbF08e=__cs(document.getElementById('helpNav')).opacity;window.__rbF08f=document.getElementsByClassName('hidden').length;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08a",
+     "expected": "0",
+     "expected_intent": "给设置面板加上「隐藏」状态类、等过渡跑完之后，它的计算不透明度。出厂样式表里那条规则的选择器写的就是这个类名，所以加上之后必须淡到 0。（设计期预测：clean \"0\"／delivered \"1\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08b",
+     "expected": "none",
+     "expected_intent": "同一条规则里的第二件东西：隐藏态下面板必须**不再接收指针事件**，否则一个看不见的面板仍然会吃掉点击。它与上一条同走一条规则、不同属性 ⇒ 只把不透明度硬写成 0 的写法过不了这一条。（设计期预测：clean \"none\"／delivered \"auto\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08c",
+     "expected": 1,
+     "expected_intent": "反空转对照：那个状态类**确实已经打在节点上**（两个态都为 1）。它把责任面钉在样式表一侧：JS 该做的动作做了，红只可能来自「选择器写的是不是 JS 实际打的那个类名」。（设计期预测：clean 1／delivered 1，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08d",
+     "expected": "1",
+     "expected_intent": "领地守卫：页面上另外两个**没有**被加上状态类的同类节点之一（音乐应用条），它的不透明度在两个态里都仍是 1。任何「把所有同类节点一律淡掉」或「把淡出规则改成通配」的写法都会把这一条翻红。（设计期预测：clean \"1\"／delivered \"1\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08e",
+     "expected": "1",
+     "expected_intent": "领地守卫之二：另一个未被触碰的同类节点（帮助面板）同样保持不透明。两条守卫一起把修复面收窄到「那一条选择器的类名」。（设计期预测：clean \"1\"／delivered \"1\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF08f",
+     "expected": 1,
+     "expected_intent": "反空转对照：整页带这个状态类的节点数就是刚刚被加上的那一个（两个态都是 1）⇒ 本检查点没有顺手把别的节点也藏起来，读数只反映被驱动的那一个节点。（设计期预测：clean 1／delivered 1，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F09",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D09-activated-panel-height-magnitude",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var c=document.getElementById('settingsCtrlsContainer');window.__rbF09g=__cs(c).height;window.__rbF09h=__cs(c).width;return 1;})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "document.getElementById('settingsNav').classList.add('activated');"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var nav=document.getElementById('settingsNav'),c=document.getElementById('settingsCtrlsContainer');window.__rbF09a=__cs(c).height;window.__rbF09b=__cs(c).width;window.__rbF09c=__cs(c.firstElementChild).height;window.__rbF09d=nav.classList.contains('activated')?1:0;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09a",
+     "expected": "576px",
+     "expected_intent": "设置面板**展开态**的计算高度。出厂规则给的是视口高度的 80%，在 1280×720 的判据视口下就是 576px；展开态只剩一条细缝说明这一档少了一个数量级。（设计期预测：clean \"576px\"／delivered \"57.5938px\"＝8vh 在 720 高视口下被设备像素吸附后的实测值；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09b",
+     "expected": "320px",
+     "expected_intent": "领地守卫：同一条展开态规则里的**宽度**在两个态里都是 320px。缺陷只动高度那一行 ⇒ 修复不许顺手改宽度来让面板「看起来正常」。（设计期预测：clean \"320px\"／delivered \"320px\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09c",
+     "expected": "576px",
+     "expected_intent": "领地守卫＋**同文孪生对照**：容器内层那个 div 的高度在两个态里都是 576px。样式表里另有一条选择器不同、声明字面量却完全相同（也是视口高度 80%）的规则管着它——两条规则长得一样，只有一条是展开态那一条。这一条守卫证明修复落在展开态规则上、没有去改那条孪生规则（改了也不会让第一条变绿，但会把这一条翻红）。（设计期预测：clean \"576px\"／delivered \"576px\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09d",
+     "expected": 1,
+     "expected_intent": "反空转对照：展开态那个状态类**确实已经打在面板上**（两个态都为 1）⇒ 红来自样式表里的高度档位，不是来自「类没加上」。（设计期预测：clean 1／delivered 1，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09g",
+     "expected": "0px",
+     "expected_intent": "反空转对照：**未展开时**的静止高度，在两个态里都是 0px（静止态由另一条规则管着，与展开态那条无关）。它证明本检查点的红只在展开之后现形。（设计期预测：clean \"0px\"／delivered \"0px\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF09h",
+     "expected": "50px",
+     "expected_intent": "反空转对照：未展开时的静止宽度，两个态都是 50px ⇒ 静止态整套盒子模型没被动过。（设计期预测：clean \"50px\"／delivered \"50px\"，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F10",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D10-canvas-stacking-order",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var cvs=document.getElementById('cvs'),nav=document.getElementById('settingsNav'),help=document.getElementById('helpNav');var __zz=function(e){var v=__cs(e).zIndex;return v==='auto'?null:(isNaN(parseInt(v,10))?null:parseInt(v,10));};var __ids=['settingsNav','settingsCtrlsContainer','helpNav','itsThePlayer','bottomMenuOpener','bottomMenu','musicApps','firefoxIsBetter'];var __m=null,__n=0,__hdr=document.querySelector('#settingsNav>header');for(var __i=0;__i<__ids.length;__i+=1){var __e=document.getElementById(__ids[__i]);if(!__e)continue;var __v=__zz(__e);if(__v!==null){__n+=1;if(__m===null||__v<__m)__m=__v;}}if(__hdr){var __hv=__zz(__hdr);if(__hv!==null){__n+=1;if(__m===null||__hv<__m)__m=__hv;}}var __cz=(function(){var v=__cs(cvs).zIndex;return v==='auto'?0:(isNaN(parseInt(v,10))?null:parseInt(v,10));})();window.__rbF10a=(__n>0&&__cz!==null&&__cz<__m)?1:0;window.__rbF10b=(parseInt(__cs(cvs).zIndex,10)<parseInt(__cs(nav).zIndex,10))?1:0;window.__rbF10c=__cs(nav).zIndex;window.__rbF10d=__cs(help).zIndex;window.__rbF10e=__cs(cvs).position;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10a",
+     "expected": 1,
+     "expected_intent": "画布是否压在**全部界面层之下**（契约级关系读法，不是字面量读法）。分母由 setup 当场枚举本树自己声明过层叠序的那些界面层、取当场读到的最小值（实测档位：css/style.css:66 #settingsNav>header=10、:820 #itsThePlayer=20、:596 #helpNav=50、:871 #bottomMenuOpener=50、:277 #settingsNav=100、:306 #settingsCtrlsContainer=100 ⇒ 最小 10）；分子是画布自己的档位（css/style.css:40 出厂 z-index: 0，计算值为 auto 时按 0 档计）。🔴 刻意不读绝对字面量：读绝对值会把唯一正确答案窄化成 `z-index: 0`，从而把 -1／1／5／整行摘掉（auto）这四种行为等价的修法误判红；读关系式则四种全绿、而「把画布抬到界面层之上」与「靠压低界面层来凑」全红（压低任何一层会把当场读到的最小值一起拉低）。分母为 0 项时本条判 0（fail-closed，绝不因为枚举不到界面层而恒真）。（设计期预测：clean 1／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10b",
+     "expected": 1,
+     "expected_intent": "同一条契约的**关系式**读法：画布的层叠序必须严格小于设置面板的层叠序。上一条读绝对值、这一条读两者关系 ⇒ 靠「把画布改成另一个同样高于面板的数字」或「把面板抬得更高」来凑绝对值的写法，在这一条上仍要满足同一个大小关系才行。（设计期预测：clean 1／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10c",
+     "expected": "100",
+     "expected_intent": "领地守卫：设置面板自己的层叠序在两个态里都是 100。修复只许把画布那一档改回去，不许靠压低界面层来让关系式成立。（设计期预测：clean \"100\"／delivered \"100\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10d",
+     "expected": "50",
+     "expected_intent": "领地守卫之二：帮助面板的层叠序仍是 50 ⇒ 整套界面层的相对次序没有被动过。（设计期预测：clean \"50\"／delivered \"50\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF10e",
+     "expected": "fixed",
+     "expected_intent": "反空转对照：画布的定位方式仍是 fixed（与层叠序同一条规则里的另一行）。它证明读到的层叠序是**生效**的那一个（static 定位下 z-index 不参与层叠），同时钉住修复不许改定位方式。（设计期预测：clean \"fixed\"／delivered \"fixed\"，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D11-audio-loop-attribute",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var a=document.getElementById('audioElement');window.__rbF11a=a.loop?1:0;window.__rbF11b=a.getAttribute('loop')!==null?1:0;window.__rbF11c=a.tagName;window.__rbF11d=document.getElementById('itsThePlayer').dataset.target;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11a",
+     "expected": 1,
+     "expected_intent": "承载曲目的那个媒体元素的**循环开关**（IDL 属性读法）。出厂它在文档里就带着循环标记，所以一首曲子放完会从头再来，可视化不会停在黑屏上。（设计期预测：clean 1／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11b",
+     "expected": 1,
+     "expected_intent": "同一件事的**标记属性**读法：元素上是否真的写着那个属性。它与上一条走两条不同的读取路径（属性表 vs 反映到 IDL 的布尔），所以靠脚本在运行时补一句「把循环打开」而不去修文档的写法，只能在其中一条上得手。（设计期预测：clean 1／delivered 0；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11c",
+     "expected": "AUDIO",
+     "expected_intent": "反空转对照：那个元素仍然是 AUDIO 元素（两个态同值）⇒ 修复不许靠换一个自带循环的元素来绕过。（设计期预测：clean \"AUDIO\"／delivered \"AUDIO\"，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF11d",
+     "expected": "audioElement",
+     "expected_intent": "领地守卫：播放器节点上写着它所驱动的是哪一个媒体元素，两个态都仍指向同一个 id ⇒ 修复不许把播放器改指到另一个（自带循环的）元素上，让症状消失而文档里那一处仍然缺着。（设计期预测：clean \"audioElement\"／delivered 同值。）"
+    }
+   ]
+  },
+  {
+   "id": "F12",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D12-tool-wrapper-inline-display",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __cs=function(e){return getComputedStyle(e);};var ch=document.getElementById('fileChooser'),wr=ch.parentNode;window.__rbF12a=__cs(wr).display;window.__rbF12b=ch.offsetParent!==null?1:0;window.__rbF12c=wr.children.length;window.__rbF12d=ch.type+'|'+(ch.multiple?1:0);window.__rbF12e=wr.tagName;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12a",
+     "expected": "none",
+     "expected_intent": "页面顶部那个**工具节点容器**的计算 display。出厂它带着一段行内样式把自己整块藏起来——里面装的是下载锚点、文件选择框与媒体元素这三样纯功能性节点，本来就不该出现在画面上。（设计期预测：clean \"none\"／delivered \"block\"；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12b",
+     "expected": 0,
+     "expected_intent": "同一件事在**渲染树**上的后果：容器里的文件选择框是否有布局父节点。藏着的时候它不参与布局（读数为 0），容器一旦显示出来它就有了布局父节点（1）。这一条与上一条互为印证 ⇒ 靠「把计算样式糊成 none、节点却仍然占位」的写法过不了这一条。（设计期预测：clean 0／delivered 1；预测不是读数。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12c",
+     "expected": 3,
+     "expected_intent": "领地守卫：容器里的子节点数在两个态里都是 3 ⇒ 修复不许靠删掉里面的节点（尤其是那个媒体元素）来让页面上少一样东西。（设计期预测：clean 3／delivered 3，两侧同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12d",
+     "expected": "file|1",
+     "expected_intent": "领地守卫之二：文件选择框的类型与多选开关在两个态里都不变 ⇒ 修复只许把容器的显示状态改回去，不许顺手改控件本身的性质。（设计期预测：clean \"file|1\"／delivered 同值。）"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF12e",
+     "expected": "DIV",
+     "expected_intent": "反空转对照：被读的这个容器确实是一个 DIV（两个态同值）⇒ 读数锚定在文档里那一个节点上，不是碰巧取到了别的父节点。（设计期预测：clean \"DIV\"／delivered \"DIV\"，两侧同值。）"
+    }
+   ]
+  },
+  {
+   "id": "P01",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-canvas-host",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "exists",
+     "target": "rb-canvas",
+     "expected": true,
+     "expected_intent": "可视化画布节点在位。它是整幅画面的宿主，任何修复都不得移除它、改它的 id，或把它换成别的元素。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('cvs').tagName",
+     "expected": "CANVAS",
+     "expected_intent": "那个宿主节点的元素类型仍是 CANVAS ⇒ D10（画布层叠序）的领地守卫：修层叠序只许改样式表里那一档数字，不许靠换一个元素或改元素类型来让读数对上。"
+    }
+   ]
+  },
+  {
+   "id": "P02",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-version-face",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "text",
+     "target": "rb-version",
+     "expected": "Urmusic 1.4.3",
+     "expected_intent": "页面自报的版本行仍是出厂那一句 ⇒ 修复不许靠改版本字样、改标题或删掉这一块来「让页面看起来正常」。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.title",
+     "expected": "Urmusic",
+     "expected_intent": "文档标题仍是出厂的那一个 ⇒ 与上一条一起把「页面身份」钉住：本枚的 12 处缺陷没有一处在标题或版本行上。"
+    }
+   ]
+  },
+  {
+   "id": "P03",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-id-census",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var ids=['cvs','audioElement','itsThePlayer','bottomMenu','settingsNav','helpNav','musicApps','settingsCtrlsContainer','settingsPresetsMenu','presetNameInput','settingsPresetsOptOpen','settingsPresetsOptSave','settingsPresetsList','addTab','videoRecord','firefoxIsBetter','soundcloudApp','bottomMenuOpener','fileChooser','downloader'],n=0,k;for(k=0;k<ids.length;k+=1){if(document.getElementById(ids[k])){n+=1;}}return n;})()",
+     "expected": 20,
+     "expected_intent": "文档里 20 个出厂 id 全部在位（逐个查、计数）。它是一枚总闸：D05／D08／D09／D10／D12 的读数全都锚在这些 id 上，任何靠删节点、改 id 来消症状的伪修法都会在这里翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P04",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-stylesheet-face",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.styleSheets.length",
+     "expected": 4,
+     "expected_intent": "页面生效的样式表总数仍是 4（两张外链＋两张内联，其中一张是播放器脚本在运行时注入的那张）。D08／D09／D10 三处缺陷都在外链那张里 ⇒ 这一条钉住「不许靠再塞一张样式表来盖掉它们」：总数一变就红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.styleSheets).map(function(s){return (s.href||'inline').replace(location.origin,'');}).join('|');})()",
+     "expected": "/css/font-awesome.min.css|/css/style.css|inline|inline",
+     "expected_intent": "四张样式表的**逐张身份与次序**（外链两张给出路径、内联两张给出 inline）。它是上一条的强化：不仅数目对，连哪一张在哪一位都不许动 ⇒ 靠调换次序、替换路径、把内联那张换成外链的写法都过不了。"
+    }
+   ]
+  },
+  {
+   "id": "P05",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-script-face",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.scripts).filter(function(s){return !!s.src;}).map(function(s){return s.src.replace(location.origin,'');}).join('|');})()",
+     "expected": "/rb-offline/inert-sc.js|/js/theplayer.js|/js/spin.min.js|/js/index.js|/rb-offline/inert-kofi.js",
+     "expected_intent": "带 src 的脚本**逐条路径与次序**。D01-D05 在 index.js、D06／D07 在 theplayer.js ⇒ 这一条钉住脚本清单本身没被换过：不许靠「再引一份正确的 index.js」或「把宿主脚本换成压缩版」来消症状（本枚的适配补丁已经把上游那两个远端第三方脚本逐处收敛成树内的本地惰性替身，路径就写在这里）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.scripts).filter(function(s){return !!s.src;}).length;})()",
+     "expected": 5,
+     "expected_intent": "带 src 的脚本条数仍是 5 ⇒ 与上一条互为印证：既不许少一条（把宿主脚本摘掉），也不许多一条（补一份「修好的」脚本进来）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.scripts).filter(function(s){return s.src.indexOf('.min.')>=0;}).length;})()",
+     "expected": 1,
+     "expected_intent": "压缩版脚本只有出厂那 1 条（spin.min.js）。它是「不许偷偷把宿主换成压缩版」的专用哨兵：index.min.js 在文档里出厂就是被注释掉的那一条，一旦它被启用，这个计数就会变。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.scripts).filter(function(s){return s.src.indexOf('rb-offline/')>=0;}).length;})()",
+     "expected": 2,
+     "expected_intent": "树内本地惰性替身仍是 2 条 ⇒ 适配补丁原样在位：这两条替身上游是站外的统计信标与广告位，收敛成惰性文件之后既保证离线自足，也保证它们不会去动被测树。"
+    }
+   ]
+  },
+  {
+   "id": "P06",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-link-face",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.querySelectorAll('link[rel=stylesheet]')).map(function(l){return l.href.replace(location.origin,'');}).join('|');})()",
+     "expected": "/css/font-awesome.min.css|/css/style.css",
+     "expected_intent": "两张外链样式表的路径与次序 ⇒ D08／D09／D10 的宿主文件（css/style.css）确实是被加载的那一张，而不是被换掉或补一张盖在上面。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('link[rel=stylesheet]').length",
+     "expected": 2,
+     "expected_intent": "外链样式表条数仍是 2（不许增、不许减）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementsByTagName('style').length",
+     "expected": 2,
+     "expected_intent": "内联 <style> 元素仍是 2 个：一个是文档自带的，一个是 js/theplayer.js:157-160 在运行时注入的那一张（D07 的呈现层就在它里面）⇒ 这一条钉住「注入那一张还在、且没有多出一张」，任何靠追加内联样式来盖掉 D07／D08／D09／D10 的写法都会翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P07",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-global-surface",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=['lerp','clamp','prettyTime','isNullOrUndef','Settings','Section','AnalyserSection','FreqSection','TimeDomSection','ImageSection','TextSection','AdvancedSettings','ExpressionProperty','Enumeration','EnumerationValue','loadPreset','loadFilePreset','refreshControls','THEPLAYER'],a=[],i;for(i=0;i<n.length;i+=1){a.push(n[i]+':'+typeof window[n[i]]);}return a.join(',');})()",
+     "expected": "lerp:function,clamp:function,prettyTime:function,isNullOrUndef:function,Settings:function,Section:function,AnalyserSection:function,FreqSection:function,TimeDomSection:function,ImageSection:function,TextSection:function,AdvancedSettings:function,ExpressionProperty:function,Enumeration:function,EnumerationValue:function,loadPreset:function,loadFilePreset:function,refreshControls:function,THEPLAYER:object",
+     "expected_intent": "19 个出厂全局量的**名字与类型逐一对齐**（一整串实测读数）。这棵树是零构建的浏览器脚本，全部逻辑都跑在脚本留下的全局量上 ⇒ 这一条同时是三件事的哨兵：不许把它们收进模块闭包或 IIFE（那样全题读数都拿不到）、不许改名、不许换类型。D01／D02／D05 的宿主函数都在这一串里，它保证「修的是函数体、不是函数本身的存在方式」。"
+    }
+   ]
+  },
+  {
+   "id": "P08",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-table-surface",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=['settingsPresets','frameProps','sectionType','drawMode','lineCapMode','lineJoinMode','textAlignMode','textBaselineMode','refreshables','exprArgs','settings','activeSection','currentSongTitle'],a=[],i;for(i=0;i<n.length;i+=1){var v;try{v=eval(n[i]);}catch(e){v='ERR';}a.push(n[i]+':'+(Array.isArray(v)?'array':typeof v));}return a.join(',');})()",
+     "expected": "settingsPresets:object,frameProps:object,sectionType:object,drawMode:object,lineCapMode:object,lineJoinMode:object,textAlignMode:object,textBaselineMode:object,refreshables:object,exprArgs:array,settings:object,activeSection:object,currentSongTitle:string",
+     "expected_intent": "13 个出厂数据面的**名字与类型逐一对齐**（一整串实测读数；数组与对象分开报，所以 exprArgs 必须是 array、currentSongTitle 必须是 string）。D03 改的是 exprArgs 里一个词的名字、D04 改的是 currentSongTitle 的值、D05 用的是 refreshables 里的一个位 ⇒ 这一条钉住这三张表的**形状**：不许换类型、不许换成别的容器、不许把某一张整个删掉。"
+    }
+   ]
+  },
+  {
+   "id": "P09",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-public-api",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(typeof THEPLAYER.setupPlayer)",
+     "expected": "function",
+     "expected_intent": "播放器装配函数仍是可调用的那一个 ⇒ D06／D07 都在它体内，这一条钉住「修的是它内部的写法，不是把它换成另一个装配函数、或让它变成空实现」。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(typeof CanvasRenderingContext2D.prototype.roundRect)",
+     "expected": "function",
+     "expected_intent": "画布圆角矩形那个原型补丁仍在位（树自带、开机就打上）⇒ 渲染面没有被替换：任何靠重写画布原型来改变层叠或绘制结果的伪修法都会翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-player-node",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "attribute",
+     "target": "rb-player",
+     "attribute": "data-target",
+     "expected": "audioElement",
+     "expected_intent": "播放器节点上标注的驱动目标仍是出厂那一个 id ⇒ D11（媒体元素循环开关）的领地守卫：不许把播放器改指到另一个媒体元素上，让「放完即停」这个症状靠换对象消失。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementsByClassName('aPlayer').length",
+     "expected": 1,
+     "expected_intent": "开机时页面上只有 1 个播放器节点 ⇒ 不许靠多造一个「正确的」播放器盖住原来那个。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var pl=document.getElementById('itsThePlayer');return pl.children.length+'|'+pl.getElementsByClassName('slider').length;})()",
+     "expected": "2|2",
+     "expected_intent": "播放器内部结构：2 个直接子块（时间条与控件条）、2 个滑块（进度与音量）⇒ D06 的宿主结构原样，任何靠重建播放器内部结构来让滑块读数变对的写法都会翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-time-labels",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var pl=document.getElementById('itsThePlayer');return pl.getElementsByClassName('currentSlashEndC')[0].innerHTML+'|'+pl.getElementsByClassName('currentSlashEndE')[0].innerHTML;})()",
+     "expected": "0:00|0:00",
+     "expected_intent": "播放器两个时间标签开机都印 0:00。它们由 theplayer.js 自己的 prettyTime 印出来（与 index.js 那个同名函数不是同一个），且在没有曲目时恒为零 ⇒ 这一条同时守住 D06／D07 的宿主文件没有把时间格式化改坏。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var pl=document.getElementById('itsThePlayer');var s=pl.getElementsByClassName('songPosition')[0];return s.getElementsByClassName('sliderDot')[0].style.left+'|'+s.getElementsByClassName('sliderFiller')[0].style.width;})()",
+     "expected": "|",
+     "expected_intent": "进度滑块的圆点位置与填充条宽度开机都是**空字符串**（装配函数只在初值是数字时才写内联样式，进度滑块没有初值）⇒ D06 的领地守卫：修音量滑块的换算不许顺手给进度滑块塞一个初值。"
+    }
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-hidable-census",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementsByClassName('hidable').length",
+     "expected": 5,
+     "expected_intent": "带「可隐藏」类的节点开机共 5 个 ⇒ D08 的领地守卫：那条选择器管的是这一族节点，不许靠增删这一族的成员来让隐藏态读数变对。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementsByClassName('settingsCtrlsList').length",
+     "expected": 3,
+     "expected_intent": "三张控件列表（全局／图层／高级）都在位 ⇒ D05 读数所锚的容器原样。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return getComputedStyle(document.getElementById('settingsNav')).opacity+'|'+getComputedStyle(document.getElementById('settingsNav')).pointerEvents;})()",
+     "expected": "1|auto",
+     "expected_intent": "设置面板**开机静止态**仍然完全可见、可点（不透明度 1、指针事件 auto）⇒ D08 的第二个领地守卫：隐藏态那条规则只该在类被加上之后生效，不许把静止态也一起改淡。"
+    }
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-panel-resting-box",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var c=getComputedStyle(document.getElementById('settingsCtrlsContainer'));return c.width+'|'+c.height;})()",
+     "expected": "50px|0px",
+     "expected_intent": "设置面板容器**未展开时**的静止盒子（宽 50px、高 0px）⇒ D09 的领地守卫：那一处缺陷只改展开态规则里的高度档位，静止态这两档必须一动不动。任何靠改静止态尺寸来让展开态「看起来对了」的写法都会翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P14",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-ui-stacking",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return getComputedStyle(document.getElementById('settingsNav')).zIndex+'|'+getComputedStyle(document.getElementById('helpNav')).zIndex+'|'+getComputedStyle(document.getElementById('cvs')).position;})()",
+     "expected": "100|50|fixed",
+     "expected_intent": "两个界面层的层叠序（设置面板 100、帮助面板 50）与画布的定位方式（fixed）⇒ D10 的领地守卫：修画布那一档不许靠压低界面层来让大小关系成立，也不许靠改画布的定位方式（static 定位下 z-index 根本不参与层叠，改了等于把断言架空）。"
+    }
+   ]
+  },
+  {
+   "id": "P15",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-tool-wrapper",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var wr=document.getElementById('fileChooser').parentNode;return wr.tagName+'|'+wr.id+'|'+wr.children.length;})()",
+     "expected": "DIV||3",
+     "expected_intent": "工具节点容器的身份：一个没有 id 的 DIV，里面 3 个子节点 ⇒ D12 的领地守卫：修那一处行内显示样式不许靠删掉容器里的节点（尤其是媒体元素）来让页面上少一样东西，也不许把容器换成另一个元素。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var ch=document.getElementById('fileChooser');return ch.type+'|'+(ch.getAttribute('multiple')!==null?1:0);})()",
+     "expected": "file|1",
+     "expected_intent": "文件选择框的类型与多选标记原样 ⇒ D12 的第二个领地守卫：只许把容器的显示状态改回去，不许顺手改控件本身的性质。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('audioElement').tagName",
+     "expected": "AUDIO",
+     "expected_intent": "承载曲目的那个节点仍是 AUDIO 元素 ⇒ D11 的领地守卫：不许靠换一个自带循环的元素来绕过文档里那一处缺失。"
+    }
+   ]
+  },
+  {
+   "id": "P16",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-refreshables-table",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [refreshables.SETTINGS_BIT,refreshables.TABS_BIT,refreshables.PRESETLIST_BIT].join(',');})()",
+     "expected": "1,2,4",
+     "expected_intent": "三个刷新域位的**数值**原样（设置域 1、标签页域 2、预置列表域 4）⇒ D05 的领地守卫：那一处缺陷是「通知了哪一个域」，不是「域值是多少」。任何靠改这三个位值来让刷新行为变对的写法都会翻红——位值一改，全 app 每一处按位与的判断都跟着变。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return Object.keys(refreshables).join(',');})()",
+     "expected": "SETTINGS_BIT,TABS_BIT,PRESETLIST_BIT",
+     "expected_intent": "那张表的**键名与次序**原样 ⇒ 与上一条一起把表钉死：不许增键、不许删键、不许改名。"
+    }
+   ]
+  },
+  {
+   "id": "P17",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-exprargs-shape",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP17a=exprArgs.length;window.__rbP17b=exprArgs.slice(0,4).join(',');window.__rbP17c=exprArgs.slice(18,22).join(',');window.__rbP17d=exprArgs.slice(30,33).join(',');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17a",
+     "expected": 33,
+     "expected_intent": "表达式词表的长度仍是 33 ⇒ D03 的领地守卫：那一处缺陷改的是第 18 个词的名字，不是词的个数。修它只许把名字改回去，不许靠增删词条来重新对齐位置。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17b",
+     "expected": "alert,window,navigator,rand",
+     "expected_intent": "词表**头四个**名字原样。这四个词正好覆盖「三个占位空值 + 第一个真函数」这一段，是位置约定的头部锚点。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17c",
+     "expected": "maxval,minval,time,duration",
+     "expected_intent": "词表**第 19-22 位**原样。这一段紧挨着被改的那一位（第 18 位），所以它是最强的邻位哨兵：靠把整段词表平移一位来「让圆周率对上」的写法会把这一条翻红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP17d",
+     "expected": "songtitle,prettytime,prettyduration",
+     "expected_intent": "词表**末三位**原样 ⇒ 表尾也对齐。头、邻位、尾三段一起，把「名字 ↔ 实参位置」这条约定的两端与中段全部钉住（被改的那一位本身属于 D03 的领地，故意不在守卫里读它）。"
+    }
+   ]
+  },
+  {
+   "id": "P18",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-enums-section-draw",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [sectionType.FREQ.name,sectionType.TIME_DOM.name,sectionType.IMAGE.name,sectionType.TEXT.name].join(',');})()",
+     "expected": "FREQ,TIME_DOM,IMAGE,TEXT",
+     "expected_intent": "图层类型枚举的四个名字与次序原样 ⇒ D05 的领地守卫：那一处缺陷在「切完类型之后通知谁」，不在类型枚举本身。改枚举名字会让全 app 的类型判断一起变，这一条把这条路堵死。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [drawMode.LINES.name,drawMode.FILL.name,drawMode.OUTLINE.name].join(',');})()",
+     "expected": "LINES,FILL,OUTLINE",
+     "expected_intent": "绘制模式枚举的三个名字原样 ⇒ 渲染面配置未被触碰。"
+    }
+   ]
+  },
+  {
+   "id": "P19",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-enums-line-modes",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [lineCapMode.BUTT.name,lineCapMode.ROUND.name,lineCapMode.SQUARE.name].join(',');})()",
+     "expected": "BUTT,ROUND,SQUARE",
+     "expected_intent": "线端模式枚举原样：三个成员的名字与次序都是出厂那一套（这一条按名字直读、与下一条的键遍历互为印证）⇒ 这张表没有被改名、增删或重排，画布那几条描边路径的取值域因此没被动过。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return Object.keys(lineJoinMode).filter(function(k){return lineJoinMode[k] instanceof EnumerationValue;}).join(',');})()",
+     "expected": "MITER,ROUND,BEVEL",
+     "expected_intent": "线接合模式枚举原样（按键遍历、只留枚举值，所以次序就是出厂定义次序）。"
+    }
+   ]
+  },
+  {
+   "id": "P20",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-enums-text-modes",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return Object.keys(textAlignMode).filter(function(k){return textAlignMode[k] instanceof EnumerationValue;}).join(',');})()",
+     "expected": "LEFT,CENTER,RIGHT",
+     "expected_intent": "文字对齐枚举原样：按键遍历只留枚举值，所以读出来的次序就是出厂定义次序 ⇒ 这张表没有被改名、增删或重排（文字类图层取值时要逐位对上它）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return Object.keys(textBaselineMode).filter(function(k){return textBaselineMode[k] instanceof EnumerationValue;}).join(',');})()",
+     "expected": "TOP,HANGING,MIDDLE,ALPHABETIC,IDEOGRAPHIC,BOTTOM",
+     "expected_intent": "文字基线枚举原样：六项全在、次序也是出厂那一套 ⇒ 与上一条一起把两张文字模式表钉死，任何靠增删枚举成员来改变图层控件条数的修法都会先在这里翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P21",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-enum-and-expr-protocol",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP21a=JSON.stringify(drawMode.FILL);window.__rbP21b=String(sectionType.IMAGE);window.__rbP21c=(drawMode.LINES.ownerEnum===drawMode?'same':'diff');window.__rbP21d=String(new ExpressionProperty('1+1'));window.__rbP21e=new ExpressionProperty('1+1').toJSON();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21a",
+     "expected": "\"FILL\"",
+     "expected_intent": "枚举值的 JSON 形态仍只导出它的名字 ⇒ 预置文件的存取协议没被改（这条协议一旦变，出厂那 7 份预置就全都读不进来）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21b",
+     "expected": "IMAGE",
+     "expected_intent": "枚举值的字符串形态仍是它的名字（出厂没有自定义 toString）⇒ 与相邻几条一起守住枚举↔表达式协议：D03／D04 都落在「词表里的名字」与「曲名取值」上，不许靠给枚举或表达式属性加一个自定义字符串化来改变读数。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21c",
+     "expected": "same",
+     "expected_intent": "枚举值仍然认得自己属于哪一张枚举表（反向指针在位）⇒ 枚举没有被换成普通字符串常量。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21d",
+     "expected": "[object Object]",
+     "expected_intent": "表达式属性对象的字符串形态仍是默认那一个（它没有自定义 toString）⇒ D03／D04 的领地守卫：这两处缺陷都在「词表名字」与「曲名取值」上，不许靠给表达式属性加一个自定义字符串化来改变读数。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP21e",
+     "expected": "1+1",
+     "expected_intent": "表达式属性的导出形态仍是它自己的表达式字面量 ⇒ 存盘协议原样。"
+    }
+   ]
+  },
+  {
+   "id": "P22",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-preset-table",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return Object.keys(settingsPresets).length+'|'+Object.keys(settingsPresets).join('|');})()",
+     "expected": "7|Default|Time domain default|The Dub Rebellion|Monstercat|DubstepGutter|Drop the Bassline|BOD",
+     "expected_intent": "出厂那 7 份预置的**数目、名字与次序**全部原样。这一条有两层作用：①它是「随机预置」这个坑的正面守卫——开机随机挑一份预置，但候选集合本身必须一动不动；②D05 的检查点要先强制切到 Default 才有确定读数，所以 Default 必须还在第一位。"
+    }
+   ]
+  },
+  {
+   "id": "P23",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-isnullorundef",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP23a=[String(isNullOrUndef(undefined)),String(isNullOrUndef(null)),String(isNullOrUndef(0)),String(isNullOrUndef(''))].join(',');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP23a",
+     "expected": "true,true,false,false",
+     "expected_intent": "空值判定函数的四档真值表原样（undefined／null 为真，0 与空串为假）。控件装配要靠它区分「没有值」与「值是 0」，D05 刷新出来的那一整套控件都经它 ⇒ 它是刷新面的地基守卫：地基一变，控件条数这类读数就全都不可信了。"
+    }
+   ]
+  },
+  {
+   "id": "P24",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-prettytime-table",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP24a=[prettyTime(0),prettyTime(5),prettyTime(59),prettyTime(60),prettyTime(65),prettyTime(600),prettyTime(3661),prettyTime(undefined)].join('|');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP24a",
+     "expected": "0:00|0:05|0:59|1:00|1:05|10:00|1:01:01|0:00",
+     "expected_intent": "时长格式化函数的**八档完整真值表**（含秒补零、分补零、跨小时进位、无参数兜底）一次钉死。这一支在被废弃的 缺陷集里曾是两枚缺陷的宿主，重分布之后它完全自由 ⇒ 现在它可以整串当守卫用：任何动到时间格式化的误修都会在这里翻红，而 12 枚缺陷里没有一枚该碰它。"
+    }
+   ]
+  },
+  {
+   "id": "P25",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-advancedsettings-defaults",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __a1=new AdvancedSettings();var __a2=new AdvancedSettings({lowpassFreq:222,highpassFreq:3333});window.__rbP25a=[String(__a1.enableLowpass),String(__a1.enableHighpass),__a1.lowpassFreq,__a1.highpassFreq,__a1.lowpassSmooth,__a1.highpassSmooth].join(',');window.__rbP25b=[__a2.lowpassFreq,__a2.highpassFreq].join(',');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP25a",
+     "expected": "false,false,120,480,0.65,0.65",
+     "expected_intent": "高级设置构造器的**六项出厂默认值**原样（两个开关＋两个截止频率＋两个平滑系数）。读的是新构造对象，所以与开机那份随机预置无关。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP25b",
+     "expected": "222,3333",
+     "expected_intent": "同一个构造器**接受显式参数**时的透传行为原样 ⇒ 两条一起钉住「默认值」与「参数覆盖」两条路径都没被动过。"
+    }
+   ]
+  },
+  {
+   "id": "P26",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-settings-defaults",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __s=new Settings();window.__rbP26a=[__s.smoothingTimeConstant.expr,__s.globalScale.expr,__s.globalOffsetX.expr,__s.globalOffsetY.expr,__s.globalRotation.expr,__s.backgroundColor,__s.sections.length].join('|');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP26a",
+     "expected": "0.65|1|0|0|0|#3b3b3b|0",
+     "expected_intent": "整份设置对象的**七项出厂默认值**原样（平滑系数、全局缩放、两个偏移、旋转、背景色、初始图层数）。读的是表达式字面量与新构造对象，因此既不随帧变、也不随随机预置变。背景色那一项在这一支的旧缺陷集里曾被改过，重分布之后它是自由领地 ⇒ 现在整串守起来。"
+    }
+   ]
+  },
+  {
+   "id": "P27",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-section-defaults",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __x=new Section();window.__rbP27a=[__x.name,__x.type.name,String(__x.visible),__x.opacity.expr,__x.posX.expr,__x.posY.expr,__x.rotation.expr,__x.scaleX.expr,__x.scaleY.expr,__x.color,__x.glowness.expr].join('|');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP27a",
+     "expected": "A section|FREQ|true|1|0|0|0|1|1|#ffffff|0",
+     "expected_intent": "图层基类的**十一项出厂默认值**原样，其中包含默认名与默认类型（FREQ）。D05 的检查点正是把第 0 个图层的类型从 FREQ 切到 TEXT ⇒ 这一条守住「切换的起点」没被动过：起点一变，D05 那组读数就失去意义。"
+    }
+   ]
+  },
+  {
+   "id": "P28",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-freqsection-timedom-defaults",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __f=new FreqSection();var __t=new TimeDomSection();window.__rbP28a=[__f.dataCount.expr,__f.lineWidth.expr,__f.lineCap.name,__f.startX.expr,__f.endX.expr,__f.yPos.expr,__f.exponent.expr,__f.height.expr,__f.mode.name,__f.minDecibels.expr,__f.maxDecibels.expr,__f.minHeight.expr,__f.freqStart.expr,__f.freqEnd.expr,String(__f.smartFill),String(__f.polar),String(__f.clampShapeToZero),String(__f.closeShape),String(__f.drawLast),String(__f.quadratic)].join('|');window.__rbP28b=[__t.lineJoin.name,__t.dataCount.expr].join('|');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP28a",
+     "expected": "128|1|BUTT|-1|1|0|1|0.5|LINES|-100|-20|0.01|0|0.03|false|[object Object]|true|true|true|true",
+     "expected_intent": "频谱类图层的**二十项出厂默认值**一次钉死（采样点数、线宽、线端、四个几何量、指数、高度、绘制模式、两个分贝界、最小高度、两个频率界、以及六个布尔/对象量）。D05 的检查点在干净态会读到这一类的 31 条控件名 ⇒ 这一条守住「频谱那一套控件的模型侧默认值」原样，让 D05 的两侧读数可比。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP28b",
+     "expected": "ROUND|128",
+     "expected_intent": "时域类图层继承来的两项默认值原样（线接合方式与采样点数，两者都定义在共用基类里、时域类经 .call(this,p) 继承）⇒ 共用基类没有被动过。"
+    }
+   ]
+  },
+  {
+   "id": "P29",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-image-text-defaults",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __i=new ImageSection();var __x=new TextSection();window.__rbP29a=[__i.imageURL,__i.imageBorderRadius.expr,String(__i.opaque),__i.borderSize.expr,__i.borderColor,String(__i.borderVisible)].join('|');window.__rbP29b=[__x.text.expr,__x.fontStyle,__x.fontSize.expr,__x.fontFamily,__x.textAlign.name,__x.textBaseline.name].join('|');return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP29a",
+     "expected": "|0|false|0|#ffffff|false",
+     "expected_intent": "图片类图层的六项出厂默认值原样（首项是空的图片地址）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP29b",
+     "expected": "\"Type your text here\"|normal|0.2|sans-serif|CENTER|ALPHABETIC",
+     "expected_intent": "文字类图层的六项出厂默认值原样，其中包含默认文案。D05 的检查点把图层切成 TEXT 之后要数出 6 条文字专有控件 ⇒ 这一条守住文字那一套的模型侧默认值，让「切过去之后应该长什么样」有一个不动的参照。"
+    }
+   ]
+  },
+  {
+   "id": "P30",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-expr-semantics-constants",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP30a=new ExpressionProperty(5).value;window.__rbP30b=new ExpressionProperty('7').value;window.__rbP30c=new ExpressionProperty('2+3*4').value;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP30a",
+     "expected": 5,
+     "expected_intent": "表达式属性收到**数字**时的短路行为原样（直接当常量，不编译）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP30b",
+     "expected": 7,
+     "expected_intent": "表达式属性收到**纯数字字符串**时的短路行为原样（一元加号能转成数，就当常量）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP30c",
+     "expected": 14,
+     "expected_intent": "表达式属性收到**算式**时的编译求值结果原样（先乘后加）⇒ 三条一起守住「常量短路」与「编译求值」两条路径，而这两条路径正是 D03 那个词唯一能生效的地方：路径本身不许被动。"
+    }
+   ]
+  },
+  {
+   "id": "P31",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-expr-semantics-falsy",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP31a=new ExpressionProperty(0).expr+'|'+new ExpressionProperty(null).expr+'|'+new ExpressionProperty(undefined).expr;window.__rbP31b=new ExpressionProperty(new ExpressionProperty('3*3')).value;window.__rbP31c=new ExpressionProperty('1+1').toJSON();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP31a",
+     "expected": "0|0|0",
+     "expected_intent": "假值入参的兜底行为原样：0／null／undefined 三种入参都被兜成字符串 \"0\"（构造器第一行 if(!v) v=0）⇒ 守住兜底那一行没被动。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP31b",
+     "expected": 9,
+     "expected_intent": "以另一个表达式属性为入参时的**拷贝构造**行为原样（取它的表达式字面量再编译，3*3=9）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP31c",
+     "expected": "1+1",
+     "expected_intent": "导出形态仍是表达式字面量本身（不是求值结果）⇒ 存盘往返协议原样。"
+    }
+   ]
+  },
+  {
+   "id": "P32",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-expr-setter",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __e1=new ExpressionProperty(3);__e1.expr='';window.__rbP32a=__e1.expr+'='+__e1.value;var __e2=new ExpressionProperty(3);__e2.expr='4*4';window.__rbP32b=__e2.expr+'='+__e2.value;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP32a",
+     "expected": "0=0",
+     "expected_intent": "写空串进表达式时的行为原样（空串被兜成 \"0\"，值也随之为 0）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP32b",
+     "expected": "4*4=16",
+     "expected_intent": "写入新算式之后**重新编译并求值**的行为原样 ⇒ 两条一起守住 setter 的重编译语义：D03 那个词之所以只在求值时出错、而不是在写入时出错，靠的就是这条语义没变。"
+    }
+   ]
+  },
+  {
+   "id": "P33",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-frameprops-expression-routing",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var __sv={m:frameProps.maxval,n:frameProps.minval,t:frameProps.time,d:frameProps.duration,c:frameProps.csize};frameProps.maxval=42;frameProps.minval=-7;frameProps.time=125;frameProps.duration=200;frameProps.csize=900;window.__rbP33a=new ExpressionProperty('maxval').value;window.__rbP33b=new ExpressionProperty('minval').value;window.__rbP33c=new ExpressionProperty('maxval+minval').value;window.__rbP33d=new ExpressionProperty('time/duration').value;window.__rbP33e=new ExpressionProperty('csize*2').value;frameProps.maxval=__sv.m;frameProps.minval=__sv.n;frameProps.time=__sv.t;frameProps.duration=__sv.d;frameProps.csize=__sv.c;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP33a",
+     "expected": 42,
+     "expected_intent": "把帧数据临时钉到已知值之后，用户表达式里那个「本帧最大值」词取到的就是钉进去的值（park 内同步完成「钉值 → 求值 → 还原」，所以帧循环插不进来）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP33b",
+     "expected": -7,
+     "expected_intent": "同一次钉值下「本帧最小值」词的读数（负值，证明没有取绝对值或做别的加工）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP33c",
+     "expected": 35,
+     "expected_intent": "同一次钉值下两个词**参与运算**的读数（42 + (-7) = 35）⇒ 位置约定在这一段上是对的。这一段紧挨着 D03 改的那一位（第 18 位），所以它是「名字 ↔ 实参位置」这条约定在**邻位**上的行为守卫。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP33d",
+     "expected": 0.625,
+     "expected_intent": "时间进度词与时长词的商（125/200 = 0.625）⇒ 第 20、21 位实参也在正确的位置上。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP33e",
+     "expected": 1800,
+     "expected_intent": "画布尺寸词的算术读数（900 × 2 = 1800）⇒ 表尾那一段的位置约定同样正确。五条合起来把词表**除被改那一位之外**的整条位置链都验了一遍。"
+    }
+   ]
+  },
+  {
+   "id": "P34",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-expression-builtin-functions",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbP34a=new ExpressionProperty('max(3,9)').value;window.__rbP34b=new ExpressionProperty('pow(2,10)').value;window.__rbP34c=new ExpressionProperty('floor(3.7)*100+ceil(3.2)').value;return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP34a",
+     "expected": 9,
+     "expected_intent": "表达式里可用的「取大」函数仍然可用（词表第 6 位接的是 Math.max）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP34b",
+     "expected": 1024,
+     "expected_intent": "「幂」函数仍然可用（词表第 17 位接的是 Math.pow）⇒ 这一位紧挨着被改的第 18 位，是邻位函数哨兵。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP34c",
+     "expected": 304,
+     "expected_intent": "「向下取整」与「向上取整」两个函数仍然可用，并且能与算术混用（3 × 100 + 4 = 304）⇒ 三条一起守住词表里那一批数学函数的接线没有整体错位。"
+    }
+   ]
+  },
+  {
+   "id": "P35",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-forced-preset-structure",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){loadPreset('Default');window.__rbP35a=document.getElementById('settingsSectionTabs').children.length;window.__rbP35b=settings.sections.length;window.__rbP35c=document.getElementById('sectionSettings').children.length;window.__rbP35d=document.getElementById('globalSettings').children.length;window.__rbP35e=document.getElementById('advancedSettings').children.length;window.__rbP35f=settings.backgroundColor;window.__rbP35g=String(activeSection);return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35a",
+     "expected": 2,
+     "expected_intent": "强制切到出厂 Default 预置之后，图层标签栏里的条目数（1 个图层标签 + 1 个「新增」按钮）⇒ 这一组读数之所以可用，是因为 park 里先强制了已知名：开机那次 loadPreset 是**随机**挑预置的（实测 6/6 个天真读数会漂），所以任何直接读活动设置的断言都必须先钉住预置。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35b",
+     "expected": 1,
+     "expected_intent": "强制切到出厂 Default 预置之后，活动设置里的图层数就是 1 ⇒ 这一条把「Default 只有一个图层」钉成基线：后面那几条控件条数读数全都建立在这**一个**图层上，图层数一变它们就全部失去意义。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35c",
+     "expected": 31,
+     "expected_intent": "该图层（频谱类）在面板上展开成 31 条控件 ⇒ D05 的读数基线：干净态切到文字类之后是 17 条，缺陷态停在 31 条，而「31」这个数本身由这一条守着不许动。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35d",
+     "expected": 6,
+     "expected_intent": "全局设置那一张列表展开成 6 条控件 ⇒ D05 的第二个基线（切类型之后它仍是 6，两个态同值）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35e",
+     "expected": 6,
+     "expected_intent": "高级设置那一张列表展开成 6 条控件 ⇒ 与全局设置那一条同值同性质：D05 把刷新域改反之后这两域仍然会重建，所以它们两个态同值，只有图层控件那一张会停在旧数字 ⇒ 三条一起把「症状只落在图层面板」这个归因钉死。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35f",
+     "expected": "#3b3b3b",
+     "expected_intent": "Default 预置下的画布背景色仍是出厂那一个 ⇒ 与被废弃的旧缺陷集划清界限：这一档现在是自由领地，整串守起来。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP35g",
+     "expected": "[object Object]",
+     "expected_intent": "强制预置之后当前活动图层确实指向一个对象（不是 null）⇒ 标签栏重建时把活动图层重新接上了，这一条守住 D05 检查点所依赖的「刷新之后活动图层仍然有效」这个前提。"
+    }
+   ]
+  },
+  {
+   "id": "P36",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-forced-preset-control-names",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){loadPreset('Default');var __l=document.getElementById('sectionSettings').getElementsByClassName('ctrlName'),__a=[],__i;for(__i=0;__i<__l.length;__i+=1){__a.push(__l[__i].textContent);}window.__rbP36a=__a.join(',');window.__rbP36b=(function(){var t=document.getElementById('settingsSectionTabs').getElementsByClassName('activated')[0];return t?t.title:'NONE';})();return 1;})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP36a",
+     "expected": "visible,opacity,posX,posY,rotation,scaleX,scaleY,color,glowness,type,dataCount,lineWidth,lineCap,startX,endX,yPos,exponent,height,mode,polar,clampShapeToZero,closeShape,drawLast,quadratic,minDecibels,maxDecibels,minHeight,freqStart,freqEnd,smartFill",
+     "expected_intent": "Default 预置下频谱类图层的 **31 个控件名，逐个、按序**。这是 D05 的完整基线串：缺陷态切到文字类之后列表仍是这一串，干净态则换成 16 个文字类名字 ⇒ 把基线钉到逐字级别，任何靠增删控件、改控件名来凑数的写法都过不了。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbP36b",
+     "expected": "A section",
+     "expected_intent": "标签栏上被激活那一个标签的标题仍是出厂的默认图层名 ⇒ 与 P27 的模型侧默认名互为印证：界面侧与模型侧读的是同一个名字。"
+    }
+   ]
+  },
+  {
+   "id": "P37",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-1-guard-a",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=document.getElementById('firefoxIsBetter');return n.className+'|'+document.querySelector('#firefoxIsBetter h5').textContent;})()",
+     "expected": "warningMessage hidable|Warning",
+     "expected_intent": "【诱饵 1 守卫 a】页面顶部那条浏览器提示横幅的**出厂类名与标题**原样。它是上游树自带的告知性文案，不是缺陷：类名里同时带着「可隐藏」族的那个类，所以它也被 D08 那条选择器管着——但 D08 的读数只驱动设置面板，横幅自身在两个态里都没人给它加隐藏类。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var t=document.querySelector('#firefoxIsBetter p').textContent;return (t.indexOf('Firefox')>=0?1:0)+'|'+(t.indexOf('drag and drop')>=0?1:0);})()",
+     "expected": "1|1",
+     "expected_intent": "【诱饵 1 守卫 b】横幅正文里那两处出厂措辞（浏览器名与「拖放」用法提示）都还在 ⇒ 与上一条并集覆盖 2 个不同 P2P id，钉住这段文案没有被改写、没有被删、也没有被换成别的提示。"
+    }
+   ]
+  },
+  {
+   "id": "P38",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-1-guard-b",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('firefoxIsBetter').getElementsByClassName('close').length",
+     "expected": 1,
+     "expected_intent": "【诱饵 1 守卫 c】横幅右上角那个自带的关闭控件仍在位（1 个）。它出厂就带一个行内点击把自己藏掉，属于上游给用户的正常交互，不是缺陷面的一部分。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return getComputedStyle(document.getElementById('firefoxIsBetter')).opacity+'|'+document.getElementById('firefoxIsBetter').style.marginRight;})()",
+     "expected": "1|0px",
+     "expected_intent": "【诱饵 1 守卫 d】横幅在开机静止态完全可见（不透明度 1）、且行内样式里没有额外的右边距 ⇒ 与守卫 c 并集覆盖 2 个不同 P2P id：任何靠「把这条横幅也一起藏掉」来让页面看起来更干净的误修，都会在这两条上翻红。"
+    }
+   ]
+  },
+  {
+   "id": "P39",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-2-guard-a",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    },
+    {
+     "action": "js_eval",
+     "expr": "document.getElementById('videoRecord').click();"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=document.getElementById('videoRecord');return n.textContent+'|'+n.className+'|'+(n.classList.contains('disabled')?1:0);})()",
+     "expected": "Record a video (no support)|button disabled|1",
+     "expected_intent": "【诱饵 2 守卫 a】左下角那个「录制视频」按钮的**出厂文案、类名与禁用标记**三样原样。它是上游故意留下的死按钮——括号里那句「no support」就是上游自己的说明，对应的录制调用在 js/index.js:1890 出厂就是被注释掉的，所以点它什么也不会发生，这不是缺陷。"
+    }
+   ]
+  },
+  {
+   "id": "P40",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-2-guard-b",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=document.getElementById('videoRecord');return n.className+'|'+(n.classList.contains('disabled')?1:0)+'|'+(document.getElementById('downloader').hasAttribute('href')?1:0);})()",
+     "expected": "button disabled|1|0",
+     "expected_intent": "【诱饵 2 守卫 b】**真点过那一次之后**，按钮仍然带着禁用类、下载锚点上仍然没有 href ⇒ 这一条是「点了也确实是死的」的行为级实证（setup 里真的派发了一次 click）：任何靠给这个按钮接上一个真录制/真下载来「修好」它的写法都会翻红，因为那不是本枚的缺陷。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return document.getElementById('bottomMenuLeftPart').children.length+'|'+document.querySelector('#bottomMenuLeftPart a.button').textContent;})()",
+     "expected": "2|urwiki",
+     "expected_intent": "【诱饵 2 守卫 c】底部菜单左侧那一格的子节点数（2）与其中那个外链按钮的出厂文案（上游文档站的入口）原样 ⇒ 与守卫 b 并集覆盖 2 个不同 P2P id，钉住这一格的出厂内容没被动过。"
+    }
+   ]
+  },
+  {
+   "id": "P41",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "adversarial-state-isolation",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=localStorage.length+(location.search+location.hash).length;return n;})()",
+     "expected": 1,
+     "expected_intent": "状态隔离哨兵：浏览器存储里只许有出厂那**一个**键，地址栏上不许有任何查询串或片段。本页面开机只写音量这一个键（下面两条钉住它的身份），所以「1」就是干净值 ⇒ 这一条直接针对「加一个全局标志位／往存储里塞一个开关／靠 URL 参数分支」这类伪修法：任何这类残留都会把它翻红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=0,i;for(i=0;i<localStorage.length;i+=1){if(localStorage.key(i)!=='urmusic_volume'){n+=1;}}return n+'|'+String(localStorage.key(0));})()",
+     "expected": "0|urmusic_volume",
+     "expected_intent": "同一个哨兵的**身份读法**：多出来的键数是 0，而第 0 个键名正是出厂那个音量键。与上一条互为印证 ⇒ 靠「把残留写到另一个键名下」绕不过这一条。"
+    }
+   ]
+  },
+  {
+   "id": "P42",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "adversarial-zero-egress",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 1200
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){return [].slice.call(document.scripts).concat([].slice.call(document.querySelectorAll('link[rel=stylesheet]'))).filter(function(e){var u=e.src||e.href;return !!u && u.indexOf(location.origin)!==0;}).length;})()",
+     "expected": 0,
+     "expected_intent": "零出口哨兵 a：文档里所有脚本与样式表引用都必须同源（跨源计数 0）。适配补丁已经把上游那些远端字体、统计信标与广告位逐处收敛成树内的本地惰性替身 ⇒ 这一条实证「离线自足」。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var e=performance.getEntriesByType('resource'),n=0,i;for(i=0;i<e.length;i+=1){if(e[i].name.indexOf(location.origin)!==0){n+=1;}}return n;})()",
+     "expected": 0,
+     "expected_intent": "零出口哨兵 b：本页**实际取过**的全部资源都必须同源（浏览器资源时序里的跨源计数 0）。它比上一条更强——上一条读的是文档里的声明，这一条读的是真实发生的请求 ⇒ 靠「再去外面取一份正确代码回来」这类伪修法必然翻红。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementsByTagName('img').length",
+     "expected": 0,
+     "expected_intent": "页面上没有任何 <img> 节点 ⇒ 与上面两条一起把「不许引入外部内容」这条领地封死（本 app 的画面全在那一张画布上，出厂就没有图片节点）。"
+    }
+   ]
+  }
+ ]
+}

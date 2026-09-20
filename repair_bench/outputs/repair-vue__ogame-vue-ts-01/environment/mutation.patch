@@ -1,0 +1,144 @@
+diff --git a/src/composables/useTheme.ts b/src/composables/useTheme.ts
+--- a/src/composables/useTheme.ts
++++ b/src/composables/useTheme.ts
+@@ -17,7 +17,7 @@ export const useTheme = () => {
+     } else {
+       // 从 gameStore 读取保存的主题（Pinia会自动从localStorage恢复）
+       const savedTheme = gameStore.isDark as Theme
+-      isDark.value = savedTheme === 'dark'
++      isDark.value = savedTheme !== 'dark'
+     }
+     applyTheme()
+   })
+diff --git a/src/logic/buildingLogic.ts b/src/logic/buildingLogic.ts
+--- a/src/logic/buildingLogic.ts
++++ b/src/logic/buildingLogic.ts
+@@ -41,7 +41,7 @@ export const calculateBuildingTime = (
+   const baseTime = config.baseTime * multiplier
+ 
+   // 机器人工厂和纳米工厂的加速：建造时间 / (1 + 机器人工厂等级 + 纳米工厂等级 × 2)
+-  const factorySpeedDivisor = 1 + roboticsFactoryLevel + naniteFactoryLevel * 2
++  const factorySpeedDivisor = 1 + roboticsFactoryLevel * 2 + naniteFactoryLevel * 2
+ 
+   // 指挥官等的百分比加成
+   const speedMultiplier = 1 - buildingSpeedBonus / 100
+diff --git a/src/logic/buildingValidation.ts b/src/logic/buildingValidation.ts
+--- a/src/logic/buildingValidation.ts
++++ b/src/logic/buildingValidation.ts
+@@ -32,7 +32,7 @@ export const validateBuildingUpgrade = (
+   }
+ 
+   // 检查星球/月球限制
+-  if (buildingConfig.planetOnly && planet.isMoon) {
++  if (buildingConfig.planetOnly || planet.isMoon) {
+     return { valid: false, reason: 'errors.planetOnly' }
+   }
+   if (buildingConfig.moonOnly && !planet.isMoon) {
+diff --git a/src/logic/fleetStorageLogic.ts b/src/logic/fleetStorageLogic.ts
+--- a/src/logic/fleetStorageLogic.ts
++++ b/src/logic/fleetStorageLogic.ts
+@@ -18,7 +18,7 @@ export const calculateFleetStorageUsage = (fleet: Fleet): number => {
+   for (const shipType of Object.values(ShipType)) {
+     const shipCount = fleet[shipType] || 0
+     const shipConfig = SHIPS[shipType]
+-    totalUsage += shipCount * shipConfig.storageUsage
++    totalUsage += shipConfig.storageUsage
+   }
+ 
+   return totalUsage
+diff --git a/src/logic/officerLogic.ts b/src/logic/officerLogic.ts
+--- a/src/logic/officerLogic.ts
++++ b/src/logic/officerLogic.ts
+@@ -14,7 +14,7 @@ export const getOfficerCost = (officerType: OfficerType): Resources => {
+  * 检查军官是否激活
+  */
+ export const isOfficerActive = (officer: Officer, now: number): boolean => {
+-  return officer.active && (!officer.expiresAt || officer.expiresAt > now)
++  return officer.active && (!officer.expiresAt || officer.expiresAt < now)
+ }
+ 
+ /**
+diff --git a/src/logic/planetLogic.ts b/src/logic/planetLogic.ts
+--- a/src/logic/planetLogic.ts
++++ b/src/logic/planetLogic.ts
+@@ -319,7 +319,7 @@ export const calculateSolarSatelliteOutput = (maxTemperature: number): number =>
+  */
+ export const calculateDeuteriumTemperatureBonus = (maxTemperature: number): number => {
+   // 返回乘数，例如：-40°C时返回1.52，+100°C时返回0.96
+-  return 1.36 - 0.004 * maxTemperature
++  return 1.36 + 0.004 * maxTemperature
+ }
+ 
+ /**
+diff --git a/src/logic/pointsLogic.ts b/src/logic/pointsLogic.ts
+--- a/src/logic/pointsLogic.ts
++++ b/src/logic/pointsLogic.ts
+@@ -9,7 +9,7 @@ import * as researchLogic from './researchLogic'
+  * 根据游戏规则：不包括暗物质和能量
+  */
+ export const calculateResourceCost = (resources: Resources): number => {
+-  return resources.metal + resources.crystal + resources.deuterium
++  return resources.metal + resources.crystal
+ }
+ 
+ /**
+diff --git a/src/logic/publicLogic.ts b/src/logic/publicLogic.ts
+--- a/src/logic/publicLogic.ts
++++ b/src/logic/publicLogic.ts
+@@ -183,7 +183,7 @@ export const calculateBuildingTotalCost = (buildingType: BuildingType, level: nu
+   const { baseCost, costMultiplier } = config
+ 
+   // 累加从等级1到目标等级的所有成本
+-  for (let i = 1; i <= level; i++) {
++  for (let i = 1; i < level; i++) {
+     const levelCost = {
+       metal: Math.floor(baseCost.metal * Math.pow(costMultiplier, i - 1)),
+       crystal: Math.floor(baseCost.crystal * Math.pow(costMultiplier, i - 1)),
+diff --git a/src/logic/researchLogic.ts b/src/logic/researchLogic.ts
+--- a/src/logic/researchLogic.ts
++++ b/src/logic/researchLogic.ts
+@@ -111,7 +111,7 @@ export const calculateTechnologyTime = (
+   const energyBonus = 1 + energyTechLevel * 0.05
+ 
+   // 简化公式：时间(秒) = 成本系数 / (实验室加成 × 能源加成 × 游戏速度)
+-  const timeInSeconds = elementCost / ((1 + labLevel) * energyBonus * gameSpeed)
++  const timeInSeconds = elementCost / (labLevel * energyBonus * gameSpeed)
+ 
+   // 军官等的百分比加成
+   const speedMultiplier = 1 - researchSpeedBonus / 100
+diff --git a/src/logic/researchValidation.ts b/src/logic/researchValidation.ts
+--- a/src/logic/researchValidation.ts
++++ b/src/logic/researchValidation.ts
+@@ -22,7 +22,7 @@ export const validateTechnologyResearch = (
+   const cost = researchLogic.calculateTechnologyCost(techType, targetLevel)
+ 
+   // 检查队列中是否已存在该科技的研究任务
+-  const existingQueueItem = researchQueue.find(item => item.type === 'technology' && item.itemType === techType)
++  const existingQueueItem = researchQueue.find(item => item.type === 'technology' || item.itemType === techType)
+   if (existingQueueItem) {
+     return { valid: false, reason: 'errors.technologyAlreadyInQueue' }
+   }
+diff --git a/src/logic/resourceLogic.ts b/src/logic/resourceLogic.ts
+--- a/src/logic/resourceLogic.ts
++++ b/src/logic/resourceLogic.ts
+@@ -155,7 +155,7 @@ export const calculateResourceProduction = (
+   // 检查能量平衡是否充足
+   // 如果能量产出 >= 能量消耗，矿场正常生产
+   // 这样即使浏览器关闭后再打开，只要能量平衡是正的，就能正常生产
+-  const hasPositiveEnergyBalance = energyProduction >= energyConsumption
++  const hasPositiveEnergyBalance = energyProduction >= energyConsumption * 1.5
+   const productionEfficiency = hasPositiveEnergyBalance ? 1 : 0
+ 
+   // 计算矿脉储量效率（当储量接近耗尽时产量下降）
+diff --git a/src/logic/waitingQueueLogic.ts b/src/logic/waitingQueueLogic.ts
+--- a/src/logic/waitingQueueLogic.ts
++++ b/src/logic/waitingQueueLogic.ts
+@@ -185,7 +185,7 @@ export const addToBuildWaitingQueue = (planet: Planet, item: WaitingQueueItem):
+   }
+   planet.waitingBuildQueue.push(item)
+   // 按优先级排序（数字越小越靠前）
+-  planet.waitingBuildQueue.sort((a, b) => a.priority - b.priority)
++  planet.waitingBuildQueue.sort((a, b) => b.priority - a.priority)
+ }
+ 
+ /**

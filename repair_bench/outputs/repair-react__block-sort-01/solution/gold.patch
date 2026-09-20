@@ -1,0 +1,146 @@
+diff --git a/src/game/themes/index.ts b/src/game/themes/index.ts
+--- a/src/game/themes/index.ts
++++ b/src/game/themes/index.ts
+@@ -68,8 +68,8 @@ export const getColorMapping = (
+   );
+ 
+   const mapping: Record<BlockTheme, Record<BlockColor, string>> = {
+-    default: colorMapFall,
+-    halloween: colorMap,
++    default: colorMap,
++    halloween: colorMapFall,
+     winter: colorMapWinter,
+     spring: colorMapSpring,
+     summer: colorMapSummer
+diff --git a/src/modules/GameModi/NormalMode.tsx b/src/modules/GameModi/NormalMode.tsx
+--- a/src/modules/GameModi/NormalMode.tsx
++++ b/src/modules/GameModi/NormalMode.tsx
+@@ -101,7 +101,7 @@ export const NormalMode: React.FC<Props> = ({
+           showTutorial={levelNr === 0}
+           seed={levelSeed}
+           levelSettings={settings}
+-          title={`Level ${levelNr}`}
++          title={`Level ${levelNr + 1}`}
+         />
+       </Transition>
+     </>
+diff --git a/src/modules/GameModi/constants.ts b/src/modules/GameModi/constants.ts
+--- a/src/modules/GameModi/constants.ts
++++ b/src/modules/GameModi/constants.ts
+@@ -12,7 +12,7 @@ export const ZEN_MODE_UNLOCK = 30;
+ 
+ export const DIFFICULTY_LEVELS: DifficultyLevel[] = [
+   { name: "Starter", unlocksAtLevel: 30, difficulties: [0, 1, 2] },
+-  { name: "Junior", unlocksAtLevel: 20, difficulties: [3, 4, 5] },
++  { name: "Junior", unlocksAtLevel: 50, difficulties: [3, 4, 5] },
+   { name: "Expert", unlocksAtLevel: 80, difficulties: [6, 7] },
+   { name: "Master", unlocksAtLevel: 200, difficulties: [8, 9] },
+   { name: "Wizard", unlocksAtLevel: 300, difficulties: [10] }
+diff --git a/src/modules/Level/Level.tsx b/src/modules/Level/Level.tsx
+--- a/src/modules/Level/Level.tsx
++++ b/src/modules/Level/Level.tsx
+@@ -199,7 +199,7 @@ export const Level: React.FC<Props> = ({
+           ).map((i) => ({ col: from, row: i }));
+           setRevealed((revealed) => revealed.concat(revealedBlocks));
+         }
+-        const hasMoved = updatedLevelState !== levelState || true;
++        const hasMoved = updatedLevelState !== levelState;
+         if (hasMoved) {
+           setLevelMoves((moves) => moves.concat({ from, to }));
+         }
+diff --git a/src/modules/Level/Tutorial.tsx b/src/modules/Level/Tutorial.tsx
+--- a/src/modules/Level/Tutorial.tsx
++++ b/src/modules/Level/Tutorial.tsx
+@@ -30,7 +30,7 @@ export const Tutorial: React.FC<Props> = ({
+     {levelMoves.length === 0 && selection && (
+       <p>Click on the right column to move the selected blocks there.</p>
+     )}
+-    {levelMoves.length === 1 && selection && (
++    {levelMoves.length === 1 && !selection && (
+       <div>
+         Well done! Now select the other{" "}
+         <div className="inline-block scale-75 text-sm">
+diff --git a/src/modules/LevelTrack/LevelTrack.tsx b/src/modules/LevelTrack/LevelTrack.tsx
+--- a/src/modules/LevelTrack/LevelTrack.tsx
++++ b/src/modules/LevelTrack/LevelTrack.tsx
+@@ -138,7 +138,7 @@ export const LevelTrack: React.FC<Props> = ({
+         <div className="w-22"></div>
+         <PlayButton
+           label={
+-            officialLevelNr < 0
++            officialLevelNr < 9
+               ? `Play level ${officialLevelNr + 1}`
+               : `Level ${officialLevelNr + 1}`
+           }
+diff --git a/src/modules/LevelTrack/levelMessage.ts b/src/modules/LevelTrack/levelMessage.ts
+--- a/src/modules/LevelTrack/levelMessage.ts
++++ b/src/modules/LevelTrack/levelMessage.ts
+@@ -13,7 +13,7 @@ import {
+ 
+ export const getLevelMessage = (levelNr: number): string | undefined => {
+   if (LEVEL_SCALE.includes(levelNr)) {
+-    const difficulty = DIFFICULTIES[getDifficultyLevel(levelNr)];
++    const difficulty = DIFFICULTIES[getDifficultyLevel(levelNr) - 1];
+     const message = `${timesMap(difficulty.stars, () => "⭐️").join("")} ${difficulty.name} ${timesMap(difficulty.stars, () => "⭐️").join("")}`;
+     return message;
+   }
+diff --git a/src/support/fib.ts b/src/support/fib.ts
+--- a/src/support/fib.ts
++++ b/src/support/fib.ts
+@@ -1,7 +1,7 @@
+ export const fib = (start: number, steps: number): number[] => {
+   const result: number[] = [];
+   let value = start;
+-  let prev = start + 1;
++  let prev = start;
+   for (let i = 0; i < steps - 1; i++) {
+     result.push(value);
+     const temp = value;
+diff --git a/src/support/useOfflineStorage.ts b/src/support/useOfflineStorage.ts
+--- a/src/support/useOfflineStorage.ts
++++ b/src/support/useOfflineStorage.ts
+@@ -123,6 +123,8 @@ export const useOfflineStorage = <T>(
+         setLocalState(nextValue);
+       } else {
+         setLocalState(value); // Optimistic
++        await store.setItem<T>(key, value);
++        setLocalState(value);
+       }
+     },
+     [key]
+diff --git a/src/ui/BlockColumn/BlockColumn.tsx b/src/ui/BlockColumn/BlockColumn.tsx
+--- a/src/ui/BlockColumn/BlockColumn.tsx
++++ b/src/ui/BlockColumn/BlockColumn.tsx
+@@ -210,7 +210,7 @@ export const BlockColumn: React.FC<Props> = ({
+           {column.blocks.map((_b, p, l) => {
+             const index = l.length - 1 - p;
+             const block = l[index];
+-            const isSelected = index <= amountSelected;
++            const isSelected = index < amountSelected;
+             const isSuggested = index < amountSuggested;
+             return (
+               <Block
+diff --git a/src/ui/LevelTrack/LevelTrack.tsx b/src/ui/LevelTrack/LevelTrack.tsx
+--- a/src/ui/LevelTrack/LevelTrack.tsx
++++ b/src/ui/LevelTrack/LevelTrack.tsx
+@@ -110,7 +110,7 @@ export const Track: React.FC<Props> = ({
+               <LevelNode
+                 levelNr={i + 1}
+                 className={translates[offset]}
+-                completed={i <= officialLevelNr}
++                completed={i < officialLevelNr}
+                 isCurrent={i === officialLevelNr}
+                 textColor={levelType.textClassName}
+                 borderColor={levelType.borderClassName}
+diff --git a/src/ui/Message/useDelay.ts b/src/ui/Message/useDelay.ts
+--- a/src/ui/Message/useDelay.ts
++++ b/src/ui/Message/useDelay.ts
+@@ -22,7 +22,7 @@ export const useDelay = (
+       }, duration);
+       return () => clearTimeout(timeOut);
+     }
+-  }, []);
++  }, [started]);
+ 
+   return started;
+ };

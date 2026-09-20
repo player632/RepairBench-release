@@ -1,0 +1,65 @@
+<template>
+  <EChart :class="[$style.summaryPanelChart, classes]" :options="options" />
+</template>
+
+<script lang="ts" setup>
+import EChart from '@components/charts/echart/EChart.vue';
+import { LineChart } from 'echarts/charts';
+import { GridComponent } from 'echarts/components';
+import * as echarts from 'echarts/core';
+import { SVGRenderer } from 'echarts/renderers';
+import { computed } from 'vue';
+import type { ClassNames } from '@utils/types.ts';
+import type { LineSeriesOption } from 'echarts/charts';
+import type { GridComponentOption } from 'echarts/components';
+
+const props = defineProps<{
+  class?: ClassNames;
+  color: string;
+  values: number[];
+}>();
+
+echarts.use([GridComponent, LineChart, SVGRenderer]);
+
+type EChartsOption = echarts.ComposeOption<GridComponentOption | LineSeriesOption>;
+
+const classes = computed(() => props.class);
+const options = computed((): EChartsOption => ({
+  animation: false,
+  xAxis: {
+    type: 'category',
+    show: false
+  },
+  yAxis: {
+    type: 'value',
+    show: false,
+    min: Math.min(...props.values)
+  },
+  grid: {
+    top: '5%',
+    left: '5%',
+    bottom: '5%',
+    right: '5%'
+  },
+  series: [
+    {
+      data: props.values,
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      lineStyle: {
+        width: 3,
+        cap: 'round',
+        color: props.color
+      }
+    }
+  ]
+}));
+</script>
+
+<style lang="scss" module>
+.summaryPanelChart {
+  overflow: visible;
+  pointer-events: none;
+}
+</style>

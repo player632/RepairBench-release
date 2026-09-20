@@ -1,0 +1,57 @@
+diff --git a/src/scenes/game.js b/src/scenes/game.js
+index b6a62e0..5e13bdd 100644
+--- a/src/scenes/game.js
++++ b/src/scenes/game.js
+@@ -158,6 +158,15 @@ export default class Game extends BaseScene {
+     const complexTheme = this.sound.add('complexTheme', { loop: true })
+ 
+     const simpleTheme = this.sound.sounds.find(({ key }) => key === 'simpleTheme')
++
++    // Offline harness adaptation: with no audio device or no autoplay grant the
++    // menu theme may already have been released by the time a match starts, and
++    // dereferencing it would abort scene construction. Music is out of
++    // verification scope, so bail out instead of throwing.
++    if (!simpleTheme) {
++      return
++    }
++
+     const currentSeek = simpleTheme.seek
+ 
+     // crossfade the two sounds using tweens
+diff --git a/src/scenes/loading.js b/src/scenes/loading.js
+index c7702e2..a04714d 100644
+--- a/src/scenes/loading.js
++++ b/src/scenes/loading.js
+@@ -71,8 +71,6 @@ export default class Loading extends BaseScene {
+   }
+ 
+   preload() {
+-    this.load.script('webfont', 'https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js')
+-
+     this.load.audio('simpleTheme', 'assets/audio/simpleTheme.ogg')
+     this.load.audio('complexTheme', 'assets/audio/complexTheme.ogg')
+ 
+@@ -91,16 +89,13 @@ export default class Loading extends BaseScene {
+     const simpleTheme = this.sound.add('simpleTheme', { loop: true })
+     simpleTheme.play()
+ 
+-    WebFont.load({
+-      google: {
+-        families: ['Cabin', 'Press Start 2P']
+-      },
+-      active: () => {
+-        // Finish "loading" here instead of load.on('complete')
+-        // because this takes a little bit longer.
+-        this.loading = false
+-      },
+-    })
++    // Offline harness adaptation: upstream pulled the WebFont loader from
++    // ajax.googleapis.com and then fetched the 'Cabin' / 'Press Start 2P'
++    // families from Google Fonts, unblocking the scene only from the loader's
++    // `active` callback. Neither request can succeed with no network, so the
++    // loader is removed and the scene unblocks here, rendering with the
++    // browser's local font fallback. Behaviour under test is unchanged.
++    this.loading = false
+   }
+ 
+   update() {

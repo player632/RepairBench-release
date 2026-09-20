@@ -1,0 +1,533 @@
+// rb-probe.js - repair-bench verifier bridge for repair-vanilla__mario-maker-01
+// (instrumentation only: OBSERVES the seed's own objects and drives them through the
+//  seed's own input path. It changes no game rule, no constant, no branch, no asset.)
+//
+// What it does, and why each part is non-behavioral:
+//  1. wraps the seed's global constructors (Mario/Score/Enemy/Bullet/PowerUp/Element/
+//     MarioGame/Editor/Storage/CreatedLevels) so that every instance the seed creates
+//     is *remembered*. The wrapper calls the original with the original arguments and
+//     returns nothing (so `new X()` still yields the wrapper's `this`, which the
+//     original populated) - no field is added to, removed from, or altered on any
+//     instance, and no prototype is replaced.
+//  2. wraps window.requestAnimationFrame to COUNT frames (the seed's callback is still
+//     invoked with the same timestamp and the same id is returned).
+//  3. wraps HTMLMediaElement.prototype.play to RECORD which sound file was asked to
+//     play, then calls through. The seed's GameSound.play() is untouched.
+//  4. mirrors keydown/keyup keyCodes seen on document.body (capture listener, added
+//     after the seed's own listeners, never preventDefault/stopPropagation) so a
+//     checkpoint can prove its own input actually arrived.
+//  5. adds data-testid / data-cell attributes to the DOM nodes the seed creates, so
+//     the verifier's locator language can address them. Attribute-only: no class, no
+//     style, no text, no node order is touched (the seed's CSS selects by class).
+//  6. exposes window.__MM__ (live getters - every call re-reads the seed's objects; no
+//     cached snapshot is ever returned) and window.__MM_CMD__ (setup-driven actions that
+//     dispatch real DOM events on document.body / real .click() on the seed's own
+//     buttons, i.e. the same code path a human user takes).
+(function () {
+  'use strict';
+  if (window.__MM_INSTALLED__) { return; }
+  window.__MM_INSTALLED__ = true;
+
+  var TRACKED = ['Mario', 'Score', 'Enemy', 'Bullet', 'PowerUp', 'Element',
+    'MarioGame', 'Editor', 'Storage', 'CreatedLevels', 'GameSound'];
+  var instances = {};
+  TRACKED.forEach(function (n) { instances[n] = []; });
+  var createdFrame = new WeakMap();
+  // Birth-value snapshots live in the probe's OWN WeakMaps: nothing is ever written onto
+  // a seed object. Needed because the seed flips enemy/bullet velX on the first wall hit,
+  // so only the constructor-time value proves the shipped direction polarity.
+  var birth = new WeakMap();
+  var BIRTH_FIELDS = ['velX', 'velY', 'x', 'y', 'type', 'width', 'height', 'speed', 'frame'];
+
+  TRACKED.forEach(function (name) {
+    var Orig = window[name];
+    if (typeof Orig !== 'function') { return; }
+    function Wrapped() {
+      var r = Orig.apply(this, arguments);
+      instances[name].push(this);
+      try {
+        createdFrame.set(this, frames);
+        var snap = {};
+        for (var bi = 0; bi < BIRTH_FIELDS.length; bi++) { snap[BIRTH_FIELDS[bi]] = this[BIRTH_FIELDS[bi]]; }
+        birth.set(this, snap);
+      } catch (e) { /* non-object this: ignore */ }
+      return (r && typeof r === 'object') ? r : undefined;
+    }
+    Wrapped.prototype = Orig.prototype;
+    Wrapped.__rb_original = Orig;
+    try { Object.defineProperty(Wrapped, 'name', { value: name }); } catch (e) { /* ignore */ }
+    window[name] = Wrapped;
+  });
+
+  // ---- frame counter (rAF passthrough) ----
+  var frames = 0;
+  var waiters = [];
+  var origRaf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = function (cb) {
+    return origRaf(function (ts) {
+      frames++;
+      var due = waiters; waiters = [];
+      cb(ts);
+      for (var i = 0; i < due.length; i++) { due[i](); }
+    });
+  };
+  function nextFrame() {
+    // Dual fallback (rAF OR 50 ms timer, whichever fires first). The seed stops its own
+    // rAF chain in MarioGame.pauseGame() -> window.cancelAnimationFrame(animationID)
+    // (reached from MarioMaker.backToMenu / gameOver / mario death), and it never starts
+    // one before start-btn is clicked; a rAF-only waiter would hang the checkpoint until
+    // the runner timeout in both cases. Measured: smoke1 leg hung 6m40s at 0% renderer CPU.
+    return new Promise(function (res) {
+      var done = false;
+      var timer = null;
+      function finish() {
+        if (done) { return; }
+        done = true;
+        if (timer) { clearTimeout(timer); }
+        var i = waiters.indexOf(finish);
+        if (i >= 0) { waiters.splice(i, 1); }
+        res(frames);
+      }
+      waiters.push(finish);
+      timer = setTimeout(finish, 50);
+    });
+  }
+
+  // ---- sound recorder (play() passthrough) ----
+  var sounds = [];
+  var origPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () {
+    var src = '';
+    try { src = String(this.currentSrc || this.src || ''); } catch (e) { src = ''; }
+    sounds.push({ name: src.split('/').pop().split('?')[0], frame: frames });
+    var p = origPlay.apply(this, arguments);
+    if (p && typeof p.catch === 'function') { p.catch(function () { /* autoplay policy: not a fault */ }); }
+    return p;
+  };
+
+  // ---- input mirror (proves a checkpoint's own input arrived) ----
+  var inputLog = [];
+  ['keydown', 'keyup'].forEach(function (type) {
+    document.body.addEventListener(type, function (e) {
+      inputLog.push({ type: type, keyCode: e.keyCode, frame: frames });
+      if (inputLog.length > 4000) { inputLog.shift(); }
+    }, true);
+  });
+
+  // ---- DOM test identifiers (attribute-only) ----
+  var CLASS_TO_TESTID = {
+    'main-wrapper': 'mm-main', 'game-screen': 'mm-canvas', 'score-wrapper': 'mm-score-bar',
+    'coin-score': 'mm-coin-score', 'total-score': 'mm-total-score', 'life-count': 'mm-life-count',
+    'level-num': 'mm-level-num', 'start-screen': 'mm-start-screen', 'editor-btn': 'mm-editor-btn',
+    'start-btn': 'mm-start-btn', 'created-btn': 'mm-created-btn', 'back-btn': 'mm-back-btn',
+    'btn-wrapper': 'mm-btn-bar', 'editor-screen': 'mm-editor-screen', 'element-wrapper': 'mm-element-bar',
+    'levels-wrapper': 'mm-levels-screen', 'no-maps': 'mm-no-maps', 'delete-all-btn': 'mm-delete-all',
+    'save-map-btn': 'mm-save-map', 'clear-map-btn': 'mm-clear-map', 'grid-small-btn': 'mm-grid-small',
+    'grid-medium-btn': 'mm-grid-medium', 'grid-large-btn': 'mm-grid-large', 'lvl-size': 'mm-lvl-size',
+    'right-arrow': 'mm-scroll-right', 'left-arrow': 'mm-scroll-left', 'loading-percentage': 'mm-loading',
+    'platform': 'mm-swatch-platform', 'coin-box': 'mm-swatch-coin-box', 'power-up-box': 'mm-swatch-power-up-box',
+    'useless-box': 'mm-swatch-useless-box', 'flag': 'mm-swatch-flag', 'flag-pole': 'mm-swatch-flag-pole',
+    'pipe-left': 'mm-swatch-pipe-left', 'pipe-right': 'mm-swatch-pipe-right',
+    'pipe-top-left': 'mm-swatch-pipe-top-left', 'pipe-top-right': 'mm-swatch-pipe-top-right',
+    'goomba': 'mm-swatch-goomba', 'level-btn': 'mm-level-btn'
+  };
+  function tag(root) {
+    var nodes = [root];
+    if (root.querySelectorAll) {
+      var kids = root.querySelectorAll('td, div, canvas, button, table');
+      for (var i = 0; i < kids.length; i++) { nodes.push(kids[i]); }
+    }
+    for (var n = 0; n < nodes.length; n++) {
+      var el = nodes[n];
+      if (!el || el.nodeType !== 1) { continue; }
+      if (el.tagName === 'TD') {
+        // editor grid cell: identify by POSITION (row,col), never by class - the seed
+        // overwrites className when a tile is painted, position is stable.
+        var tr = el.parentNode;
+        if (tr && tr.parentNode && tr.parentNode.tagName === 'TABLE' &&
+          tr.parentNode.parentNode && /editor-screen/.test(tr.parentNode.parentNode.className || '')) {
+          var rows = tr.parentNode.getElementsByTagName('tr');
+          var r = -1;
+          for (var k = 0; k < rows.length; k++) { if (rows[k] === tr) { r = k; break; } }
+          var c = -1;
+          var tds = tr.getElementsByTagName('td');
+          for (var q = 0; q < tds.length; q++) { if (tds[q] === el) { c = q; break; } }
+          if (r >= 0 && c >= 0) {
+            if (!el.getAttribute('data-testid')) { el.setAttribute('data-testid', 'mm-cell'); }
+            el.setAttribute('data-cell', r + ',' + c);
+          }
+        }
+        continue;
+      }
+      var cn = (typeof el.className === 'string') ? el.className.trim() : '';
+      if (!cn) { continue; }
+      var tid = CLASS_TO_TESTID[cn];
+      if (tid && !el.getAttribute('data-testid')) { el.setAttribute('data-testid', tid); }
+    }
+  }
+  function tagAll() { if (document.body) { tag(document.body); } }
+  if (document.body) {
+    tagAll();
+    new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var m = muts[i];
+        if (m.type === 'childList') {
+          for (var j = 0; j < m.addedNodes.length; j++) { tag(m.addedNodes[j]); }
+        } else if (m.type === 'attributes' && m.target && m.target.nodeType === 1) {
+          tag(m.target);
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  } else {
+    window.addEventListener('DOMContentLoaded', tagAll);
+  }
+
+  // ---- helpers ----
+  function last(name) { var a = instances[name]; return a.length ? a[a.length - 1] : null; }
+  // A fresh Mario instance is the seed's own marker for "new life / new level"
+  // (MarioGame.init does `if (!mario) mario = new Mario()` after clearInstances()),
+  // so the current generation of enemies/bullets/powerups is "everything the seed built
+  // at or after that frame". Reading older generations would mix lives together.
+  function generationCut() {
+    var m = last('Mario');
+    return m ? (createdFrame.get(m) || 0) : 0;
+  }
+  function currentGen(name) {
+    var cut = generationCut();
+    return instances[name].filter(function (o) { return (createdFrame.get(o) || 0) >= cut; });
+  }
+  function withBirth(o, keys) {
+    var out = pick(o, keys);
+    var b = birth.get(o);
+    if (b) { out.atSpawn = b; }
+    return out;
+  }
+  function pick(o, keys) {
+    var out = {};
+    for (var i = 0; i < keys.length; i++) { out[keys[i]] = (o && o[keys[i]] !== undefined) ? o[keys[i]] : null; }
+    return out;
+  }
+  function text(sel) { var el = document.querySelector(sel); return el ? (el.textContent || '').trim() : null; }
+  function disp(sel) {
+    var el = document.querySelector(sel);
+    if (!el) { return null; }
+    var s = window.getComputedStyle(el);
+    return { display: s.display, visible: s.display !== 'none' && s.visibility !== 'hidden' };
+  }
+  function canvas() { return document.getElementsByClassName('game-screen')[0] || null; }
+  function ctx2d() { var c = canvas(); return c ? c.getContext('2d') : null; }
+
+  // ---- public read surface (LIVE getters, never a cached snapshot) ----
+  window.__MM__ = {
+    bridge: 'rb-probe/mario-maker/1.4',
+    frame: function () { return frames; },
+    frames: function (n) {
+      var left = n;
+      return new Promise(function (res) {
+        (function step() { if (left-- <= 0) { res(frames); } else { nextFrame().then(step); } })();
+      });
+    },
+    waitFor: function (pred, timeoutMs) {
+      // Polled on the seed's own animation frames AND on a 50 ms timer: when the seed
+      // pauses itself (window.cancelAnimationFrame on death / stage clear) the rAF chain
+      // stops, and a rAF-only poll would hang the checkpoint until the runner timeout.
+      var t0 = Date.now();
+      var limit = timeoutMs || 12000;
+      return new Promise(function (res) {
+        var settled = false;
+        var timer = null;
+        function finish(ok, v) {
+          if (settled) { return; }
+          settled = true;
+          if (timer) { clearInterval(timer); }
+          res({ ok: ok, value: (v === undefined ? null : v), frame: frames, ms: Date.now() - t0 });
+        }
+        function probeOnce() {
+          var v = null;
+          try { v = pred(); } catch (e) { v = null; }
+          if (v) { finish(true, v); return true; }
+          if (Date.now() - t0 > limit) { finish(false, null); return true; }
+          return false;
+        }
+        timer = setInterval(probeOnce, 50);
+        (function loop() { if (!settled && !probeOnce()) { nextFrame().then(loop); } })();
+      });
+    },
+    instances: function (name) { return (instances[name] || []).length; },
+    mario: function () {
+      var m = last('Mario');
+      return m ? withBirth(m, ['type', 'x', 'y', 'width', 'height', 'speed', 'velX', 'velY', 'jumping', 'grounded', 'invulnerable', 'frame', 'sX', 'sY']) : null;
+    },
+    score: function () {
+      var s = last('Score');
+      return s ? { coinScore: s.coinScore, totalScore: s.totalScore, lifeCount: s.lifeCount } : null;
+    },
+    generation: function () { return instances.Mario.length; },
+    enemies: function () {
+      return currentGen('Enemy').map(function (e) { return withBirth(e, ['x', 'y', 'velX', 'velY', 'type', 'state', 'frame', 'grounded', 'width', 'height']); });
+    },
+    enemySpawnVelX: function () {
+      return currentGen('Enemy').map(function (e) { var b = birth.get(e); return b ? b.velX : null; });
+    },
+    bullets: function () {
+      return currentGen('Bullet').map(function (b) { return withBirth(b, ['x', 'y', 'velX', 'velY', 'type', 'grounded']); });
+    },
+    bulletSpawnVelX: function () {
+      return currentGen('Bullet').map(function (b) { var s = birth.get(b); return s ? s.velX : null; });
+    },
+    powerups: function () {
+      return currentGen('PowerUp').map(function (p) { return pick(p, ['x', 'y', 'velX', 'velY', 'type', 'grounded']); });
+    },
+    sounds: function () { return sounds.slice(); },
+    soundNames: function () { return sounds.map(function (s) { return s.name; }); },
+    input: function () { return inputLog.slice(-40); },
+    camera: function () {
+      var c = ctx2d();
+      if (!c) { return null; }
+      var t = (typeof c.getTransform === 'function') ? c.getTransform() : null;
+      return t ? { tx: t.e, ty: t.f } : null;
+    },
+    canvasSize: function () { var c = canvas(); return c ? { width: c.width, height: c.height } : null; },
+    px: function (x, y) {
+      var c = ctx2d();
+      if (!c) { return null; }
+      var d = c.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+      return [d[0], d[1], d[2], d[3]];
+    },
+    // world coords -> device coords using the live canvas transform
+    pxWorld: function (wx, wy) {
+      var c = ctx2d();
+      if (!c) { return null; }
+      var t = c.getTransform();
+      return window.__MM__.px(wx + t.e, wy + t.f);
+    },
+    dom: function () {
+      var main = document.getElementsByClassName('main-wrapper')[0];
+      var kids = [];
+      if (main) { for (var i = 0; i < main.children.length; i++) { kids.push(main.children[i].className); } }
+      return {
+        coins: text('.coin-score'), total: text('.total-score'), lives: text('.life-count'), level: text('.level-num'),
+        mainChildren: kids, firstMainChild: kids[0] || null,
+        startScreen: disp('.start-screen'), editorScreen: disp('.editor-screen'),
+        levelsScreen: disp('.levels-wrapper'), elementBar: disp('.element-wrapper'),
+        backBtn: disp('.back-btn'), canvas: disp('.game-screen'), loading: text('.loading-percentage')
+      };
+    },
+    editor: function () {
+      var screen = document.getElementsByClassName('editor-screen')[0];
+      if (!screen) { return null; }
+      var table = screen.getElementsByTagName('table')[0];
+      if (!table) { return null; }
+      var trs = table.getElementsByTagName('tr');
+      var rows = [];
+      for (var i = 0; i < trs.length; i++) {
+        var tds = trs[i].getElementsByTagName('td');
+        var line = [];
+        for (var j = 0; j < tds.length; j++) { line.push(tds[j].className); }
+        rows.push(line);
+      }
+      var world = screen.getElementsByClassName('game-screen')[0];
+      var gw = null;
+      for (var k = 0; k < screen.children.length; k++) {
+        if (!/arrow/.test(screen.children[k].className)) { gw = screen.children[k]; }
+      }
+      return {
+        rows: rows.length, cols: rows.length ? rows[0].length : 0, cells: rows,
+        gameWorldMarginLeft: gw ? gw.style.marginLeft : null,
+        gameWorldWidth: gw ? gw.style.width : null,
+        tableWidthPx: table.getBoundingClientRect().width
+      };
+    },
+    storage: function () {
+      var out = { keys: [], values: {} };
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        out.keys.push(k);
+        out.values[k] = localStorage.getItem(k);
+      }
+      return out;
+    },
+    savedLevelParsed: function (name) {
+      var raw = localStorage.getItem(name);
+      if (raw === null) { return { present: false, raw: null, parse: 'ABSENT' }; }
+      try { var v = JSON.parse(raw); return { present: true, raw: raw.slice(0, 64), parse: 'OK', rows: Array.isArray(v) ? v.length : null, isArray: Array.isArray(v) }; }
+      catch (e) { return { present: true, raw: raw.slice(0, 64), parse: 'THROWS:' + String(e.message).slice(0, 40), rows: null, isArray: false }; }
+    }
+  };
+
+  // ---- setup-driven commands: drive the seed through its OWN input path ----
+  function keyEvent(type, keyCode) {
+    var e = new KeyboardEvent(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: function () { return keyCode; } });
+    Object.defineProperty(e, 'which', { get: function () { return keyCode; } });
+    document.body.dispatchEvent(e);
+    return e;
+  }
+  var KEY = { left: 37, up: 38, right: 39, space: 32, shift: 16, ctrl: 17 };
+
+  window.__MM_CMD__ = {
+    key: function (name, down) { keyEvent(down ? 'keydown' : 'keyup', KEY[name] || name); return frames; },
+    tap: function (name, holdFrames) {
+      keyEvent('keydown', KEY[name] || name);
+      return window.__MM__.frames(holdFrames || 3).then(function () { keyEvent('keyup', KEY[name] || name); return frames; });
+    },
+    // hold a direction until mario.x crosses `x` (frame-accurate, machine-speed independent)
+    walkTo: function (x, opts) {
+      var o = opts || {};
+      var dir = o.dir || 'right';
+      var sprint = !!o.sprint;
+      if (sprint) { keyEvent('keydown', KEY.shift); }
+      keyEvent('keydown', KEY[dir]);
+      return window.__MM__.waitFor(function () {
+        var m = window.__MM__.mario();
+        if (!m) { return false; }
+        return dir === 'right' ? (m.x >= x) : (m.x <= x);
+      }, o.timeoutMs || 15000).then(function (r) {
+        keyEvent('keyup', KEY[dir]);
+        if (sprint) { keyEvent('keyup', KEY.shift); }
+        r.reached = r.ok;
+        return r;
+      });
+    },
+    jump: function (holdFrames) { return window.__MM_CMD__.tap('space', holdFrames || 4); },
+    jumpAt: function (x, opts) {
+      return window.__MM_CMD__.walkTo(x, opts).then(function () { return window.__MM_CMD__.jump((opts || {}).holdFrames || 4); });
+    },
+    click: function (sel) {
+      var el = document.querySelector(sel);
+      if (!el) { return 'ABSENT:' + sel; }
+      el.click();
+      return 'CLICKED:' + sel;
+    },
+    startGame: function () { return window.__MM_CMD__.click('.start-btn'); },
+    openEditor: function () { return window.__MM_CMD__.click('.editor-btn'); },
+    openCreatedLevels: function () { return window.__MM_CMD__.click('.created-btn'); },
+    backToMenu: function () { return window.__MM_CMD__.click('.back-btn'); },
+    saveMap: function () { return window.__MM_CMD__.click('.save-map-btn'); },
+    clearMap: function () { return window.__MM_CMD__.click('.clear-map-btn'); },
+    gridBtn: function (which) { return window.__MM_CMD__.click('.grid-' + which + '-btn'); },
+    scrollEditor: function (which) { return window.__MM_CMD__.click('.' + which + '-arrow'); },
+    // select editor cells (row,col) with the seed's own mousedown/mouseover/mouseup path
+    selectCells: function (cells) {
+      var screen = document.getElementsByClassName('editor-screen')[0];
+      if (!screen) { return 'NO_EDITOR_SCREEN'; }
+      var table = screen.getElementsByTagName('table')[0];
+      if (!table) { return 'NO_TABLE'; }
+      var trs = table.getElementsByTagName('tr');
+      function cellAt(rc) {
+        var tr = trs[rc[0]];
+        if (!tr) { return null; }
+        var tds = tr.getElementsByTagName('td');
+        return tds[rc[1]] || null;
+      }
+      var first = cellAt(cells[0]);
+      if (!first) { return 'NO_CELL:' + JSON.stringify(cells[0]); }
+      first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      for (var i = 1; i < cells.length; i++) {
+        var c = cellAt(cells[i]);
+        if (c) { c.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true })); }
+      }
+      var lastc = cellAt(cells[cells.length - 1]) || first;
+      lastc.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      return 'SELECTED:' + cells.length;
+    },
+    paint: function (cells, swatchClass) {
+      var r = window.__MM_CMD__.selectCells(cells);
+      var sw = document.querySelector('.element-wrapper .' + swatchClass);
+      if (!sw) { return r + '|NO_SWATCH:' + swatchClass; }
+      sw.click();
+      return r + '|PAINTED:' + swatchClass;
+    },
+    fireBullet: function (facingLeft, holdFrames, turnFrames) {
+      // ctrl fires; the seed derives the bullet direction from mario.frame, so face left
+      // first when a left-facing shot is wanted (frame 8/9/2 => direction -1). Turning is
+      // NOT instant: MarioGame.js:691/713 flips frame only once tickCounter > maxTick/speed
+      // = 25/3 = 8.33, so >=9 frames of held left are required (12 used for margin).
+      var p = facingLeft ? window.__MM_CMD__.tap('left', turnFrames || 12) : Promise.resolve();
+      return p.then(function () { return window.__MM_CMD__.tap('ctrl', holdFrames || 3); });
+    },
+    // Frame-accurate navigation: hold a direction and jump over whatever stops mario
+    // (walls/pipes) or over an enemy that gets too close. Emits ONLY the seed's own
+    // keydown/keyup events - no rule, constant or branch is added to the game. Returns a
+    // trace so the leg sidecar can prove how the position was reached.
+    traverse: function (x, opts) {
+      var o = opts || {};
+      var dir = o.dir || 'right';
+      var sign = dir === 'right' ? 1 : -1;
+      var stallLimit = o.stallFrames || 6;
+      var budget = o.maxFrames || 1500;
+      var lookahead = o.enemyLookahead === undefined ? 90 : o.enemyLookahead;
+      var jumpHold = o.jumpHold || 6;
+      var autoJump = o.autoJump !== false && !(o.jumps && o.jumps.length);
+      var sprint = !!o.sprint;
+      var settle = o.settle !== false;
+      var script = (o.jumps || []).map(function (j) { return { at: j.at, hold: j.hold || jumpHold, done: false }; });
+      var trace = [];
+      var lastX = null;
+      var stall = 0;
+      var used = 0;
+      var lastJump = -1000;
+      function enemyAhead(m) {
+        var es = window.__MM__.enemies();
+        for (var i = 0; i < es.length; i++) {
+          var dx = (es[i].x - m.x) * sign;
+          if (dx > -8 && dx < lookahead && Math.abs(es[i].y - m.y) < 64) { return { x: es[i].x, dx: dx }; }
+        }
+        return null;
+      }
+      return new Promise(function (resolve) {
+        function finish(ok, reason) {
+          window.__MM_CMD__.key(dir, false);
+          if (sprint) { window.__MM_CMD__.key('shift', false); }
+          var m = window.__MM__.mario();
+          resolve({
+            ok: ok, reason: reason, x: m ? m.x : null, y: m ? m.y : null,
+            type: m ? m.type : null, used: used, jumps: trace.length,
+            frame: window.__MM__.frame(), trace: trace.slice(0, 60)
+          });
+        }
+        function tick() {
+          var m = window.__MM__.mario();
+          if (!m) { return finish(false, 'NO_MARIO'); }
+          used++;
+          if (sign > 0 ? m.x >= x : m.x <= x) {
+            if (settle && script.length && !m.grounded) {
+              return window.__MM__.waitFor(function () { var mm = window.__MM__.mario(); return mm && mm.grounded ? 'grounded' : false; }, 8000).then(function (r) {
+                return finish(true, 'REACHED+SETTLE:' + (r.ok ? 'ok' : 'timeout'));
+              });
+            }
+            return finish(true, 'REACHED');
+          }
+          if (used > budget) { return finish(false, 'BUDGET'); }
+          if (lastX !== null) { if ((m.x - lastX) * sign < 0.5) { stall++; } else { stall = 0; } }
+          lastX = m.x;
+          var why = null;
+          var hold = jumpHold;
+          for (var ji = 0; ji < script.length; ji++) {
+            var sj = script[ji];
+            if (!sj.done && (sign > 0 ? m.x >= sj.at : m.x <= sj.at)) {
+              sj.done = true; why = 'script@' + sj.at; hold = sj.hold; break;
+            }
+          }
+          if (!why && autoJump) {
+            if (stall >= stallLimit && m.grounded) { why = 'stall'; stall = 0; }
+            else if (m.grounded && (used - lastJump) > 25) { var e = enemyAhead(m); if (e) { why = 'enemy@' + Math.round(e.dx); } }
+          }
+          if (why) {
+            lastJump = used;
+            trace.push({ f: used, x: Math.round(m.x), y: Math.round(m.y), why: why, type: m.type });
+            window.__MM_CMD__.key('space', true);
+            return window.__MM__.frames(hold).then(function () {
+              window.__MM_CMD__.key('space', false);
+              return window.__MM__.frames(1).then(tick);
+            });
+          }
+          return window.__MM__.frames(1).then(tick);
+        }
+        if (sprint) { window.__MM_CMD__.key('shift', true); }
+        window.__MM_CMD__.key(dir, true);
+        tick();
+      });
+    }
+  };
+})();

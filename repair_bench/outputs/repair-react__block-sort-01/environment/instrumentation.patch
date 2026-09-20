@@ -1,0 +1,4456 @@
+diff --git a/src/game/actions.spec.ts b/src/game/actions.spec.ts
+deleted file mode 100644
+--- a/src/game/actions.spec.ts
++++ /dev/null
+@@ -1,572 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32 } from "../support/random";
+-
+-import { generateRandomLevel } from "./level-creation/generateRandomLevel";
+-import { generatePlayableLevel } from "./level-creation/tactics";
+-import { getNormalSettings } from "./level-types/normal";
+-import { moveBlocks, replayMoves, selectFromColumn } from "./actions";
+-import {
+-  createBlock,
+-  createBlocks,
+-  createBufferColumn,
+-  createHiddenBlocks,
+-  createLevelState,
+-  createOversizedColumn,
+-  createPlacementColumn
+-} from "./factories";
+-import { hasWon } from "./state";
+-import type { LevelState } from "./types";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(selectFromColumn, () => {
+-  it("selects the top of a column", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 1
+-      },
+-      random
+-    );
+-    const blocks = selectFromColumn(level, 1);
+-    expect(blocks).toEqual([createBlock("blue")]);
+-  });
+-
+-  it("selects the top of a column with multiple of the same color", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 1
+-      },
+-      random
+-    );
+-    const blocks = selectFromColumn(level, 0);
+-    expect(blocks).toEqual([createBlock("white"), createBlock("white")]);
+-  });
+-
+-  it("selects the top of a column (partially hidden)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("black", "black", "green", "black")
+-      ),
+-      createPlacementColumn(4)
+-    ]);
+-    const blocks = selectFromColumn(level, 1);
+-    expect(blocks).toEqual([createBlock("black")]);
+-  });
+-
+-  it("cannot select the top of an empty column", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 1
+-      },
+-      random
+-    );
+-    const blocks = selectFromColumn(level, 2);
+-    expect(blocks).toEqual([]);
+-  });
+-
+-  it("cannot select the top of an locked column", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "white", "white"),
+-        undefined,
+-        true
+-      )
+-    ]);
+-    const blocks = selectFromColumn(level, 0);
+-    expect(blocks).toEqual([]);
+-  });
+-
+-  it("cannot select a lock", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "white", "ghost-lock"),
+-        undefined,
+-        true
+-      )
+-    ]);
+-    const blocks = selectFromColumn(level, 0);
+-    expect(blocks).toEqual([]);
+-  });
+-});
+-
+-describe(moveBlocks, () => {
+-  it("moves a block from one column to another", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-    const expected: LevelState = {
+-      blockTypes: ["black", "green", "white"],
+-      columns: [
+-        createPlacementColumn(4, createBlocks("black", "green")),
+-        createPlacementColumn(
+-          4,
+-          createBlocks("black", "black", "white", "white")
+-        ),
+-        createPlacementColumn(
+-          4,
+-          createBlocks("green", "black", "green", "green")
+-        ),
+-        createPlacementColumn(4, createBlocks("white", "white")),
+-        createPlacementColumn(4)
+-      ],
+-      moves: []
+-    };
+-    expect(result).toEqual(expected);
+-  });
+-
+-  it("will not move if column full", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 0, to: 1 });
+-    expect(result).toEqual(level);
+-  });
+-
+-  it("will not move if column has restriction that is not met", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4, [], "black"),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-    expect(result).toEqual(level);
+-  });
+-
+-  it("will move if column has restriction that is met", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4, [], "white"),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-    const expected: LevelState = {
+-      blockTypes: ["black", "green", "white"],
+-      columns: [
+-        createPlacementColumn(4, createBlocks("black", "green")),
+-        createPlacementColumn(
+-          4,
+-          createBlocks("black", "black", "white", "white")
+-        ),
+-        createPlacementColumn(
+-          4,
+-          createBlocks("green", "black", "green", "green")
+-        ),
+-        createPlacementColumn(4, createBlocks("white", "white"), "white"),
+-        createPlacementColumn(4)
+-      ],
+-      moves: []
+-    };
+-    expect(result).toEqual(expected);
+-  });
+-
+-  it("will reveal hidden items underneath (single)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-    const expected: LevelState = {
+-      blockTypes: ["black", "green", "white"],
+-      columns: [
+-        createPlacementColumn(4, createHiddenBlocks("white", "black", "green")),
+-        createPlacementColumn(
+-          4,
+-          createHiddenBlocks("black", "black", "white", "white")
+-        ),
+-        createPlacementColumn(
+-          4,
+-          createHiddenBlocks("green", "black", "green", "green")
+-        ),
+-        createPlacementColumn(4, [createBlock("white")]),
+-        createPlacementColumn(4)
+-      ],
+-      moves: []
+-    };
+-    expect(result).toEqual(expected);
+-  });
+-
+-  it("will not reveal hidden items underneath if moved to same column", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("black", "black", "white", "white")
+-      ),
+-      createPlacementColumn(4, createHiddenBlocks("green", "black", "green")),
+-      createPlacementColumn(4, createBlocks("green")),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    const result = moveBlocks(level, { from: 2, to: 2 });
+-    const expected: LevelState = {
+-      blockTypes: ["black", "green", "white"],
+-      columns: [
+-        createPlacementColumn(
+-          4,
+-          createHiddenBlocks("white", "white", "black", "green")
+-        ),
+-        createPlacementColumn(
+-          4,
+-          createHiddenBlocks("black", "black", "white", "white")
+-        ),
+-        createPlacementColumn(4, createHiddenBlocks("green", "black", "green")),
+-        createPlacementColumn(4, createBlocks("green")),
+-        createPlacementColumn(4)
+-      ],
+-      moves: []
+-    };
+-    expect(result).toEqual(expected);
+-  });
+-
+-  it("will reveal hidden items underneath (multiple)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "black", "black", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("black", "black", "white", "black")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-
+-    const expected: LevelState = {
+-      blockTypes: ["black", "green", "white"],
+-      columns: [
+-        createPlacementColumn(4, [
+-          createBlock("black"),
+-          createBlock("black"),
+-          createBlock("green", true)
+-        ]),
+-        createPlacementColumn(4, [
+-          createBlock("black"),
+-          createBlock("black", true),
+-          createBlock("white", true),
+-          createBlock("black", true)
+-        ]),
+-        createPlacementColumn(4, [
+-          createBlock("green"),
+-          createBlock("black", true),
+-          createBlock("green", true),
+-          createBlock("green", true)
+-        ]),
+-        createPlacementColumn(4, [createBlock("white")]),
+-        createPlacementColumn(4)
+-      ],
+-      moves: []
+-    };
+-    expect(result).toEqual(expected);
+-  });
+-
+-  it("locks placement column if complete", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "black", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("black", "black")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "black", "green", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("white", "white")),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = moveBlocks(level, { from: 0, to: 3 });
+-    expect(result.columns[3].locked).toBe(true);
+-  });
+-
+-  describe("locks and keys", () => {
+-    it("will not move lock", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-lock", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createPlacementColumn(4)
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(level);
+-    });
+-
+-    it("will not move a key into placement buffer", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-key", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createPlacementColumn(4)
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(level);
+-    });
+-
+-    it("will not move a key into buffer", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-key", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(4)
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(level);
+-    });
+-
+-    it("will move a key into an inventory buffer", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-key", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(4, undefined, [], "inventory")
+-      ]);
+-
+-      const expected = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(4, undefined, createBlocks("ghost-key"), "inventory")
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(expected);
+-    });
+-
+-    it("will stack a key into an inventory buffer", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-key", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(
+-          4,
+-          undefined,
+-          createBlocks("vampire-key"),
+-          "inventory"
+-        )
+-      ]);
+-
+-      const expected = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(
+-          4,
+-          undefined,
+-          createBlocks("ghost-key", "vampire-key"),
+-          "inventory"
+-        )
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(expected);
+-    });
+-
+-    it("will refuse non-keys into an inventory buffer", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, [], "black"),
+-        createBufferColumn(4, undefined, [], "inventory")
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 2 });
+-      expect(result).toEqual(level);
+-    });
+-
+-    it("will move a key on a matching lock", () => {
+-      const level = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("ghost-key", "white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, createBlocks("ghost-lock", "red")),
+-        createBufferColumn(4, undefined, [], "inventory")
+-      ]);
+-
+-      const expected = createLevelState([
+-        createPlacementColumn(
+-          4,
+-          createBlocks("white", "white", "black", "white")
+-        ),
+-        createPlacementColumn(4, createBlocks("red")),
+-        createBufferColumn(4, undefined, [], "inventory")
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 1 });
+-      expect(result.columns).toEqual(expected.columns);
+-    });
+-  });
+-
+-  describe("oversized columns", () => {
+-    it("does not lock a regular column when an oversized column owns that colour", () => {
+-      // Oversized column owns "white" (limitColor = "white").
+-      // Moving the last "white" block into a regular column that is now full of
+-      // white must NOT lock it — the oversized column is the only allowed locker.
+-      const level = createLevelState([
+-        createPlacementColumn(4, createBlocks("white")), // source
+-        createPlacementColumn(4, createBlocks("white", "white", "white")), // dest (3 whites, will be full after move)
+-        createOversizedColumn(8, "white") // oversized owner of "white"
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 1 });
+-      // Column 1 is now full of white but must NOT be locked
+-      expect(result.columns[1].locked).toBe(false);
+-      expect(result.columns[1].blocks.length).toBe(4);
+-    });
+-
+-    it("locks an oversized column when it is completely filled with its colour", () => {
+-      // Oversized column (size 8) is already filled with 7 whites; we move one more white in.
+-      const whiteBlocks = createBlocks(
+-        "white",
+-        "white",
+-        "white",
+-        "white",
+-        "white",
+-        "white",
+-        "white"
+-      );
+-      const oversized = createOversizedColumn(8, "white");
+-      oversized.blocks = whiteBlocks; // 7 whites already there
+-
+-      const level = createLevelState([
+-        createPlacementColumn(4, createBlocks("white")), // source
+-        oversized
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 1 });
+-      expect(result.columns[1].locked).toBe(true);
+-      expect(result.columns[1].blocks.length).toBe(8);
+-    });
+-
+-    it("still locks a regular column when no oversized column owns that colour", () => {
+-      // There is an oversized column but it owns "blue", not "white".
+-      // Moving the last "white" block into a full-white regular column SHOULD lock it.
+-      const level = createLevelState([
+-        createPlacementColumn(4, createBlocks("white")), // source
+-        createPlacementColumn(4, createBlocks("white", "white", "white")), // dest
+-        createOversizedColumn(8, "blue") // oversized owner, but of "blue"
+-      ]);
+-
+-      const result = moveBlocks(level, { from: 0, to: 1 });
+-      expect(result.columns[1].locked).toBe(true);
+-    });
+-  });
+-});
+-
+-describe(replayMoves, () => {
+-  it("executes a list of moves on a levelState", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = await generatePlayableLevel(getNormalSettings(1), { random });
+-    const finishedLevel = replayMoves(level, level.moves);
+-    expect(hasWon(finishedLevel)).toBe(true);
+-  });
+-});
+diff --git a/src/game/level-creation/colorHustle.spec.ts b/src/game/level-creation/colorHustle.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/colorHustle.spec.ts
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32 } from "@/support/random";
+-
+-import {
+-  createBlocks,
+-  createLevelState,
+-  createPlacementColumn
+-} from "../factories";
+-import type { LevelState } from "../types";
+-
+-import { colorHustle } from "./colorHustle";
+-
+-describe(colorHustle, () => {
+-  it("changes the colors of the blocks", () => {
+-    const random = mulberry32(123);
+-    const state: LevelState = createLevelState([
+-      createPlacementColumn(4, createBlocks("red", "green", "blue", "red")),
+-      createPlacementColumn(4, createBlocks("green", "blue", "red", "green"))
+-    ]);
+-    const newState = colorHustle(state, random);
+-
+-    expect(newState.columns[0].blocks).toEqual(
+-      createBlocks("red", "blue", "green", "red")
+-    );
+-    expect(newState.columns[1].blocks).toEqual(
+-      createBlocks("blue", "green", "red", "blue")
+-    );
+-  });
+-});
+diff --git a/src/game/level-creation/generateRandomLevel.spec.ts b/src/game/level-creation/generateRandomLevel.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/generateRandomLevel.spec.ts
++++ /dev/null
+@@ -1,356 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32 } from "@/support/random";
+-
+-import {
+-  createBlocks,
+-  createBufferColumn,
+-  createHiddenBlocks,
+-  createPlacementColumn
+-} from "../factories";
+-
+-import { generateRandomLevel } from "./generateRandomLevel";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(generateRandomLevel, () => {
+-  it("generates a simple level", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "white"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(4, createBlocks("white", "white", "blue", "blue")),
+-      createPlacementColumn(4, createBlocks("blue", "white", "white", "blue")),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-  });
+-
+-  it("can generate a hidden level", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 2,
+-        hideBlockTypes: "all"
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "white"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "blue", "blue")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("blue", "white", "white", "blue")
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-  });
+-
+-  it("can generates buffers", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 0,
+-        buffers: 2,
+-        bufferSizes: 2,
+-        hideBlockTypes: "all"
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "white"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "blue", "blue")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("blue", "white", "white", "blue")
+-      ),
+-      createBufferColumn(2),
+-      createBufferColumn(2)
+-    ]);
+-  });
+-
+-  it("can generates buffers of different sizes", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 0,
+-        buffers: 2,
+-        bufferSizes: 2,
+-        extraBuffers: [{ amount: 1, size: 3, limit: 1 }],
+-        hideBlockTypes: "all"
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "white"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "blue", "blue")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("blue", "white", "white", "blue")
+-      ),
+-      createBufferColumn(2),
+-      createBufferColumn(2),
+-      createBufferColumn(3, "blue")
+-    ]);
+-  });
+-
+-  it("can generates buffers that are locked", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 0,
+-        buffers: 2,
+-        bufferSizes: 2,
+-        bufferPlacementLimits: 2,
+-        hideBlockTypes: "all"
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "red", "white", "yellow"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "yellow", "blue", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("red", "red", "red", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("red", "yellow", "blue", "blue")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("yellow", "blue", "white", "yellow")
+-      ),
+-
+-      createBufferColumn(2, "yellow"),
+-      createBufferColumn(2, "red")
+-    ]);
+-  });
+-
+-  it("both buffers and columns can be locked", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 1,
+-        extraPlacementLimits: 1,
+-        buffers: 1,
+-        bufferSizes: 2,
+-        bufferPlacementLimits: 1,
+-        hideBlockTypes: "all"
+-      },
+-      random
+-    );
+-    expect(level.blockTypes).toEqual(["blue", "red", "white", "yellow"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "yellow", "blue", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("red", "red", "red", "white")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("red", "yellow", "blue", "blue")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("yellow", "blue", "white", "yellow")
+-      ),
+-
+-      createPlacementColumn(4, [], "red"),
+-      createBufferColumn(2, "yellow")
+-    ]);
+-  });
+-
+-  describe("oversized columns", () => {
+-    it("throws when oversizedColumns.length >= amountColors", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 2 oversized cols with 2 total colors → no normal color left
+-      expect(() =>
+-        generateRandomLevel(
+-          {
+-            amountColors: 2,
+-            stackSize: 4,
+-            extraPlacementStacks: 0,
+-            oversizedColumns: [{ multiplier: 2 }, { multiplier: 2 }]
+-          },
+-          random
+-        )
+-      ).toThrow(/must be less than amountColors/);
+-    });
+-
+-    it("throws when combined oversized block total is not divisible by stackSize", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 1 × round(1.5 × 4) = 6, 6 % 4 = 2 ≠ 0 → invalid
+-      expect(() =>
+-        generateRandomLevel(
+-          {
+-            amountColors: 3,
+-            stackSize: 4,
+-            extraPlacementStacks: 0,
+-            oversizedColumns: [{ multiplier: 1.5 }]
+-          },
+-          random
+-        )
+-      ).toThrow(/not divisible by stackSize/);
+-    });
+-
+-    it("does not throw when combined oversized block total is divisible by stackSize", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 2 × round(1.5 × 4) = 12, 12 % 4 = 0 ✓
+-      expect(() =>
+-        generateRandomLevel(
+-          {
+-            amountColors: 4,
+-            stackSize: 4,
+-            extraPlacementStacks: 0,
+-            oversizedColumns: [{ multiplier: 1.5 }, { multiplier: 1.5 }]
+-          },
+-          random
+-        )
+-      ).not.toThrow();
+-    });
+-
+-    it("generates an oversized column that starts empty with the correct size", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 2 normal colors + 1 oversized color (multiplier 2 → size 8), stackSize 4
+-      const level = generateRandomLevel(
+-        {
+-          amountColors: 3,
+-          stackSize: 4,
+-          extraPlacementStacks: 0,
+-          oversizedColumns: [{ multiplier: 2 }]
+-        },
+-        random
+-      );
+-
+-      // The oversized column should be empty, have size 8, and the oversized flag
+-      const oversizedCols = level.columns.filter((c) => c.oversized === true);
+-      expect(oversizedCols).toHaveLength(1);
+-      expect(oversizedCols[0].columnSize).toBe(8);
+-      expect(oversizedCols[0].blocks).toHaveLength(0);
+-    });
+-
+-    it("generates the correct total block count when oversized columns are present", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 2 normal colors (4 blocks each = 8) + 1 oversized color (2×4 = 8) = 16 total
+-      // All 16 blocks are shuffled into: 2 normal cols (4 each) + 2 extra placement cols (4 each)
+-      // The oversized column itself starts empty.
+-      const level = generateRandomLevel(
+-        {
+-          amountColors: 3,
+-          stackSize: 4,
+-          extraPlacementStacks: 0,
+-          oversizedColumns: [{ multiplier: 2 }]
+-        },
+-        random
+-      );
+-
+-      const totalBlocks = level.columns.reduce(
+-        (sum, c) => sum + c.blocks.length,
+-        0
+-      );
+-      // 2 normal cols × 4 + 2 extra cols × 4 = 16 blocks (oversized column starts empty)
+-      expect(totalBlocks).toBe(16);
+-    });
+-
+-    it("adds extra filled placement columns based on total oversized block count", () => {
+-      const random = mulberry32(TEST_SEED);
+-      const level = generateRandomLevel(
+-        {
+-          amountColors: 3,
+-          stackSize: 4,
+-          extraPlacementStacks: 0,
+-          oversizedColumns: [{ multiplier: 2 }]
+-        },
+-        random
+-      );
+-
+-      // layout: [oversized(0), extra1(1), extra2(2), normal1(3), normal2(4)]
+-      expect(level.columns).toHaveLength(5);
+-      // Column 0 is the oversized column (starts empty)
+-      expect(level.columns[0].oversized).toBe(true);
+-      expect(level.columns[0].blocks).toHaveLength(0);
+-      // The 4 non-oversized placement columns are all filled with stackSize blocks
+-      const placementCols = level.columns.filter(
+-        (c) => c.type === "placement" && c.oversized !== true
+-      );
+-      expect(placementCols).toHaveLength(4);
+-      for (const col of placementCols) {
+-        expect(col.blocks).toHaveLength(4);
+-      }
+-    });
+-
+-    it("supports fractional multipliers when combined total is divisible by stackSize", () => {
+-      const random = mulberry32(TEST_SEED);
+-      // 2 oversized cols × multiplier 1.5 × stackSize 4 = 12 total oversized blocks
+-      // 12 / 4 = 3 extra cols; 2 normal colors × 4 = 8 normal blocks
+-      // total blocks placed = 12 + 8 = 20 across 2 normal + 3 extra cols = 5 cols × 4
+-      const level = generateRandomLevel(
+-        {
+-          amountColors: 4, // 2 normal + 2 oversized
+-          stackSize: 4,
+-          extraPlacementStacks: 0,
+-          oversizedColumns: [{ multiplier: 1.5 }, { multiplier: 1.5 }]
+-        },
+-        random
+-      );
+-
+-      // layout: [oversized0(0, size 6), oversized1(1, size 6), extra0(2), extra1(3), extra2(4), normal0(5), normal1(6)]
+-      expect(level.columns).toHaveLength(7);
+-      // Two oversized columns at the front, both size 6 and empty
+-      expect(level.columns[0].oversized).toBe(true);
+-      expect(level.columns[0].columnSize).toBe(6);
+-      expect(level.columns[0].blocks).toHaveLength(0);
+-      expect(level.columns[1].oversized).toBe(true);
+-      expect(level.columns[1].columnSize).toBe(6);
+-      expect(level.columns[1].blocks).toHaveLength(0);
+-      // All non-oversized cols filled
+-      const placementCols = level.columns.filter(
+-        (c) => c.type === "placement" && c.oversized !== true
+-      );
+-      expect(placementCols).toHaveLength(5);
+-      for (const col of placementCols) {
+-        expect(col.blocks).toHaveLength(4);
+-      }
+-      // Total blocks = 5 × 4 = 20 (the 2 oversized cols are empty)
+-      const totalBlocks = level.columns.reduce(
+-        (sum, c) => sum + c.blocks.length,
+-        0
+-      );
+-      expect(totalBlocks).toBe(20);
+-    });
+-  });
+-});
+diff --git a/src/game/level-creation/optimizeMoves.spec.ts b/src/game/level-creation/optimizeMoves.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/optimizeMoves.spec.ts
++++ /dev/null
+@@ -1,60 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { levelSeeds } from "@/data/levelSeeds";
+-import { settingsHash } from "@/support/hash";
+-import { mulberry32 } from "@/support/random";
+-
+-import { moveBlocks } from "../actions";
+-import { getNormal5Settings, getNormalSettings } from "../level-types/normal";
+-import { hasWon } from "../state";
+-import type { LevelSettings } from "../types";
+-
+-import { optimizeMoves } from "./optimizeMoves";
+-import { generatePlayableLevel } from "./tactics";
+-
+-const getSeed = (settings: LevelSettings, offset = 0) => {
+-  const hash = settingsHash(settings);
+-  return levelSeeds[hash][offset][0];
+-};
+-
+-describe(optimizeMoves, () => {
+-  it("returns the same level", async () => {
+-    const settings = getNormalSettings(1);
+-    const seed = getSeed(settings);
+-    const random = mulberry32(seed);
+-    const level = await generatePlayableLevel(settings, { random });
+-    const result = optimizeMoves(level);
+-    expect(result.columns).toBe(level.columns);
+-    expect(result.blockTypes).toBe(level.blockTypes);
+-  });
+-
+-  it("reduces the amount of moves", async () => {
+-    const settings = getNormal5Settings(11);
+-    const seed = getSeed(settings, 4);
+-
+-    const random = mulberry32(seed);
+-
+-    const level = await generatePlayableLevel(settings, { random, seed });
+-    const result = optimizeMoves(level);
+-    expect(level.moves.length).toBeGreaterThan(250);
+-    expect(result.moves.length).toBeLessThan(level.moves.length);
+-    expect(result.moves.length).toBeLessThan(110);
+-  }, 30_000);
+-
+-  it("can still complete the level", async () => {
+-    const settings = getNormal5Settings(11);
+-    const seed = getSeed(settings, 4);
+-
+-    const random = mulberry32(seed);
+-
+-    const level = await generatePlayableLevel(settings, { random, seed });
+-    const result = optimizeMoves(level);
+-
+-    let levelState = result;
+-    for (const move of result.moves) {
+-      levelState = moveBlocks(levelState, move);
+-    }
+-    const won = hasWon(levelState);
+-    expect(won).toBe(true);
+-  }, 30_000);
+-});
+diff --git a/src/game/level-creation/solver-tactics/lockAndKey.spec.ts b/src/game/level-creation/solver-tactics/lockAndKey.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/solver-tactics/lockAndKey.spec.ts
++++ /dev/null
+@@ -1,126 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlocks,
+-  createBufferColumn,
+-  createLevelState,
+-  createPlacementColumn
+-} from "@/game/factories";
+-import { mulberry32 } from "@/support/random";
+-
+-import { generateRandomLevel } from "../generateRandomLevel";
+-
+-import { removeLock, storeKey } from "./lockAndKey";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(storeKey, () => {
+-  it("returns no moves if no inventory", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      random
+-    );
+-    const moves = storeKey(level, random);
+-
+-    expect(moves).toHaveLength(0);
+-  });
+-
+-  it("suggests to store the key", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-key", "pink", "red", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4, createBlocks("aqua")),
+-      createPlacementColumn(4),
+-      createBufferColumn(1, undefined, [], "inventory")
+-    ]);
+-    const moves = storeKey(level, random);
+-
+-    expect(moves).toHaveLength(1);
+-    expect(moves[0].weight).toEqual(15);
+-    expect(moves[0].move.from).toEqual(2);
+-    expect(moves[0].move.to).toEqual(6);
+-  });
+-});
+-
+-describe(removeLock, () => {
+-  it("returns no moves if no lock or key on top", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-key", "pink", "red", "green")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("pink", "aqua", "vampire-lock", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("aqua")),
+-      createPlacementColumn(4),
+-      createBufferColumn(1, undefined, [], "inventory")
+-    ]);
+-    const moves = removeLock(level, random);
+-
+-    expect(moves).toHaveLength(0);
+-  });
+-
+-  it("suggests to remove lock", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-key", "pink", "red", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4, createBlocks("vampire-lock")),
+-      createPlacementColumn(4),
+-      createBufferColumn(1, undefined, [], "inventory")
+-    ]);
+-    const moves = removeLock(level, random);
+-
+-    expect(moves).toHaveLength(1);
+-    expect(moves[0].weight).toEqual(30);
+-    expect(moves[0].move.from).toEqual(2);
+-    expect(moves[0].move.to).toEqual(4);
+-  });
+-
+-  it("suggests to remove lock with different weights", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-key", "pink", "red", "green")
+-      ),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4, createBlocks("vampire-lock")),
+-      createPlacementColumn(4),
+-      createBufferColumn(1, undefined, createBlocks("vampire-key"), "inventory")
+-    ]);
+-    const moves = removeLock(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves[0].weight).toEqual(30);
+-    expect(moves[0].move.from).toEqual(2);
+-    expect(moves[0].move.to).toEqual(4);
+-
+-    expect(moves[1].weight).toEqual(20);
+-    expect(moves[1].move.from).toEqual(6);
+-    expect(moves[1].move.to).toEqual(4);
+-  });
+-});
+diff --git a/src/game/level-creation/solver-tactics/randomMove.spec.ts b/src/game/level-creation/solver-tactics/randomMove.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/solver-tactics/randomMove.spec.ts
++++ /dev/null
+@@ -1,71 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32 } from "@/support/random";
+-
+-import { generateRandomLevel } from "../generateRandomLevel";
+-
+-import { randomMove } from "./randomMove";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(randomMove, () => {
+-  it("returns a random move to perform", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      random
+-    );
+-    const moves = randomMove(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves[0].weight).toEqual(1);
+-    expect(moves[0].move).toEqual({ from: 3, to: 4 });
+-  });
+-
+-  it("will return a different move each time", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      random
+-    );
+-    randomMove(level, random);
+-    const moves = randomMove(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves[0].weight).toEqual(1);
+-    expect(moves[0].move).toEqual({ from: 1, to: 4 });
+-  });
+-
+-  it("will not suggest inventory columns", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = generateRandomLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 1,
+-        extraBuffers: [
+-          {
+-            size: 1,
+-            amount: 1,
+-            bufferType: "inventory",
+-            limit: 0
+-          }
+-        ]
+-      },
+-      random
+-    );
+-    randomMove(level, random);
+-    const moves = randomMove(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves.every((m) => m.move.to === 4)).toBe(true);
+-  });
+-});
+diff --git a/src/game/level-creation/solver-tactics/stackColumns.spec.ts b/src/game/level-creation/solver-tactics/stackColumns.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/solver-tactics/stackColumns.spec.ts
++++ /dev/null
+@@ -1,57 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlocks,
+-  createLevelState,
+-  createPlacementColumn
+-} from "@/game/factories";
+-import { mulberry32 } from "@/support/random";
+-
+-import { stackColumn } from "./stackColumn";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(stackColumn, () => {
+-  it("prefers stacking items on existing columns", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red", "green")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4, createBlocks("aqua")),
+-      createPlacementColumn(4)
+-    ]);
+-    const moves = stackColumn(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves[0].weight).toEqual(35);
+-    expect(moves[0].move.from).toEqual(2);
+-
+-    expect(moves[1].weight).toEqual(44);
+-    expect(moves[1].move.from).toEqual(0);
+-  });
+-
+-  it("prefers stacking items on existing columns (longer stack)", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "yellow", "yellow", "red")
+-      ),
+-      createPlacementColumn(4, createBlocks("aqua", "aqua", "aqua", "purple")),
+-      createPlacementColumn(4, createBlocks("black", "black")),
+-      createPlacementColumn(4, createBlocks("blue", "green", "green")),
+-      createPlacementColumn(4, createBlocks("black", "black", "aqua", "white")),
+-      createPlacementColumn(4, createBlocks("pink", "pink", "pink")),
+-      createPlacementColumn(4, createBlocks("purple", "purple")),
+-      createPlacementColumn(4, createBlocks("white", "white", "white")),
+-      createPlacementColumn(4, createBlocks("red", "red", "red"))
+-    ]);
+-    const moves = stackColumn(level, random);
+-
+-    expect(moves).toHaveLength(1);
+-    expect(moves[0].weight).toEqual(48);
+-    expect(moves[0].move.from).toEqual(4);
+-  });
+-});
+diff --git a/src/game/level-creation/solver-tactics/startColumn.spec.ts b/src/game/level-creation/solver-tactics/startColumn.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/solver-tactics/startColumn.spec.ts
++++ /dev/null
+@@ -1,126 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlocks,
+-  createBufferColumn,
+-  createLevelState,
+-  createPlacementColumn
+-} from "@/game/factories";
+-import { mulberry32 } from "@/support/random";
+-
+-import { startColumn } from "./startColumn";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(startColumn, () => {
+-  it("picks the color where most are off", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "red", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("aqua", "red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("green", "pink", "red", "pink")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4)
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-
+-    expect(moves[0].weight).toEqual(9);
+-    expect(moves[0].move).toEqual({ from: 0, to: 4 });
+-
+-    expect(moves[1].weight).toEqual(9);
+-    expect(moves[1].move).toEqual({ from: 1, to: 4 });
+-  });
+-
+-  it("returns multiple results if choice is equal", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "red", "green", "green")),
+-      createPlacementColumn(4, createBlocks("aqua", "red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "red", "pink")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4)
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(4);
+-
+-    expect(moves[0].weight).toEqual(9);
+-    expect(moves[0].move).toEqual({ from: 0, to: 4 });
+-
+-    expect(moves[1].weight).toEqual(9);
+-    expect(moves[1].move).toEqual({ from: 1, to: 4 });
+-
+-    expect(moves[2].weight).toEqual(9);
+-    expect(moves[2].move).toEqual({ from: 2, to: 4 });
+-
+-    expect(moves[3].weight).toEqual(9);
+-    expect(moves[3].move).toEqual({ from: 3, to: 4 });
+-  });
+-
+-  it("assigns more weight the more colors there are", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "red", "green", "green")),
+-      createPlacementColumn(4, createBlocks("aqua", "red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "red", "pink")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4)
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(3);
+-    expect(moves[0].weight).toEqual(13);
+-    expect(moves[0].move).toEqual({ from: 0, to: 4 });
+-
+-    expect(moves[1].weight).toEqual(13);
+-    expect(moves[1].move).toEqual({ from: 1, to: 4 });
+-
+-    expect(moves[2].weight).toEqual(13);
+-    expect(moves[2].move).toEqual({ from: 2, to: 4 });
+-  });
+-
+-  it("does not return moves when there is no empty column", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("aqua", "red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red", "green")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green"))
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(0);
+-  });
+-
+-  it("does not return moves when there is no empty column (inventory)", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("aqua", "red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red", "green")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createBufferColumn(1, undefined, [], "inventory")
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(0);
+-  });
+-
+-  it("returns stacking moves when there is need to create new column", () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("aqua", "pink", "green", "aqua")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("red", "pink", "red", "green")),
+-      createPlacementColumn(4, createBlocks("pink", "aqua", "green", "green")),
+-      createPlacementColumn(4, createBlocks("aqua")),
+-      createPlacementColumn(4)
+-    ]);
+-    const moves = startColumn(level, random);
+-
+-    expect(moves).toHaveLength(2);
+-    expect(moves[0].name).toEqual("stackColumn");
+-  });
+-});
+diff --git a/src/game/level-creation/solver-tactics/support.spec.ts b/src/game/level-creation/solver-tactics/support.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/solver-tactics/support.spec.ts
++++ /dev/null
+@@ -1,54 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlocks,
+-  createOversizedColumn,
+-  createPlacementColumn
+-} from "@/game/factories";
+-
+-import { isColumnCorrectlySorted } from "./support";
+-
+-describe(isColumnCorrectlySorted, () => {
+-  it("returns false for an empty column", () => {
+-    const col = createPlacementColumn(4, []);
+-    expect(isColumnCorrectlySorted(col)).toBe(false);
+-  });
+-
+-  it("returns true for a fully sorted placement column", () => {
+-    const col = createPlacementColumn(
+-      4,
+-      createBlocks("white", "white", "white", "white")
+-    );
+-    expect(isColumnCorrectlySorted(col)).toBe(true);
+-  });
+-
+-  it("returns false for a column with mixed colors", () => {
+-    const col = createPlacementColumn(
+-      4,
+-      createBlocks("white", "blue", "white", "white")
+-    );
+-    expect(isColumnCorrectlySorted(col)).toBe(false);
+-  });
+-
+-  it("returns false for a partially filled oversized column even when all blocks are the same colour", () => {
+-    // An oversized column with size 8 but only 4 blocks — not done yet
+-    const col = createOversizedColumn(8, "white");
+-    col.blocks = createBlocks("white", "white", "white", "white");
+-    expect(isColumnCorrectlySorted(col)).toBe(false);
+-  });
+-
+-  it("returns true for a fully filled oversized column where all blocks are the same colour", () => {
+-    const col = createOversizedColumn(8, "white");
+-    col.blocks = createBlocks(
+-      "white",
+-      "white",
+-      "white",
+-      "white",
+-      "white",
+-      "white",
+-      "white",
+-      "white"
+-    );
+-    expect(isColumnCorrectlySorted(col)).toBe(true);
+-  });
+-});
+diff --git a/src/game/level-creation/tactics.spec.ts b/src/game/level-creation/tactics.spec.ts
+deleted file mode 100644
+--- a/src/game/level-creation/tactics.spec.ts
++++ /dev/null
+@@ -1,89 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32 } from "@/support/random";
+-
+-import { createBlocks, createPlacementColumn } from "../factories";
+-
+-import { generatePlayableLevel } from "./tactics";
+-
+-const TEST_SEED = 123456789;
+-
+-describe(generatePlayableLevel, () => {
+-  it("generates a simple level", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = await generatePlayableLevel(
+-      {
+-        amountColors: 2,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      { random }
+-    );
+-    expect(level.blockTypes).toEqual(["red", "white"]);
+-    expect(level.columns).toEqual([
+-      createPlacementColumn(4, createBlocks("white", "white", "red", "white")),
+-      createPlacementColumn(4, createBlocks("white", "red", "red", "red")),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-
+-    expect(level.generationInformation?.cost).toBeGreaterThan(812);
+-  });
+-
+-  it("generates a medium level", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = await generatePlayableLevel(
+-      {
+-        amountColors: 5,
+-        stackSize: 4,
+-        extraPlacementStacks: 2
+-      },
+-      { random }
+-    );
+-    expect(level.blockTypes).toHaveLength(5);
+-    expect(level.generationInformation?.cost).toBeGreaterThan(815);
+-  });
+-
+-  it("generates a hard level", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = await generatePlayableLevel(
+-      {
+-        amountColors: 10,
+-        stackSize: 5,
+-        extraPlacementStacks: 2,
+-        extraPlacementLimits: 1
+-      },
+-      { random, attempts: 10 }
+-    );
+-    expect(level.blockTypes).toHaveLength(10);
+-  });
+-
+-  it("generates a complex level (buffers / force)", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    const level = await generatePlayableLevel(
+-      {
+-        amountColors: 4,
+-        stackSize: 16,
+-        extraPlacementStacks: 1,
+-        extraPlacementLimits: 1,
+-        buffers: 3,
+-        bufferSizes: 4
+-      },
+-      { random }
+-    );
+-    expect(level.blockTypes).toHaveLength(4);
+-  }, 10_000);
+-
+-  it("throws an error if it can't generate a playable level", async () => {
+-    const random = mulberry32(TEST_SEED);
+-    await expect(() =>
+-      generatePlayableLevel(
+-        {
+-          amountColors: 1,
+-          extraPlacementStacks: 0
+-        },
+-        { random }
+-      )
+-    ).rejects.toThrow("Can't generate playable level");
+-  });
+-});
+diff --git a/src/game/level-settings/levelSettings.spec.ts b/src/game/level-settings/levelSettings.spec.ts
+deleted file mode 100644
+--- a/src/game/level-settings/levelSettings.spec.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { getDifficultyLevel, LEVEL_SCALE, nextLevelAt } from "./levelSettings";
+-
+-describe("Level scale", () => {
+-  it("reaches maximum level at level 267", () => {
+-    expect(LEVEL_SCALE.at(-1)).toEqual(267);
+-  });
+-});
+-
+-describe(getDifficultyLevel, () => {
+-  it("starts with level 1", () => {
+-    const result = getDifficultyLevel(0);
+-    expect(result).toEqual(1);
+-  });
+-
+-  it("at level 3 you reach difficulty 2", () => {
+-    const result = getDifficultyLevel(3);
+-    expect(result).toEqual(2);
+-  });
+-
+-  it("has a max difficulty of 11", () => {
+-    const result = getDifficultyLevel(Infinity);
+-    expect(result).toEqual(11);
+-  });
+-});
+-
+-describe(nextLevelAt, () => {
+-  it("returns when the next level up will be", () => {
+-    expect(nextLevelAt(30)).toEqual(39);
+-  });
+-});
+diff --git a/src/game/level-types/dungeon.spec.ts b/src/game/level-types/dungeon.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/dungeon.spec.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import {
+-  getDungeonSettings,
+-  getDungeonSettings2,
+-  getDungeonSettings3
+-} from "./dungeon";
+-
+-describe(getDungeonSettings, () => {
+-  testDifficulties(getDungeonSettings);
+-});
+-
+-describe(getDungeonSettings2, () => {
+-  testDifficulties(getDungeonSettings2);
+-});
+-
+-describe(getDungeonSettings3, () => {
+-  testDifficulties(getDungeonSettings3);
+-});
+diff --git a/src/game/level-types/hard.spec.ts b/src/game/level-types/hard.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/hard.spec.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import { getHard2Settings, getHardSettings } from "./hard";
+-
+-describe(getHardSettings, () => {
+-  testDifficulties(getHardSettings);
+-});
+-
+-describe(getHard2Settings, () => {
+-  testDifficulties(getHard2Settings);
+-});
+diff --git a/src/game/level-types/hot.spec.ts b/src/game/level-types/hot.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/hot.spec.ts
++++ /dev/null
+@@ -1,17 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import { getHot2Settings, getHot3Settings, getHotSettings } from "./hot";
+-
+-describe(getHotSettings, () => {
+-  testDifficulties(getHotSettings);
+-});
+-
+-describe(getHot2Settings, () => {
+-  testDifficulties(getHot2Settings);
+-});
+-
+-describe(getHot3Settings, () => {
+-  testDifficulties(getHot3Settings);
+-});
+diff --git a/src/game/level-types/normal.spec.ts b/src/game/level-types/normal.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/normal.spec.ts
++++ /dev/null
+@@ -1,236 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-import type { LevelSettings } from "../types";
+-
+-import {
+-  getNormal2Settings,
+-  getNormal3Settings,
+-  getNormal4Settings,
+-  getNormal5Settings,
+-  getNormalSettings
+-} from "./normal";
+-
+-describe(getNormalSettings, () => {
+-  describe("increase in difficulty", () => {
+-    it.each<{ difficulty: number; result: LevelSettings }>([
+-      {
+-        difficulty: 1,
+-        result: {
+-          amountColors: 2,
+-          extraPlacementStacks: 1,
+-          hideBlockTypes: "none",
+-          stackSize: 4,
+-          producerName: "Normal1",
+-          producerDifficulty: 1
+-        }
+-      },
+-      {
+-        difficulty: 2,
+-        result: {
+-          amountColors: 3,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 4,
+-          producerName: "Normal1",
+-          producerDifficulty: 2
+-        }
+-      },
+-      {
+-        difficulty: 3,
+-        result: {
+-          amountColors: 4,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 4,
+-          producerName: "Normal1",
+-          producerDifficulty: 3
+-        }
+-      },
+-      {
+-        difficulty: 4,
+-        result: {
+-          amountColors: 5,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 4,
+-          producerName: "Normal1",
+-          producerDifficulty: 4
+-        }
+-      },
+-      {
+-        difficulty: 5,
+-        result: {
+-          amountColors: 6,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 4,
+-          producerName: "Normal1",
+-          producerDifficulty: 5
+-        }
+-      },
+-      {
+-        difficulty: 6,
+-        result: {
+-          amountColors: 7,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 5,
+-          producerName: "Normal1",
+-          producerDifficulty: 6
+-        }
+-      },
+-      {
+-        difficulty: 7,
+-        result: {
+-          amountColors: 8,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 5,
+-          producerName: "Normal1",
+-          producerDifficulty: 7
+-        }
+-      },
+-      {
+-        difficulty: 8,
+-        result: {
+-          amountColors: 9,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 6,
+-          producerName: "Normal1",
+-          producerDifficulty: 8
+-        }
+-      },
+-      {
+-        difficulty: 9,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 6,
+-          producerName: "Normal1",
+-          producerDifficulty: 9
+-        }
+-      },
+-      {
+-        difficulty: 10,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 2,
+-          extraPlacementLimits: 1,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          producerName: "Normal1",
+-          producerDifficulty: 10
+-        }
+-      },
+-      {
+-        difficulty: 11,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 2,
+-          extraPlacementLimits: 1,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          producerName: "Normal1",
+-          producerDifficulty: 11
+-        }
+-      }
+-    ])("returns settings for level $difficulty", ({ difficulty, result }) => {
+-      const settings = getNormalSettings(difficulty);
+-      expect(settings).toEqual(result);
+-    });
+-  });
+-
+-  testDifficulties(getNormalSettings);
+-});
+-
+-describe(getNormal2Settings, () => {
+-  describe("increase in difficulty", () => {
+-    it.each<{ difficulty: number; result: LevelSettings }>([
+-      {
+-        difficulty: 10,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 1,
+-          extraPlacementLimits: 1,
+-          buffers: 2,
+-          bufferSizes: 3,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          producerName: "Normal2",
+-          producerDifficulty: 10
+-        }
+-      },
+-      {
+-        difficulty: 11,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 1,
+-          extraPlacementLimits: 1,
+-          buffers: 2,
+-          bufferSizes: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          producerName: "Normal2",
+-          producerDifficulty: 11
+-        }
+-      }
+-    ])("returns settings for level $difficulty", ({ difficulty, result }) => {
+-      const settings = getNormal2Settings(difficulty);
+-      expect(settings).toEqual(result);
+-    });
+-  });
+-
+-  testDifficulties(getNormal2Settings);
+-});
+-
+-describe(getNormal3Settings, () => {
+-  describe("increase in difficulty", () => {
+-    it.each<{ difficulty: number; result: LevelSettings }>([
+-      {
+-        difficulty: 10,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 1,
+-          extraPlacementLimits: 1,
+-          buffers: 2,
+-          bufferSizes: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          extraBuffers: [{ size: 1, amount: 1, limit: 0 }],
+-          producerName: "Normal3",
+-          producerDifficulty: 10
+-        }
+-      },
+-      {
+-        difficulty: 11,
+-        result: {
+-          amountColors: 10,
+-          extraPlacementStacks: 1,
+-          extraPlacementLimits: 1,
+-          buffers: 2,
+-          bufferSizes: 2,
+-          hideBlockTypes: "none",
+-          stackSize: 7,
+-          producerName: "Normal3",
+-          producerDifficulty: 11
+-        }
+-      }
+-    ])("returns settings for level $difficulty", ({ difficulty, result }) => {
+-      const settings = getNormal3Settings(difficulty);
+-      expect(settings).toEqual(result);
+-    });
+-  });
+-
+-  testDifficulties(getNormal3Settings);
+-});
+-
+-describe(getNormal4Settings, () => {
+-  testDifficulties(getNormal4Settings);
+-});
+-
+-describe(getNormal5Settings, () => {
+-  testDifficulties(getNormal5Settings, [11]);
+-});
+diff --git a/src/game/level-types/oversized.spec.ts b/src/game/level-types/oversized.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/oversized.spec.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import { getOversized1Settings } from "./oversized";
+-
+-describe(getOversized1Settings, () => {
+-  testDifficulties(getOversized1Settings);
+-});
+diff --git a/src/game/level-types/scrambled.spec.ts b/src/game/level-types/scrambled.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/scrambled.spec.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import { getScrambledSettings } from "./scrambled";
+-
+-describe(getScrambledSettings, () => {
+-  testDifficulties(getScrambledSettings);
+-});
+diff --git a/src/game/level-types/special.spec.ts b/src/game/level-types/special.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/special.spec.ts
++++ /dev/null
+@@ -1,300 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-import { LEVEL_SCALE } from "../level-settings/levelSettings";
+-import type { LevelSettings } from "../types";
+-
+-import {
+-  getSpecial1Settings,
+-  getSpecial2Settings,
+-  getSpecial3Settings,
+-  getSpecial4Settings,
+-  getSpecial5Settings,
+-  special
+-} from "./special";
+-
+-describe(getSpecial1Settings, () => {
+-  it("returns settings based on difficulty", () => {
+-    const easy = getSpecial1Settings(1);
+-    expect(easy).toEqual({
+-      amountColors: 3,
+-      bufferPlacementLimits: 0,
+-      bufferSizes: 4,
+-      buffers: 2,
+-      extraBuffers: [
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 4
+-        },
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 4
+-        }
+-      ],
+-      extraPlacementStacks: 0,
+-      stackSize: 12,
+-      blockColorPick: "end",
+-      producerName: "Special1",
+-      producerDifficulty: 1
+-    });
+-
+-    const hard = getSpecial1Settings(10);
+-    expect(hard).toEqual({
+-      amountColors: 4,
+-      bufferPlacementLimits: 3,
+-      bufferSizes: 3,
+-      buffers: 4,
+-      extraPlacementStacks: 0,
+-      extraBuffers: [
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 3
+-        },
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 4
+-        }
+-      ],
+-      stackSize: 13,
+-      blockColorPick: "end",
+-      producerName: "Special1",
+-      producerDifficulty: 10
+-    });
+-
+-    const veryHard = getSpecial1Settings(11);
+-    expect(veryHard).toEqual({
+-      amountColors: 4,
+-      bufferPlacementLimits: 3,
+-      bufferSizes: 3,
+-      buffers: 4,
+-      extraPlacementStacks: 0,
+-      extraBuffers: [
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 3
+-        },
+-        {
+-          amount: 1,
+-          limit: 0,
+-          size: 3
+-        }
+-      ],
+-      stackSize: 13,
+-      blockColorPick: "end",
+-      producerName: "Special1",
+-      producerDifficulty: 11
+-    });
+-  });
+-
+-  testDifficulties(getSpecial1Settings);
+-});
+-
+-describe(getSpecial2Settings, () => {
+-  testDifficulties(getSpecial2Settings);
+-});
+-
+-describe(getSpecial3Settings, () => {
+-  testDifficulties(getSpecial3Settings);
+-});
+-
+-describe(getSpecial4Settings, () => {
+-  testDifficulties(getSpecial4Settings);
+-});
+-
+-describe(getSpecial5Settings, () => {
+-  testDifficulties(getSpecial5Settings);
+-});
+-
+-const AMOUNT_TEMPLATES = 5;
+-const randomTemplate = (index: number) => () => (1 / AMOUNT_TEMPLATES) * index;
+-
+-describe(special.getSettings, () => {
+-  describe("template 1", () => {
+-    it("returns a variant with long placement elements", () => {
+-      const random = randomTemplate(0);
+-      const result = special.getSettings(0, random);
+-
+-      expect(result).toEqual({
+-        amountColors: 3,
+-        stackSize: 12,
+-        extraPlacementStacks: 0,
+-        buffers: 2,
+-        bufferSizes: 4,
+-        bufferPlacementLimits: 0,
+-        extraBuffers: [
+-          { amount: 1, size: 4, limit: 0 },
+-          { amount: 1, size: 4, limit: 0 }
+-        ],
+-        blockColorPick: "end",
+-        producerName: "Special1",
+-        producerDifficulty: 1
+-      } satisfies LevelSettings);
+-
+-      const hardResult = special.getSettings(LEVEL_SCALE.at(-1)!, random);
+-
+-      expect(hardResult).toEqual({
+-        amountColors: 4,
+-        stackSize: 13,
+-        extraPlacementStacks: 0,
+-        buffers: 4,
+-        bufferSizes: 3,
+-        bufferPlacementLimits: 3,
+-        extraBuffers: [
+-          { amount: 1, size: 3, limit: 0 },
+-          { amount: 1, size: 3, limit: 0 }
+-        ],
+-        blockColorPick: "end",
+-        producerName: "Special1",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-    });
+-  });
+-
+-  describe("template 2", () => {
+-    it("returns a variant with lots of small items", () => {
+-      const random = randomTemplate(1);
+-      const result = special.getSettings(0, random);
+-
+-      expect(result).toEqual({
+-        amountColors: 6,
+-        stackSize: 3,
+-        extraPlacementStacks: 3,
+-        extraPlacementLimits: 2,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special2",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-
+-      const hardResult = special.getSettings(LEVEL_SCALE.at(-1)!, random);
+-
+-      expect(hardResult).toEqual({
+-        amountColors: 16,
+-        stackSize: 3,
+-        extraPlacementStacks: 2,
+-        extraPlacementLimits: 0,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special2",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-    });
+-  });
+-
+-  describe("template 3", () => {
+-    it("returns a fixed difficulty variant", () => {
+-      const random = randomTemplate(2);
+-      const result = special.getSettings(0, random);
+-
+-      expect(result).toEqual({
+-        amountColors: 5,
+-        stackSize: 4,
+-        extraPlacementStacks: 2,
+-        extraPlacementLimits: 0,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special3",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-
+-      const hardResult = special.getSettings(LEVEL_SCALE.at(-1)!, random);
+-
+-      expect(hardResult).toEqual({
+-        amountColors: 5,
+-        stackSize: 5,
+-        extraPlacementStacks: 2,
+-        extraPlacementLimits: 2,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special3",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-    });
+-  });
+-
+-  describe("template 4", () => {
+-    it("returns a more stacks than colors", () => {
+-      const random = randomTemplate(3);
+-      const result = special.getSettings(0, random);
+-
+-      expect(result).toEqual({
+-        amountColors: 3,
+-        stackSize: 3,
+-        extraPlacementStacks: 4,
+-        extraPlacementLimits: 2,
+-        buffers: 1,
+-        bufferSizes: 1,
+-        stacksPerColor: 2,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special4",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-
+-      const hardResult = special.getSettings(LEVEL_SCALE.at(-1)!, random);
+-
+-      expect(hardResult).toEqual({
+-        amountColors: 6,
+-        stackSize: 3,
+-        extraPlacementStacks: 2,
+-        extraPlacementLimits: 2,
+-        buffers: 1,
+-        bufferSizes: 1,
+-        stacksPerColor: 2,
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special4",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-    });
+-  });
+-
+-  describe("template 5", () => {
+-    it("has buffers with steps", () => {
+-      const random = randomTemplate(4);
+-      const result = special.getSettings(0, random);
+-
+-      expect(result).toEqual({
+-        amountColors: 4,
+-        stackSize: 4,
+-        extraPlacementStacks: 0,
+-        extraPlacementLimits: 0,
+-        buffers: 1,
+-        bufferPlacementLimits: 1,
+-        bufferSizes: 4,
+-        extraBuffers: [
+-          { amount: 1, size: 3, limit: 1 },
+-          { amount: 1, size: 2, limit: 1 }
+-        ],
+-        blockColorPick: "end",
+-        producerName: "Special5",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-
+-      const hardResult = special.getSettings(LEVEL_SCALE.at(-1)!, random);
+-
+-      expect(hardResult).toEqual({
+-        amountColors: 5,
+-        stackSize: 5,
+-        extraPlacementStacks: 0,
+-        extraPlacementLimits: 0,
+-        buffers: 1,
+-        bufferPlacementLimits: 1,
+-        bufferSizes: 4,
+-        extraBuffers: [
+-          { amount: 1, size: 3, limit: 1 },
+-          { amount: 1, size: 2, limit: 1 }
+-        ],
+-        blockColorPick: "end",
+-        layoutMap: expect.any(Object),
+-        producerName: "Special5",
+-        producerDifficulty: expect.any(Number)
+-      } satisfies LevelSettings);
+-    });
+-  });
+-});
+diff --git a/src/game/level-types/spring.spec.ts b/src/game/level-types/spring.spec.ts
+deleted file mode 100644
+--- a/src/game/level-types/spring.spec.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import { describe } from "vitest";
+-
+-import { testDifficulties } from "../level-settings/difficultyTester";
+-
+-import { getEasySpringSettings, getSpringSettings } from "./spring";
+-
+-describe(getEasySpringSettings, () => {
+-  testDifficulties(getEasySpringSettings);
+-});
+-
+-describe(getSpringSettings, () => {
+-  testDifficulties(getSpringSettings);
+-});
+diff --git a/src/game/state.spec.ts b/src/game/state.spec.ts
+deleted file mode 100644
+--- a/src/game/state.spec.ts
++++ /dev/null
+@@ -1,813 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlock,
+-  createBlocks,
+-  createBlockSeries,
+-  createBufferColumn,
+-  createHiddenBlocks,
+-  createLevelState,
+-  createPlacementColumn
+-} from "./factories";
+-import {
+-  allShuffled,
+-  canPlaceAmount,
+-  hasWon,
+-  isKeysReachable,
+-  isLockSolvable,
+-  isStuck
+-} from "./state";
+-
+-describe(canPlaceAmount, () => {
+-  it("returns the amount that fits", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("red", "white", "white"))
+-    ]);
+-
+-    const result = canPlaceAmount(level, 0, [{ blockType: "red" }]);
+-    expect(result).toEqual(1);
+-  });
+-
+-  it("returns 0 for a full column", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("red", "red", "white", "white"))
+-    ]);
+-
+-    const result = canPlaceAmount(level, 0, [{ blockType: "red" }]);
+-    expect(result).toEqual(0);
+-  });
+-
+-  it("returns 1 for a 2 set if only 1 space is available", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("red", "white", "white"))
+-    ]);
+-
+-    const result = canPlaceAmount(level, 0, [
+-      { blockType: "red" },
+-      { blockType: "red" }
+-    ]);
+-    expect(result).toEqual(1);
+-  });
+-
+-  it("returns amount of blocks to place when even more space left", () => {
+-    const level = createLevelState([createPlacementColumn(4)]);
+-
+-    const result = canPlaceAmount(level, 0, createBlocks("red", "red"));
+-    expect(result).toEqual(2);
+-  });
+-
+-  it("returns 0 on stacking mismatch", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, [createBlock("white")])
+-    ]);
+-
+-    const result = canPlaceAmount(level, 0, createBlocks("red", "red"));
+-    expect(result).toEqual(0);
+-  });
+-
+-  it("returns 0 on conditional column", () => {
+-    const level = createLevelState([createPlacementColumn(4, [], "white")]);
+-
+-    const result = canPlaceAmount(level, 0, createBlocks("red", "red"));
+-    expect(result).toEqual(0);
+-  });
+-});
+-
+-describe(hasWon, () => {
+-  it("returns true if all columns are empty or locked", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "white", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "green", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = hasWon(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if not all columns are empty or locked", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "green", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = hasWon(level);
+-    expect(result).toBe(false);
+-  });
+-});
+-
+-describe(isStuck, () => {
+-  it("returns false if a move changes the surface", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "green", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if a move reveals something", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createHiddenBlocks("white", "white", "green", "white")
+-      ),
+-      createPlacementColumn(4, createHiddenBlocks("green", "green", "green")),
+-      createPlacementColumn(4, createHiddenBlocks("white", "pink", "pink")),
+-      createPlacementColumn(4, createHiddenBlocks("pink", "pink"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if you can store a key", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-key", "white", "green", "white")
+-      ),
+-      createPlacementColumn(4, createBlocks("green", "green", "green")),
+-      createPlacementColumn(4, createBlocks("white", "pink", "pink")),
+-      createBufferColumn(1, undefined, [], "inventory")
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if a lock can be removed", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("pink", "vampire-lock", "red")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("vampire-lock", "vampire-key", "red")
+-      ),
+-      createPlacementColumn(4, createBlocks("yellow", "yellow", "pink", "red")),
+-      createPlacementColumn(4, createBlocks("red", "pink")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("brown", "pink", "brown", "yellow")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("brown", "brown", "yellow", "orange")
+-      ),
+-      createPlacementColumn(4, createBlocks("orange", "orange", "orange")),
+-      createBufferColumn(1, undefined, createBlocks("vampire-key"), "inventory")
+-    ]);
+-    const result = isStuck(level);
+-
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if you can divide a stack over other columns", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        6,
+-        createBlocks("white", "white", "green", "green", "green")
+-      ),
+-      createPlacementColumn(
+-        6,
+-        createBlocks("white", "white", "green", "green", "green")
+-      ),
+-      createPlacementColumn(
+-        6,
+-        createBlocks("white", "white", "pink", "pink", "pink")
+-      ),
+-      createPlacementColumn(6, createBlocks("pink", "pink", "pink"))
+-    ]);
+-    // You can divide the 2 white blocks of column 2 to column 1 and 0, to access the pink column
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if a move makes no difference", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "green", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4, createBlocks("green", "red", "red")),
+-      createPlacementColumn(4, createBlocks("red", "red"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if column is blocked by an obstacle", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(13, [
+-        ...createBlockSeries(10, "yellow"),
+-        ...createBlocks("red", "yellow")
+-      ]),
+-      createPlacementColumn(13, createBlocks("ghost-lock", "red", "green")),
+-      createPlacementColumn(13, [
+-        ...createBlockSeries(9, "blue"),
+-        ...createBlocks("yellow", "red", "blue")
+-      ]),
+-      createPlacementColumn(13, [
+-        ...createBlockSeries(9, "green"),
+-        ...createBlocks("ghost-key", "red", "yellow", "blue")
+-      ]),
+-      createBufferColumn(3, "green", createBlocks("green")),
+-      createBufferColumn(3, undefined, []),
+-      createBufferColumn(2, undefined, []),
+-      createBufferColumn(1, undefined, [], "inventory"),
+-      createBufferColumn(3, undefined, createBlocks("red", "red", "red")),
+-      createBufferColumn(3, undefined, createBlocks("red", "red", "red")),
+-      createBufferColumn(3, undefined, createBlocks("red", "red", "red"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if a move makes no difference (locked columns)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(4, createBlocks("red")),
+-      createPlacementColumn(4, createBlocks("black", "black", "red", "white")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "green", "green", "brown")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "white", "white", "brown")
+-      ),
+-      createBufferColumn(4, "brown", createBlocks("brown", "brown")),
+-      createBufferColumn(3, "green", createBlocks("green", "green")),
+-      createBufferColumn(2, "red", createBlocks("red", "red"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if a move makes no difference (locks and keys)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        5,
+-        createBlocks("white", "red", "dinosaur-key", "blue", "white")
+-      ),
+-      createPlacementColumn(
+-        5,
+-        createBlocks("yellow", "yellow", "dragon-lock", "darkblue", "blue")
+-      ),
+-      createPlacementColumn(
+-        5,
+-        createBlocks("dinosaur-lock", "brown", "dinosaur-key", "green")
+-      ),
+-      createPlacementColumn(
+-        5,
+-        createBlocks("white", "blue", "darkblue", "dinosaur-lock", "darkblue")
+-      ),
+-      createPlacementColumn(5, createBlocks("darkblue", "white", "brown")),
+-      createPlacementColumn(
+-        5,
+-        createBlocks("yellow", "yellow", "yellow", "darkblue")
+-      ),
+-      createPlacementColumn(5, createBlocks("brown", "brown", "brown")),
+-      createBufferColumn(1, undefined, [], "inventory"),
+-      createBufferColumn(1, undefined, createBlocks("dragon-key"), "inventory")
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if move would clear a buffer", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("black", "white")),
+-      createPlacementColumn(4, createBlocks("white", "white", "white", "red")),
+-      createPlacementColumn(4, createBlocks("red", "red", "red", "black")),
+-      createBufferColumn(2, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if move would not fit in a buffer", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "black", "black", "white")
+-      ),
+-      createPlacementColumn(4, createBlocks("white", "white", "white", "red")),
+-      createPlacementColumn(4, createBlocks("red", "red", "red", "black")),
+-      createBufferColumn(2, undefined)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if move would not fit in a buffer (2)", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(3, "white"),
+-        ...createBlocks("purple", "yellow", "yellow", "white")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(6, "blue"),
+-        ...createBlocks("purple")
+-      ]),
+-      createPlacementColumn(7, createBlockSeries(3, "aqua")),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(4, "black"),
+-        ...createBlocks("darkgreen", "aqua", "aqua")
+-      ]),
+-      createPlacementColumn(7, createBlockSeries(5, "darkgreen")),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(6, "brown"),
+-        ...createBlocks("white")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(4, "yellow"),
+-        ...createBlocks("brown", "aqua")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(4, "darkblue"),
+-        ...createBlocks("yellow", "black", "blue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(3, "purple"),
+-        ...createBlocks("darkgreen", "white", "purple")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...createBlockSeries(3, "darkblue"),
+-        ...createBlocks("aqua", "black", "white", "purple")
+-      ]),
+-      createPlacementColumn(7, createBlockSeries(7, "red"), "red", true),
+-
+-      createBufferColumn(2, undefined, createBlocks("black")),
+-      createBufferColumn(2, undefined)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if move would not fit in multiple buffer", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(5, "black"),
+-        ...createBlocks("white")
+-      ]),
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(5, "red"),
+-        ...createBlocks("black")
+-      ]),
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(5, "white"),
+-        ...createBlocks("red")
+-      ]),
+-      createBufferColumn(2, undefined),
+-      createBufferColumn(2, undefined)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if move could free buffer", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(5, "black"),
+-        ...createBlocks("white")
+-      ]),
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(5, "red"),
+-        ...createBlocks("black")
+-      ]),
+-      createPlacementColumn(6, [
+-        ...createBlockSeries(3, "white"),
+-        ...createBlocks("red")
+-      ]),
+-      createBufferColumn(2, undefined, createBlockSeries(2, "white")),
+-      createBufferColumn(2, undefined)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if series can be combined in buffer", () => {
+-    const s = createBlockSeries;
+-    const b = createBlocks;
+-    const level = createLevelState([
+-      createPlacementColumn(7, s(6, "blue")),
+-      createPlacementColumn(7, [
+-        ...s(3, "darkblue"),
+-        ...b("purple", "darkblue", "red")
+-      ]),
+-      createPlacementColumn(7, [...s(3, "red"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "darkgreen"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "aqua"), ...b("blue")]),
+-      createPlacementColumn(7, [...s(5, "pink"), ...b("red", "black")]),
+-      createPlacementColumn(7, [...s(5, "purple"), ...b("yellow", "red")]),
+-      createPlacementColumn(7, [
+-        ...s(3, "brown"),
+-        ...s(2, "darkgreen"),
+-        ...b("purple", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        // ...s(3, "black"),
+-        ...b("pink", "darkblue", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(4, "brown"),
+-        ...b("black", "red", "pink")
+-      ]),
+-      createPlacementColumn(7, s(6, "yellow"), "yellow"),
+-      createBufferColumn(2, undefined, createBlocks("black")),
+-      createBufferColumn(3, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if series can not be distributed over free buffers", () => {
+-    const s = createBlockSeries;
+-    const b = createBlocks;
+-    const level = createLevelState([
+-      createPlacementColumn(7, s(6, "blue")),
+-      createPlacementColumn(7, [
+-        ...s(3, "darkblue"),
+-        ...b("purple", "darkblue", "red")
+-      ]),
+-      createPlacementColumn(7, [...s(3, "red"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "darkgreen"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "aqua"), ...b("blue")]),
+-      createPlacementColumn(7, [...s(5, "pink"), ...b("red", "black")]),
+-      createPlacementColumn(7, [...s(5, "purple"), ...b("yellow", "red")]),
+-      createPlacementColumn(7, [
+-        ...s(3, "brown"),
+-        ...s(2, "darkgreen"),
+-        ...b("purple", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(3, "black"),
+-        ...b("pink", "darkblue", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(4, "brown"),
+-        ...b("black", "red", "pink")
+-      ]),
+-      createPlacementColumn(7, s(6, "yellow"), "yellow"),
+-      createBufferColumn(2, undefined),
+-      createBufferColumn(2, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if series can be distributed over free buffers", () => {
+-    const s = createBlockSeries;
+-    const b = createBlocks;
+-    const level = createLevelState([
+-      createPlacementColumn(7, s(6, "blue")),
+-      createPlacementColumn(7, [
+-        ...s(3, "darkblue"),
+-        ...b("purple", "darkblue", "red")
+-      ]),
+-      createPlacementColumn(7, [...s(3, "red"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "darkgreen"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "aqua"), ...b("blue")]),
+-      createPlacementColumn(7, [...s(5, "pink"), ...b("red", "black")]),
+-      createPlacementColumn(7, [...s(5, "purple"), ...b("yellow", "red")]),
+-      createPlacementColumn(7, [
+-        ...s(3, "brown"),
+-        ...s(2, "darkgreen"),
+-        ...b("purple", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(3, "black"),
+-        ...b("pink", "darkblue", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(4, "brown"),
+-        ...b("black", "red", "pink")
+-      ]),
+-      createPlacementColumn(7, s(6, "yellow"), "yellow"),
+-      createBufferColumn(2, undefined),
+-      createBufferColumn(3, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if series can be distributed over free buffers and columns", () => {
+-    const s = createBlockSeries;
+-    const b = createBlocks;
+-    const level = createLevelState([
+-      createPlacementColumn(7, s(6, "blue")),
+-      createPlacementColumn(7, [
+-        ...s(3, "darkblue"),
+-        ...b("purple", "darkblue", "red")
+-      ]),
+-      createPlacementColumn(7, [...s(3, "red"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "darkgreen"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "aqua"), ...b("blue")]),
+-      createPlacementColumn(7, [...b("black"), ...s(4, "pink"), ...b("red")]),
+-      createPlacementColumn(7, [...s(5, "purple"), ...b("yellow", "red")]),
+-      createPlacementColumn(7, [
+-        ...s(3, "brown"),
+-        ...s(2, "darkgreen"),
+-        ...b("purple", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(3, "black"),
+-        ...b("pink", "darkblue", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [
+-        ...s(4, "brown"),
+-        ...b("black", "red", "pink")
+-      ]),
+-      createPlacementColumn(7, s(6, "yellow"), "yellow"),
+-      createBufferColumn(2, undefined),
+-      createBufferColumn(2, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if move can clear buffers", () => {
+-    const s = createBlockSeries;
+-    const b = createBlocks;
+-    const level = createLevelState([
+-      createPlacementColumn(7, s(6, "blue")),
+-      createPlacementColumn(7, [
+-        ...s(3, "darkblue"),
+-        ...b("purple", "darkblue", "red")
+-      ]),
+-      createPlacementColumn(7, [...s(3, "red"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "darkgreen"), ...b("aqua")]),
+-      createPlacementColumn(7, [...s(5, "aqua"), ...b("blue")]),
+-      createPlacementColumn(7, [...s(4, "pink"), ...b("red")]),
+-      createPlacementColumn(7, [...s(5, "purple"), ...b("yellow", "red")]),
+-      createPlacementColumn(7, [
+-        ...s(3, "brown"),
+-        ...s(2, "darkgreen"),
+-        ...b("purple", "darkblue")
+-      ]),
+-      createPlacementColumn(7, [...s(4, "black"), ...b("darkblue")]),
+-      createPlacementColumn(7, [
+-        ...s(4, "brown"),
+-        ...b("black", "red", "pink")
+-      ]),
+-      createPlacementColumn(7, s(6, "yellow"), "yellow"),
+-      createBufferColumn(2, undefined),
+-      createBufferColumn(2, undefined, createBlocks("black", "black"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if series would be able to redistribute", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("black", "white")),
+-      createPlacementColumn(4, createBlocks("white", "white", "white", "red")),
+-      createPlacementColumn(4, createBlocks("red", "red", "red", "black")),
+-      createBufferColumn(2, undefined, createBlocks("black", "black")),
+-      createBufferColumn(2)
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns false if buffers contents are moved to free more space", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        6,
+-        createBlocks("black", "black", "black", "black", "white")
+-      ),
+-      createPlacementColumn(
+-        6,
+-        createBlocks("white", "white", "white", "white", "white", "red")
+-      ),
+-      createPlacementColumn(
+-        6,
+-        createBlocks("red", "red", "red", "red", "red", "black")
+-      ),
+-      createBufferColumn(1, undefined, createBlocks("green")),
+-      createBufferColumn(2, undefined, createBlocks("black", "black")),
+-      createBufferColumn(3, undefined, createBlocks()),
+-      createBufferColumn(
+-        4,
+-        undefined,
+-        createBlocks("turquoise", "turquoise", "turquoise")
+-      )
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(false);
+-  });
+-});
+-
+-describe(allShuffled, () => {
+-  it("returns false if a column has all same color", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "white", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("green", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4, createBlocks("green")),
+-      createPlacementColumn(4)
+-    ]);
+-    const result = allShuffled(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if all columns are shuffled", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "white", "green", "white"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("white", "green", "green"),
+-        undefined,
+-        true
+-      ),
+-      createPlacementColumn(4, createBlocks("green", "red", "red")),
+-      createPlacementColumn(4, createBlocks("red", "red"))
+-    ]);
+-    const result = isStuck(level);
+-    expect(result).toBe(true);
+-  });
+-});
+-
+-describe(isLockSolvable, () => {
+-  it("returns true if bottom blocks are not locks", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "green", "green", "brown")
+-      ),
+-      createBufferColumn(3, "green", createBlocks("green", "green")),
+-      createBufferColumn(2, "red", createBlocks("red", "red"))
+-    ]);
+-    const result = isLockSolvable(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if one of the columns has a lock as bottom block", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("black", "green", "green", "vampire-lock")
+-      ),
+-      createBufferColumn(3, "green", createBlocks("green", "green")),
+-      createBufferColumn(2, "red", createBlocks("red", "red")),
+-      createPlacementColumn(4, createBlocks("black", "green", "ghost-lock"))
+-    ]);
+-    const result = isLockSolvable(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if keys are not directly above locks", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("ghost-key", "green", "ghost-lock", "brown")
+-      ),
+-      createBufferColumn(3, "green", createBlocks("green", "green")),
+-      createBufferColumn(2, "red", createBlocks("red", "red"))
+-    ]);
+-    const result = isLockSolvable(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if keys are directly above locks", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("ghost-key", "ghost-lock", "brown")
+-      ),
+-      createBufferColumn(3, "green", createBlocks("green", "green")),
+-      createBufferColumn(2, "red", createBlocks("red", "red"))
+-    ]);
+-    const result = isLockSolvable(level);
+-    expect(result).toBe(false);
+-  });
+-});
+-describe(isKeysReachable, () => {
+-  it("returns true if all keys are reachable", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white", "red", "dinosaur-key")),
+-      createPlacementColumn(4, createBlocks("yellow", "yellow", "dragon-lock")),
+-      createPlacementColumn(4, createBlocks("dinosaur-lock", "brown")),
+-      createPlacementColumn(4, createBlocks("white", "blue", "darkblue")),
+-      createBufferColumn(1, undefined, [], "inventory"),
+-      createBufferColumn(1, undefined, createBlocks("dragon-key"), "inventory")
+-    ]);
+-    const result = isKeysReachable(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if a lock can be unlocked by a key", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white", "red", "dinosaur-key")),
+-      createPlacementColumn(4, createBlocks("yellow", "yellow", "dragon-lock")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("dinosaur-lock", "brown", "dinosaur-key")
+-      ),
+-      createPlacementColumn(4, createBlocks("white", "blue", "darkblue")),
+-      createBufferColumn(1, undefined, [], "inventory"),
+-      createBufferColumn(1, undefined, createBlocks("dragon-key"), "inventory")
+-    ]);
+-    const result = isKeysReachable(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns true if keys are above their corresponding locks", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white", "red", "dinosaur-key")),
+-      createPlacementColumn(4, createBlocks("yellow", "yellow", "dragon-lock")),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("dinosaur-key", "brown", "dinosaur-lock")
+-      ),
+-      createPlacementColumn(4, createBlocks("white", "blue", "darkblue")),
+-      createBufferColumn(1, undefined, [], "inventory"),
+-      createBufferColumn(1, undefined, createBlocks("dragon-key"), "inventory")
+-    ]);
+-    const result = isKeysReachable(level);
+-    expect(result).toBe(true);
+-  });
+-
+-  it("returns false if a key is blocked by another lock", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(
+-        4,
+-        createBlocks("dragon-lock", "red", "dinosaur-key")
+-      ),
+-      createPlacementColumn(
+-        4,
+-        createBlocks("dinosaur-lock", "yellow", "dragon-key")
+-      )
+-    ]);
+-    const result = isKeysReachable(level);
+-    expect(result).toBe(false);
+-  });
+-
+-  it("returns true if there are no keys", () => {
+-    const level = createLevelState([
+-      createPlacementColumn(4, createBlocks("white", "red")),
+-      createPlacementColumn(4, createBlocks("yellow", "yellow")),
+-      createPlacementColumn(4, createBlocks("brown")),
+-      createPlacementColumn(4, createBlocks("white", "blue", "darkblue"))
+-    ]);
+-    const result = isKeysReachable(level);
+-    expect(result).toBe(true);
+-  });
+-});
+diff --git a/src/game/themes/index.spec.ts b/src/game/themes/index.spec.ts
+deleted file mode 100644
+--- a/src/game/themes/index.spec.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { getActiveTheme } from ".";
+-
+-describe(getActiveTheme, () => {
+-  it("returns default theme", () => {
+-    const date = new Date("2021-03-01");
+-    expect(getActiveTheme(date)).toBe("default");
+-  });
+-
+-  describe("halloween", () => {
+-    it("returns halloween theme on 21 october", () => {
+-      const date = new Date("2023-10-21");
+-      expect(getActiveTheme(date)).toBe("halloween");
+-    });
+-
+-    it("returns halloween theme early november", () => {
+-      const date = new Date("2023-11-02");
+-      expect(getActiveTheme(date)).toBe("halloween");
+-    });
+-
+-    it("returns default theme mid november", () => {
+-      const date = new Date("2023-11-15");
+-      expect(getActiveTheme(date)).toBe("default");
+-    });
+-  });
+-
+-  describe("winter", () => {
+-    it("returns winter theme mid december", () => {
+-      const date = new Date("2023-12-15");
+-      expect(getActiveTheme(date)).toBe("winter");
+-    });
+-
+-    it("returns winter theme early january", () => {
+-      const date = new Date("2023-12-15");
+-      expect(getActiveTheme(date)).toBe("winter");
+-    });
+-
+-    it("returns default theme end january", () => {
+-      const date = new Date("2023-01-30");
+-      expect(getActiveTheme(date)).toBe("default");
+-    });
+-  });
+-
+-  describe("spring", () => {
+-    it("returns spring theme end of march", () => {
+-      const date = new Date("2023-03-25");
+-      expect(getActiveTheme(date)).toBe("spring");
+-    });
+-
+-    it("returns spring theme early april", () => {
+-      const date = new Date("2023-04-05");
+-      expect(getActiveTheme(date)).toBe("spring");
+-    });
+-
+-    it("returns default theme end of may", () => {
+-      const date = new Date("2023-05-31");
+-      expect(getActiveTheme(date)).toBe("default");
+-    });
+-  });
+-});
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -4,10 +4,17 @@ import ReactDOM from "react-dom/client";
+ import "./ios-screen-height-patch";
+ 
+ import { App } from "./App";
++import { installRbProbe } from "./rbProbe";
+ 
+ import "./index.css";
+ import "./icons.css";
+ 
++/*
++ * RepairBench instrumentation: publish the strictly read-only window.__rb probe bridge before the
++ * app mounts. The bridge only reads; it dispatches no event, mutates no state and creates no DOM.
++ */
++installRbProbe();
++
+ ReactDOM.createRoot(document.getElementById("root")!).render(
+   <React.StrictMode>
+     <App />
+diff --git a/src/modules/Level/Level.tsx b/src/modules/Level/Level.tsx
+--- a/src/modules/Level/Level.tsx
++++ b/src/modules/Level/Level.tsx
+@@ -25,6 +25,7 @@ import type {
+ } from "@/game/types";
+ import { ThemeContext } from "@/modules/Layout/ThemeContext";
+ import { mulberry32, pick } from "@/support/random";
++import { publishRbLevel } from "@/rbProbe";
+ import { useGameStorage, useLevelStateStorage } from "@/support/useGameStorage";
+ 
+ import type { HintMode } from "./autoMove";
+@@ -274,6 +275,24 @@ export const Level: React.FC<Props> = ({
+     sound.play("match");
+   }, []);
+ 
++  /*
++   * RepairBench instrumentation: hand the render's own view of the level to the read-only probe.
++   * Pure assignment into a module-private slot of rbProbe - no app state, no DOM, no dispatch.
++   */
++  publishRbLevel({
++    present: true,
++    title,
++    levelNr,
++    playState,
++    levelState,
++    levelMoves,
++    selection: activeSelectStart?.selection ?? null,
++    showTutorial,
++    storageKey,
++    currentStageNr,
++    maxStages
++  });
++
+   return (
+     <div className={"flex h-full flex-col"}>
+       {playState === "starting" &&
+diff --git a/src/modules/Level/Tutorial.tsx b/src/modules/Level/Tutorial.tsx
+--- a/src/modules/Level/Tutorial.tsx
++++ b/src/modules/Level/Tutorial.tsx
+@@ -17,7 +17,10 @@ export const Tutorial: React.FC<Props> = ({
+   activeTheme,
+   levelMoves
+ }) => (
+-  <div className="mb-8 h-20 w-full max-w-[600px] px-4 text-center text-lg text-orange-200">
++  <div
++    data-rb-tutorial=""
++    className="mb-8 h-20 w-full max-w-[600px] px-4 text-center text-lg text-orange-200"
++  >
+     {levelMoves.length === 0 && !selection && (
+       <>
+         <p>Move the blocks to the right column.</p>
+diff --git a/src/modules/Level/autoMove.spec.ts b/src/modules/Level/autoMove.spec.ts
+deleted file mode 100644
+--- a/src/modules/Level/autoMove.spec.ts
++++ /dev/null
+@@ -1,47 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { getAutoMoveCount } from "./autoMove";
+-
+-describe(getAutoMoveCount, () => {
+-  it("returns 0 when lostCounter is less than minLoseCount", () => {
+-    expect(getAutoMoveCount(14, 100)).toBe(0);
+-  });
+-
+-  describe("standard hint mode", () => {
+-    it("returns 5 auto moves after the minLoseCount", () => {
+-      expect(getAutoMoveCount(15, 100)).toBe(5);
+-    });
+-
+-    it("increases by 5 moves after 3 extra fails", () => {
+-      expect(getAutoMoveCount(18, 100)).toBe(10);
+-    });
+-
+-    it("increases till half the solve solve is shown", () => {
+-      expect(getAutoMoveCount(48, 100)).toBe(50);
+-    });
+-  });
+-
+-  describe("eager hint mode", () => {
+-    it("returns 5 auto moves after 5 fails", () => {
+-      expect(getAutoMoveCount(5, 100, "eager")).toBe(5);
+-    });
+-
+-    it("increases by 3 moves after each extra fail", () => {
+-      expect(getAutoMoveCount(6, 100, "eager")).toBe(8);
+-    });
+-
+-    it("increases till 95% of the solve solve is shown", () => {
+-      expect(getAutoMoveCount(48, 100, "eager")).toBe(95);
+-    });
+-  });
+-
+-  describe("hint mode: off", () => {
+-    it("returns 0 auto moves after 5 fails", () => {
+-      expect(getAutoMoveCount(5, 100, "off")).toBe(0);
+-    });
+-
+-    it("stays 0 even after 100 fails", () => {
+-      expect(getAutoMoveCount(100, 100, "off")).toBe(0);
+-    });
+-  });
+-});
+diff --git a/src/modules/LevelTrack/LevelNode.tsx b/src/modules/LevelTrack/LevelNode.tsx
+--- a/src/modules/LevelTrack/LevelNode.tsx
++++ b/src/modules/LevelTrack/LevelNode.tsx
+@@ -23,12 +23,16 @@ export const LevelNode: FC<LevelNodeProps> = ({
+ }) => {
+   return (
+     <div
++      data-rb-node-inner=""
++      data-rb-completed={completed ? "1" : "0"}
++      data-rb-current={isCurrent ? "1" : "0"}
+       className={clsx(
+         className,
+         "mx-auto whitespace-nowrap align-middle leading-10"
+       )}
+     >
+       <span
++        data-rb-node-number=""
+         className={clsx(
+           {
+             "text-green-600": completed,
+diff --git a/src/modules/LevelTrack/LevelTrack.tsx b/src/modules/LevelTrack/LevelTrack.tsx
+--- a/src/modules/LevelTrack/LevelTrack.tsx
++++ b/src/modules/LevelTrack/LevelTrack.tsx
+@@ -147,6 +147,7 @@ export const LevelTrack: React.FC<Props> = ({
+           type={levelType}
+         />
+         <div
++          data-rb-zen-slot=""
+           className={clsx("block w-22 transition-opacity", {
+             ["opacity-0"]: !hasZenMode,
+             ["opacity-100"]: hasZenMode
+diff --git a/src/modules/LevelTrack/levelMessage.spec.ts b/src/modules/LevelTrack/levelMessage.spec.ts
+deleted file mode 100644
+--- a/src/modules/LevelTrack/levelMessage.spec.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { LEVEL_SCALE } from "@/game/level-settings/levelSettings";
+-
+-import { ZEN_MODE_UNLOCK } from "../GameModi/constants";
+-
+-import { getLevelMessage } from "./levelMessage";
+-
+-describe(getLevelMessage, () => {
+-  it("does not start with a message", () => {
+-    expect(getLevelMessage(0)).toBeUndefined();
+-  });
+-
+-  it("displays a message for each difficulty change", () => {
+-    LEVEL_SCALE.forEach((levelNr) => {
+-      const message = getLevelMessage(levelNr);
+-      expect(message).not.toBeUndefined();
+-    });
+-  });
+-
+-  it("displays a message for unlocking zen mode", () => {
+-    const message = getLevelMessage(ZEN_MODE_UNLOCK - 1);
+-    expect(message).match(/Zen mode unlocked/);
+-  });
+-});
+diff --git a/src/rbProbe.ts b/src/rbProbe.ts
+new file mode 100644
+--- /dev/null
++++ b/src/rbProbe.ts
+@@ -0,0 +1,477 @@
++/**
++ * RepairBench read-only probe bridge (`rbProbe`) - publishes `window.__rb` exactly once.
++ *
++ * Discipline (same shape as the registered corpus' probe bridges):
++ *  - STRICTLY READ-ONLY: it dispatches nothing and mutates no store, no game state, no DOM node and
++ *    no fixture. Every reader is a getter over a snapshot the instrumented components *publish* on
++ *    render, over the app's own pure game predicates, or over `document` / `window` / `location`.
++ *  - PUBLISHED ONCE AND FROZEN: the root object and every namespace are `Object.freeze`d and a
++ *    second install is a no-op, so a repair cannot re-point a reading at its own value
++ *    (`__rb.meta.rbIsFrozen()` is the checkpoint that proves it).
++ *  - NEVER THROWS: every reader is wrapped, so a broken state yields an `__ERR__:` string (a visible
++ *    red) instead of a setup_failure.
++ *  - SCALARS ONLY: readers return numbers, strings or booleans, because evaluation/dsl_runner.mjs
++ *    compares `js_eval` results with a loose `==` and an object/array `expected` is always false.
++ *
++ * Why a probe is needed at all: `block-sort` keeps the level in React component state inside the
++ * Level component (there is no store), and the two things a repair has to be judged on - the
++ * *logical* column contents (`blockType`, not the seasonal hex colour) and the *derived* readings the
++ * app computes from them (`selectFromColumn`, `hasWon`, `isStuck`, the recorded move list) - are not
++ * in the DOM in a stable form. The rendered DOM only carries hashed CSS-module class names plus
++ * Tailwind utilities, so without this bridge an assertion would have to be written against a
++ * build-specific class hash.
++ *
++ * The two publishers below are the ONLY writes this module performs, and they write into
++ * module-private variables, never into the app.
++ */
++import { selectFromColumn } from "@/game/actions";
++import { hasWon, isStuck } from "@/game/state";
++import type { LevelState, Move } from "@/game/types";
++
++const RB_PROBE_VERSION = "r28-blocksort-1";
++
++/* The only __-prefixed window globals this face is allowed to own: the probe itself plus the ones the
++ * PWA/offline stack parks there. Listing them by name keeps `globals.unexpected()` order-independent
++ * while still catching anything ELSE a repair parks on window - the anti-hack reading stays
++ * red-capable. */
++const RB_KNOWN_GLOBALS = ["__rb", "__rbInstalledAt", "__VITE_PLUGIN_PWA__"];
++
++const ABSENT = -1;
++
++type RbLevelSnapshot = {
++  present: boolean;
++  title: string;
++  levelNr: number;
++  playState: string;
++  levelState: LevelState | null;
++  levelMoves: Move[];
++  selection: [number, number] | null;
++  showTutorial: boolean;
++  storageKey: string;
++  currentStageNr: number;
++  maxStages: number;
++};
++
++type RbTrackSnapshot = {
++  present: boolean;
++  officialLevelNr: number;
++  levelNr: number;
++  numberFrom: number;
++};
++
++const levelSnap: { current: RbLevelSnapshot | null } = { current: null };
++const trackSnap: { current: RbTrackSnapshot | null } = { current: null };
++const trackMessages: { current: { levelNr: number; text: string }[] } = { current: [] };
++
++/** Published by the Level component on every render. Pure assignment into a module-private slot. */
++export const publishRbLevel = (next: RbLevelSnapshot): void => {
++  levelSnap.current = next;
++};
++
++/** Published by the level-track components on every render. */
++export const publishRbTrack = (
++  next: RbTrackSnapshot,
++  messages: { levelNr: number; text: string }[]
++): void => {
++  trackSnap.current = next;
++  trackMessages.current = messages;
++};
++
++const wrap = (fn: () => unknown): unknown => {
++  try {
++    const value = fn();
++    return value === undefined ? "" : value;
++  } catch (e) {
++    const msg = e instanceof Error ? e.message : String(e);
++    return "__ERR__:" + msg.slice(0, 90);
++  }
++};
++
++const uncaught: string[] = [];
++const rejections: string[] = [];
++const consoleErrors: string[] = [];
++
++const domText = (sel: string): string => {
++  const el = document.querySelector(sel);
++  return el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
++};
++
++const all = (sel: string): Element[] => Array.from(document.querySelectorAll(sel));
++
++const col = (i: number) => levelSnap.current?.levelState?.columns[i] ?? null;
++
++const colCount = (): number =>
++  levelSnap.current?.levelState?.columns.length ?? ABSENT;
++
++const colSig = (i: number): string => {
++  const c = col(i);
++  if (!c) return "";
++  return (
++    c.type +
++    "|" +
++    c.columnSize +
++    "|" +
++    (c.locked ? 1 : 0) +
++    "|" +
++    c.blocks.map((b) => b.blockType + (b.revealed === false ? "?" : "")).join(",")
++  );
++};
++
++const selectionSize = (i: number): number => {
++  const st = levelSnap.current?.levelState;
++  if (!st || !st.columns[i]) return ABSENT;
++  return selectFromColumn(st, i).length;
++};
++
++const tutorialText = (): string => domText("[data-rb-tutorial]");
++
++const playButton = (): HTMLButtonElement | null => {
++  const btns = Array.from(document.querySelectorAll("button"));
++  for (const b of btns) {
++    if (/^(Play level \d+|Level \d+)$/.test((b.textContent || "").trim()))
++      return b as HTMLButtonElement;
++  }
++  return null;
++};
++
++const nodeEls = (): Element[] => all("[data-rb-node]");
++
++/** the per-node flags live on LevelNode's inner element, one level below the [data-rb-node] li. */
++const nodeInner = (n: Element): Element | null => n.querySelector("[data-rb-node-inner]");
++
++const nodeAttrList = (attr: string, value: string): string =>
++  nodeEls()
++    .filter((n) => nodeInner(n)?.getAttribute(attr) === value)
++    .map((n) => n.getAttribute("data-rb-node"))
++    .join(",");
++
++const rewardMessages = (): { levelNr: number; text: string }[] =>
++  trackMessages.current.filter((m) => m.text.indexOf("\u2b50") === 0);
++
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type AnyReader = (...args: any[]) => any;
++type Namespace = Record<string, AnyReader>;
++
++const guardNamespace = (ns: Namespace): Namespace => {
++  const out: Namespace = {};
++  for (const key of Object.keys(ns)) {
++    const impl = ns[key];
++    out[key] = (...args: any[]): unknown => wrap(() => impl(...args));
++  }
++  return Object.freeze(out);
++};
++/* eslint-enable @typescript-eslint/no-explicit-any */
++
++const buildNamespaces = (): Record<string, Namespace> => {
++  const meta: Namespace = {
++    version: () => RB_PROBE_VERSION,
++    rbIsFrozen: () => {
++      const w = window as unknown as { __rb?: object };
++      return w.__rb && Object.isFrozen(w.__rb) ? 1 : 0;
++    },
++    installMarker: () => {
++      const w = window as unknown as { __rbInstalledAt?: number };
++      return typeof w.__rbInstalledAt === "number" ? 1 : 0;
++    },
++    probeReadonly: () => 1
++  };
++
++  const underscored = (): string[] =>
++    Object.getOwnPropertyNames(window)
++      .filter((k) => k.indexOf("__") === 0)
++      .sort();
++
++  const globals: Namespace = {
++    known: () => underscored().filter((k) => RB_KNOWN_GLOBALS.includes(k)).join(","),
++    unexpected: () =>
++      underscored().filter((k) => !RB_KNOWN_GLOBALS.includes(k)).join(","),
++    count: () => underscored().length
++  };
++
++  const residue: Namespace = {
++    rbResidue: () =>
++      Object.getOwnPropertyNames(window)
++        .filter((k) => /^__rb/i.test(k) && !RB_KNOWN_GLOBALS.includes(k))
++        .sort()
++        .join(","),
++    localStorageKeys: () => {
++      const out: string[] = [];
++      for (let i = 0; i < window.localStorage.length; i++)
++        out.push(window.localStorage.key(i) || "");
++      return out.sort().join(",");
++    },
++    sessionStorageKeys: () => {
++      const out: string[] = [];
++      for (let i = 0; i < window.sessionStorage.length; i++)
++        out.push(window.sessionStorage.key(i) || "");
++      return out.sort().join(",");
++    },
++    urlResidue: () =>
++      window.location.pathname + "|" + window.location.search + "|" + window.location.hash,
++    globalThisRbKeys: () =>
++      Object.getOwnPropertyNames(globalThis)
++        .filter((k) => /^rb/i.test(k))
++        .sort()
++        .join(",")
++  };
++
++  const errors: Namespace = {
++    uncaught: () => uncaught.join(" | "),
++    rejections: () => rejections.join(" | "),
++    consoleErrors: () => consoleErrors.join(" | "),
++    total: () => uncaught.length + rejections.length + consoleErrors.length
++  };
++
++  const level: Namespace = {
++    present: () => (levelSnap.current?.present ? 1 : 0),
++    title: () => levelSnap.current?.title ?? "",
++    levelNr: () => levelSnap.current?.levelNr ?? ABSENT,
++    playState: () => levelSnap.current?.playState ?? "",
++    showTutorial: () => (levelSnap.current?.showTutorial ? 1 : 0),
++    storageKey: () => levelSnap.current?.storageKey ?? "",
++    stage: () =>
++      (levelSnap.current?.currentStageNr ?? ABSENT) +
++      "/" +
++      (levelSnap.current?.maxStages ?? ABSENT),
++    colCount: () => colCount(),
++    colType: (i: number) => col(i)?.type ?? "",
++    colSize: (i: number) => col(i)?.columnSize ?? ABSENT,
++    colLocked: (i: number) => (col(i) ? (col(i)?.locked ? 1 : 0) : ABSENT),
++    colBlocks: (i: number) => (col(i) ? (col(i)?.blocks.length ?? 0) : ABSENT),
++    colTypes: (i: number) => (col(i)?.blocks ?? []).map((b) => b.blockType).join(","),
++    colSig: (i: number) => colSig(i),
++    boardSig: () => {
++      const n = colCount();
++      if (n < 0) return "";
++      const out: string[] = [];
++      for (let i = 0; i < n; i++) out.push(colSig(i));
++      return out.join(";");
++    },
++    boardBlockCount: () => {
++      const n = colCount();
++      if (n < 0) return ABSENT;
++      let t = 0;
++      for (let i = 0; i < n; i++) t += col(i)?.blocks.length ?? 0;
++      return t;
++    },
++    blockType: (c: number, i: number) => col(c)?.blocks[i]?.blockType ?? "",
++    blockRevealed: (c: number, i: number) => {
++      const b = col(c)?.blocks[i];
++      return b ? (b.revealed === false ? 0 : 1) : ABSENT;
++    },
++    colTopType: (c: number) => col(c)?.blocks[0]?.blockType ?? "",
++    lockedCols: () => {
++      const n = colCount();
++      if (n < 0) return "";
++      const out: number[] = [];
++      for (let i = 0; i < n; i++) if (col(i)?.locked) out.push(i);
++      return out.join(",");
++    },
++    /** the app's own pure selection rule, applied to the live snapshot. */
++    selections: () => {
++      const n = colCount();
++      if (n < 0) return "";
++      const out: number[] = [];
++      for (let i = 0; i < n; i++) out.push(selectionSize(i));
++      return out.join(",");
++    },
++    selectionOf: (i: number) => selectionSize(i),
++    selectionTypes: (i: number) => {
++      const st = levelSnap.current?.levelState;
++      if (!st || !st.columns[i]) return "";
++      return selectFromColumn(st, i).map((b) => b.blockType).join(",");
++    },
++    /** the [column, amount] the UI currently holds lifted, or "none". */
++    selected: () => {
++      const s = levelSnap.current?.selection;
++      return s ? s[0] + "," + s[1] : "none";
++    },
++    movesMade: () => (levelSnap.current ? levelSnap.current.levelMoves.length : ABSENT),
++    moveLog: () =>
++      (levelSnap.current?.levelMoves ?? []).map((m) => m.from + ">" + m.to).join(","),
++    won: () => {
++      const st = levelSnap.current?.levelState;
++      return st ? (hasWon(st) ? 1 : 0) : ABSENT;
++    },
++    stuck: () => {
++      const st = levelSnap.current?.levelState;
++      return st ? (isStuck(st) ? 1 : 0) : ABSENT;
++    },
++    /** visible tutorial prose (whitespace-collapsed), "" when the tutorial renders nothing. */
++    tutorial: () => tutorialText(),
++    tutorialHas: (needle: string) => (tutorialText().indexOf(needle) >= 0 ? 1 : 0),
++    tutorialLength: () => tutorialText().length,
++    /** visible overlay Message prose ("Restarting" / "Blocked!" / the win sentence). */
++    message: () => domText("[data-rb-message]"),
++    messagePresent: () => (document.querySelector("[data-rb-message]") ? 1 : 0)
++  };
++
++  const dom: Namespace = {
++    columns: () => all("[data-rb-col]").length,
++    blocks: () => all("[data-rb-block]").length,
++    blockCountInCol: (i: number) => all('[data-rb-col="' + i + '"] [data-rb-block]').length,
++    selectedBlocks: () => all('[data-rb-block][data-rb-selected="1"]').length,
++    selectedBlocksInCol: (i: number) =>
++      all('[data-rb-col="' + i + '"] [data-rb-block][data-rb-selected="1"]').length,
++    selectedCols: () =>
++      all("[data-rb-col]")
++        .filter((c) => c.querySelector('[data-rb-block][data-rb-selected="1"]'))
++        .map((c) => c.getAttribute("data-rb-col"))
++        .join(","),
++    lockedColsInDom: () =>
++      all("[data-rb-col]")
++        .filter((c) => c.getAttribute("data-rb-col-locked") === "1")
++        .map((c) => c.getAttribute("data-rb-col"))
++        .join(","),
++    colBlockTypesInDom: (i: number) =>
++      all('[data-rb-col="' + i + '"] [data-rb-block]')
++        .map((b) => b.getAttribute("data-rb-block-type"))
++        .join(","),
++    colBlockColorsInDom: (i: number) =>
++      all('[data-rb-col="' + i + '"] [data-rb-block]')
++        .map((b) => b.getAttribute("data-rb-block-color"))
++        .join(","),
++    blockColor: (c: number, i: number) =>
++      all('[data-rb-col="' + c + '"] [data-rb-block]')[i]?.getAttribute(
++        "data-rb-block-color"
++      ) ?? "",
++    blockTypeAttr: (c: number, i: number) =>
++      all('[data-rb-col="' + c + '"] [data-rb-block]')[i]?.getAttribute(
++        "data-rb-block-type"
++      ) ?? "",
++    topButtonIcons: () =>
++      all("span.material-icons")
++        .map((s) => (s.textContent || "").trim())
++        .filter(Boolean)
++        .join(","),
++    playButtonLabel: () => {
++      const b = playButton();
++      return b ? (b.textContent || "").trim() : "";
++    },
++    playButtonDisabled: () => {
++      const b = playButton();
++      return b ? (b.disabled ? 1 : 0) : ABSENT;
++    }
++  };
++
++  const track: Namespace = {
++    present: () => (trackSnap.current?.present ? 1 : 0),
++    officialLevelNr: () => trackSnap.current?.officialLevelNr ?? ABSENT,
++    displayLevelNr: () => trackSnap.current?.levelNr ?? ABSENT,
++    numberFrom: () => trackSnap.current?.numberFrom ?? ABSENT,
++    nodes: () => nodeEls().length,
++    nodeLevels: () =>
++      nodeEls().map((n) => n.getAttribute("data-rb-node")).join(","),
++    nodeLevelText: (oneBased: number) =>
++      domText('[data-rb-node="' + oneBased + '"] [data-rb-node-number]'),
++    completedNodes: () => nodeAttrList("data-rb-completed", "1"),
++    completedCount: () =>
++      nodeEls().filter((n) => nodeInner(n)?.getAttribute("data-rb-completed") === "1")
++        .length,
++    currentNode: () => {
++      const hit = nodeEls().find((n) => nodeInner(n)?.getAttribute("data-rb-current") === "1");
++      return hit ? Number(hit.getAttribute("data-rb-node")) : ABSENT;
++    },
++    smileyAtNode: () => {
++      const hit = nodeEls().find((n) => n.querySelector("[data-rb-smiley]"));
++      return hit ? Number(hit.getAttribute("data-rb-node")) : ABSENT;
++    },
++    /** 1-based level numbers carrying a difficulty reward bar, ascending. */
++    rewardLevels: () =>
++      rewardMessages().map((m) => m.levelNr + 1).sort((a, b) => a - b).join(","),
++    rewardCount: () => rewardMessages().length,
++    /** 1-based level number carrying the "Zen mode unlocked" bar, 0 when absent. */
++    zenLabelLevel: () => {
++      const hit = trackMessages.current.find(
++        (m) => m.text.indexOf("Zen mode unlocked") >= 0
++      );
++      return hit ? hit.levelNr + 1 : 0;
++    },
++    messageLevels: () =>
++      trackMessages.current.map((m) => m.levelNr + 1).sort((a, b) => a - b).join(","),
++    /** 1-based level carrying "Zen difficulty <name> unlocked", 0 when absent. */
++    zenDifficultyLevel: (name: string) => {
++      const needle = "Zen difficulty " + name + " unlocked";
++      const hit = trackMessages.current.find((m) => m.text.indexOf(needle) >= 0);
++      return hit ? hit.levelNr + 1 : 0;
++    },
++    zenTypeLabelLevels: () =>
++      trackMessages.current
++        .filter((m) => m.text.indexOf("Zen level type") >= 0)
++        .map((m) => m.levelNr + 1)
++        .sort((x, y) => x - y)
++        .join(","),
++    /** text of the message bar attached to a 1-based level, "" when there is none. */
++    rewardText: (oneBased: number) => {
++      const hit = trackMessages.current.find((m) => m.levelNr + 1 === oneBased);
++      return hit ? hit.text : "";
++    },
++    zenButtonHidden: () => {
++      const el = document.querySelector("[data-rb-zen-slot]");
++      if (!el) return ABSENT;
++      return /opacity-0/.test(el.getAttribute("class") || "") ? 1 : 0;
++    },
++    playLabel: () => dom.playButtonLabel(),
++    nodeShiftClass: (oneBased: number) => {
++      const el = document.querySelector(
++        '[data-rb-node="' + oneBased + '"] [data-rb-node-inner]'
++      );
++      if (!el) return "";
++      const hits = (el.getAttribute("class") || "")
++        .split(/\s+/)
++        .filter((c) => /^-?translate-x-/.test(c));
++      return hits.length ? hits.join(" ") : "none";
++    }
++  };
++
++  const storage: Namespace = {
++    storeName: () => "block-sort-store",
++    localStorageKeyCount: () => window.localStorage.length,
++    sessionStorageKeyCount: () => window.sessionStorage.length,
++    serviceWorkerControlled: () =>
++      navigator.serviceWorker && navigator.serviceWorker.controller ? 1 : 0
++  };
++
++  return { meta, globals, residue, errors, level, dom, track, storage };
++};
++
++export const installRbProbe = (): void => {
++  if (typeof window === "undefined") return;
++  const w = window as unknown as { __rb?: object; __rbInstalledAt?: number };
++  if (w.__rb) return;
++
++  window.addEventListener("error", (event) => {
++    if (uncaught.length < 40) {
++      const msg = event.message || (event.error && event.error.message) || "error";
++      uncaught.push(String(msg).slice(0, 160));
++    }
++  });
++  window.addEventListener("unhandledrejection", (event) => {
++    if (rejections.length < 40) {
++      const reason = event.reason as { message?: string } | undefined;
++      rejections.push(String((reason && reason.message) || reason || "rejection").slice(0, 160));
++    }
++  });
++  const origError = console.error.bind(console);
++  console.error = (...data: unknown[]): void => {
++    if (consoleErrors.length < 40) {
++      consoleErrors.push(
++        data
++          .map((a) => {
++            if (typeof a === "string") return a;
++            const m = (a as { message?: string } | null)?.message;
++            return String(m || a);
++          })
++          .join(" ")
++          .slice(0, 160)
++      );
++    }
++    origError(...data);
++  };
++
++  const built = buildNamespaces();
++  const frozen: Record<string, Namespace> = {};
++  for (const name of Object.keys(built)) frozen[name] = guardNamespace(built[name]);
++  w.__rbInstalledAt = Date.now();
++  w.__rb = Object.freeze(frozen);
++};
+diff --git a/src/support/createFrames.spec.ts b/src/support/createFrames.spec.ts
+deleted file mode 100644
+--- a/src/support/createFrames.spec.ts
++++ /dev/null
+@@ -1,105 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { createFrames, shiftRect } from "./createFrames";
+-
+-const rect = (rect: {
+-  x: number;
+-  y: number;
+-  w: number;
+-  h: number;
+-}): DOMRect => ({
+-  x: rect.x,
+-  y: rect.y,
+-  width: rect.w,
+-  height: rect.h,
+-  top: rect.y,
+-  right: rect.x + rect.w,
+-  bottom: rect.y + rect.h,
+-  left: rect.x,
+-  toJSON: () => rect
+-});
+-
+-describe(shiftRect, () => {
+-  it("shifts a rect by a given delta", () => {
+-    const result = shiftRect(rect({ x: 10, y: 20, w: 30, h: 40 }), 5, 10);
+-    expect(result).toEqual({ x: 15, y: 30, width: 30, height: 40 });
+-  });
+-});
+-
+-describe(createFrames, () => {
+-  it("creates frames for a block moving from source to target (same height)", () => {
+-    const source = rect({ x: 10, y: 60, w: 40, h: 40 });
+-    const target = rect({ x: 100, y: 60, w: 40, h: 40 });
+-
+-    const result = createFrames(source, target, 20, 20, 10);
+-    expect(result).toEqual([
+-      { transform: "translate(0px, 0px)" },
+-      { transform: "translate(0px, -40px)", offset: 0.16 },
+-      { transform: "translate(18px, -60px)", offset: 0.312 },
+-      { transform: "translate(45px, -80px)", offset: 0.5 },
+-      { transform: "translate(72px, -60px)", offset: 0.688 },
+-      { transform: "translate(90px, -40px)", offset: 0.84, zIndex: 10 },
+-      { transform: "translate(90px, 0px)", offset: 1, zIndex: 10 }
+-    ]);
+-  });
+-
+-  it("creates frames for a block moving from source to target (lower target)", () => {
+-    const source = rect({ x: 10, y: 60, w: 40, h: 40 });
+-    const target = rect({ x: 110, y: 240, w: 40, h: 40 });
+-
+-    const result = createFrames(source, target, 20, 20, 10);
+-    expect(result).toEqual([
+-      { transform: "translate(0px, 0px)" },
+-      {
+-        transform: "translate(0px, -40px)",
+-        offset: expect.closeTo(0.16, 0.01)
+-      },
+-      {
+-        transform: "translate(20px, -60px)",
+-        offset: expect.closeTo(0.18, 0.01)
+-      },
+-      {
+-        transform: "translate(50px, -80px)",
+-        offset: expect.closeTo(0.29, 0.01)
+-      },
+-      {
+-        transform: "translate(80px, -60px)",
+-        offset: expect.closeTo(0.32, 0.01)
+-      },
+-      { transform: "translate(100px, -40px)", offset: 0.5, zIndex: 10 },
+-      { transform: "translate(100px, 180px)", offset: 1, zIndex: 10 }
+-    ]);
+-  });
+-
+-  it("creates frames for a block moving from source to target (higher target)", () => {
+-    const source = rect({ x: 70, y: 260, w: 40, h: 40 });
+-    const target = rect({ x: 10, y: 60, w: 40, h: 40 });
+-
+-    const result = createFrames(source, target, 20, 20, 10);
+-    expect(result).toEqual([
+-      { transform: "translate(0px, 0px)" },
+-      {
+-        transform: "translate(0px, -240px)",
+-        offset: expect.closeTo(0.57, 0.01)
+-      },
+-      {
+-        transform: "translate(-12px, -260px)",
+-        offset: expect.closeTo(0.64, 0.01)
+-      },
+-      {
+-        transform: "translate(-30px, -280px)",
+-        offset: expect.closeTo(0.73, 0.01)
+-      },
+-      {
+-        transform: "translate(-48px, -260px)",
+-        offset: expect.closeTo(0.82, 0.01)
+-      },
+-      {
+-        transform: "translate(-60px, -240px)",
+-        offset: expect.closeTo(0.9, 0.01),
+-        zIndex: 10
+-      },
+-      { transform: "translate(-60px, -200px)", offset: 1, zIndex: 10 }
+-    ]);
+-  });
+-});
+diff --git a/src/support/effectTimeout.spec.ts b/src/support/effectTimeout.spec.ts
+deleted file mode 100644
+--- a/src/support/effectTimeout.spec.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import { describe, expect, it, vi } from "vitest";
+-
+-import { effectTimeout } from "./effectTimeout";
+-
+-describe(effectTimeout, () => {
+-  it("calls the goal after the duration", () => {
+-    const goal = vi.fn();
+-    vi.useFakeTimers();
+-    effectTimeout(goal, 100);
+-    expect(goal).not.toBeCalled();
+-    vi.advanceTimersByTime(100);
+-    expect(goal).toBeCalled();
+-    vi.useRealTimers();
+-  });
+-
+-  it("clears the timeout when the effect is cleared", () => {
+-    const goal = vi.fn();
+-    vi.useFakeTimers();
+-    const clear = effectTimeout(goal, 100);
+-    clear();
+-    vi.advanceTimersByTime(100);
+-    expect(goal).not.toBeCalled();
+-    vi.useRealTimers();
+-  });
+-});
+diff --git a/src/support/fib.spec.ts b/src/support/fib.spec.ts
+deleted file mode 100644
+--- a/src/support/fib.spec.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { fib } from "./fib";
+-
+-describe(fib, () => {
+-  it("returns the fibonacci sequence", () => {
+-    expect(fib(1, 10)).toEqual([1, 2, 3, 5, 8, 13, 21, 34, 55]);
+-  });
+-
+-  it("can change the step size", () => {
+-    expect(fib(3, 10)).toEqual([3, 6, 9, 15, 24, 39, 63, 102, 165]);
+-  });
+-});
+diff --git a/src/support/migrateLevelState.spec.ts b/src/support/migrateLevelState.spec.ts
+deleted file mode 100644
+--- a/src/support/migrateLevelState.spec.ts
++++ /dev/null
+@@ -1,55 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import {
+-  createBlocks,
+-  createLevelState,
+-  createPlacementColumn
+-} from "@/game/factories";
+-
+-import { migrateLevelState } from "./migrateLevelState";
+-
+-describe(migrateLevelState, () => {
+-  it("returns the same value if it is already up to date", () => {
+-    const value = createLevelState([
+-      createPlacementColumn(4, createBlocks("red", "green", "blue"))
+-    ]);
+-    expect(migrateLevelState(value)).toEqual(value);
+-  });
+-
+-  it("returns the an up to date version if version 1 is passed in", () => {
+-    const value = {
+-      colors: ["blue", "green", "red"],
+-      columns: [
+-        {
+-          type: "placement",
+-          locked: false,
+-          columnSize: 4,
+-          blocks: [
+-            { color: "red", revealed: true },
+-            { color: "green", revealed: true },
+-            { color: "blue", revealed: true }
+-          ]
+-        }
+-      ],
+-      moves: []
+-    } as unknown;
+-
+-    const expectedResult = {
+-      blockTypes: ["blue", "green", "red"],
+-      columns: [
+-        {
+-          type: "placement",
+-          locked: false,
+-          columnSize: 4,
+-          blocks: [
+-            { blockType: "red", revealed: true },
+-            { blockType: "green", revealed: true },
+-            { blockType: "blue", revealed: true }
+-          ]
+-        }
+-      ],
+-      moves: []
+-    } as unknown;
+-    expect(migrateLevelState(value)).toEqual(expectedResult);
+-  });
+-});
+diff --git a/src/support/random.spec.ts b/src/support/random.spec.ts
+deleted file mode 100644
+--- a/src/support/random.spec.ts
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import { mulberry32, pick, shuffle } from "./random";
+-
+-describe(mulberry32, () => {
+-  it("returns a random number based on a seed", () => {
+-    const random = mulberry32(42);
+-    expect(random()).toBe(0.6011037519201636);
+-    expect(random()).toBe(0.44829055899754167);
+-    expect(random()).toBe(0.8524657934904099);
+-  });
+-});
+-
+-describe(shuffle, () => {
+-  it("shuffles an array", () => {
+-    const array = [1, 2, 3, 4, 5];
+-    shuffle(array, mulberry32(42));
+-    expect(array).not.toEqual([1, 2, 3, 4, 5]);
+-    expect(array).toEqual([1, 5, 3, 2, 4]);
+-  });
+-});
+-
+-describe(pick, () => {
+-  it("picks a random element from a list", () => {
+-    const random = mulberry32(42);
+-    const list = [1, 2, 3, 4, 5];
+-    expect(pick(list, random)).toBe(4);
+-    expect(pick(list, random)).toBe(3);
+-  });
+-});
+diff --git a/src/support/schedule.spec.ts b/src/support/schedule.spec.ts
+deleted file mode 100644
+--- a/src/support/schedule.spec.ts
++++ /dev/null
+@@ -1,38 +0,0 @@
+-import { describe, expect, it } from "vitest";
+-
+-import type { RangedItem } from "./schedule";
+-import { filterInRange } from "./schedule";
+-
+-describe(filterInRange, () => {
+-  it("returns items that are in range", () => {
+-    type Content = { name: string } & RangedItem;
+-    const testItems: Content[] = [
+-      {
+-        name: "single day",
+-        begin: { month: 1, day: 9 },
+-        end: { month: 1, day: 9 }
+-      },
+-      {
+-        name: "out-of-range",
+-        begin: { month: 2, day: 6 },
+-        end: { month: 2, day: 10 }
+-      },
+-      {
+-        name: "year-bridge",
+-        begin: { month: 12, day: 1 },
+-        end: { month: 2, day: 1 }
+-      },
+-      {
+-        name: "small-range",
+-        begin: { month: 1, day: 6 },
+-        end: { month: 1, day: 10 }
+-      }
+-    ];
+-    const items = filterInRange(new Date("2021-01-09"), testItems);
+-    expect(items.map((item) => item.name)).toEqual([
+-      "single day",
+-      "year-bridge",
+-      "small-range"
+-    ]);
+-  });
+-});
+diff --git a/src/support/useDelayedToggle.spec.ts b/src/support/useDelayedToggle.spec.ts
+deleted file mode 100644
+--- a/src/support/useDelayedToggle.spec.ts
++++ /dev/null
+@@ -1,51 +0,0 @@
+-import { act, renderHook } from "@testing-library/react";
+-import { describe, expect, it, vi } from "vitest";
+-
+-import { useDelayedToggle } from "./useDelayedToggle";
+-
+-describe(useDelayedToggle, () => {
+-  it("returns the initial value", () => {
+-    const { result } = renderHook(() =>
+-      useDelayedToggle(false, { onDelay: 0, offDelay: 0 })
+-    );
+-    expect(result.current).toEqual(false);
+-  });
+-
+-  it("updates immediately if delays are 0", () => {
+-    const { result, rerender } = renderHook(
+-      ({ value }: { value: boolean }) =>
+-        useDelayedToggle(value, { onDelay: 0, offDelay: 0 }),
+-      { initialProps: { value: true } }
+-    );
+-    expect(result.current).toEqual(true);
+-
+-    rerender({ value: false });
+-    expect(result.current).toEqual(false);
+-
+-    rerender({ value: true });
+-    expect(result.current).toEqual(true);
+-  });
+-
+-  describe("delayed switching", () => {
+-    it("can delay when switching on and off", () => {
+-      vi.useFakeTimers();
+-      const { result, rerender } = renderHook(
+-        ({ value }: { value: boolean }) =>
+-          useDelayedToggle(value, { onDelay: 20, offDelay: 20 }),
+-        { initialProps: { value: false } }
+-      );
+-      expect(result.current).toEqual(false);
+-
+-      rerender({ value: true });
+-      expect(result.current).toEqual(false);
+-
+-      act(() => vi.advanceTimersByTime(30));
+-      expect(result.current).toEqual(true);
+-
+-      rerender({ value: false });
+-      expect(result.current).toEqual(true);
+-      act(() => vi.advanceTimersByTime(30));
+-      expect(result.current).toEqual(false);
+-    });
+-  });
+-});
+diff --git a/src/support/useWakeLock.spec.ts b/src/support/useWakeLock.spec.ts
+deleted file mode 100644
+--- a/src/support/useWakeLock.spec.ts
++++ /dev/null
+@@ -1,80 +0,0 @@
+-import { renderHook } from "@testing-library/react";
+-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+-
+-import { useWakeLock } from "./useWakeLock";
+-
+-describe("useWakeLock", () => {
+-  const release = vi.fn();
+-  const request = vi.fn().mockReturnValue(
+-    Promise.resolve({
+-      release
+-    })
+-  );
+-  let oldNavigator: Navigator;
+-
+-  beforeEach(() => {
+-    release.mockClear();
+-    request.mockClear();
+-    const wakeLock = {
+-      request,
+-      release
+-    };
+-    const navigator = {
+-      wakeLock
+-    };
+-    oldNavigator = globalThis.navigator;
+-    globalThis.navigator = navigator as unknown as Navigator;
+-  });
+-
+-  afterEach(() => {
+-    globalThis.navigator = oldNavigator;
+-  });
+-
+-  it("allows request and auto releases on unmount", async () => {
+-    expect(request).not.toHaveBeenCalled();
+-    expect(release).not.toHaveBeenCalled();
+-    const { unmount, result } = renderHook(() => useWakeLock());
+-
+-    expect(request).not.toHaveBeenCalled();
+-    result.current.requestWakeLock();
+-    expect(request).toHaveBeenCalled();
+-
+-    expect(request).toHaveBeenCalled();
+-    expect(release).not.toHaveBeenCalled();
+-    await new Promise((resolve) => setTimeout(resolve, 1));
+-    unmount();
+-    expect(release).toHaveBeenCalled();
+-  });
+-
+-  it("re-acquires the lock after visibility change", async () => {
+-    expect(request).not.toHaveBeenCalled();
+-    const { result } = renderHook(() => useWakeLock());
+-
+-    expect(request).not.toHaveBeenCalled();
+-    result.current.requestWakeLock();
+-    expect(request).toHaveBeenCalledTimes(1);
+-
+-    await new Promise((resolve) => setTimeout(resolve, 1));
+-
+-    document.dispatchEvent(new Event("visibilitychange"));
+-    expect(request).toHaveBeenCalledTimes(2);
+-  });
+-
+-  it("allows manual release", async () => {
+-    expect(request).not.toHaveBeenCalled();
+-    const { unmount, result } = renderHook(() => useWakeLock());
+-
+-    expect(request).not.toHaveBeenCalled();
+-    result.current.requestWakeLock();
+-    await new Promise((resolve) => setTimeout(resolve, 10));
+-
+-    expect(request).toHaveBeenCalled();
+-    expect(release).not.toHaveBeenCalled();
+-
+-    result.current.releaseWakeLock();
+-    expect(release).toHaveBeenCalledTimes(1);
+-
+-    unmount();
+-    expect(release).toHaveBeenCalledTimes(1);
+-  });
+-});
+diff --git a/src/ui/Block/Block.tsx b/src/ui/Block/Block.tsx
+--- a/src/ui/Block/Block.tsx
++++ b/src/ui/Block/Block.tsx
+@@ -27,6 +27,10 @@ export type Props = {
+   shapeColored?: boolean;
+   shadow?: boolean;
+   blur?: boolean;
++  /** RepairBench instrumentation: stable, build-independent read-only hooks. */
++  rbType?: string;
++  rbIndex?: number;
++  rbSelected?: boolean;
+   onPickUp?: Dispatch<DOMRect>;
+   onDrop?: VoidFunction;
+   onLock?: VoidFunction;
+@@ -59,7 +63,10 @@ export const Block: React.FC<Props> = ({
+   blocked = false,
+   shadow = true,
+   blur = false,
+-  shapeColored = false
++  shapeColored = false,
++  rbType,
++  rbIndex,
++  rbSelected = false
+ }) => {
+   const blockRef = useRef<HTMLDivElement>(null);
+   const isLocked = useDelayedToggle(locked, {
+@@ -107,6 +114,12 @@ export const Block: React.FC<Props> = ({
+   return (
+     <div
+       ref={blockRef}
++      data-rb-block={rbType === undefined ? undefined : "1"}
++      data-rb-block-type={rbType}
++      data-rb-block-color={color}
++      data-rb-index={rbIndex}
++      data-rb-selected={rbSelected ? "1" : "0"}
++      data-rb-revealed={revealed ? "1" : "0"}
+       style={{
+         "--cube-color": color,
+         "--hidden-color": hiddenColor,
+diff --git a/src/ui/BlockColumn/BlockColumn.tsx b/src/ui/BlockColumn/BlockColumn.tsx
+--- a/src/ui/BlockColumn/BlockColumn.tsx
++++ b/src/ui/BlockColumn/BlockColumn.tsx
+@@ -17,6 +17,8 @@ import styles from "./BlockColumn.module.css";
+ 
+ type Props = {
+   column: Column;
++  /** RepairBench instrumentation: the column's index in levelState.columns. */
++  rbIndex?: number;
+   ref?: React.Ref<HTMLDivElement>;
+   amountSelected?: number;
+   amountSuggested?: number;
+@@ -43,6 +45,7 @@ const MOTION_DURATION = 400;
+ 
+ export const BlockColumn: React.FC<Props> = ({
+   column: columnProp,
++  rbIndex,
+   ref,
+   onPointerDown,
+   onPointerUp,
+@@ -159,6 +162,11 @@ export const BlockColumn: React.FC<Props> = ({
+ 
+   return (
+     <div
++      data-rb-col={rbIndex}
++      data-rb-col-type={column.type}
++      data-rb-col-size={column.columnSize}
++      data-rb-col-locked={column.locked ? "1" : "0"}
++      data-rb-col-count={column.blocks.length}
+       className={`${rowSpans[column.columnSize + 1 + (column.paddingTop ?? 0)]} justify-self-center pb-2 ${colPadding[column.paddingTop ?? 0]}`}
+     >
+       <div
+@@ -207,6 +215,9 @@ export const BlockColumn: React.FC<Props> = ({
+             return (
+               <Block
+                 key={column.columnSize - column.blocks.length + index}
++                rbType={block.blockType}
++                rbIndex={index}
++                rbSelected={isSelected}
+                 locked={p <= blocksLocked - 1}
+                 index={index}
+                 moved={started}
+diff --git a/src/ui/LevelLayout/LevelLayout.tsx b/src/ui/LevelLayout/LevelLayout.tsx
+--- a/src/ui/LevelLayout/LevelLayout.tsx
++++ b/src/ui/LevelLayout/LevelLayout.tsx
+@@ -215,6 +215,7 @@ export const LevelLayout: React.FC<Props> = ({
+             {levelState.columns.map((bar, i) => (
+               <BlockColumn
+                 column={bar}
++                rbIndex={i}
+                 key={i}
+                 ref={(el) => addToRefsArray(el, i)}
+                 animation={animateColumns}
+diff --git a/src/ui/LevelTrack/LevelTrack.tsx b/src/ui/LevelTrack/LevelTrack.tsx
+--- a/src/ui/LevelTrack/LevelTrack.tsx
++++ b/src/ui/LevelTrack/LevelTrack.tsx
+@@ -9,6 +9,8 @@ import { LevelNode } from "@/modules/LevelTrack/LevelNode";
+ import { LevelTrackMessageBar } from "@/modules/LevelTrack/LevelTrackMessageBar";
+ import { LevelTypeIcon } from "@/modules/LevelTrack/LevelTypeIcon";
+ 
++import { publishRbTrack } from "@/rbProbe";
++
+ import { Smiley } from "../Smiley/Smiley";
+ 
+ import styles from "./levelTrack.module.css";
+@@ -52,6 +54,17 @@ export const Track: React.FC<Props> = ({
+   const jumpRight = (levelNr + 2) % 8 < 4;
+   const hasMessage = getLevelMessage?.(officialLevelNr) !== undefined;
+ 
++  /*
++   * RepairBench instrumentation: hand the rendered track (node window + reward/zen message bars) to
++   * the read-only probe. Pure assignment into a module-private slot - no app state, no DOM.
++   */
++  publishRbTrack(
++    { present: true, officialLevelNr, levelNr, numberFrom },
++    levelNrs
++      .map((i) => ({ levelNr: i, text: getLevelMessage?.(i) ?? "" }))
++      .filter((m) => m.text !== "")
++  );
++
+   return (
+     <ol
+       className="flex w-full flex-1 flex-col-reverse overflow-y-hidden"
+@@ -72,6 +85,7 @@ export const Track: React.FC<Props> = ({
+           <Fragment key={i}>
+             {levelMessage !== undefined && (
+               <li
++                data-rb-message-level={i}
+                 className={clsx(
+                   "flex w-full flex-shrink-0 items-center justify-center border-b-2 border-b-black/10 align-middle",
+                   {
+@@ -84,6 +98,7 @@ export const Track: React.FC<Props> = ({
+               </li>
+             )}
+             <li
++              data-rb-node={i + 1}
+               style={{ "--levelNr": `'${LEVEL_SCALE.indexOf(i) + 1}'` }}
+               className={clsx(
+                 "flex h-height-block w-full flex-shrink-0 items-center justify-center align-middle",
+@@ -102,6 +117,7 @@ export const Track: React.FC<Props> = ({
+               >
+                 {i == officialLevelNr && (
+                   <span
++                    data-rb-smiley=""
+                     className={clsx("inline-block w-10", {
+                       [styles.hop]: levelNr < officialLevelNr
+                     })}
+diff --git a/src/ui/Message/Message.tsx b/src/ui/Message/Message.tsx
+--- a/src/ui/Message/Message.tsx
++++ b/src/ui/Message/Message.tsx
+@@ -100,6 +100,7 @@ export const Message: React.FC<MessageProps> = ({
+           }
+         >
+           <h1
++            data-rb-message=""
+             className="hyphens-auto break-all text-center text-2xl font-bold text-white"
+             lang="en"
+           >
+diff --git a/src/vitest-setup.ts b/src/vitest-setup.ts
+deleted file mode 100644
+--- a/src/vitest-setup.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-import "@testing-library/jest-dom/vitest";
+diff --git a/vitest.config.ts b/vitest.config.ts
+deleted file mode 100644
+--- a/vitest.config.ts
++++ /dev/null
+@@ -1,14 +0,0 @@
+-import { defineConfig, mergeConfig } from "vitest/config";
+-
+-import viteConfig from "./vite.config";
+-
+-export default mergeConfig(
+-  viteConfig,
+-  defineConfig({
+-    test: {
+-      globals: true,
+-      environment: "jsdom",
+-      setupFiles: "./src/vitest-setup.ts"
+-    }
+-  })
+-);

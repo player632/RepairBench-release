@@ -1,0 +1,155 @@
+diff --git a/src/components/CreateDuckFormSection/CreateDuckFormSection.tsx b/src/components/CreateDuckFormSection/CreateDuckFormSection.tsx
+index 16cd237..578e885 100644
+--- a/src/components/CreateDuckFormSection/CreateDuckFormSection.tsx
++++ b/src/components/CreateDuckFormSection/CreateDuckFormSection.tsx
+@@ -108,7 +108,7 @@ export const CreateDuckFormSection = (props: CreateDuckFormSectionProps) => {
+ 
+     try {
+       setIsCreatingDuck(true);
+-      if (!isLoggedIn) {
++      if (isLoggedIn) {
+         await handleCreateAnonymousUser();
+       }
+       await handleCreateDuck();
+diff --git a/src/components/Dropdown/Dropdown.tsx b/src/components/Dropdown/Dropdown.tsx
+index 89e15ae..5f84794 100644
+--- a/src/components/Dropdown/Dropdown.tsx
++++ b/src/components/Dropdown/Dropdown.tsx
+@@ -42,7 +42,7 @@ export const Dropdown = (props: DropdownProps) => {
+       isOpen() &&
+       dropdownRef &&
+       buttonRef &&
+-      !dropdownRef.contains(event.target as Node) &&
++      dropdownRef.contains(event.target as Node) &&
+       !buttonRef.contains(event.target as Node)
+     ) {
+       closeDropdown();
+diff --git a/src/components/DucksCanvas/DucksCanvas.tsx b/src/components/DucksCanvas/DucksCanvas.tsx
+index 8fe92e2..f456a32 100644
+--- a/src/components/DucksCanvas/DucksCanvas.tsx
++++ b/src/components/DucksCanvas/DucksCanvas.tsx
+@@ -148,7 +148,6 @@ export const DucksCanvas = (props: DucksCanvasProps = {}): JSX.Element => {
+   const handleRecenter = () => {
+     resetPan();
+     setIsTransitioning(true);
+-    setPan({ x: 0, y: 0 });
+     setScale(1);
+     setTimeout(() => setIsTransitioning(false), 300);
+   };
+diff --git a/src/components/DucksCanvas/hooks/useCanvasPan.ts b/src/components/DucksCanvas/hooks/useCanvasPan.ts
+index a346a08..efb92b8 100644
+--- a/src/components/DucksCanvas/hooks/useCanvasPan.ts
++++ b/src/components/DucksCanvas/hooks/useCanvasPan.ts
+@@ -69,7 +69,7 @@ export function useCanvasPan(activeId?: () => string | null) {
+     setIsPanning(false);
+ 
+     if (
+-      Math.abs(velocity.x) > CANVAS_CONFIG.momentumThreshold ||
++      Math.abs(velocity.x) > CANVAS_CONFIG.momentumThreshold &&
+       Math.abs(velocity.y) > CANVAS_CONFIG.momentumThreshold
+     ) {
+       momentumActive = true;
+diff --git a/src/components/DucksCanvas/hooks/useCanvasZoom.ts b/src/components/DucksCanvas/hooks/useCanvasZoom.ts
+index c6fdc2b..9d95b51 100644
+--- a/src/components/DucksCanvas/hooks/useCanvasZoom.ts
++++ b/src/components/DucksCanvas/hooks/useCanvasZoom.ts
+@@ -31,8 +31,8 @@ export function useCanvasZoom(
+     const canvasX = (mouseX - currentPan.x) / oldScale;
+     const canvasY = (mouseY - currentPan.y) / oldScale;
+ 
+-    const newPanX = mouseX - canvasX * newScale;
+-    const newPanY = mouseY - canvasY * newScale;
++    const newPanX = mouseX - canvasX * oldScale;
++    const newPanY = mouseY - canvasY * oldScale;
+ 
+     setScale(newScale);
+     setPan({ x: newPanX, y: newPanY });
+diff --git a/src/components/GradientScrollArea/GradientScrollArea.tsx b/src/components/GradientScrollArea/GradientScrollArea.tsx
+index a933f4b..e0b62d9 100644
+--- a/src/components/GradientScrollArea/GradientScrollArea.tsx
++++ b/src/components/GradientScrollArea/GradientScrollArea.tsx
+@@ -13,7 +13,7 @@ export const GradientScrollArea = (props: GradientScrollAreaProps) => {
+ 
+   const checkScroll = (target: HTMLDivElement) => {
+     const { scrollTop } = target;
+-    setShowTopGradient(scrollTop > SCROLL_THRESHOLD);
++    setShowTopGradient(scrollTop < SCROLL_THRESHOLD);
+   };
+ 
+   const handleScroll = (e: Event) => {
+diff --git a/src/helpers/date.helper.ts b/src/helpers/date.helper.ts
+index b40d54d..20839e5 100644
+--- a/src/helpers/date.helper.ts
++++ b/src/helpers/date.helper.ts
+@@ -2,7 +2,7 @@ const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+ 
+ export const timeAgo = (date: Date): string => {
+   const now = new Date();
+-  const diff = (date.getTime() - now.getTime()) / 1000;
++  const diff = (now.getTime() - date.getTime()) / 1000;
+ 
+   const units = [
+     ["year", 31536000],
+diff --git a/src/helpers/form-validation.helper.ts b/src/helpers/form-validation.helper.ts
+index 293b0e0..c2bc07e 100644
+--- a/src/helpers/form-validation.helper.ts
++++ b/src/helpers/form-validation.helper.ts
+@@ -1,5 +1,5 @@
+ export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+-export const NAME_MIN_LENGTH = 5;
++export const NAME_MIN_LENGTH = 4;
+ export const NAME_MAX_LENGTH = 25;
+ 
+ export const validateEmail = (email: string): string | undefined => {
+diff --git a/src/hooks/useForm.hook.ts b/src/hooks/useForm.hook.ts
+index 28e0107..3a4d8ff 100644
+--- a/src/hooks/useForm.hook.ts
++++ b/src/hooks/useForm.hook.ts
+@@ -40,7 +40,7 @@ export const useForm = <T extends Record<string, any>>(
+         const validator = config.validator;
+         if (!validator) continue;
+ 
+-        if (!touched.has(field)) continue;
++        if (touched.has(field)) continue;
+ 
+         const conditionMet = config.shouldValidate
+           ? config.shouldValidate(data)
+diff --git a/src/pages/Home/index.tsx b/src/pages/Home/index.tsx
+index 44ee7a9..412af30 100644
+--- a/src/pages/Home/index.tsx
++++ b/src/pages/Home/index.tsx
+@@ -58,7 +58,7 @@ export default function Home() {
+     document.body.style.backgroundColor = "var(--color-yard-green)";
+     startViewTransition(() => {
+       setTimeout(() => {
+-        navigate("/party", { replace: true });
++        navigate("/", { replace: true });
+       }, 200);
+     });
+   };
+diff --git a/src/pages/Party/index.tsx b/src/pages/Party/index.tsx
+index 02921d2..c8b42c2 100644
+--- a/src/pages/Party/index.tsx
++++ b/src/pages/Party/index.tsx
+@@ -97,7 +97,7 @@ export default function Party() {
+ 
+   createEffect(() => {
+     const shouldShow =
+-      !userInfo.data?.user?.email && !userInfo.isLoading && !userInfo.error;
++      !userInfo.data?.user?.display_name && !userInfo.isLoading && !userInfo.error;
+ 
+     if (shouldShow !== showDialog()) {
+       startViewTransition(() => {
+diff --git a/src/stores/appearanceStore.ts b/src/stores/appearanceStore.ts
+index 59b5b63..ad408bb 100644
+--- a/src/stores/appearanceStore.ts
++++ b/src/stores/appearanceStore.ts
+@@ -37,7 +37,7 @@ export const useAppearanceStore = (): TAppearanceStore => {
+ 
+       const group = getAccessoryGroup(accessoryId);
+ 
+-      if (group === AccessoryGroup.Other) {
++      if (group !== AccessoryGroup.Other) {
+         return {
+           ...prev,
+           selectedAccessories: [...prev.selectedAccessories, accessoryId],

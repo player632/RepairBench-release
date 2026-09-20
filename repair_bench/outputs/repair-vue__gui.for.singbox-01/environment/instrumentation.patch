@@ -1,0 +1,159 @@
+diff --git a/frontend/src/main.ts b/frontend/src/main.ts
+index bfa698b..f8e76a8 100644
+--- a/frontend/src/main.ts
++++ b/frontend/src/main.ts
+@@ -4,6 +4,7 @@ import { createApp } from 'vue'
+ import './assets/main.less'
+ import './assets/polyfills'
+ import './assets/globalMethods'
++import './rbProbe'
+ import App from './App.vue'
+ import components from './components'
+ import directives from './directives'
+diff --git a/frontend/src/rbProbe.ts b/frontend/src/rbProbe.ts
+new file mode 100644
+index 0000000..82e9f43
+--- /dev/null
++++ b/frontend/src/rbProbe.ts
+@@ -0,0 +1,141 @@
++/* repair-bench instrumentation probe: read-only observation surface for the verifier.
++ * Installs `window.__rb` with pure DOM / stub readers. It mutates no application state,
++ * registers no listeners and renders nothing, so app behaviour is identical with or
++ * without this file. Every helper returns a scalar (string / number / boolean) because
++ * the official dsl_runner js_eval assertions compare scalars only. */
++
++interface RbBridgeCall {
++  kind: string
++  name: string
++  args: string[]
++}
++
++interface RbWailsStub {
++  vfs: Record<string, string>
++  calls: RbBridgeCall[]
++  version: string
++}
++
++declare global {
++  interface Window {
++    __rbWailsStub?: RbWailsStub
++    // eslint-disable-next-line @typescript-eslint/no-explicit-any
++    __rb?: any
++    __rbT0?: number
++  }
++}
++
++const norm = (s: string | null | undefined): string => (s || '').replace(/\s+/g, ' ').trim()
++const firstLine = (s: string | null | undefined): string => norm((s || '').split('\n')[0])
++const q = (sel: string): HTMLElement | null => document.querySelector(sel)
++const qa = (sel: string): HTMLElement[] => Array.from(document.querySelectorAll(sel))
++const stub = (): RbWailsStub | null => window.__rbWailsStub || null
++const cards = (): HTMLElement[] => qa('.gui-card')
++const cardTexts = (): string[] => cards().map((c) => norm(c.textContent))
++const pageText = (): string => norm((q('.app-page') && q('.app-page')!.textContent) || '')
++
++const rb = {
++  bootDone: (): boolean => qa('.main-nav__item').length > 0 && !q('.rotation'),
++  splashVisible: (): boolean => !!q('.rotation'),
++  navCount: (): number => qa('.main-nav__item').length,
++  navLabelsJoined: (): string => qa('.main-nav__item').map((n) => norm(n.textContent)).join('|'),
++  navHasSettings: (): boolean => qa('.main-nav__item').some((n) => norm(n.textContent) === 'Settings'),
++  routePath: (): string => location.hash.replace(/^#/, ''),
++  routeIsSettings: (): boolean => location.hash.replace(/^#/, '') === '/settings',
++  pageText: (): string => pageText(),
++  pageTextLen: (): number => pageText().length,
++  settingsTextRich: (): boolean => pageText().length > 300,
++  cardTitleList: (): string => cards().map((c) => firstLine(c.textContent)).join('|'),
++  cardCount: (): number => cards().length,
++  cardTextJoined: (): string => cardTexts().join('||'),
++  seededCardsPresent: (): boolean => {
++    const t = rb.cardTitleList()
++    return t.includes('RB Alpha') && t.includes('RB Beta')
++  },
++  wizardSavedNamedCard: (): boolean => rb.cardTitleList().includes('RB Gamma'),
++  gridCardsInlineActions: (): boolean => cards().some((c) => norm(c.innerText).includes('UseEditDelete')),
++  containerIsGrid: (): boolean => {
++    const el = q('.app-page > div:last-child')
++    return !!el && String(el.className).includes('grid-list-grid')
++  },
++  gridContainerClass: (): string => {
++    const el = q('.app-page > div:last-child')
++    return el ? String(el.className) : '__ABSENT__'
++  },
++  cardMenuOpen: (): boolean => {
++    const o = q('.gui-dropdown-overlay')
++    return !!o && getComputedStyle(o).display !== 'none' && norm(o.textContent).includes('Use')
++  },
++  modalCount: (): number => qa('.gui-modal-modal').length,
++  wizardOpen: (): boolean => qa('.gui-modal-modal').length > 0,
++  wizardClosed: (): boolean => qa('.gui-modal-modal').length === 0,
++  wizardIsSevenSteps: (): boolean => /1\s*\/\s*7/.test(norm((q('.gui-modal-modal') && q('.gui-modal-modal')!.textContent) || '')),
++  modalText: (): string => norm((q('.gui-modal-modal') && q('.gui-modal-modal')!.textContent) || ''),
++  inputCount: (): number => qa('input, textarea').length,
++  switchCount: (): number => qa('[class*=switch]').length,
++  emptyStateVisible: (): boolean => !!q('.grid-list-empty'),
++  pluginsEmpty: (): boolean => !!q('.grid-list-empty') && pageText().includes('plugin list is empty'),
++  scheduledEmpty: (): boolean => !!q('.grid-list-empty') && pageText().includes('scheduled task list is empty'),
++  subscriptionsCardPresent: (): boolean => cardTexts().some((t) => t.includes('RB Sub One')),
++  rulesetsCardPresent: (): boolean => cardTexts().some((t) => t.includes('RB Ruleset One')),
++  checkBoxStatesJoined: (): string =>
++    qa('.gui-checkbox')
++      .map((g) =>
++        Array.from(g.querySelectorAll('.gui-checkbox-button'))
++          .map((b) => norm(b.textContent) + (b.classList.contains('active') ? '=1' : '=0'))
++          .join(','),
++      )
++      .join('||'),
++  checkboxSavedPagesReflected: (): boolean => /Overview=1|概览=1/.test(rb.checkBoxStatesJoined()),
++  themeAttr: (): string => document.body.getAttribute('theme-mode') || '__NONE__',
++  themeAttrIsLight: (): boolean => document.body.getAttribute('theme-mode') === 'light',
++  themeAttrIsDark: (): boolean => document.body.getAttribute('theme-mode') === 'dark',
++  manualDarkApplies: (): boolean => document.body.getAttribute('theme-mode') === 'dark',
++  selectedCardCount: (): number => qa('.gui-card.is-selected').length,
++  selectedFirstTitle8: (): string => {
++    const el = q('.gui-card.is-selected')
++    return el ? firstLine(el.textContent).slice(0, 8) : '__NONE__'
++  },
++  uiLangAppliedZh: (): boolean => pageText().includes('通用'),
++  navLabelsZh: (): boolean => rb.navLabelsJoined().includes('配置'),
++  settingsPersistedZh: (): boolean => {
++    const s = stub()
++    if (!s) return false
++    const v = s.vfs['data/user.yaml']
++    return typeof v === 'string' && v.includes('zh')
++  },
++  markTrayBaseline: (): boolean => {
++    const s = stub()
++    window.__rbT0 = s ? s.calls.filter((c) => c.name === 'UpdateTrayAndMenus').length : -1
++    return true
++  },
++  trayRefreshedOnLang: (): boolean => {
++    const s = stub()
++    if (!s || typeof window.__rbT0 !== 'number') return false
++    return s.calls.filter((c) => c.name === 'UpdateTrayAndMenus').length > window.__rbT0
++  },
++  vfsRead: (p: string): string => {
++    const s = stub()
++    if (!s) return '__NO_STUB__'
++    const v = s.vfs[p]
++    return typeof v === 'string' ? v : '__MISSING__'
++  },
++  vfsKeysJoined: (): string => {
++    const s = stub()
++    return s ? Object.keys(s.vfs).sort().join('|') : '__NO_STUB__'
++  },
++  callCount: (name: string): number => {
++    const s = stub()
++    if (!s) return -1
++    return s.calls.filter((c) => c.name === name).length
++  },
++  bootReadFilesOk: (): boolean => rb.callCount('ReadFile') >= 6,
++  stubAlive: (): boolean => {
++    const s = stub()
++    return !!s && typeof s.version === 'string'
++  },
++}
++
++window.__rb = rb
++
++export {}

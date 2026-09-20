@@ -1,0 +1,143 @@
+import { Component, output, signal } from '@angular/core';
+import { TranslocoModule } from '@jsverse/transloco';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCircleCheck, lucideCircleX, lucideListFilter, lucideLoader, lucideSearch } from '@ng-icons/lucide';
+import { USER_STATUSES, UserStatus } from '@shared/models/user';
+import { BrnCommandImports } from '@spartan-ng/brain/command';
+import { HlmBadgeImports } from '@spartan-ng/helm/badge';
+
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
+import { HlmCommandImports } from '@spartan-ng/helm/command';
+
+import { HlmPopoverImports } from '@spartan-ng/helm/popover';
+import { HlmSeparatorImports } from '@spartan-ng/helm/separator';
+
+@Component({
+  selector: 'adm-users-status-filter',
+  imports: [
+    HlmButtonImports,
+    HlmBadgeImports,
+    HlmSeparatorImports,
+    NgIcon,
+    HlmPopoverImports,
+    BrnCommandImports,
+    HlmCommandImports,
+    HlmCheckboxImports,
+    TranslocoModule,
+  ],
+  providers: [provideIcons({ lucideSearch, lucideListFilter, lucideCircleCheck, lucideCircleX, lucideLoader })],
+  template: `
+    <hlm-popover
+      *transloco="let t"
+      sideOffset="5"
+      closeDelay="100"
+      align="start"
+      [state]="_statusState()"
+      (stateChanged)="statusStateChanged($event)"
+    >
+      <button type="button" hlmBtn hlmPopoverTrigger variant="outline">
+        <ng-icon name="lucideListFilter" />
+        {{ t('users.list.columns.status') }}
+        @if (_statusFilter().length) {
+          <hlm-separator class="mx-2" orientation="vertical" />
+
+          <div class="flex gap-1">
+            @for (status of _statusFilter(); track status) {
+              <hlm-badge *transloco="let t">
+                {{ t('users.status.' + status) }}
+              </hlm-badge>
+            }
+          </div>
+        }
+      </button>
+      <hlm-command *hlmPopoverPortal="let ctx" hlmPopoverContent class="w-50 p-0">
+        <hlm-command-input>
+          <ng-icon name="lucideSearch" class="text-muted-foreground" />
+          <input hlm-command-search-input [placeholder]="t('users.list.columns.status')" />
+        </hlm-command-input>
+        <div *brnCommandEmpty hlmCommandEmpty>
+          {{ t('common.noData') }}
+        </div>
+        <hlm-command-list>
+          <hlm-command-group>
+            @for (status of _statusList(); track status) {
+              <button type="button" hlm-command-item [value]="status" (selected)="statusSelected(status)">
+                <hlm-checkbox [checked]="isStatusSelected(status)" />
+                @switch (status) {
+                  @case ('active') {
+                    <ng-icon class="text-green-600" name="lucideCircleCheck" />
+                  }
+                  @case ('inactive') {
+                    <ng-icon class="text-destructive" name="lucideCircleX" />
+                  }
+                  @case ('pending') {
+                    <ng-icon class="text-yellow-600" name="lucideLoader" />
+                  }
+                  @default {
+                    <ng-icon class="text-yellow-600" name="lucideLoader" />
+                  }
+                }
+                <span *transloco="let t; prefix: 'users.status'"> {{ t(status) }} </span>
+              </button>
+            }
+            @if (_statusFilter().length) {
+              <hlm-command-separator />
+              <button
+                type="button"
+                hlm-command-item
+                class="mt-1 flex justify-center"
+                [value]="''"
+                (selected)="clearStatusFilter()"
+              >
+                {{ t('common.clearFilter') }}
+              </button>
+            }
+          </hlm-command-group>
+        </hlm-command-list>
+      </hlm-command>
+    </hlm-popover>
+  `,
+})
+export class StatusFilter {
+  // ==========================================
+  // Outputs
+  // ==========================================
+
+  public readonly statusChanged = output<UserStatus[]>();
+
+  // ==========================================
+  // State
+  // ==========================================
+
+  protected readonly _statusFilter = signal<UserStatus[]>([]);
+  protected readonly _statusList = signal([...USER_STATUSES]);
+  protected readonly _statusState = signal<'closed' | 'open'>('closed');
+
+  // ==========================================
+  // Public Methods
+  // ==========================================
+
+  protected clearStatusFilter(): void {
+    this._statusFilter.set([]);
+    this.statusChanged.emit(this._statusFilter());
+  }
+
+  protected statusStateChanged(state: 'open' | 'closed') {
+    this._statusState.set(state);
+  }
+
+  protected isStatusSelected(status: UserStatus): boolean {
+    return this._statusFilter().some((s) => s === status);
+  }
+  protected statusSelected(status: UserStatus): void {
+    const current = this._statusFilter();
+    const index = current.indexOf(status);
+    if (index === -1) {
+      this._statusFilter.set([...current, status]);
+    } else {
+      this._statusFilter.set(current.filter((s) => s !== status));
+    }
+    this.statusChanged.emit(this._statusFilter());
+  }
+}

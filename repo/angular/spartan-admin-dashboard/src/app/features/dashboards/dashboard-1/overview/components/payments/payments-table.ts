@@ -1,0 +1,177 @@
+import { Component, computed, input, signal, TemplateRef, viewChild } from '@angular/core';
+import { provideTranslocoScope, translateSignal, TranslocoModule } from '@jsverse/transloco';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCircleCheck, lucideCircleX, lucideLoader, lucideSearch, lucideX } from '@ng-icons/lucide';
+import { DataTableColumnsManager } from '@shared/datatable/columns-manager/columns-manager';
+import { DataTable } from '@shared/datatable/table/data-table';
+import { DataTableFeatures } from '@shared/datatable/table/table-features';
+import { HlmBadgeImports } from '@spartan-ng/helm/badge';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCardImports } from '@spartan-ng/helm/card';
+import { HlmInputImports } from '@spartan-ng/helm/input';
+import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
+import { HlmTableImports } from '@spartan-ng/helm/table';
+import { CellContext, createColumnHelper } from '@tanstack/angular-table';
+import { Payment, PaymentStatus } from '../../model/payment';
+import { PaymentsActionDropdown } from './action-dropdown';
+
+@Component({
+  selector: 'adm-payments-table',
+  imports: [
+    HlmTableImports,
+    HlmCardImports,
+    HlmInputImports,
+    HlmInputGroupImports,
+    HlmButtonImports,
+    NgIcon,
+    HlmBadgeImports,
+    DataTable,
+    TranslocoModule,
+    DataTableColumnsManager,
+  ],
+  providers: [
+    provideIcons({
+      lucideSearch,
+      lucideX,
+      lucideCircleCheck,
+      lucideCircleX,
+      lucideLoader,
+    }),
+    provideTranslocoScope({ scope: 'dashboard/dashboard1', alias: 'dashboard1' }),
+  ],
+  template: `
+    <div *transloco="let t; prefix: 'dashboard1.paymentsTable'" hlmCard class="h-full">
+      <header hlmCardHeader>
+        <h1 hlmCardTitle class="text-base font-semibold">{{ t('title') }}</h1>
+        <p hlmCardDescription>{{ t('description') }}</p>
+      </header>
+      <main hlmCardContent class="flex flex-col gap-4">
+        <div class="flex items-center justify-between gap-4">
+          <hlm-input-group>
+            <input
+              *transloco="let t"
+              class="w-full md:w-80"
+              hlmInputGroupInput
+              [placeholder]="t('common.searchPlaceholder')"
+              [value]="searchValue()"
+              (input)="_filterChanged($event)"
+            />
+            <div hlmInputGroupAddon>
+              <ng-icon name="lucideSearch" />
+            </div>
+            <hlm-input-group-addon align="inline-end">
+              @if (searchValue()) {
+                <button type="button" hlmBtn variant="ghost" size="icon-sm" (click)="_clearSearch()">
+                  <span class="sr-only">{{ t('common.clearSearch') }}</span>
+                  <ng-icon name="lucideX" />
+                </button>
+              }
+            </hlm-input-group-addon>
+          </hlm-input-group>
+
+          <adm-data-table-column-manager [table]="table()" />
+        </div>
+        <adm-data-table
+          [columns]="columns"
+          [data]="payments()"
+          [pagination]="{ pageIndex: 0, pageSize: 5 }"
+          [pageSizeOptions]="[5, 10, 25, 50, 100]"
+        >
+          <!-- Status Cell -->
+          <ng-template #statusCell let-context>
+            <span hlmBadge variant="outline" class="text-muted-foreground" [id]="context.row.original.id + '-status'">
+              @let status = context.getValue();
+              @switch (status) {
+                @case ('success') {
+                  <ng-icon class="text-green-600" name="lucideCircleCheck" />
+                }
+                @case ('failed') {
+                  <ng-icon class="text-destructive" name="lucideCircleX" />
+                }
+                @case ('processing') {
+                  <ng-icon class="animate-spin text-yellow-600" name="lucideLoader" />
+                }
+                @default {
+                  <ng-icon class="animate-spin text-yellow-600" name="lucideLoader" />
+                }
+              }
+              <span *transloco="let t; prefix: 'dashboard1.paymentsTable.status'"> {{ t(status) }} </span>
+            </span>
+          </ng-template>
+        </adm-data-table>
+      </main>
+    </div>
+  `,
+})
+export class PaymentsTable {
+  // ==========================================
+  // Inputs
+  // ==========================================
+
+  public readonly payments = input<Payment[]>([]);
+
+  // ==========================================
+  // View Children
+  // ==========================================
+
+  protected readonly statusCell =
+    viewChild.required<TemplateRef<CellContext<DataTableFeatures, Payment, PaymentStatus>>>('statusCell');
+  protected readonly dataTable = viewChild.required(DataTable<Payment>);
+
+  // ==========================================
+  // State
+  // ==========================================
+
+  protected readonly table = computed(() => this.dataTable().table);
+  protected readonly searchValue = signal('');
+
+  private readonly usdFormatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+
+  private readonly columnHelper = createColumnHelper<DataTableFeatures, Payment>();
+
+  protected readonly columns = this.columnHelper.columns([
+    this.columnHelper.accessor('email', {
+      header: translateSignal('paymentsTable.columns.email'),
+      enableSorting: true,
+      meta: () => ({ translationKey: 'dashboard1.paymentsTable.columns.email' }),
+    }),
+    this.columnHelper.accessor('status', {
+      header: translateSignal('paymentsTable.columns.status'),
+      enableSorting: true,
+      meta: () => ({ translationKey: 'dashboard1.paymentsTable.columns.status' }),
+      cell: () => this.statusCell(),
+    }),
+    this.columnHelper.accessor('amount', {
+      header: translateSignal('paymentsTable.columns.amount'),
+      enableSorting: true,
+      meta: () => ({ translationKey: 'dashboard1.paymentsTable.columns.amount' }),
+      cell: (info) => {
+        const amount = info.getValue();
+        return Number.isFinite(amount) ? this.usdFormatter.format(amount) : '-';
+      },
+    }),
+    this.columnHelper.display({
+      id: 'actions',
+      enableHiding: false,
+      size: 40,
+      cell: () => PaymentsActionDropdown,
+    }),
+  ]);
+
+  // ==========================================
+  // Public Methods
+  // ==========================================
+
+  protected _filterChanged(event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchValue.set(value);
+    this.table().getColumn('email')?.setFilterValue(value);
+  }
+  protected _clearSearch() {
+    this.searchValue.set('');
+    this.table().getColumn('email')?.setFilterValue('');
+  }
+}

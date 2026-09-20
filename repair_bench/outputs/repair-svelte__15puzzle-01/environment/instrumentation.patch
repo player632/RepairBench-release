@@ -1,0 +1,420 @@
+diff --git a/src/game.js b/src/game.js
+--- a/src/game.js
++++ b/src/game.js
+@@ -210,7 +210,7 @@
+ }
+ 
+ // https://stackoverflow.com/a/34570524/1288404
+-function isSolvable(puzzle) {
++export function isSolvable(puzzle) {
+   let inversions = 0;
+   let gridWidth = Math.sqrt(puzzle.length);
+   let row = 0;
+diff --git a/src/instrumentation.js b/src/instrumentation.js
+new file mode 100644
+--- /dev/null
++++ b/src/instrumentation.js
+@@ -0,0 +1,389 @@
++// RepairBench read-only observation bridge (added by environment/instrumentation.patch).
++// DISCIPLINE: read only. No setter, no store write, no seed logic change. Every accessor reports
++// something the app itself already computed, and returns a JSON-safe scalar or string, so the shared
++// runner's loose equality is meaningful: a missing value is reported as the string "NONE" or the
++// number -999 rather than as a hole. The only state the bridge owns is its own notebook (time marks
++// and a console-error counter), which is probe-side and never read by the app.
++import { get } from "svelte/store";
++import {
++  puzzle,
++  moves,
++  time,
++  paused,
++  isSolved,
++  isFirstGame,
++  emptyCellIndex,
++  minutesString,
++  secondsString
++} from "./stores";
++import { canMove, getPuzzle, isSolvable, EMPTY, ROWS, COLUMNS } from "./game";
++
++const NUM_NONE = -999;
++const PROBE_ID = "rb-probe-15puzzle-1";
++const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : NUM_NONE);
++const flag = (v) => (v ? 1 : 0);
++const str = (v) => (typeof v === "string" && v.length ? v : "NONE");
++const js = (v) => JSON.stringify(v);
++const q = (s) => document.querySelector(s);
++const qa = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
++const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
++const cellDivs = () =>
++  qa(".puzzle > div").filter((d) => !d.classList.contains("paused-text"));
++const ABS = /^(https?:)?\/\//i;
++const localHost = (u) => {
++  try {
++    const x = new URL(u, location.href);
++    return x.hostname === location.hostname || x.hostname === "127.0.0.1" || x.hostname === "localhost";
++  } catch (e) {
++    return true;
++  }
++};
++
++let consoleErrors = 0;
++const marks = {};
++
++function externalTags() {
++  const out = [];
++  qa("script[src], link[href], img[src], iframe[src], source[src]").forEach((el) => {
++    const u = el.getAttribute("src") || el.getAttribute("href");
++    if (u && ABS.test(u) && !localHost(u)) out.push(el.tagName.toLowerCase() + " " + u);
++  });
++  return out;
++}
++
++// Blank-reference raster length for a w x h surface, taken from an UNATTACHED canvas.
++// WHY NOT PIXEL COUNTING: canvas-confetti 1.2.0 exports confettiCannon(null, {useWorker: true,
++// resize: true}) (node_modules/canvas-confetti/src/confetti.js:562), so the celebration canvas is
++// transferred to an OffscreenCanvas owned by a Worker. Measured (stage/PROBE_f02b_base.json):
++// c.getContext("2d") on it throws InvalidStateError, so getImageData - and therefore any alpha-byte
++// count - is unavailable on the main thread. Measured (stage/PROBE_f02d.json): c.toDataURL("image/png")
++// on the SAME element does not throw and returns the committed worker frame, ~80 kB while two bursts
++// of 100 particles are animating and exactly 27798 for an empty surface of the same size. So the
++// effect reading is the raster length, and dividing it by the raster length of a blank surface of the
++// identical pixel size turns it into a ratio that survives any viewport or device pixel ratio.
++// The reference canvas is created detached and never inserted, so no document scan can see it.
++function blankRaster(w, h) {
++  try {
++    const c = document.createElement("canvas");
++    c.width = w;
++    c.height = h;
++    return c.toDataURL("image/png").length;
++  } catch (e) {
++    return 0;
++  }
++}
++
++function sampledPuzzles(n) {
++  const out = [];
++  for (let i = 0; i < n; i++) out.push(getPuzzle());
++  return out;
++}
++
++export function mountBridge() {
++  if (typeof window === "undefined") return null;
++  if (!consoleErrors) {
++    const orig = console.error;
++    console.error = function () {
++      consoleErrors++;
++      return orig.apply(console, arguments);
++    };
++  }
++  const api = {
++    probeId: PROBE_ID,
++    probeVersion: () => PROBE_ID,
++    // ---- stores (the app's own values) ----
++    puzzleJson: () => js(get(puzzle)),
++    tileMultisetJson: () => js(get(puzzle).slice().sort((a, b) => a - b)),
++    movesValue: () => num(get(moves)),
++    timeValue: () => num(get(time)),
++    pausedValue: () => flag(get(paused)),
++    isSolvedValue: () => flag(get(isSolved)),
++    isFirstGameValue: () => flag(get(isFirstGame)),
++    emptyIndex: () => num(get(emptyCellIndex)),
++    minutesValue: () => num(Number(get(minutesString))),
++    secondsValue: () => num(Number(get(secondsString))),
++    // ---- derived rules the app exposes ----
++    canMoveFlagsJson: () => {
++      const out = [];
++      for (let i = 0; i < ROWS * COLUMNS; i++) out.push(canMove(i) ? 1 : 0);
++      return js(out);
++    },
++    canMoveTrueCount: () => {
++      let n = 0;
++      for (let i = 0; i < ROWS * COLUMNS; i++) if (canMove(i)) n++;
++      return n;
++    },
++    solvableOf: (arr) => flag(isSolvable(arr)),
++    sampledAllSolvable: (n) => flag(sampledPuzzles(n).every((p) => isSolvable(p))),
++    sampledAnyTileZero: (n) => flag(sampledPuzzles(n).some((p) => p.indexOf(0) >= 0)),
++    sampledMultisetJson: (n) => js(sampledPuzzles(n).map((p) => p.slice().sort((a, b) => a - b))),
++    // SHAPE of a deal, deliberately weaker than its DOMAIN: 16 slots, 16 distinct values, exactly one
++    // gap. Green under D03 (whose domain is 0..14 plus the gap) and green under D06 (whose deals
++    // collapse onto the fixed fallback board), so it can serve as a P2P guard for both.
++    permutationOk: (arr) => {
++      const p = Array.isArray(arr) ? arr : [];
++      const empties = p.filter((v) => v === EMPTY).length;
++      return flag(p.length === ROWS * COLUMNS && new Set(p).size === p.length && empties === 1);
++    },
++    sampledAllPermutations: (n) => flag(sampledPuzzles(n).every((p) => api.permutationOk(p) === 1)),
++    gridConstantsJson: () => js({ rows: ROWS, columns: COLUMNS, empty: EMPTY }),
++    // ---- DOM ----
++    cellCount: () => qa(".puzzle .cell").length,
++    gridChildCount: () => qa(".puzzle > div").length,
++    cellTextsJson: () => js(cellDivs().map((d) => norm(d.textContent))),
++    noMoveClassCount: () => qa(".puzzle .no-move").length,
++    puzzleClassList: () => str(q(".puzzle") && q(".puzzle").className),
++    pausedTextVisible: () => {
++      const el = q(".paused-text");
++      return el ? flag(getComputedStyle(el).display !== "none") : 0;
++    },
++    movesText: () => str(norm(qa(".moves span")[1] && qa(".moves span")[1].textContent)),
++    timeText: () => str(norm(qa(".time span")[1] && qa(".time span")[1].textContent)),
++    actionLabelsJson: () => js(qa(".actions button").map((b) => norm(b.textContent).toUpperCase())),
++    overlayShown: () => flag(q(".solved-overlay")),
++    overlayText: () => str(norm(q(".success-content") && q(".success-content").textContent)),
++    shareButtonShown: () =>
++      flag(qa(".solved-overlay button").some((b) => /tell the world/i.test(norm(b.textContent)))),
++    shareApiPresent: () => flag(typeof navigator.share === "function"),
++    confettiCanvasCount: () => qa("canvas").length,
++    // EFFECT-level celebration reading. Polls the document for windowMs so a burst shorter than one
++    // poll cannot slip through, rasterises every mounted surface with toDataURL (the only read the
++    // main thread still has on a Worker-owned canvas) and reports the largest raster against a blank
++    // surface of the very same pixel size. Read-only: it never clicks, never writes a store and never
++    // attaches anything, so the page it leaves behind is the page it found.
++    // Returns a JSON string { inkRatio, maxRasterLen, blankRasterLen, lifeSpanMs, mountedSamples,
++    // maxCanvasCount, firstSeenMs, lastSeenMs }; inkRatio is NUM_NONE when no surface was ever
++    // mounted, which is what "the celebration never happened at all" reads as. lifeSpanMs is the
++    // wall-clock time the surface stayed mounted, which - unlike the poll count - does not move when
++    // the machine is loaded, so it is the field the checkpoint gates on.
++    confettiInkBurst: async (windowMs, stepMs) => {
++      const win = num(windowMs) > 0 ? num(windowMs) : 2000;
++      const step = num(stepMs) > 0 ? num(stepMs) : 50;
++      const t0 = Date.now();
++      let first = NUM_NONE;
++      let last = NUM_NONE;
++      let seen = 0;
++      let maxCount = 0;
++      let maxLen = 0;
++      let refW = 0;
++      let refH = 0;
++      while (Date.now() - t0 < win) {
++        const cs = qa("canvas");
++        if (cs.length > maxCount) maxCount = cs.length;
++        if (cs.length) {
++          const el = Date.now() - t0;
++          seen++;
++          if (first === NUM_NONE) first = el;
++          last = el;
++          cs.forEach((c) => {
++            if (!refW && c.width) {
++              refW = c.width;
++              refH = c.height;
++            }
++            try {
++              const len = c.toDataURL("image/png").length;
++              if (len > maxLen) maxLen = len;
++            } catch (e) {
++              /* a surface that cannot be rasterised reports no ink */
++            }
++          });
++        }
++        await new Promise((r) => setTimeout(r, step));
++      }
++      const blank = maxCount > 0 ? blankRaster(refW, refH) : 0;
++      return js({
++        inkRatio: maxCount > 0 && blank > 0 ? maxLen / blank : NUM_NONE,
++        maxRasterLen: maxCount > 0 ? maxLen : NUM_NONE,
++        blankRasterLen: blank,
++        lifeSpanMs: seen > 0 ? last - first : 0,
++        mountedSamples: seen,
++        maxCanvasCount: maxCount,
++        firstSeenMs: first,
++        lastSeenMs: last
++      });
++    },
++    themeClass: () => str(document.documentElement.className),
++    themeIcon: () =>
++      q("svg.icon-tabler-sun") ? "SUN" : q("svg.icon-tabler-moon") ? "MOON" : "NONE",
++    loadingShown: () => flag(q(".loading")),
++    logoSvgCount: () => qa("svg.logo").length,
++    footerText: () => str(norm(q("footer") && q("footer").textContent)),
++    footerLinkCount: () => qa("footer a").length,
++    // ---- persistence ----
++    storedTheme: () => str(window.localStorage.getItem("15puzzle:theme")),
++    localStorageKeysJson: () => js(Object.keys(window.localStorage).sort()),
++    prefersDarkMatches: () =>
++      flag(window.matchMedia("(prefers-color-scheme: dark)").matches),
++    rbGlobalKeysJson: () =>
++      js(Object.keys(window).filter((k) => k.indexOf("__") === 0).sort()),
++    // ---- adaptation self-check trio + egress census ----
++    externalRefTagCount: () => externalTags().length,
++    externalRefTagsJson: () => js(externalTags()),
++    hasGtag: () => flag(typeof window.gtag === "function"),
++    hasDataLayer: () => flag(Array.isArray(window.dataLayer)),
++    gaScriptCount: () => qa('script[src*="google-analytics"]').length,
++    gaShimPresent: () => flag(typeof window.ga === "function"),
++    metaOgUrlContent: () =>
++      str(q('meta[property="og:url"]') && q('meta[property="og:url"]').getAttribute("content")),
++    metaExternalLiteralCount: () =>
++      qa("meta[content], link[href]").filter((el) => {
++        const v = el.getAttribute("content") || el.getAttribute("href") || "";
++        return ABS.test(v) && !localHost(v);
++      }).length,
++    swScriptStatus: async () => {
++      try {
++        const r = await fetch("/sw.js", { cache: "no-store" });
++        return num(r.status);
++      } catch (e) {
++        return NUM_NONE;
++      }
++    },
++    swControllerActive: () =>
++      flag(navigator.serviceWorker && navigator.serviceWorker.controller),
++    consoleErrorCount: () => num(consoleErrors),
++    // ---- runtime egress census (the browser's own resource timing buffer, not a DOM scan) ----
++    resourceEntryCount: () => {
++      try {
++        return num(window.performance.getEntriesByType("resource").length);
++      } catch (e) {
++        return NUM_NONE;
++      }
++    },
++    externalResourceCount: () => {
++      try {
++        return window.performance.getEntriesByType("resource")
++          .filter((e) => ABS.test(String(e.name)) && !localHost(String(e.name))).length;
++      } catch (e) {
++        return NUM_NONE;
++      }
++    },
++    externalResourceNamesJson: () => {
++      try {
++        return js(window.performance.getEntriesByType("resource")
++          .map((e) => String(e.name))
++          .filter((u) => ABS.test(u) && !localHost(u)));
++      } catch (e) {
++        return "NONE";
++      }
++    },
++    // ---- idb-keyval game payload (the app's own persistence path) ----
++    dbGameJson: async () => {
++      try {
++        const req = indexedDB.open("keyval-store");
++        const db = await new Promise((res, rej) => {
++          req.onsuccess = () => res(req.result);
++          req.onerror = () => rej(req.error);
++        });
++        const store = db.objectStoreNames.contains("keyval") ? "keyval" : db.objectStoreNames[0];
++        const tx = db.transaction(store, "readonly");
++        const g = tx.objectStore(store).get("game");
++        const val = await new Promise((res, rej) => {
++          g.onsuccess = () => res(g.result);
++          g.onerror = () => rej(g.error);
++        });
++        db.close();
++        return val === undefined || val === null ? "NONE" : js(val);
++      } catch (e) {
++        return "RAISED:" + e.name;
++      }
++    },
++    dbGameKeysJson: async () => {
++      const raw = await api.dbGameJson();
++      if (raw === "NONE" || String(raw).indexOf("RAISED:") === 0) return raw;
++      return js(Object.keys(JSON.parse(raw)).sort());
++    },
++    // ---- probe-owned notebook (never read by the app) ----
++    markTime: (tag) => {
++      marks[tag] = get(time);
++      return num(marks[tag]);
++    },
++    timeDeltaSinceMark: (tag) =>
++      marks[tag] === undefined ? NUM_NONE : num(get(time) - marks[tag]),
++    // ---- in-page drivers: real DOM events, no app logic touched ----
++    clickBoard: () => {
++      const el = q(".puzzle");
++      if (el) el.click();
++      return flag(el);
++    },
++    clickCell: (index) => {
++      const el = cellDivs()[index];
++      if (el) el.click();
++      return flag(el);
++    },
++    clickAction: (index) => {
++      const el = qa(".actions button")[index];
++      if (el) el.click();
++      return flag(el);
++    },
++    clickThemeToggle: () => {
++      const el = q(".btn-toggle-theme");
++      if (el) el.click();
++      return flag(el);
++    },
++    swipe: (dx, dy) => {
++      const mk = (type, x, y) => {
++        const e = new Event(type, { bubbles: true });
++        Object.defineProperty(e, "changedTouches", {
++          value: [{ screenX: x, screenY: y, clientX: x, clientY: y, identifier: 0 }]
++        });
++        return e;
++      };
++      window.dispatchEvent(mk("touchstart", 200, 300));
++      window.dispatchEvent(mk("touchend", 200 + dx, 300 + dy));
++      return js({ dx: dx, dy: dy });
++    },
++    hideDocument: () => {
++      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
++      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
++      window.dispatchEvent(new Event("visibilitychange"));
++      return flag(document.hidden);
++    },
++    showDocument: () => {
++      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
++      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
++      window.dispatchEvent(new Event("visibilitychange"));
++      return flag(document.hidden);
++    },
++    // ---- state injection through the app's OWN persistence path (idb-keyval defaults) ----
++    seedGame: async (stateJson) => {
++      const st = JSON.parse(stateJson);
++      const req = indexedDB.open("keyval-store", 1);
++      const db = await new Promise((res, rej) => {
++        req.onupgradeneeded = () => {
++          if (!req.result.objectStoreNames.contains("keyval")) req.result.createObjectStore("keyval");
++        };
++        req.onsuccess = () => res(req.result);
++        req.onerror = () => rej(req.error);
++      });
++      await new Promise((res, rej) => {
++        const tx = db.transaction("keyval", "readwrite");
++        tx.objectStore("keyval").put(st, "game");
++        tx.oncomplete = () => res();
++        tx.onerror = () => rej(tx.error);
++      });
++      db.close();
++      return js(Object.keys(st).sort());
++    },
++    clearGame: async () => {
++      const req = indexedDB.open("keyval-store", 1);
++      const db = await new Promise((res, rej) => {
++        req.onupgradeneeded = () => {
++          if (!req.result.objectStoreNames.contains("keyval")) req.result.createObjectStore("keyval");
++        };
++        req.onsuccess = () => res(req.result);
++        req.onerror = () => rej(req.error);
++      });
++      await new Promise((res) => {
++        const tx = db.transaction("keyval", "readwrite");
++        tx.objectStore("keyval").delete("game");
++        tx.oncomplete = () => res();
++        tx.onerror = () => res();
++      });
++      db.close();
++      return "CLEARED";
++    }
++  };
++  if (typeof Object.freeze === "function") Object.freeze(api);
++  window.__RB__ = api;
++  return api;
++}
+diff --git a/src/main.js b/src/main.js
+--- a/src/main.js
++++ b/src/main.js
+@@ -1,7 +1,10 @@
+ import App from "./components/App.svelte";
++import { mountBridge } from "./instrumentation";
+ 
+ const app = new App({
+   target: document.body
+ });
+ 
++mountBridge();
++
+ export default app;

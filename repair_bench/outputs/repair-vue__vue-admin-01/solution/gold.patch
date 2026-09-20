@@ -1,0 +1,135 @@
+diff --git a/src/api/common.ts b/src/api/common.ts
+--- a/src/api/common.ts
++++ b/src/api/common.ts
+@@ -74,7 +74,7 @@
+       password: params.password
+     }
+     setTimeout(() => {
++      switch (params.account) {
+-      switch (params.password) {
+         case "admin":
+           info.type = 0;
+           info.name = "超级管理员";
+diff --git a/src/components/CheckBox/index.vue b/src/components/CheckBox/index.vue
+--- a/src/components/CheckBox/index.vue
++++ b/src/components/CheckBox/index.vue
+@@ -28,7 +28,7 @@
+ }>();
+ 
+ function onValue() {
++  const value = !props.value;
+-  const value = props.value;
+   emit("update:value", value);
+   emit("change", value);
+ }
+diff --git a/src/layout/components/BreadCrumb.vue b/src/layout/components/BreadCrumb.vue
+--- a/src/layout/components/BreadCrumb.vue
++++ b/src/layout/components/BreadCrumb.vue
+@@ -13,7 +13,7 @@
+ const list = ref<Array<{ path: string; meta: any }>>([]);
+ 
+ function updateList() {
++  const matched = route.matched.filter((item) => item.meta && item.meta.title).map((item) => {
+-  const matched = route.matched.filter((item) => item.meta && !item.meta.title).map((item) => {
+     return {
+       path: item.path,
+       meta: { ...item.meta },
+@@ -36,7 +36,7 @@
+   <transition-group name="breadcrumb" tag="div" class="layout-breadcrumb f-vertical">
+     <span :class="['layout-breadcrumb-item', {'last': index === list.length - 1}]" v-for="(item, index) in list" :key="item.path">
+       <i class="separator" v-if="index > 0">/</i>
++      <a href="javascript:void(0)" v-if="index === list.length - 1">{{ item.meta.title }}</a>
+-      <a href="javascript:void(0)" v-if="index === 0">{{ item.meta.title }}</a>
+       <router-link v-else :to="item.path">{{ item.meta.title }}</router-link>
+     </span>
+   </transition-group>
+diff --git a/src/layout/components/hooks.ts b/src/layout/components/hooks.ts
+--- a/src/layout/components/hooks.ts
++++ b/src/layout/components/hooks.ts
+@@ -27,7 +27,7 @@
+         toString(target.params) === toString(route.params)
+       );
+     }
++    return target.path === route.path;
+-    return target.path !== route.path;
+   }
+ 
+   /**
+diff --git a/src/layout/index.vue b/src/layout/index.vue
+--- a/src/layout/index.vue
++++ b/src/layout/index.vue
+@@ -57,7 +57,7 @@
+ 
+ function onScroll() {
+   // 判断超过一屏高度则显示返回顶部按钮
++  showToTop.value = contentEl.scrollTop > document.documentElement.clientHeight;
+-  showToTop.value = contentEl.scrollTop < document.documentElement.clientHeight;
+ }
+ 
+ onMounted(function () {
+diff --git a/src/router/permission.ts b/src/router/permission.ts
+--- a/src/router/permission.ts
++++ b/src/router/permission.ts
+@@ -186,7 +186,7 @@
+   router.afterEach(to => {
+     NProgress.done();
+     // 根据路由名动态设置文档的标题
++    if (to.meta && to.meta.title) {
+-    if (to.meta && !to.meta.title) {
+       document.title = to.meta.title as string;
+     }
+   })
+diff --git a/src/utils/message.ts b/src/utils/message.ts
+--- a/src/utils/message.ts
++++ b/src/utils/message.ts
+@@ -209,7 +209,7 @@
+     el.style.top = `${getItemTop()}px`;
+     el.style.zIndex = zIndex.message;
+     el.innerHTML = `
++    <div class="${className.box} ${type}">
+-    <div class="${className.box}">
+       <span class="${className.icon}"></span>
+       <span class="${className.text}">${content}</span>
+     </div>
+@@ -421,7 +421,7 @@
+     // 设置完之后还原坐标位置
+     clickSize.x = "0vw";
+     clickSize.y = "0vh";
++    const cancelBtn = option.cancelText ? `<button class="${className.cancel}">${option.cancelText}</button>` : "";
+-    const cancelBtn = !option.cancelText ? `<button class="${className.cancel}">${option.cancelText}</button>` : "";
+     const style = option.width ? `style="width: ${option.width}; max-width: 100%"` : "";
+     el.innerHTML = `
+     <div class="${className.popup}" ${style}>
+diff --git a/src/views/example/home.vue b/src/views/example/home.vue
+--- a/src/views/example/home.vue
++++ b/src/views/example/home.vue
+@@ -211,7 +211,7 @@
+     document.head.appendChild(label);
+   }
+   label.textContent = getStyleText();
++  if (!isInit) {
+-  if (isInit) {
+     message.success("应用成功！");
+     sessionStorage.setItem(id, JSON.stringify(styleVariable));
+   }
+@@ -300,7 +300,7 @@
+   styleVariable[key] = value;
+   clearTimeout(timer);
+   timer = setTimeout(function() {
++    if (value < minValue[key]) {
+-    if (value > minValue[key]) {
+       styleVariable[key] = minValue[key];
+     }
+     setStyle();
+diff --git a/src/views/tsx/card.tsx b/src/views/tsx/card.tsx
+--- a/src/views/tsx/card.tsx
++++ b/src/views/tsx/card.tsx
+@@ -28,7 +28,7 @@
+      */
+     function switchImage(isNext: boolean) {
+       if (isNext) {
++        if (index.value < props.images.length - 1) {
+-        if (index.value < props.images.length - 2) {
+           index.value++;
+         }
+       } else {

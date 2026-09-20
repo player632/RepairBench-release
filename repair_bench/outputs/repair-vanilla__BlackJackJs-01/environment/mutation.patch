@@ -1,0 +1,130 @@
+diff --git a/js/CreateJSTextInput.js b/js/CreateJSTextInput.js
+index b8a4d59..b53a5b6 100644
+--- a/js/CreateJSTextInput.js
++++ b/js/CreateJSTextInput.js
+@@ -146,7 +146,7 @@ class TextInput extends createjs.Container {
+     this._hiddenInput.addEventListener('input', (e) => {
+       if (this._focused) {
+         e.preventDefault();
+-        this._preCursorText = this._hiddenInput.value;
++        this._postCursorText = this._hiddenInput.value;
+         this.update();
+         this._cursor.x = this._visiblePreCursorText.getMeasuredWidth();
+       }
+diff --git a/js/button.js b/js/button.js
+index c1083cf..76234a8 100644
+--- a/js/button.js
++++ b/js/button.js
+@@ -3,8 +3,8 @@ class Button{
+ 	constructor(text, color, x, y, onclick){
+ 		this.text = text;
+ 		this.color = color;
+-		this.x = x;
+-		this.y = y;
++		this.x = y;
++		this.y = x;
+ 		this.onclick = onclick;
+ 	}
+ }
+\ No newline at end of file
+diff --git a/js/card.js b/js/card.js
+index be4969f..78a5c1f 100644
+--- a/js/card.js
++++ b/js/card.js
+@@ -1,6 +1,6 @@
+ class Card{
+ 
+-	constructor(suit, value, hidden = false){
++	constructor(suit, value, hidden = true){
+ 		this.suit = suit;
+ 		this.value = value;
+ 		this.hidden = hidden;
+diff --git a/js/conf.js b/js/conf.js
+index ccaa464..909c99e 100644
+--- a/js/conf.js
++++ b/js/conf.js
+@@ -7,7 +7,7 @@ const imgs = {
+ 			red: 'cardBack_red5',
+ 		},
+ 		get: function(suit, value){
+-			return `${this.path}card${suit}${value}.${this.ext}`;
++			return `${this.path}card${value}${suit}.${this.ext}`;
+ 		},
+ 	},
+ 	chips: {
+@@ -39,7 +39,7 @@ const imgs = {
+ 	}
+ };
+ 
+-const deckNumber = 6;
++const deckNumber = 5;
+ const suits = ['Clubs', 'Diamonds', 'Hearts', 'Spades'];
+ 
+ const messages = {
+@@ -65,7 +65,7 @@ const height = 650;
+ 
+ createjs.Text.prototype.center = function(x = true, y = false){
+ 	var bounds = this.getBounds();
+-	if(x) this.x = (width / 2) - (bounds.width / 2);
++	if(x) this.x = (width / 2) + (bounds.width / 2);
+ 	if(y) this.y = (height / 2) - (bounds.height / 2);
+ };
+ 
+diff --git a/js/game.js b/js/game.js
+index b22f147..928f70e 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -246,7 +246,7 @@ function init(){
+ 				if(card.value >= 2 && card.value < 11)
+ 					total += card.value;
+ 				if(['J', 'Q', 'K'].includes(card.value))
+-					total += 10;
++					total += 11;
+ 				if(card.value === 'A')
+ 					total += 11;
+ 			});
+@@ -264,7 +264,7 @@ function init(){
+ 			else if(to === 'player')
+ 				player.deck.push(card);
+ 
+-			this.deck.splice(index, 1);
++			this.deck.splice(index, 0);
+ 			this.displayCard(card, to);
+ 		},
+ 
+@@ -387,7 +387,7 @@ function init(){
+ 			var color = chip.color;
+ 			player.dealt += this.chipsValue[color]; //add chip value to player.dealt
+ 			player.chips[color] -= 1; //Reduce player chips number
+-			player.funds -= game.chipsValue[color];
++			player.funds += game.chipsValue[color];
+ 			player.fundsText.update();
+ 			game.dealt[color] += 1;
+ 			this.addChips();
+@@ -411,7 +411,7 @@ function init(){
+ 
+ 			if(bankScore > 21)
+ 				player.win();
+-			else if(bankScore >= 17 && bankScore <= 21){
++			else if(bankScore > 17 && bankScore <= 21){
+ 				if(playerScore > bankScore)
+ 					player.win();
+ 				else if(playerScore < bankScore)
+@@ -437,7 +437,7 @@ function init(){
+ 				this.cardsContainer.children[1].image.src = imgs.cards.get(this.deck[1].suit, this.deck[1].value);
+ 
+ 			var total = game.deckValue(this.deck);
+-			if(total < 17){
++			if(total <= 17){
+ 				game.distributeCard('bank');
+ 				if(game.deckValue(this.deck) < 17)
+ 					setTimeout(() => bank.play(), 1000);
+@@ -561,7 +561,7 @@ function init(){
+ 			game.message.text.text = messages.win;
+ 			setTimeout(function(){
+ 				createjs.Sound.play('win');
+-				player.funds += player.blackjack ? player.dealt * 3 : player.dealt * 2;
++				player.funds += player.blackjack ? player.dealt * 2 : player.dealt * 3;
+ 				game.end();
+ 				player.fundsText.update();
+ 			}, 2000);

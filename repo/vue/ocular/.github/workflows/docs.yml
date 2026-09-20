@@ -1,0 +1,56 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  HUSKY: 0
+
+jobs:
+  deploy:
+    name: Build and deploy docs
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      pages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup repository
+        uses: ./.github/workflows/actions/setup-repository
+
+      - name: Set outputs
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build demo app
+        run: pnpm build
+        env:
+          OCULAR_BUILD_VERSION: nightly
+          OCULAR_BUILD_SHA: ${{ steps.vars.outputs.sha_short }}
+          OCULAR_BASE_URL: /ocular/demo/
+
+      - name: Build docs
+        run: pnpm docs:build
+
+      - name: Prepare static files
+        run: |
+          mkdir -p pages/demo
+          mv docs/.vitepress/dist/* pages/
+          mv dist/* pages/demo
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          name: github-pages
+          path: pages
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,127 @@
+import { Component, input, ChangeDetectionStrategy, computed } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { type Editor } from "@tiptap/core";
+import { AteButtonComponent } from "../../ui/ate-button.component";
+import { AteBaseBubbleMenu } from "../base/ate-base-bubble-menu";
+
+import { AteCellBubbleMenuConfig } from "../../../models/ate-bubble-menu.model";
+import { ATE_DEFAULT_CELL_MENU_CONFIG } from "../../../config/ate-editor.config";
+
+@Component({
+  selector: "ate-cell-bubble-menu",
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CommonModule, AteButtonComponent],
+  template: `
+    <div #menuRef class="bubble-menu" (mousedown)="$event.preventDefault()">
+      <!-- Cell specific actions -->
+      @if (cellBubbleMenuConfig().mergeCells !== false && !state().selection.isSingleCell) {
+        <ate-button
+          icon="cell_merge"
+          [title]="i18n().table().mergeCells"
+          [disabled]="!state().can.mergeCells"
+          (buttonClick)="onCommand('mergeCells', $event)"></ate-button>
+      }
+      @if (cellBubbleMenuConfig().splitCell !== false && state().selection.isSingleCell) {
+        <ate-button
+          icon="split_scene"
+          [title]="i18n().table().splitCell"
+          [disabled]="!state().can.splitCell"
+          (buttonClick)="onCommand('splitCell', $event)"></ate-button>
+      }
+    </div>
+  `,
+})
+export class AteCellBubbleMenuComponent extends AteBaseBubbleMenu {
+  // Inputs
+  config = input<AteCellBubbleMenuConfig>(ATE_DEFAULT_CELL_MENU_CONFIG);
+
+  cellBubbleMenuConfig = computed(() => ({
+    mergeCells: this.config().mergeCells ?? true,
+    splitCell: this.config().splitCell ?? true,
+  }));
+
+  // Signals
+  readonly i18n = () => this.i18nService;
+
+  override shouldShow(): boolean {
+    const { selection, nodes, isEditable, isFocused } = this.state();
+
+    if (this.editorCommands.linkEditMode() || this.editorCommands.colorEditMode()) {
+      return false;
+    }
+
+    // Only show cell bubble menu for CellSelection
+    return selection.type === "cell" && nodes.isTableCell && isEditable && isFocused;
+  }
+
+  override getSelectionRect(): DOMRect {
+    const ed = this.editor();
+    if (!ed) {
+      return new DOMRect(0, 0, 0, 0);
+    }
+
+    // CellSelection
+    const selection = ed.state.selection as unknown as {
+      $anchorCell?: { pos: number };
+      $headCell?: { pos: number };
+    };
+
+    // 1. Multiple cells selected
+    if (selection.$anchorCell && selection.$headCell) {
+      const cells: HTMLElement[] = [];
+
+      // Try to find all selected cell nodes
+      ed.view.dom.querySelectorAll(".selectedCell").forEach(el => {
+        if (el instanceof HTMLElement) {
+          cells.push(el);
+        }
+      });
+
+      if (cells.length > 0) {
+        let top = Infinity,
+          bottom = -Infinity,
+          left = Infinity,
+          right = -Infinity;
+
+        cells.forEach(cell => {
+          const r = cell.getBoundingClientRect();
+          top = Math.min(top, r.top);
+          bottom = Math.max(bottom, r.bottom);
+          left = Math.min(left, r.left);
+          right = Math.max(right, r.right);
+        });
+
+        return new DOMRect(left, top, right - left, bottom - top);
+      }
+
+      // Fallback to anchor/head if no .selectedCell (rare)
+      const anchor = ed.view.nodeDOM(selection.$anchorCell.pos) as HTMLElement;
+      const head = ed.view.nodeDOM(selection.$headCell.pos) as HTMLElement;
+
+      if (anchor && head) {
+        const anchorRect = anchor.getBoundingClientRect();
+        const headRect = head.getBoundingClientRect();
+
+        const top = Math.min(anchorRect.top, headRect.top);
+        const bottom = Math.max(anchorRect.bottom, headRect.bottom);
+        const left = Math.min(anchorRect.left, headRect.left);
+        const right = Math.max(anchorRect.right, headRect.right);
+
+        return new DOMRect(left, top, right - left, bottom - top);
+      }
+    }
+
+    // 2. Ultimate fallback via ProseMirror class
+    const singleCell = ed.view.dom.querySelector(".selectedCell");
+    if (singleCell) {
+      return singleCell.getBoundingClientRect();
+    }
+
+    return new DOMRect(-9999, -9999, 0, 0);
+  }
+
+  protected override executeCommand(editor: Editor, command: string, ...args: unknown[]): void {
+    this.editorCommands.execute(editor, command, ...args);
+  }
+}

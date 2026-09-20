@@ -1,0 +1,53 @@
+diff --git a/prebuild.js b/prebuild.js
+--- a/prebuild.js
++++ b/prebuild.js
+@@ -10,7 +10,8 @@
+ const API_KEY = process.env.GOOGLE_FONTS_API_KEY;
+ 
+ if (!API_KEY) {
+-	throw new Error('GOOGLE_FONTS_API_KEY was not set.');
++	console.log('GOOGLE_FONTS_API_KEY not set - skipping the Google Fonts fetch and keeping the vendored src/lib/data/fonts.json.');
++	process.exit(0);
+ }
+ 
+ process.stdout.write('Fetching Google Fonts...');
+diff --git a/src/lib/components/App/Preview.svelte b/src/lib/components/App/Preview.svelte
+--- a/src/lib/components/App/Preview.svelte
++++ b/src/lib/components/App/Preview.svelte
+@@ -31,7 +31,7 @@
+ </script>
+ 
+ <svelte:head>
+-	{#if !isDefaultFontFamily}
++	{#if false && !isDefaultFontFamily}
+ 		<link
+ 			rel="stylesheet"
+ 			type="text/css"
+diff --git a/src/lib/data/fonts.json b/src/lib/data/fonts.json
+new file mode 100644
+--- /dev/null
++++ b/src/lib/data/fonts.json
+@@ -0,0 +1,1 @@
++["Inter","Inter Variable","Source Code Pro Variable"]
+diff --git a/src/routes/sitemap.xml/+server.ts b/src/routes/sitemap.xml/+server.ts
+--- a/src/routes/sitemap.xml/+server.ts
++++ b/src/routes/sitemap.xml/+server.ts
+@@ -5,9 +5,15 @@
+ 
+ const URL_CHANGE_FREQUENCY = 'daily';
+ const URL_PRIORITY = 0.7;
+-const URL_LAST_MODIFICATION_DATE = new Date(
+-	execSync('git log -1 --format=%cI').toString().trim()
+-).toISOString();
++let URL_LAST_MODIFICATION_DATE = new Date(0).toISOString();
++try {
++	URL_LAST_MODIFICATION_DATE = new Date(execSync('git log -1 --format=%cI').toString().trim()).toISOString();
++} catch {
++	// RepairBench offline adaptation: the materialised state tree carries no .git, so the seed's
++	// module-scope `git log` throws at import time and kills `vite build` during the prerender pass
++	// (this route exports prerender = true at line 4). The epoch fallback only changes a <lastmod>
++	// string inside build/sitemap.xml, which nothing in this face reads or asserts.
++}
+ 
+ export async function GET() {
+ 	return new Response(

@@ -1,0 +1,57 @@
+import type { Command } from 'commander'
+import type { MagidocConfiguration } from '../../config/types'
+import { CLEAN_OPTION, CONFIG_FILE_OPTION, STACKTRACE_OPTION } from '../utils/commander'
+import { loadFileConfiguration } from '../utils/loadConfigFile'
+import { printInfo, printLine, printSeparator } from '../utils/log'
+import { cyan } from '../utils/outputColors'
+import { withStacktrace } from '../utils/withStacktrace'
+import generate from '.'
+
+type GenerateCommandOptions = {
+  file: string
+  stacktrace: boolean
+  clean: boolean
+}
+
+export const DEFAULT_CONFIG_FILE = './magidoc.mjs'
+
+export default function buildGenerateCommand(program: Command) {
+  program
+    .command('generate')
+    .description(
+      'Generates a full static website using a template. Using this command gives you access to a limited range of customization. If you wish to customize the website further than what is available, use the eject command.',
+    )
+    .addOption(CONFIG_FILE_OPTION())
+    .addOption(CLEAN_OPTION())
+    .addOption(STACKTRACE_OPTION())
+    .action(async ({ file, stacktrace, clean }: GenerateCommandOptions) => {
+      const fileConfiguration = await loadFileConfiguration(file, stacktrace)
+      if (!fileConfiguration) {
+        process.exitCode = 1
+        return
+      }
+
+      await withStacktrace(stacktrace, async () => {
+        await generate({
+          ...fileConfiguration,
+          clean,
+        })
+
+        printPostExecution(file, fileConfiguration)
+      })
+    })
+}
+
+function printPostExecution(configFile: string, fileConfiguration: MagidocConfiguration) {
+  printSeparator()
+  printInfo(`Website generated at ${cyan(fileConfiguration.website.output)}`)
+  printLine()
+
+  if (configFile === DEFAULT_CONFIG_FILE) {
+    printInfo(`Run ${cyan('magidoc preview')} to preview you build locally.`)
+  } else {
+    printInfo(`Run ${cyan(`magidoc preview --file ${configFile}`)} to preview your build locally.`)
+  }
+
+  printLine()
+}

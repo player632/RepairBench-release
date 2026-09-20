@@ -1,0 +1,129 @@
+diff --git a/projects/ngx-widget-grid/src/lib/components/grid/grid.component.ts b/projects/ngx-widget-grid/src/lib/components/grid/grid.component.ts
+index a67c445..944b738 100644
+--- a/projects/ngx-widget-grid/src/lib/components/grid/grid.component.ts
++++ b/projects/ngx-widget-grid/src/lib/components/grid/grid.component.ts
+@@ -82,10 +82,6 @@
+ 
+   ngAfterViewInit(): void {
+     this.refreshWidgets();
+-    this.widgetComponents.changes.subscribe(() => {
+-      this.clearGrid();
+-      this.refreshWidgets();
+-    });
+   }
+ 
+   refreshWidgets() {
+@@ -203,15 +199,12 @@
+     if (area.top && area.left && area.height && area.width) {
+       setTimeout(() => {
+         this.highlightedArea = area;
+-        this._changeDetector.markForCheck();
+       });
+     }
+   }
+ 
+   updateNextPositionHighlight() {
+-    if (this.highlightNextPosition) {
+-      this.highlightedArea = this.gridRenderer.getNextPosition();
+-    }
++    this.highlightedArea = this.gridRenderer.getNextPosition();
+   }
+ 
+   getNextPosition() {
+diff --git a/projects/ngx-widget-grid/src/lib/components/gridOverlay/gridOverlay.component.ts b/projects/ngx-widget-grid/src/lib/components/gridOverlay/gridOverlay.component.ts
+index 371f1f6..c5cfef3 100644
+--- a/projects/ngx-widget-grid/src/lib/components/gridOverlay/gridOverlay.component.ts
++++ b/projects/ngx-widget-grid/src/lib/components/gridOverlay/gridOverlay.component.ts
+@@ -51,7 +51,6 @@
+   @Input()
+   set highlight(highlight) {
+     this._highlight = highlight;
+-    this.clearHighlight();
+     if (highlight) {
+       this.highlightArea(highlight, this.renderer);
+     }
+@@ -68,7 +67,6 @@
+   }
+ 
+   updateGridLines(renderer: GridRenderer, showGrid: boolean): void {
+-    this.clearGridLines();
+     if (showGrid) {
+       this.showGridLines(renderer);
+     }
+diff --git a/projects/ngx-widget-grid/src/lib/directives/widgetMover.directive.ts b/projects/ngx-widget-grid/src/lib/directives/widgetMover.directive.ts
+index c850368..869f24b 100644
+--- a/projects/ngx-widget-grid/src/lib/directives/widgetMover.directive.ts
++++ b/projects/ngx-widget-grid/src/lib/directives/widgetMover.directive.ts
+@@ -142,8 +142,8 @@
+       if (obstructingWidgetId && this.ngxWidgetMover) {
+         const obstructingWidgetCmp = this.gridCmp.getWidgetById(obstructingWidgetId);
+         const obstructingWidgetPosition = this.gridCmp.getWidgetPositionByWidgetId(obstructingWidgetId);
+-        const draggedWidgetPosition = this.widgetCmp.position;
+         this.widgetCmp.position = obstructingWidgetPosition;
++        const draggedWidgetPosition = this.widgetCmp.position;
+         this.gridCmp.updateWidget(this.widgetCmp, true);
+         obstructingWidgetCmp.position = draggedWidgetPosition;
+         this.gridCmp.updateWidget(obstructingWidgetCmp, true);
+@@ -157,7 +157,6 @@
+         this.gridCmp.updateWidget(this.widgetCmp, false);
+       }
+       this.gridCmp.resetHighlights();
+-      this.renderer.removeClass(this.widgetCmp.getEl().nativeElement, 'wg-moving');
+       this.renderer.removeStyle(this.widgetCmp.getEl().nativeElement, 'z-index');
+       this.enableDrag = null;
+     }
+@@ -197,7 +196,7 @@
+                                        });
+ 
+       const options = {
+-        excludedArea: startPos,
++        excludedArea: targetArea,
+         fromBottom: movedDown,
+         fromRight: movedRight
+       };
+diff --git a/projects/ngx-widget-grid/src/lib/models/Grid.model.ts b/projects/ngx-widget-grid/src/lib/models/Grid.model.ts
+index 6b9d5b8..a08e119 100644
+--- a/projects/ngx-widget-grid/src/lib/models/Grid.model.ts
++++ b/projects/ngx-widget-grid/src/lib/models/Grid.model.ts
+@@ -60,7 +60,6 @@
+     if (columns > 0 && rows > 0 && columns !== this._columns || rows !== this._rows) {
+       this._columns = columns;
+       this._rows = rows;
+-      this._cellSize = new CellSize(this._rows, this._columns);
+     }
+   }
+ }
+diff --git a/projects/ngx-widget-grid/src/lib/models/GridRenderer.model.ts b/projects/ngx-widget-grid/src/lib/models/GridRenderer.model.ts
+index 119d13b..9516825 100644
+--- a/projects/ngx-widget-grid/src/lib/models/GridRenderer.model.ts
++++ b/projects/ngx-widget-grid/src/lib/models/GridRenderer.model.ts
+@@ -58,9 +58,6 @@
+ 
+   setWidgetPosition(widgetId: string, newPosition: Rectangle, swappingPositions: boolean) {
+     const currPosition = this.positions[widgetId];
+-    if (currPosition && !swappingPositions) {
+-      this.setObstructionValues(currPosition, null);
+-    }
+ 
+     newPosition = new Rectangle({
+                                   top: Utils.isNumber(newPosition.top) ? newPosition.top : currPosition.top,
+@@ -172,9 +169,9 @@
+     }
+ 
+     return {
+-      top: ((render.top - 1) * this.grid.cellSize.height).toString() + '%',
++      top: (render.top * this.grid.cellSize.height).toString() + '%',
+       height: (render.height * this.grid.cellSize.height).toString() + '%',
+-      left: ((render.left - 1) * this.grid.cellSize.width).toString() + '%',
++      left: (render.left * this.grid.cellSize.width).toString() + '%',
+       width: (render.width * this.grid.cellSize.width).toString() + '%'
+     };
+   }
+@@ -226,7 +223,6 @@
+     for (let i = start.top; i <= this.grid.rows; i++) {
+       for (let j = start.left; j <= endColumn; j++) {
+         if (this._isObstructed(i, j)) {
+-          endColumn = j - 1;
+           continue;
+         }
+ 

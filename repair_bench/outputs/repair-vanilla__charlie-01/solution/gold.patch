@@ -1,0 +1,127 @@
+diff --git a/index.html b/index.html
+index 7d29d45..440e075 100644
+--- a/index.html
++++ b/index.html
+@@ -14,7 +14,7 @@
+ 				grid-template-columns: 80% 20%;
+ 				grid-template-rows: auto 10rem;
+ 				gap: 1px 1px;
+-				grid-template-areas: "replout stack" "exec input";
++				grid-template-areas: "replout stack" "input exec";
+ 			}
+ 
+ 			.stack {
+diff --git a/lib/math.fs b/lib/math.fs
+index b3f5aba..9ae533b 100644
+--- a/lib/math.fs
++++ b/lib/math.fs
+@@ -18,7 +18,7 @@ pi 2 *            val> two-pi
+ : ceil   *ceil*   js-call-1 ;
+ : sqrt   *sqrt*   js-call-1 ;
+ : pow    *pow*    js-call-2 ;
+-: min    *max*    js-call-2 ;
++: min    *min*    js-call-2 ;
+ : max    *max*    js-call-2 ;
+ : random *random* js-call 2 * 1- ;
+ /vocab
+\ No newline at end of file
+diff --git a/src/kernel.ts b/src/kernel.ts
+index 21a6abf..42b1b4c 100644
+--- a/src/kernel.ts
++++ b/src/kernel.ts
+@@ -277,7 +277,7 @@ export const KERNEL = [
+ 
+ 	'*js-window* "String" js@ dup val> String "fromCharCode" js@ val> *charcode->str*',
+ 	": [char] *charcode->str* js-call-1 ;",
+-	": hexdigit dup 10 < if 48 else 88 then + [char] ;",
++	": hexdigit dup 10 < if 48 else 87 then + [char] ;",
+ 	": hex8 dup 4 >> 15 bit-and hexdigit swap 15 bit-and hexdigit + ;",
+ 	': hex16 "0x" swap dup 8 >> hex8 swap 255 bit-and hex8 + + ;',
+ 	': hex24 "0x" swap dup 16 >> hex8 swap dup 8 >> hex8 swap 255 bit-and hex8 + + + ;',
+@@ -304,7 +304,7 @@ export const KERNEL = [
+ 	"  <while> . ;",
+ 
+ 	': starts-with? ^( str pre -- flag ) swap dup "startsWith" js@ js-call-1-with ;',
+-	': public-word? "-" starts-with? ;',
++	': public-word? "-" starts-with? not ;',
+ 
+ 	": show-public-words",
+ 	"  latest@ { adr }",
+@@ -712,7 +712,7 @@ export const KERNEL = [
+ 	"      name value elm set-style",
+ 	"      rest-list elm tail-recur ] <unless> ;",
+ 
+-	'  : hide { elm -- } "display" "hidden" elm set-style ;',
++	'  : hide { elm -- } "display" "none" elm set-style ;',
+ 	'  : show { elm -- } "display" ""     elm set-style ;',
+ 
+ 	"  : delete { elm -- }",
+diff --git a/src/repl.ts b/src/repl.ts
+index 60c7a82..9ce6452 100644
+--- a/src/repl.ts
++++ b/src/repl.ts
+@@ -46,7 +46,7 @@ export class REPL {
+ 	replPush(elm) {
+ 		replOutput.appendChild(elm);
+ 		if (replOutput.children.length > MAX_SHOW) {
+-			replOutput.removeChild(replOutput.lastChild);
++			replOutput.removeChild(replOutput.firstChild);
+ 		}
+ 		elm.scrollIntoView();
+ 		replInput.focus();
+@@ -63,7 +63,7 @@ export class REPL {
+ 				"data-testid",
+ 				"rb-line-" + String(class_name).replace("repl-out-", "")
+ 			);
+-			if (class_name == "repl-out-text") {
++			if (class_name == "repl-out-code") {
+ 				elm.addEventListener("click", () => {
+ 					(<HTMLTextAreaElement>replInput).value = str;
+ 					replInput.focus();
+@@ -78,6 +78,7 @@ export class REPL {
+ 		this.vm.interpreter(code);
+ 		this.showDS();
+ 		this.showRS();
++		this.updateWordCache();
+ 	}
+ 
+ 	pushHistory(code) {
+@@ -269,7 +270,7 @@ export class REPL {
+ 			"[ERROR] "
+ 		);
+ 
+-		btEval.addEventListener("click", this.evalInput);
++		btEval.addEventListener("click", this.evalInput.bind(this));
+ 
+ 		exposeGlobal("REPL", this, true);
+ 
+diff --git a/src/vm.ts b/src/vm.ts
+index 715749d..6bf309f 100644
+--- a/src/vm.ts
++++ b/src/vm.ts
+@@ -18,7 +18,7 @@ const MODE_IMMEDIATE = 0;
+ const MODE_COMPILE = 1;
+ 
+ const REGEXP_LIT_NUMBER = /^-?[0-9]*(\.[0-9]+)?$/;
+-const REGEXP_LIT_NUMBER_HEX = /^0x[0-9a-fA-F]{1,4}?$/;
++const REGEXP_LIT_NUMBER_HEX = /^0x[0-9a-fA-F]{1,8}?$/;
+ const REGEXP_LIT_STRING = /^"(.*)$/;
+ 
+ // VM state
+@@ -422,6 +422,7 @@ defWord("sleep", () => {
+ 	setTimeout(() => {
+ 		doContinue(state);
+ 	}, pause);
++	SUSPEND = true;
+ });
+ 
+ defConst("true", true);
+@@ -485,7 +486,7 @@ defWord("dsp!", () => {
+ 	next();
+ });
+ defWord("pick", () => {
+-	pushD(DS[DSP - popD()]);
++	pushD(DS[DSP - popD() - 1]);
+ 	next();
+ });
+ defWord("rsp@", () => {

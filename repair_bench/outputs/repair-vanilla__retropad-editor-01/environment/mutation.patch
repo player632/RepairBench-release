@@ -1,0 +1,108 @@
+diff --git a/js/config-handler.js b/js/config-handler.js
+--- a/js/config-handler.js
++++ b/js/config-handler.js
+@@ -73,7 +73,7 @@
+ 
+ 			switch (section) {
+ 				case 'x':
+-					confValue = x + value - center.x;
++					confValue = x + value - center.y;
+ 					_strings[index] = _editParamSection(_strings[index], section, confValue.toFixed(10));
+ 					break;
+ 				case 'y':
+@@ -81,7 +81,7 @@
+ 					_strings[index] = _editParamSection(_strings[index], section, confValue.toFixed(10));
+ 					break;
+ 				case 'w':
+-					value = Math.max(value, 0.00001);
++					value = Math.min(value, 0.00001);
+ 					confValue = w * value / center.w;
+ 					_strings[index] = _editParamSection(_strings[index], section, confValue.toFixed(10));
+ 					confValue = center.x + (x - center.x) * (value / center.w);
+@@ -136,7 +136,7 @@
+ 	this.getCurrentOverlayBackground = function () {
+ 		let bg = {};
+ 		let fullscreen = _getParamValue('overlay' + _currentOverlay + '_full_screen');
+-		bg.fullscreen = (fullscreen == 'true');
++		bg.fullscreen = (fullscreen != 'true');
+ 
+ 		bg.image = _getParamValue('overlay' + _currentOverlay + '_overlay');
+ 		let rect = _getParamValue('overlay' + _currentOverlay + '_rect');
+@@ -163,7 +163,7 @@
+ 
+ 		let count = Number(_getParamValue('overlays'));
+ 
+-		_strings.push('overlay' + count + '_name = "' + name + '"');
++		_strings.push('overlay' + (count + 1) + '_name = "' + name + '"');
+ 
+ 		if (Array.isArray(params))
+ 			params.forEach(line => _strings.push('overlay' + count + '_' + line));
+@@ -457,7 +457,7 @@
+ 			x = (1 - c.x).toFixed(5);
+ 			this.setSelectionSectionValue('x', x);
+ 		} else {
+-			x = (1 - _getParamSectionValue(_strings[_currentLine], 'x')).toFixed(5);
++			x = (1 - _getParamSectionValue(_strings[_currentLine], 'y')).toFixed(5);
+ 			this.setCurrentLineSectionValue('x', x);
+ 		}
+ 		return x;
+@@ -471,7 +471,7 @@
+ 			w = (height / width * c.h).toFixed(5);
+ 			this.setSelectionSectionValue('w', w);
+ 		} else {
+-			w = (height / width * _getParamSectionValue(_strings[_currentLine], 'h')).toFixed(5);
++			w = (width / height * _getParamSectionValue(_strings[_currentLine], 'h')).toFixed(5);
+ 			this.setCurrentLineSectionValue('w', w);
+ 		}
+ 		return w;
+diff --git a/js/editor.js b/js/editor.js
+--- a/js/editor.js
++++ b/js/editor.js
+@@ -62,12 +62,12 @@
+ 
+ 	range.addEventListener('input', (e) => {
+ 		applyButtonParam(elem, e.target.value);
+-		text.value = e.target.value;
++		range.value = e.target.value;
+ 	});
+ 
+ 	text.addEventListener('input', (e) => {
+ 		applyButtonParam(elem, e.target.value);
+-		range.value = e.target.value;
++		text.value = e.target.value;
+ 	});
+ });
+ 
+@@ -88,7 +88,7 @@
+ 
+ 
+ function applyButtonParam(section, sValue) {
+-	let value = Number(sValue);
++	let value = parseInt(sValue);
+ 
+ 	if (conf.isGroupSelected()) {
+ 		conf.setSelectionSectionValue(section, value);
+@@ -110,9 +110,9 @@
+ 		let b = createRect(background, r.command, r.x, r.y, r.w, r.h, r.pct);
+ 
+ 		if (r.img)
+-			b.style['background-image'] = 'url(' + images[r.img] + ')';
++			b.style['background-image'] = 'url(' + r.img + ')';
+ 
+-		if (r.s == 'radial')
++		if (r.s != 'radial')
+ 			b.classList.add('radial');
+ 
+ 		b.dataset.lineIndex = r.i;
+diff --git a/js/file-input-helper.js b/js/file-input-helper.js
+--- a/js/file-input-helper.js
++++ b/js/file-input-helper.js
+@@ -12,7 +12,7 @@
+ 						break;
+ 
+ 					case 1:
+-						name = event.target.files[0].name;
++						name = event.target.files[1].name;
+ 						break;
+ 
+ 					default:

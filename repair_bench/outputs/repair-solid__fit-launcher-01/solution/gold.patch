@@ -1,0 +1,155 @@
+diff --git a/src/api/manager/api.ts b/src/api/manager/api.ts
+index c30d35d..2494767 100644
+--- a/src/api/manager/api.ts
++++ b/src/api/manager/api.ts
+@@ -36,6 +36,7 @@ export class GlobalDownloadManager {
+   private unlistenCompleted: UnlistenFn | null = null;
+ 
+   private flushUpdates() {
++    this.flushScheduled = false;
+     this.flushTimer = null;
+ 
+     for (const [id, job] of this.pendingUpdates) {
+diff --git a/src/components/Slider-01/Slider.tsx b/src/components/Slider-01/Slider.tsx
+index 3b771df..e9c865c 100644
+--- a/src/components/Slider-01/Slider.tsx
++++ b/src/components/Slider-01/Slider.tsx
+@@ -23,7 +23,7 @@ const Slider = (props: SliderProps): JSX.Element => {
+ 
+ 
+     const goPrevious = () => setCurrentIndex(prev => Math.max(prev - 3, 0));
+-    const goNext = () => setCurrentIndex(prev => Math.min(prev + 3, props.images.length));
++    const goNext = () => setCurrentIndex(prev => Math.min(prev + 3, props.images.length - 1));
+ 
+     createEffect(() => {
+         const container = document.querySelector<HTMLDivElement>(`#${sliderId} .slider-container`);
+diff --git a/src/components/Topbar-01/Topbar-Components-01/Searchbar-01/Searchbar.tsx b/src/components/Topbar-01/Topbar-Components-01/Searchbar-01/Searchbar.tsx
+index 2dfa7f0..851c0f7 100644
+--- a/src/components/Topbar-01/Topbar-Components-01/Searchbar-01/Searchbar.tsx
++++ b/src/components/Topbar-01/Topbar-Components-01/Searchbar-01/Searchbar.tsx
+@@ -112,7 +112,7 @@ export default function Searchbar(props: SearchbarProps) {
+     setSearchTerm(value);
+ 
+     // Clear previous debounce timer
+-    if (debounceTimer === undefined) {
++    if (debounceTimer !== undefined) {
+       clearTimeout(debounceTimer);
+     }
+ 
+diff --git a/src/helpers/format.ts b/src/helpers/format.ts
+index a5f63b5..ef9d4e5 100644
+--- a/src/helpers/format.ts
++++ b/src/helpers/format.ts
+@@ -30,7 +30,7 @@ export function formatBytes(bytes?: number): string {
+ 
+   function format(num: number) {
+     const str = num.toFixed(1);
+-    return str.endsWith(".0") ? str.slice(0, -1) : str;
++    return str.endsWith(".0") ? str.slice(0, -2) : str;
+   }
+ 
+   if (bytes < 1024) return `${bytes} B`;
+diff --git a/src/helpers/gameFilters.ts b/src/helpers/gameFilters.ts
+index 8b034b7..563ad4f 100644
+--- a/src/helpers/gameFilters.ts
++++ b/src/helpers/gameFilters.ts
+@@ -36,7 +36,7 @@ export function formatBytesToSize(bytes: number): string {
+   if (bytes === 0) return "0 B";
+ 
+   const units = ["B", "KB", "MB", "GB", "TB"];
+-  const i = Math.round(Math.log(bytes) / Math.log(1024));
++  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+   const value = bytes / Math.pow(1024, i);
+ 
+   return `${value.toFixed(1)} ${units[i]}`;
+@@ -121,7 +121,7 @@ function matchesGenreFilter(game: Game, selectedGenres: string[]): boolean {
+   const gameGenres = extractGenres(game.tag);
+ 
+   // Game matches if it has at least one of the selected genres
+-  return selectedGenres.every((genre) => gameGenres.includes(genre));
++  return selectedGenres.some((genre) => gameGenres.includes(genre));
+ }
+ 
+ /**
+diff --git a/src/pages/Discovery-01/Discovery.tsx b/src/pages/Discovery-01/Discovery.tsx
+index 8d0b673..404943d 100644
+--- a/src/pages/Discovery-01/Discovery.tsx
++++ b/src/pages/Discovery-01/Discovery.tsx
+@@ -78,6 +78,7 @@ export default function DiscoveryPage() {
+ 
+   const handleFilterChange = (newFilters: FilterState) => {
+     setFilters(newFilters);
++    setCurrentPage(1);
+     scrollElement().scrollTo({ top: 0, behavior: "instant" });
+   };
+ 
+diff --git a/src/pages/Downloads-01/Downloads-Page.tsx b/src/pages/Downloads-01/Downloads-Page.tsx
+index 4df050e..583c80b 100644
+--- a/src/pages/Downloads-01/Downloads-Page.tsx
++++ b/src/pages/Downloads-01/Downloads-Page.tsx
+@@ -45,7 +45,7 @@ const DownloadPage: Component = () => {
+ 
+ 
+         const statuses: AggregatedStatus[] = [];
+-        for (const job of filteredItems()) {
++        for (const job of jobs()) {
+             if (job.status) {
+                 statuses.push(job.status!);
+                 if (job.source === "Torrent") torrentCount++;
+diff --git a/src/pages/Gamehub-01/Gamehub-Components-01/Newly-Added-Games-01/Newly-Added-Games.tsx b/src/pages/Gamehub-01/Gamehub-Components-01/Newly-Added-Games-01/Newly-Added-Games.tsx
+index 509146e..3b6050e 100644
+--- a/src/pages/Gamehub-01/Gamehub-Components-01/Newly-Added-Games-01/Newly-Added-Games.tsx
++++ b/src/pages/Gamehub-01/Gamehub-Components-01/Newly-Added-Games-01/Newly-Added-Games.tsx
+@@ -7,7 +7,7 @@ export default function NewlyAddedGames() {
+ 
+   // Derive slider data from filtered games
+   const sliderData = createMemo(() => ({
+-    images: filteredNewlyAdded().map(g => g.img).reverse(),
++    images: filteredNewlyAdded().map(g => g.img),
+     titles: filteredNewlyAdded().map(g => g.title),
+     hrefs: filteredNewlyAdded().map(g => g.href),
+   }));
+diff --git a/src/pages/Gamehub-01/GamehubContext.tsx b/src/pages/Gamehub-01/GamehubContext.tsx
+index b024f9a..f30a806 100644
+--- a/src/pages/Gamehub-01/GamehubContext.tsx
++++ b/src/pages/Gamehub-01/GamehubContext.tsx
+@@ -61,7 +61,7 @@ export function GamehubProvider(props: { children: JSX.Element }) {
+   const loading = () => data.loading;
+ 
+   // Combine all games for filter metadata
+-  const allGames = createMemo(() => [...popular()]);
++  const allGames = createMemo(() => [...popular(), ...newlyAdded(), ...recentlyUpdated()]);
+ 
+   // Derived: genres and size ranges from ALL games
+   const availableGenres = createMemo(() => getAllGenres(allGames()));
+diff --git a/src/pages/Library-01/CollectionList/CollectionList.tsx b/src/pages/Library-01/CollectionList/CollectionList.tsx
+index 5010298..3bbf208 100644
+--- a/src/pages/Library-01/CollectionList/CollectionList.tsx
++++ b/src/pages/Library-01/CollectionList/CollectionList.tsx
+@@ -16,7 +16,7 @@ export default function CollectionList(props: CollectionListProps) {
+     const [isExpanded, setIsExpanded] = createSignal(false);
+     const navigate = useNavigate();
+ 
+-    const toggleExpand = () => { setIsExpanded(!isExpanded()); setGamesList(props.collectionGamesList()); };
++    const toggleExpand = () => setIsExpanded(!isExpanded());
+ 
+     function extractMainTitle(title?: string) {
+         return title
+diff --git a/src/stores/download.ts b/src/stores/download.ts
+index cca2f03..539bfaf 100644
+--- a/src/stores/download.ts
++++ b/src/stores/download.ts
+@@ -13,8 +13,11 @@ export const createDownloadsStore = () => {
+     for (const job of updatedJobs) {
+       const existing = jobsMap.get(job.id);
+       if (existing) {
+-        Object.assign(existing, job);
+-        jobsMap.set(job.id, existing);
++        const reconciled = reconcile(job)(existing);
++        if (reconciled !== existing) {
++          jobsMap.set(job.id, reconciled);
++          changed = true;
++        }
+       } else {
+         jobsMap.set(job.id, job);
+         changed = true;

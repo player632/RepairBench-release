@@ -1,0 +1,161 @@
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
+import { Component, computed, input } from '@angular/core';
+import { TranslocoModule } from '@jsverse/transloco';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideChevronDown,
+  lucideChevronLeft,
+  lucideChevronRight,
+  lucideGripVertical,
+  lucidePin,
+  lucideSettings2,
+  lucideX,
+} from '@ng-icons/lucide';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmDropdownMenuImports } from '@spartan-ng/helm/dropdown-menu';
+
+import { Column, ColumnPinningPosition, RowData, Table } from '@tanstack/angular-table';
+import { DataTableFeatures } from '../table/table-features';
+
+@Component({
+  selector: 'adm-data-table-column-manager',
+  imports: [DragDropModule, TranslocoModule, HlmDropdownMenuImports, NgIcon, HlmButtonImports],
+  providers: [
+    provideIcons({
+      lucideChevronDown,
+      lucideChevronLeft,
+      lucideChevronRight,
+      lucideSettings2,
+      lucideGripVertical,
+      lucidePin,
+      lucideX,
+    }),
+  ],
+  styleUrl: 'columns-manager.css',
+  template: `
+    <button type="button" class="hidden sm:flex" hlmBtn variant="outline" align="end" [hlmDropdownMenuTrigger]="columnMenu">
+      <ng-icon name="lucideSettings2" />
+      <span>{{ 'buttons.columns' | transloco }}</span>
+      <ng-icon name="lucideChevronDown" />
+    </button>
+
+    <ng-template #columnMenu>
+      <hlm-dropdown-menu class="columns-list" cdkDropList (cdkDropListDropped)="onDrop($event)">
+        @for (column of hidableColumns(); track column.id) {
+          <div cdkDrag class="group column-box flex items-center gap-2 px-2">
+            <button
+              type="button"
+              hlmDropdownMenuCheckbox
+              class="flex-1"
+              [checked]="column.getIsVisible()"
+              (triggered)="column.toggleVisibility()"
+            >
+              @let meta = column.columnDef.meta?.();
+              <hlm-dropdown-menu-checkbox-indicator />
+              @if (meta?.translationKey) {
+                {{ meta.translationKey | transloco }}
+              } @else {
+                {{ humanizeColumnId(column.id) }}
+              }
+            </button>
+            <span class="inline-flex items-center justify-center p-2">
+              <ng-icon class="text-muted-foreground cursor-grab active:cursor-grabbing" name="lucideGripVertical" />
+            </span>
+
+            @if (column.getCanPin()) {
+              <button
+                type="button"
+                hlmDropdownMenuItem
+                class="w-auto"
+                side="right"
+                align="start"
+                [hlmDropdownMenuTrigger]="pinMenu"
+              >
+                <span class="sr-only">{{ 'common.pinOptions' | transloco }}</span>
+                <ng-icon
+                  name="lucidePin"
+                  [class.text-primary]="!!column.getIsPinned()"
+                  [class.text-muted-foreground]="!column.getIsPinned()"
+                />
+              </button>
+
+              <ng-template #pinMenu>
+                <hlm-dropdown-menu-sub>
+                  <button
+                    type="button"
+                    hlmDropdownMenuCheckbox
+                    [checked]="column.getIsPinned() === 'start'"
+                    (triggered)="pinColumn(column, 'start')"
+                  >
+                    <ng-icon name="lucideChevronLeft" class="rtl:rotate-180" />
+                    <span>{{ 'buttons.pinStart' | transloco }}</span>
+                    <hlm-dropdown-menu-checkbox-indicator />
+                  </button>
+
+                  <button
+                    type="button"
+                    hlmDropdownMenuCheckbox
+                    [checked]="column.getIsPinned() === 'end'"
+                    (triggered)="pinColumn(column, 'end')"
+                  >
+                    <ng-icon name="lucideChevronRight" class="rtl:rotate-180" />
+                    <span>{{ 'buttons.pinEnd' | transloco }}</span>
+                    <hlm-dropdown-menu-checkbox-indicator />
+                  </button>
+
+                  <button type="button" hlmDropdownMenuItem (triggered)="pinColumn(column, false)">
+                    <ng-icon name="lucideX" />
+                    <span>{{ 'buttons.unpin' | transloco }}</span>
+                  </button>
+                </hlm-dropdown-menu-sub>
+              </ng-template>
+            }
+          </div>
+        }
+      </hlm-dropdown-menu>
+    </ng-template>
+  `,
+})
+export class DataTableColumnsManager<T extends RowData> {
+  // ==========================================
+  // Inputs
+  // ==========================================
+  public readonly table = input.required<Table<DataTableFeatures, T>>();
+
+  // ==========================================
+  // State
+  // ==========================================
+  protected readonly hidableColumns = computed(() => {
+    return this.table()
+      .getAllLeafColumns()
+      .filter((col) => col.getCanHide());
+  });
+
+  // ==========================================
+  // Public Methods
+  // ==========================================
+  protected onDrop(event: CdkDragDrop<string[]>) {
+    const table = this.table();
+    const hidableIds = this.hidableColumns().map((c) => c.id);
+
+    moveItemInArray(hidableIds, event.previousIndex, event.currentIndex);
+
+    const hidableSet = new Set(hidableIds);
+    let hidableIndex = 0;
+    const newOrder = table.getAllLeafColumns().map((col) => (hidableSet.has(col.id) ? hidableIds[hidableIndex++] : col.id));
+    table.setColumnOrder(newOrder);
+  }
+
+  protected pinColumn(column: Column<DataTableFeatures, T>, position: ColumnPinningPosition | false) {
+    column.pin(position);
+  }
+
+  protected humanizeColumnId(id: string): string {
+    const pretty = id
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return pretty ? pretty[0].toUpperCase() + pretty.slice(1) : id;
+  }
+}

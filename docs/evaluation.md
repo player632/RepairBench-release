@@ -15,7 +15,7 @@ argument:
 3. **Clear the build output directory** recorded for the task, so a stale artifact cannot
    satisfy a checkpoint.
 4. **Build** the project with the task's build command and environment.
-5. **Serve** the build output over HTTP with `evaluation/serve_static.mjs`. 7 tasks use a
+5. **Serve** the build output over HTTP with `evaluation/serve_static.mjs`. 12 tasks use a
    task-specific static server or API stub from their own `tests/` directory.
 6. **Execute checkpoints** with `evaluation/dsl_runner.mjs`, which drives a headless
    Chromium through every checkpoint in `tests/dsl.json` in an isolated browser context.
@@ -47,11 +47,12 @@ multiplicatively. `reward` is the binary all-or-nothing outcome and matches
 }
 ```
 
-Twenty-two tasks additionally emit a `verifier_exit_code` field, always computed as
-`0 if reward == 1.0 else 1`. Fourteen of those tasks return the runner status rather than this
+Fifty tasks additionally emit a `verifier_exit_code` field, always computed as
+`0 if reward == 1.0 else 1`. Twenty-one of those tasks return the runner status rather than this
 value, so for them the field can disagree with the status the script actually exits with.
-One task, `repair-angular__ng-lite-todo-01`, emits a variant of this record; the differences
-are tabulated in [quality-assurance.md](quality-assurance.md#known-deviations).
+Two tasks emit a variant of this record, `repair-angular__ng-lite-todo-01` and
+`repair-svelte__8mb.local-01`; the differences are tabulated in
+[quality-assurance.md](quality-assurance.md#known-deviations).
 
 ### Exit statuses
 
@@ -59,15 +60,15 @@ are tabulated in [quality-assurance.md](quality-assurance.md#known-deviations).
 |---|---|
 | 0 | Every F2P and P2P checkpoint passed (`reward` 1, `score` 100) |
 | 1 | At least one checkpoint failed; `reward.json` records the partial score |
-| 2 | Verifier or build error: the project did not build, produced no output, or the server did not become ready. No partial score is awarded. 7 tasks also convert a mid-run browser crash to this status |
-| 3 | Dependency supply failed. An `exit 3` path exists in the `tests/run.sh` of 2 tasks only; the other 200 verifiers never emit it |
-| 4 | The browser process was killed mid-run. Remaining checkpoints are recorded as `infra_crash` and `runner_crashed` is written into `checkpoint_results.json`. Returned by the 24 tasks that propagate the runner status |
+| 2 | Verifier or build error: the project did not build, produced no output, or the server did not become ready. No partial score is awarded. 30 tasks also convert a mid-run browser crash to this status |
+| 3 | Dependency supply failed. An `exit 3` path exists in the `tests/run.sh` of 4 tasks only; the other 296 verifiers never emit it |
+| 4 | The browser process was killed mid-run. Remaining checkpoints are recorded as `infra_crash` and `runner_crashed` is written into `checkpoint_results.json`. Returned by the 32 tasks that propagate the runner status |
 
 An exit status of 2 is recorded as a build failure and scores 0. Intermediate logs
 (`build.log`, `serve.log`, `runner-stdout.txt`, `checkpoint_results.json`,
 `exit-code.txt`) are written to `${LOGS_DIR}`.
 
-Of the 202 verifiers, 24 can return status 4, 7 convert that condition to status 2, and 171
+Of the 300 verifiers, 32 can return status 4, 30 convert that condition to status 2, and 238
 derive the exit status from `reward` alone and do not distinguish a browser-process crash from
 an ordinary checkpoint failure. How each task derives its status, and how to detect a crash
 reliably, are described in
@@ -103,9 +104,9 @@ bash "repair_bench/outputs/$TASK/tests/run.sh" /tmp/oracle/svgedit
 
 The expected outcome is exit status 0 and `score` 100, matching `validation/oracle.json`.
 Running the verifier against an unmodified copy of the seed tree must instead produce exit
-status 1 with every F2P checkpoint failing, matching `validation/mutation.json`. 10 tasks
-deviate from that expectation by exactly one checkpoint in the shipped records; they are
-listed in [task-format.md](task-format.md#validation-records).
+status 1 with every F2P checkpoint failing, matching `validation/mutation.json`. 12 tasks
+deviate from that expectation in the shipped records, 11 of them by exactly one checkpoint;
+they are listed in [task-format.md](task-format.md#validation-records).
 
 ## Build constraints
 
@@ -122,9 +123,9 @@ that require an installation, the package manager and how it was determined.
 
 | Class | Tasks | Action required |
 |---|---|---|
-| `no-node-project` | 31 | None. The verifier serves the source tree directly |
-| `verifier-installs` | 43 | None. The verifier restores or installs dependencies itself |
-| `preinstalled-required` | 128 | Install dependencies into the seed tree before grading |
+| `no-node-project` | 59 | None. The verifier serves the source tree directly |
+| `verifier-installs` | 93 | None. The verifier restores or installs dependencies itself |
+| `preinstalled-required` | 148 | Install dependencies into the seed tree before grading |
 
 ```bash
 python3 tools/install_seed_deps.py --list                 # show the plan
@@ -142,11 +143,11 @@ therefore makes grading offline for all but those tasks.
 
 ### Offline dependency tiers
 
-42 verifiers can supply dependencies from a build workspace instead of installing from the
-registry: 40 from a frozen `node_modules` archive under `_build/tmp/` and 2 from a cached
+82 verifiers can supply dependencies from a build workspace instead of installing from the
+registry: 78 from a frozen `node_modules` archive under `_build/tmp/` and 4 from a cached
 `node_modules` directory under `_build/gates/`. Neither location is part of this distribution.
 
-- For 38 of them the offline tier is consulted only when the source tree has no
+- For 78 of them the offline tier is consulted only when the source tree has no
   `node_modules`, so installing dependencies with `tools/install_seed_deps.py` satisfies the
   verifier.
 - `repair-react__free-react-tailwind-admin-dashboard-01` has no such guard: when the archive is
@@ -202,11 +203,11 @@ evaluate another system; the grading path is unchanged.
 ## Portability notes
 
 - **Path resolution.** Each `tests/run.sh` derives the repository root as three levels
-  above its own directory and expects `repo/` and `evaluation/` at that root. 16 verifiers
+  above its own directory and expects `repo/` and `evaluation/` at that root. 38 verifiers
   instead search upward for a directory containing `evaluation/dsl_runner.mjs`.
   Both schemes resolve correctly in this layout; moving task packages or seed trees
   independently breaks them.
-- **Build workspace references.** 42 verifiers reference `_build/` paths that belong to the
+- **Build workspace references.** 84 verifiers reference `_build/` paths that belong to the
   build workspace used to produce the suite. That directory is not part of this distribution,
   and every reference to it is an optional supply tier except for the three archive-only
   verifiers. The only support file needed at grading time, `http-parser-shim.js`, ships inside
@@ -217,5 +218,5 @@ evaluate another system; the grading path is unchanged.
   modified by the run.
 - **Network access.** Grading a task whose dependencies are already present requires no
   network access. Seed applications were adapted to run offline;
-  `environment/adaptation.patch` records the substitutions for the 170 tasks that needed
+  `environment/adaptation.patch` records the substitutions for the 257 tasks that needed
   them.

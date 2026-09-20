@@ -1,0 +1,145 @@
+diff --git a/src/components/shared/providers/ThemeProvider.svelte b/src/components/shared/providers/ThemeProvider.svelte
+--- a/src/components/shared/providers/ThemeProvider.svelte
++++ b/src/components/shared/providers/ThemeProvider.svelte
+@@ -32,8 +32,8 @@
+     ${theme
+         .map(({ name, color }) => {
+             const text = new TinyColor(color).isDark()
+-                ? ThemeStore.meta.textForLight
+-                : ThemeStore.meta.textForDark
++                ? ThemeStore.meta.textForDark
++                : ThemeStore.meta.textForLight
+             return `
+     --${name}: ${color};
+     --${name}-text: ${text};
+diff --git a/src/components/specific/project/memory/MemoryRenderer.svelte b/src/components/specific/project/memory/MemoryRenderer.svelte
+--- a/src/components/specific/project/memory/MemoryRenderer.svelte
++++ b/src/components/specific/project/memory/MemoryRenderer.svelte
+@@ -101,8 +101,8 @@
+             case DisplayType.Char:
+                 //hides last extended ascii to have prettier view
+                 return value === BigInt(defaultMemoryValue)
+-                    ? String.fromCharCode(Number(value))
+-                    : '.'
++                    ? '.'
++                    : String.fromCharCode(Number(value))
+             case DisplayType.Decimal:
+                 return value.toString().padStart(padding ?? 2, '0')
+             default:
+diff --git a/src/lib/Config.ts b/src/lib/Config.ts
+--- a/src/lib/Config.ts
++++ b/src/lib/Config.ts
+@@ -1,7 +1,7 @@
+ import type { AvailableLanguages } from './Project.svelte'
+ 
+ export const PAGE_SIZE = 16 * 16
+-export const PAGE_ELEMENTS_PER_ROW = Math.sqrt(PAGE_SIZE) / 2
++export const PAGE_ELEMENTS_PER_ROW = Math.sqrt(PAGE_SIZE)
+ export const MEMORY_SIZE = {
+     M68K: 0xffffffn,
+     MIPS: 0xffffffffn,
+@@ -74,7 +74,7 @@
+     `.trim(),
+     //not `.trim()`ed like the others: the leading indentation is load bearing, an assembler
+     //directive in the first column is parsed as a label definition
+-    Z80: `.org 0x8000
++    Z80: `        .org 0x8000
+ start:
+         ; Write here your code
+         ld a, 42
+diff --git a/src/lib/Project.svelte.ts b/src/lib/Project.svelte.ts
+--- a/src/lib/Project.svelte.ts
++++ b/src/lib/Project.svelte.ts
+@@ -134,7 +134,7 @@
+         return project
+     }
+     const code = lines.slice(0, threshold).join('\n').trimEnd()
+-    const metaLines = lines.slice(threshold)
++    const metaLines = lines.slice(threshold + 1)
+     const commentCharacters = Object.values(COMMENT_CHARACTER)
+     const separator = lines[threshold].split('').find((c) => commentCharacters.includes(c)) ?? '*'
+     let metaJson: ProjectMetadata = {
+diff --git a/src/lib/json.ts b/src/lib/json.ts
+--- a/src/lib/json.ts
++++ b/src/lib/json.ts
+@@ -7,7 +7,7 @@
+ }
+ 
+ function isSuperJsonResult(value: unknown): value is SuperJSONResult {
+-    return isRecord(value) && 'json' in value && !('meta' in value)
++    return isRecord(value) && 'json' in value
+ }
+ 
+ function needsSuperJson(obj: unknown): boolean {
+diff --git a/src/lib/languages/commonLanguageFeatures.svelte.ts b/src/lib/languages/commonLanguageFeatures.svelte.ts
+--- a/src/lib/languages/commonLanguageFeatures.svelte.ts
++++ b/src/lib/languages/commonLanguageFeatures.svelte.ts
+@@ -119,7 +119,7 @@
+     const bits = size * 8n
+     const mask = (1n << bits) - 1n
+     const hexDigits = Number(size * 2n)
+-    return (value & mask).toString(16).padEnd(hexDigits, '0')
++    return (value & mask).toString(16).padStart(hexDigits, '0')
+ }
+ 
+ export function makeRegister(name: string, v: bigint | number, _size: RegisterSize) {
+diff --git a/src/lib/languages/languageDetector.ts b/src/lib/languages/languageDetector.ts
+--- a/src/lib/languages/languageDetector.ts
++++ b/src/lib/languages/languageDetector.ts
+@@ -118,7 +118,7 @@
+     scores.sort((a, b) => b.score - a.score)
+ 
+     // Default to M68K if no instructions matched or there's a tie at 0
+-    if (scores[0].score === 0) return 'MIPS'
++    if (scores[0].score === 0) return 'M68K'
+ 
+     return scores[0].language
+ }
+diff --git a/src/lib/utils.ts b/src/lib/utils.ts
+--- a/src/lib/utils.ts
++++ b/src/lib/utils.ts
+@@ -70,7 +70,7 @@
+     const seconds = Math.floor(s / 1000)
+     const milliseconds = Math.floor(s % 1000)
+     if (seconds === 0) {
+-        return `${milliseconds}s`
++        return `${milliseconds}ms`
+     }
+     return `${seconds}.${`${milliseconds}`.padStart(3, '0')}s`
+ }
+diff --git a/src/stores/settingsStore.svelte.ts b/src/stores/settingsStore.svelte.ts
+--- a/src/stores/settingsStore.svelte.ts
++++ b/src/stores/settingsStore.svelte.ts
+@@ -62,7 +62,7 @@
+             if (storedJson === null) return store()
+             const stored = JSON.parse(storedJson)
+             if (!stored) return store()
+-            if (stored.meta.version === CURRENT_VERSION) return store()
++            if (stored.meta.version !== CURRENT_VERSION) return store()
+             data = stored
+         } catch (e) {
+             console.error(e)
+diff --git a/src/stores/shortcutsStore.ts b/src/stores/shortcutsStore.ts
+--- a/src/stores/shortcutsStore.ts
++++ b/src/stores/shortcutsStore.ts
+@@ -60,7 +60,7 @@
+     for (const entry of value) {
+         if (!Array.isArray(entry) || entry.length !== 2) continue
+         const [id, assignedKey] = entry
+-        if (!Number.isInteger(id) || typeof assignedKey !== 'string') continue
++        if (!Number.isInteger(id) || typeof assignedKey !== 'string' || overrides.has(id)) continue
+         overrides.set(id, assignedKey)
+     }
+     return overrides
+diff --git a/src/stores/themeStore.svelte.ts b/src/stores/themeStore.svelte.ts
+--- a/src/stores/themeStore.svelte.ts
++++ b/src/stores/themeStore.svelte.ts
+@@ -379,7 +379,7 @@
+         debouncer(() => {
+             localStorage.setItem(
+                 'themes',
+-                JSON.stringify($state.snapshot(themes))
++                JSON.stringify($state.snapshot(themes.filter((t) => t.editable)))
+             )
+             localStorage.setItem('selected_theme', meta.id)
+         })

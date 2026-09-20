@@ -1,0 +1,986 @@
+{
+ "schema_version": "1.0",
+ "instance_id": "repair-vanilla__taptaptap-01",
+ "framework": "vanilla",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "context": {
+  "viewport": {
+   "width": 1280,
+   "height": 720
+  },
+  "locale": "en-US"
+ },
+ "checkpoints": [
+  {
+   "id": "F01",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D01-score-accumulator-overwritten",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){gameEngine.score=0;gameEngine.tapValue=3;gameEngine.tapNum=0;gameEngine.tapsGoal=99;timeEngine.timeLeft=0;gameEngine.updateScore(0);gameEngine.goodCircleTap();gameEngine.goodCircleTap();gameEngine.goodCircleTap();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "gameEngine.score",
+     "expected": 9,
+     "expected_intent": "三次得分之后累计分必须是 3+3+3=9（updateScore 是赋值语义，调用点必须自己带上旧分）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('gmStatsScore').textContent==='9')?1:0",
+     "expected": 1,
+     "expected_intent": "同一读数的界面侧：计分板文本必须与引擎里的累计分一致地显示 9。"
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D02-level-gate-boundary",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){levelsEngine.resetLevels();gameEngine.tapNum=5;gameEngine.tapsGoal=5;gameEngine.score=0;gameEngine.bonusScore=0;timeEngine.timeLeft=0;gameEngine.checkTapsCount();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "levelsEngine.levels.length",
+     "expected": 2,
+     "expected_intent": "计数达标那一下就必须判过：过关分派会往关卡表里追加下一关，表长必须从 1 变 2。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pageLevelPassed').style.display==='block')?1:0",
+     "expected": 1,
+     "expected_intent": "同一读数的界面侧：达标那一下必须切到过关屏。"
+    }
+   ]
+  },
+  {
+   "id": "F03",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D03-newlevel-positional-args",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){levelsEngine.resetLevels();gameEngine.levelNum=1;gameEngine.levelTime=7;gameEngine.tapValue=3;gameEngine.tapsGoal=5;gameEngine.evilCirclesCount=4;gameEngine.score=0;gameEngine.bonusScore=0;timeEngine.timeLeft=0;gameEngine.levelPassed();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "levelsEngine.levels[1].time",
+     "expected": 8,
+     "expected_intent": "新造那一关的时长必须来自「本关时长+1」＝8（直接调过关分派，不经达标闸门 ⇒ 与 D02 解耦）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "levelsEngine.levels[1].tapsGoal",
+     "expected": 6,
+     "expected_intent": "新造那一关的要求次数必须来自「本关要求次数+1」＝6；两个字段一起才钉住实参与形参的位置对应。"
+    }
+   ]
+  },
+  {
+   "id": "F04",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D04-circle-spawn-wiring",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){gameEngine.start(0,1,7,5,3,1,4);timeEngine.stop();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('.good-circle').length",
+     "expected": 1,
+     "expected_intent": "开局装配把好圈数量 1 交给好圈那一类 ⇒ 场上恰好 1 个好圈。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('.evil-circle').length",
+     "expected": 4,
+     "expected_intent": "同一装配把坏圈数量 4 交给坏圈那一类 ⇒ 场上恰好 4 个坏圈。两条一起才钉住「选择器↔数量」的配对。"
+    }
+   ]
+  },
+  {
+   "id": "F05",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D05-countdown-loop-gate",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var ps=document.querySelectorAll('.page-cont');for(var i=0;i<ps.length;i++){ps[i].style.display='none';}toolsBox.showPage(pagePlayDelay);document.getElementById('playDelayNum').innerHTML='3';toolsBox.pagePlayDelay.start();return 1})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 800
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbF05Hidden=(document.getElementById('pagePlayDelay').style.display==='none')?1:0;return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "window.__rbF05Hidden",
+     "expected": 0,
+     "expected_intent": "循环跑过一拍（真等 800ms、跨过 500ms 的第一拍）之后倒数页必须**还开着**（0＝没被收尾分支藏起来）。读数在 setup 里**当场冻结**成 window.__rbF05Hidden：倒数循环每 500ms 还要再走拍，断言若直接读活页面就会读到后续拍的值 ⇒ 冻结后每条断言都是幂等纯读（纪律⑨：在 setup 里测、冻一个标量、绝不断言单调时钟）。🔴 本条故意不读倒数的数字：数字的方向属于 D06，两条读数分开才能让 D05>D06 这对掩蔽链在中间态臂上双向可分。"
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D06-countdown-direction",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.getElementById('playDelayNum').innerHTML='3';toolsBox.pagePlayDelay.updateNumber();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.getElementById('playDelayNum').textContent.trim()",
+     "expected": "2",
+     "expected_intent": "倒数每走一拍必须递减：从钉住的 3 出发，走一拍之后必须读到 2（直接调那一拍的更新函数，绕开循环闸门 ⇒ 与 D05 解耦）。"
+    }
+   ]
+  },
+  {
+   "id": "F07",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D07-pause-button-identity-swap",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){timeEngine.timeLeft=60;gameEngine.levelTime=60;gameEngine.score=42;toolsBox.hidePage(pageGameMenu);toolsBox.hidePage(pagePlayArea);toolsBox.showPage(pagePauseMenu);document.querySelector('[data-testid=\"rb-pm-continue\"]').click();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pagePlayArea').style.display==='block')?1:0",
+     "expected": 1,
+     "expected_intent": "点文案为 Continue 的那一颗必须回到游玩屏（用 data-testid 定位文案侧，不用 id ⇒ 与身份互换正交）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pageGameMenu').style.display==='block')?1:0",
+     "expected": 0,
+     "expected_intent": "同一颗按钮绝不允许把用户扔回主菜单（0＝没有）。两条一起钉住「按钮身份↔处理器」的对齐。"
+    }
+   ]
+  },
+  {
+   "id": "F08",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D08-label-for-mispointed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var ls=document.querySelectorAll('.admin-cp-items input.toggleCheckbox');for(var i=0;i<ls.length;i++){ls[i].checked=false;}document.querySelector('[data-testid=\"rb-label-about\"]').click();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('aboutPageToggle').checked)?1:0",
+     "expected": 1,
+     "expected_intent": "点 About 那一行的文字，被选中的必须是 About 那一枚（标签把点击转发给 for 指向的控件）。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('tutorialPageToggle').checked)?1:0",
+     "expected": 0,
+     "expected_intent": "同一次点击绝不允许选中 Tutorial 那一枚（0＝没有）。"
+    }
+   ]
+  },
+  {
+   "id": "F09",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D09-radio-group-exclusivity",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.getElementById('gameMenuPageToggle').checked=true;document.querySelector('[data-testid=\"rb-toggle-highscore\"]').click();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('.admin-cp-items input.toggleCheckbox:checked').length",
+     "expected": 1,
+     "expected_intent": "十枚页面开关是同一个互斥组：选中新的一枚之后，面板里被选中的必须恰好 1 枚。"
+    }
+   ]
+  },
+  {
+   "id": "F10",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D10-pause-button-collapsed",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var ps=document.querySelectorAll('.page-cont');for(var i=0;i<ps.length;i++){ps[i].style.display='none';}toolsBox.showPage(pagePlayArea);return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('gmStatsPauseBtn').offsetWidth>0)?1:0",
+     "expected": 1,
+     "expected_intent": "暂停键必须真的占位（offsetWidth>0）⇒ 它在游玩区里可见、可点。收起类一旦挂上，占位宽变成 0。setup 先把十屏收起、只显示游玩屏（游玩屏出厂 display:none，不显示则两态都读 0 宽＝空洞读数）。"
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D11-page-overlay-positioning",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var ps=document.querySelectorAll('.page-cont');for(var i=0;i<ps.length;i++){ps[i].style.display='none';}toolsBox.showPage(pageGameMenu);toolsBox.showPage(pagePlayArea);return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.getElementById('pagePlayArea')).position",
+     "expected": "absolute",
+     "expected_intent": "十屏互相叠在同一位置、只切显隐，这条页面切换语义的前提是每屏都脱离文档流叠放。"
+    },
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pagePlayArea').getBoundingClientRect().top===document.getElementById('pageGameMenu').getBoundingClientRect().top)?1:0",
+     "expected": 1,
+     "expected_intent": "叠层的几何证据：游玩屏与主菜单屏的上边缘必须重合（1＝重合）；改成文档流之后两屏首尾相接，上边缘不再重合。setup 先把其余八屏收起、只显示这两屏 ⇒ 两屏都在渲染中，矩形读数才有意义（display:none 下矩形全零、两态同值＝空洞读数）。"
+    }
+   ]
+  },
+  {
+   "id": "F12",
+   "kind": "interaction",
+   "partition": "F2P",
+   "source_ac_id": "D12-grow-keyframe-terminal",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){var ps=document.querySelectorAll('.page-cont');for(var i=0;i<ps.length;i++){ps[i].style.display='none';}toolsBox.showPage(pagePlayArea);return 1})()"
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){circlesEngine.add('.good-circle',1);return 1})()"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 700
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "getComputedStyle(document.querySelector('.good-circle')).transform",
+     "expected": "matrix(1, 0, 0, 1, 0, 0)",
+     "expected_intent": "出场动画跑完（约 0.2 秒）并保持（fill-mode forwards）之后，圈的变换矩阵必须是原尺寸 scale(1)。终帧塌回 0 时读到的是 matrix(0, 0, 0, 0, 0, 0)＝圈缩没了。本条是时序演化检查点：必须等一拍再读，加载瞬间读不到终帧；setup 先显示游玩屏，因为 display:none 下动画根本不跑。"
+    }
+   ]
+  },
+  {
+   "id": "P01",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-boot-globals",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(typeof toolsBox==='object'&&typeof gameEngine==='object'&&typeof timeEngine==='object'&&typeof circlesEngine==='object'&&typeof levelsEngine==='object'&&typeof audioPool==='object')?1:0",
+     "expected": 1,
+     "expected_intent": "🔴 检查点独立性守卫：全部 32 枚检查点共用的 setup 前置就是「入口文档加载＋游戏脚本跑起来」，本条直接断言那六个出厂全局引擎对象都在位 ⇒ 破坏它变成可归因的 P2P 扣分，而不是全题塌成 0。"
+    }
+   ]
+  },
+  {
+   "id": "P02",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-page-machine",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('.page-cont').length",
+     "expected": 10,
+     "expected_intent": "十屏一个不少（D11 的领地守卫）。"
+    }
+   ]
+  },
+  {
+   "id": "P03",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-level1-factory-literal",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(levelsEngine.levels.length===1&&levelsEngine.levels[0].levelNum===1&&levelsEngine.levels[0].time===7&&levelsEngine.levels[0].tapValue===3&&levelsEngine.levels[0].tapsGoal===5&&levelsEngine.levels[0].goodCirclesCount===1&&levelsEngine.levels[0].evilCirclesCount===4)?1:0",
+     "expected": 1,
+     "expected_intent": "第一关的出厂定义原样在位（D01/D02/D03/D04 的领地守卫：不许靠改关卡数据让分数、闸门、下一关或圈数看起来对）。"
+    }
+   ]
+  },
+  {
+   "id": "P04",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-level1-reset-path",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){levelsEngine.resetLevels();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(levelsEngine.levels.length===1&&levelsEngine.levels[0].time===7&&levelsEngine.levels[0].tapValue===3&&levelsEngine.levels[0].tapsGoal===5&&levelsEngine.levels[0].goodCirclesCount===1&&levelsEngine.levels[0].evilCirclesCount===4)?1:0",
+     "expected": 1,
+     "expected_intent": "第一关有**两处**出厂定义（关卡表字面量与重开路径），本条钉住重开那一路也必须还原成同一份数据（D02/D03 的领地守卫）。"
+    }
+   ]
+  },
+  {
+   "id": "P05",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-audio-pool",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "document.querySelectorAll('body > audio').length",
+     "expected": 8,
+     "expected_intent": "八个出厂音频播放器都建出来了（D01 的领地守卫：得分音效路径不许被拆掉）。"
+    }
+   ]
+  },
+  {
+   "id": "P06",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-hud-placeholders",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('gmStatsScore').textContent==='2894'&&document.getElementById('gmStatsLvlNumb').textContent==='Level 7'&&document.getElementById('gmStatsCurrentTapCount').textContent==='16'&&document.getElementById('gmStatsTotalTapCount').textContent==='/20')?1:0",
+     "expected": 1,
+     "expected_intent": "诱饵 1 的绿守卫：游玩区 HUD 上那四个出厂占位数字必须原样在位。把它们清零、删掉或改成 0 都是「照单修诱饵」，必须被惩罚。"
+    }
+   ]
+  },
+  {
+   "id": "P07",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-endscreen-placeholders",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('lvlLostScore').textContent==='746'&&document.getElementById('lvlPausedScore').textContent==='521'&&document.getElementById('lvlPssdTtl').textContent==='Level 2'&&document.getElementById('lvlPssdScore').textContent==='521'&&document.getElementById('lvlLostNewHighScore').textContent==='86')?1:0",
+     "expected": 1,
+     "expected_intent": "诱饵 2 的绿守卫（之一）：结算／暂停／过关三屏上的五个出厂占位数字必须原样在位。"
+    }
+   ]
+  },
+  {
+   "id": "P08",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "decoy-guard-endscreen-captions",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.querySelector('[data-testid=\"rb-paused-heading\"]').textContent.trim()==='GAME PAUSED'&&document.querySelectorAll('.sbmt-tryagain-txt').length===2&&document.querySelector('[data-testid=\"rb-new-highscore-caption\"]').textContent.trim()==='New High Score')?1:0",
+     "expected": 1,
+     "expected_intent": "诱饵 2 的绿守卫（之二）：暂停标题、两处「Try again?」文案与「New High Score」小标题必须原样在位 ⇒ 诱饵守卫并集覆盖 P07＋P08 两个不同 P2P id。"
+    }
+   ]
+  },
+  {
+   "id": "P09",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-pause-menu-buttons",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var b=document.querySelectorAll('#pagePauseMenu button');return (b.length===2&&b[0].textContent.trim()==='Continue'&&b[1].textContent.trim()==='Restart')?1:0})()",
+     "expected": 1,
+     "expected_intent": "暂停菜单恰好两颗按钮、文案依次是 Continue 与 Restart（D07 的领地守卫：不许靠删按钮、改文案或合并成一颗来消症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-admin-radio-inventory",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.querySelectorAll('.admin-cp-items input.toggleCheckbox').length===10&&document.querySelectorAll('.admin-cp-items input.toggleCheckbox:checked').length===1)?1:0",
+     "expected": 1,
+     "expected_intent": "调试面板恰好十枚开关、加载时恰好一枚选中（D09 的领地守卫）。"
+    }
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-admin-label-wiring",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var ls=document.querySelectorAll('label.vzbltyLabel');if(ls.length!==10)return 0;for(var i=0;i<ls.length;i++){var t=document.getElementById(ls[i].getAttribute('for'));if(!t||!t.closest('.admin-cp-items'))return 0;}return 1})()",
+     "expected": 1,
+     "expected_intent": "十条标签每条的 for 都指得到面板内一枚真实控件（D08 的领地守卫：不许靠删标签或去掉 for 来消症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-admin-panel-toggle",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbAdminBefore=document.querySelector('[data-testid=\"rb-admin-items\"]').classList.contains('hidden')?1:0;document.querySelector('[data-testid=\"rb-admin-toggle\"]').click();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(window.__rbAdminBefore===1&&document.querySelector('[data-testid=\"rb-admin-items\"]').classList.contains('hidden')===false)?1:0",
+     "expected": 1,
+     "expected_intent": "面板出厂是收起的、点那颗按钮能展开（D09 的第二条领地守卫）。"
+    }
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-hud-structure",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "['gmStatsPauseBtn','gmStatsScore','gmStatsLvlNumb','gmStatsCurrentTapCount','gmStatsTotalTapCount','gmStatsTimeProgress'].filter(function(x){return !!document.getElementById(x)}).length",
+     "expected": 6,
+     "expected_intent": "游玩区六个 HUD 节点全部在位（D10 的领地守卫：不许靠删掉暂停键节点来消症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P14",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-game-space",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(!!document.getElementById('gameSpace')&&document.getElementById('gameSpace').classList.contains('game-space')&&document.querySelectorAll('#gameSpace .tpbl-circle').length===0)?1:0",
+     "expected": 1,
+     "expected_intent": "游戏区宿主在位、带出厂类、开局前 0 个圈（D04/D12 的领地守卫）。"
+    }
+   ]
+  },
+  {
+   "id": "P15",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-countdown-host",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('playDelayNum').textContent.trim()==='3'&&!!document.getElementById('palyDelayCont'))?1:0",
+     "expected": 1,
+     "expected_intent": "倒数数字的出厂起手值是 3、它的宿主容器在位（D05/D06 的领地守卫：不许靠改起手值或删掉倒数屏来消症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P16",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-grow-keyframes-rule",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var ss=document.styleSheets;for(var i=0;i<ss.length;i++){try{var rs=ss[i].cssRules;for(var j=0;j<rs.length;j++){if(rs[j].type===7&&rs[j].name==='grow')return 1;}}catch(e){}}return 0})()",
+     "expected": 1,
+     "expected_intent": "样式表里那条 grow 关键帧规则本身必须仍然存在（D12 的领地守卫：不许靠删掉关键帧规则或删掉动画类来消症状）。"
+    }
+   ]
+  },
+  {
+   "id": "P17",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "adversarial-state-isolation",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(function(){var n=0;try{n+=localStorage.length;}catch(e){n+=900;}try{n+=sessionStorage.length;}catch(e){n+=900;}n+=(document.cookie||'').length;n+=(location.search||'').length;n+=(location.hash||'').length;return n})()",
+     "expected": 0,
+     "expected_intent": "状态隔离哨兵：加载态的 localStorage＋sessionStorage＋cookie＋query＋hash 残留总量必须是 0 ⇒ 打死「往存储里塞全局 flag／硬编码检查点特判」式的 hack 修。"
+    }
+   ]
+  },
+  {
+   "id": "P18",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-splash-handover",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 900
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pageSplash').style.display==='none'&&document.getElementById('pageGameMenu').style.display==='block')?1:0",
+     "expected": 1,
+     "expected_intent": "开场淡出→主菜单那条 1.5 秒交接仍然成立（D06 的第二条领地守卫：不许靠把开场时序改短或删掉开场屏来消症状）。本条带两段 900ms 真等待（合计 1800ms），是时序演化守卫。"
+    }
+   ]
+  },
+  {
+   "id": "P19",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-random-range-contract",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){window.__rbOldRandom=Math.random;Math.random=function(){return 0.9999};window.__rbA=toolsBox.gnrtRndmNum(0,1);window.__rbB=toolsBox.gnrtRndmNum(5,5);window.__rbC=toolsBox.gnrtRndmNum(2,3);Math.random=window.__rbOldRandom;return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(window.__rbA===1&&window.__rbB===5&&window.__rbC===3)?1:0",
+     "expected": 1,
+     "expected_intent": "随机落点函数的闭区间契约原样在位：上界必须可达、单点区间必须返回该点（D04 的领地守卫：不许靠改写随机区间让圈数或落点看起来对）。"
+    }
+   ]
+  },
+  {
+   "id": "P20",
+   "kind": "interaction",
+   "partition": "P2P",
+   "source_ac_id": "guard-menu-to-tutorial",
+   "setup": [
+    {
+     "action": "goto",
+     "target": "/play/index.html"
+    },
+    {
+     "action": "wait",
+     "target": "page",
+     "value": 350
+    },
+    {
+     "action": "js_eval",
+     "expr": "(function(){document.querySelector('[data-testid=\"rb-new-game\"]').click();return 1})()"
+    }
+   ],
+   "asserts": [
+    {
+     "type": "js_eval",
+     "target": "page",
+     "expr": "(document.getElementById('pageTutorial').style.display==='block'&&document.getElementById('pageGameMenu').style.display==='none')?1:0",
+     "expected": 1,
+     "expected_intent": "主菜单那颗开始按钮仍能把教程屏切出来、并把菜单收起（D11 的领地守卫：页面切换函数本身不许被改写或删除）。"
+    }
+   ]
+  }
+ ]
+}

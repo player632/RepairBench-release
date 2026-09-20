@@ -1,0 +1,240 @@
+diff --git a/app/src/components/AppUpdate.tsx b/app/src/components/AppUpdate.tsx
+index 6ffacf6..c91dd44 100644
+--- a/app/src/components/AppUpdate.tsx
++++ b/app/src/components/AppUpdate.tsx
+@@ -37,21 +37,16 @@ export default function AppUpdate(props: Props) {
+   const [err, setErr] = createSignal<string | null>(null);
+   const [loading, setLoading] = createSignal(true);
+ 
+-  onMount(async () => {
+-    try {
+-      const res = await fetch(`/api/app-update?app=${app}`, {
+-        headers: { Accept: 'application/json' },
+-      });
+-      const d = (await res.json().catch(() => null)) as
+-        (AppInfo & { error?: string }) | null;
+-      if (!res.ok || !d || d.error)
+-        throw new Error(d?.error || `failed (${res.status})`);
+-      setInfo(d);
+-    } catch (e) {
+-      setErr((e as Error).message);
+-    } finally {
+-      setLoading(false);
+-    }
++  onMount(() => {
++    // OFFLINE ADAPTATION (environment/adaptation.patch): GET /api/app-update is
++    // an on-demand server route (astro node adapter). Under a static server the
++    // SPA fallback answers HTML and the panel would sit in its error branch on
++    // every load, so no request is issued: the desktop-app version table simply
++    // stays empty (info null, err null) instead of claiming a failure.
++    void app;
++    void setInfo;
++    void setErr;
++    setLoading(false);
+   });
+ 
+   return (
+diff --git a/app/src/components/posthog.astro b/app/src/components/posthog.astro
+index d4536db..5c3a079 100644
+--- a/app/src/components/posthog.astro
++++ b/app/src/components/posthog.astro
+@@ -1,64 +1,9 @@
+ ---
+-
++// OFFLINE ADAPTATION (environment/adaptation.patch): this component used to inline
++// the PostHog loader snippet, which injected a runtime <script src> for
++// https://apito.elevatech.xyz/static/array.js - the only external request the app
++// made. The graded faces are served statically with no network egress, so the
++// snippet is gone and this island renders nothing. The call surface stays intact:
++// lib/analytics.ts keeps exporting track / trackPwa / bootstrapAnalyticsIdentity
++// (as no-ops), so store.ts, App.tsx and InstallButton.tsx are untouched.
+ ---
+-
+-<script is:inline type="text/javascript">
+-  !(function (t, e) {
+-    var o, n, p, r;
+-    e.__SV ||
+-      (window.posthog && window.posthog.__loaded) ||
+-      ((window.posthog = e),
+-      (e._i = []),
+-      (e.init = function (i, s, a) {
+-        function g(t, e) {
+-          var o = e.split('.');
+-          (2 == o.length && ((t = t[o[0]]), (e = o[1])),
+-            (t[e] = function () {
+-              t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+-            }));
+-        }
+-        (((p = t.createElement('script')).type = 'text/javascript'),
+-          (p.crossOrigin = 'anonymous'),
+-          (p.async = !0),
+-          (p.src =
+-            s.api_host.replace('.i.posthog.com', '-assets.i.posthog.com') +
+-            '/static/array.js'),
+-          (r = t.getElementsByTagName('script')[0]).parentNode.insertBefore(
+-            p,
+-            r,
+-          ));
+-        var u = e;
+-        for (
+-          void 0 !== a ? (u = e[a] = []) : (a = 'posthog'),
+-            u.people = u.people || [],
+-            u.toString = function (t) {
+-              var e = 'posthog';
+-              return (
+-                'posthog' !== a && (e += '.' + a),
+-                t || (e += ' (stub)'),
+-                e
+-              );
+-            },
+-            u.people.toString = function () {
+-              return u.toString(1) + '.people (stub)';
+-            },
+-            o =
+-              'Ei Ni init zi Gi Nr Ui Xi Hi capture calculateEventProperties tn register register_once register_for_session unregister unregister_for_session an getFeatureFlag getFeatureFlagPayload getFeatureFlagResult isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync ln identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty nn Qi createPersonProfile setInternalOrTestUser sn qi cn opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing Ji debug Fr rn getPageViewId captureTraceFeedback captureTraceMetric Bi'.split(
+-                ' ',
+-              ),
+-            n = 0;
+-          n < o.length;
+-          n++
+-        )
+-          g(u, o[n]);
+-        e._i.push([i, s, a]);
+-      }),
+-      (e.__SV = 1));
+-  })(document, window.posthog || []);
+-  posthog.init('phc_k5zdLfnETcpyBcBTXDDGe8vNQQ55wTCPs0grc5fyYGP', {
+-    api_host: 'https://apito.elevatech.xyz',
+-    ui_host: 'https://us.posthog.com',
+-    defaults: '2026-01-30',
+-    person_profiles: 'identified_only',
+-  });
+-</script>
+diff --git a/app/src/lib/analytics.ts b/app/src/lib/analytics.ts
+index db0520d..70997d4 100644
+--- a/app/src/lib/analytics.ts
++++ b/app/src/lib/analytics.ts
+@@ -1,41 +1,18 @@
+-// thin wrapper over the PostHog inline snippet (window.posthog).
+-// no-op during SSR; the snippet stub queues calls until array.js loads.
+-export function track(event: string, props?: Record<string, unknown>): void {
+-  if (typeof window === 'undefined') return;
+-  window.posthog?.capture(event, props);
+-}
+-
+-const UID_KEY = 'sh_uid';
+-
+-function mintUuid(): string {
+-  const c = globalThis.crypto;
+-  if (c?.randomUUID) return c.randomUUID();
+-  // Best-effort fallback (very old browsers). Not RFC-strict, good enough here.
+-  const b = new Uint8Array(16);
+-  (c?.getRandomValues ?? ((a: Uint8Array) => a))(b);
+-  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0'));
+-  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex
+-    .slice(6, 8)
+-    .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
++// OFFLINE ADAPTATION (environment/adaptation.patch): analytics egress removed.
++// Upstream this module was a thin wrapper over the PostHog inline snippet
++// (components/posthog.astro), which loaded https://apito.elevatech.xyz/static/array.js
++// and queued capture()/identify() calls against it. The graded faces run with no
++// network egress, so every emitting entry point below is a no-op. The export
++// surface is unchanged (store.ts, App.tsx and InstallButton.tsx import it) and
++// nothing is written to localStorage any more, so the app starts from an empty
++// storage area - which the state-isolation checkpoints rely on.
++
++export function track(_event: string, _props?: Record<string, unknown>): void {
++  // no-op offline: there is no analytics endpoint to reach
+ }
+ 
+ export function bootstrapAnalyticsIdentity(): void {
+-  if (typeof window === 'undefined') return;
+-  let uid: string | null = null;
+-  try {
+-    uid = localStorage.getItem(UID_KEY);
+-    if (!uid) {
+-      uid = mintUuid();
+-      localStorage.setItem(UID_KEY, uid);
+-    }
+-  } catch {
+-    // localStorage blocked (private mode / disabled) — bail; PostHog stays
+-    // per-session anonymous as before. No worse than the old behavior.
+-    return;
+-  }
+-  // posthog-js's stub queues calls until array.js loads, so this is safe to
+-  // fire immediately after the inline snippet runs.
+-  window.posthog?.identify(uid);
++  // no-op offline: the sh_uid localStorage identity is analytics-only
+ }
+ 
+ // PWA-specific context that posthog-js does NOT auto-capture.
+@@ -81,7 +58,6 @@ export function pwaContext(): Record<string, unknown> {
+   };
+ }
+ 
+-// track() for PWA events: always merges the non-auto PWA context above.
+-export function trackPwa(event: string, props?: Record<string, unknown>): void {
+-  track(event, { ...pwaContext(), ...props });
++export function trackPwa(_event: string, _props?: Record<string, unknown>): void {
++  // no-op offline: track() is a no-op, so the merged PWA context goes nowhere
+ }
+diff --git a/app/src/lib/firmware.ts b/app/src/lib/firmware.ts
+index 94f5340..32d3cef 100644
+--- a/app/src/lib/firmware.ts
++++ b/app/src/lib/firmware.ts
+@@ -103,19 +103,17 @@ export interface ServerFirmware extends FirmwareRelease {
+ // fetch the latest firmware release via the backend route; throws with the
+ // server-provided message on failure
+ export async function fetchServerFirmware(
+-  cloudFamily: string,
+-  cloudModel: string,
++  _cloudFamily: string,
++  _cloudModel: string,
+ ): Promise<ServerFirmware> {
+-  const qs = new URLSearchParams({ family: cloudFamily, model: cloudModel });
+-  const res = await fetch(`/api/firmware?${qs}`, {
+-    headers: { Accept: 'application/json' },
+-  });
+-  const data = (await res.json().catch(() => null)) as
+-    (ServerFirmware & { error?: string }) | null;
+-  if (!res.ok || !data) {
+-    throw new Error(data?.error || `firmware lookup failed (${res.status})`);
+-  }
+-  return data;
++  // OFFLINE ADAPTATION (environment/adaptation.patch): GET /api/firmware is an
++  // on-demand server route (astro node adapter, lib/mtcloud.server.ts). Under a
++  // static server the SPA fallback answers HTML, so res.json() rejects and the
++  // panel lands in its error branch on every load. Resolved locally as "no
++  // release known" instead of issuing a request; the returned shape is the same
++  // ServerFirmware the panel already handles (version null => compareFirmware
++  // yields 'unknown').
++  return { version: null, releases: [] };
+ }
+ 
+ export type CompareResult =
+diff --git a/app/src/lib/manuals.ts b/app/src/lib/manuals.ts
+index 36ee81f..4650b4e 100644
+--- a/app/src/lib/manuals.ts
++++ b/app/src/lib/manuals.ts
+@@ -1,5 +1,10 @@
+-// Client helper for GET /api/manuals. The server resolves the PDF URLs (the
+-// storefront is Cloudflare-fronted and cannot be fetched from the browser).
++// OFFLINE ADAPTATION (environment/adaptation.patch): GET /api/manuals is an
++// on-demand server route (astro node adapter, lib/manuals.server.ts proxies the
++// Behringer storefront because the browser is not allowed to). A statically
++// served face has no such endpoint at all - the SPA fallback answers the request
++// with index.html, res.ok is true, and res.json() throws a SyntaxError that no
++// ErrorBoundary catches. The exported shape is unchanged; the lookup resolves
++// locally as "no manuals" without issuing a request.
+ export interface ManualItem {
+   title: string | null;
+   type: string | null;
+@@ -16,7 +21,5 @@ interface ManualsResult {
+ }
+ 
+ export async function fetchManuals(slug: string): Promise<ManualsResult> {
+-  const res = await fetch(`/api/manuals?slug=${encodeURIComponent(slug)}`);
+-  if (!res.ok) throw new Error(`manuals request failed (${res.status})`);
+-  return (await res.json()) as ManualsResult;
++  return { slug, name: null, handles: [], count: 0, manuals: [] };
+ }

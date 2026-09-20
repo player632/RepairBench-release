@@ -1,0 +1,35 @@
+import { Copyright } from "@/components/common/footer/Copyright";
+import { cn } from "@/lib/cn";
+import type { FC } from "react";
+import { LangSelector } from "../Lang";
+import { Singleton } from "./Singleton";
+import { Version } from "./Version";
+
+interface Props {
+	className?: string;
+}
+
+export const Footer: FC<Props> = ({ className = "" }) => {
+	return (
+		<div
+			className={cn(
+				"gap-4 flex justify-center items-center w-full text-neutral-400 text-xs",
+				className,
+			)}
+		>
+			<Copyright />
+			<Version />
+			<a
+				data-testid="rb-footer-github"
+				className={"hover:underline"}
+				href={"//github.com/eyeix/meilisearch-ui"}
+				target="_blank"
+				rel="noreferrer"
+			>
+				Github
+			</a>
+			<LangSelector />
+			<Singleton />
+		</div>
+	);
+};

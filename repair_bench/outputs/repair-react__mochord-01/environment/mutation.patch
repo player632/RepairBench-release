@@ -1,0 +1,122 @@
+diff --git a/src/components/AudioControls.tsx b/src/components/AudioControls.tsx
+--- a/src/components/AudioControls.tsx
++++ b/src/components/AudioControls.tsx
+@@ -108,7 +108,7 @@
+     }
+   }
+ 
+-  const disabled = !parsedChord || status === "playing";
++  const disabled = !parsedChord;
+   const statusLabels: Record<AudioStatus, string> = {
+     locked: t("audioLocked"),
+     ready: t("audioReady"),
+diff --git a/src/components/ChordInput.tsx b/src/components/ChordInput.tsx
+--- a/src/components/ChordInput.tsx
++++ b/src/components/ChordInput.tsx
+@@ -21,7 +21,6 @@
+   }
+ 
+   function handleExample(chord: string) {
+-    setDraft(chord);
+     onGenerate(chord);
+   }
+ 
+diff --git a/src/components/MetronomeControls.tsx b/src/components/MetronomeControls.tsx
+--- a/src/components/MetronomeControls.tsx
++++ b/src/components/MetronomeControls.tsx
+@@ -131,7 +131,7 @@
+   const [detailsOpen, setDetailsOpen] = useState(false);
+   const [tapHelpOpen, setTapHelpOpen] = useState(false);
+   const tapTimes = useRef<number[]>([]);
+-  const normalizedTimeSignature = useMemo(() => normalizeTimeSignature(timeSignature), [timeSignature]);
++  const normalizedTimeSignature = useMemo(() => normalizeTimeSignature(timeSignature), []);
+   const helperCopy = language === "zh"
+     ? {
+         reset: "重置节拍器默认值",
+@@ -163,8 +163,8 @@
+   );
+ 
+   function commitBpm(nextBpm: number) {
+-    const clamped = clampBpm(nextBpm);
+-    setWarning(clamped !== Math.round(nextBpm) ? copy.bpmRange : null);
++    const clamped = Math.round(nextBpm);
++    setWarning(clamped !== Math.round(nextBpm) ? copy.bpmRange : warning);
+     onBpmChange(clamped);
+   }
+ 
+@@ -267,7 +267,7 @@
+                 type="number"
+                 min="40"
+                 max="300"
+-                value={bpm}
++                defaultValue={bpm}
+                 onChange={(event) => commitBpm(Number(event.target.value))}
+               />
+               <span>BPM</span>
+diff --git a/src/components/SongDraftGenerator.tsx b/src/components/SongDraftGenerator.tsx
+--- a/src/components/SongDraftGenerator.tsx
++++ b/src/components/SongDraftGenerator.tsx
+@@ -86,7 +86,6 @@
+     previousDefaultsRef.current = nextDefaults;
+     previousArrangementIdRef.current = arrangement.id;
+   }, [
+-    arrangement.bpm,
+     arrangement.difficulty,
+     arrangement.id,
+     arrangement.key,
+@@ -97,7 +96,6 @@
+ 
+   function updateRequest(patch: Partial<SongDraftRequest>) {
+     setRequest((current) => ({ ...current, ...patch }));
+-    setNotice(null);
+   }
+ 
+   async function generateDraft(event?: FormEvent<HTMLFormElement>) {
+diff --git a/src/components/TabViewer.tsx b/src/components/TabViewer.tsx
+--- a/src/components/TabViewer.tsx
++++ b/src/components/TabViewer.tsx
+@@ -9,7 +9,7 @@
+ 
+ export function TabViewer({ voicing, tuningPitches }: TabViewerProps) {
+   const { t } = useI18n();
+-  const lines = fretsToTabLines(voicing, tuningPitches);
++  const lines = fretsToTabLines(voicing);
+ 
+   return (
+     <section className="panel tab-panel">
+diff --git a/src/hooks/useProgressSync.ts b/src/hooks/useProgressSync.ts
+--- a/src/hooks/useProgressSync.ts
++++ b/src/hooks/useProgressSync.ts
+@@ -139,7 +139,7 @@
+     }, debounceMs);
+ 
+     return () => window.clearTimeout(timeoutId);
+-  }, [debounceMs, isAuthenticated, loading, serializedProgress, user]);
++  }, [debounceMs, isAuthenticated, loading, user]);
+ 
+   useEffect(() => {
+     function handleBeforeUnload() {
+diff --git a/src/pages/HomePage.tsx b/src/pages/HomePage.tsx
+--- a/src/pages/HomePage.tsx
++++ b/src/pages/HomePage.tsx
+@@ -281,7 +281,7 @@
+             </button>
+           </nav>
+ 
+-          <button type="button" className="home-settings-button" onClick={() => setSettingsOpen((current) => !current)}>
++          <button type="button" className="home-settings-button" onClick={() => setSettingsOpen(true)}>
+             <Settings size={17} aria-hidden="true" />
+             {copy.settings}
+           </button>
+diff --git a/src/pages/LearningDataPage.tsx b/src/pages/LearningDataPage.tsx
+--- a/src/pages/LearningDataPage.tsx
++++ b/src/pages/LearningDataPage.tsx
+@@ -92,7 +92,7 @@
+ export function LearningDataPage({ summary, homeSummary, onNavigate, onResumeSession }: LearningDataPageProps) {
+   const { language, t } = useI18n();
+   const copy = COPY[language];
+-  const maxTrendMinutes = Math.max(1, ...summary.dailyTrend.map((day) => day.minutes));
++  const maxTrendMinutes = Math.max(...summary.dailyTrend.map((day) => day.minutes));
+ 
+   return (
+     <>

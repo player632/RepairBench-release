@@ -1,0 +1,129 @@
+diff --git a/assets/js/config/new_config.js b/assets/js/config/new_config.js
+index a05f01e..664e9d7 100644
+--- a/assets/js/config/new_config.js
++++ b/assets/js/config/new_config.js
+@@ -9,7 +9,7 @@ const { createApp, ref, watchEffect, watch, toRaw } = Vue;
+ 
+ const i18n = VueI18n.createI18n({
+     legacy: false,
+-    locale: localStorage.getItem("ui_language") ?? 'zh',
++    locale: localStorage.getItem("ui_language") ?? 'en',
+     fallbackLocale: 'en',
+     messages: {
+         en: LANG_EN,
+diff --git a/assets/js/eta_controller.js b/assets/js/eta_controller.js
+index 0b5fa0e..05b16a5 100644
+--- a/assets/js/eta_controller.js
++++ b/assets/js/eta_controller.js
+@@ -36,7 +36,7 @@ async function getETA(api, route, stn, direction) {
+                 const response = await fetch(transformedURL, { cache: "no-cache", ...requestConfig });
+                 if (!response.ok) {
+                     console.warn(`Cannot fetch from URL:\n${transformedURL}\n(${response.status}).`);
+-                    break;
++                    continue;
+                 }
+                 data = await response.json();
+                 break;
+diff --git a/assets/js/header_bar.js b/assets/js/header_bar.js
+index 17abf02..e9a2109 100644
+--- a/assets/js/header_bar.js
++++ b/assets/js/header_bar.js
+@@ -50,7 +50,7 @@ function updateHeader() {
+         $('.t1').hide();
+         $('.t2').show();
+         $("#header-bar").addClass("route-color");
+-        $(".rtname").text(getRoute(SETTINGS.route).name);
++        $(".rtname").text(UI.switchLang(getRoute(SETTINGS.route).name));
+         $('body').css("--title-height", `17vh`);
+     } else {
+         $('.t2').hide();
+diff --git a/assets/js/main.js b/assets/js/main.js
+index 862da22..cbdad96 100644
+--- a/assets/js/main.js
++++ b/assets/js/main.js
+@@ -11,7 +11,7 @@ let etaData = [];
+ function parseQuery() {
+     let params = (new URL(document.location)).searchParams;
+ 
+-    if(params.get("debug") == "true") {
++    if(params.has("debug")) {
+         SETTINGS.debugMode = true;
+     }
+ }
+diff --git a/assets/js/static/eta_api.js b/assets/js/static/eta_api.js
+index 086c236..bd67adf 100644
+--- a/assets/js/static/eta_api.js
++++ b/assets/js/static/eta_api.js
+@@ -10,6 +10,7 @@ function processLightRailData(data, route, stn, direction) {
+     for (const platform of data.platform_list) {
+         let currentPlatform = platform.platform_id.toString();
+         let isDeparture = false;
++        if (platform.end_service_status == 1) continue;
+ 
+         for (const entry of platform.route_list) {
+             /* Replace to only numbers, e.g. 2 min -> 2 */
+@@ -24,7 +25,7 @@ function processLightRailData(data, route, stn, direction) {
+             let arrivalEntry = new ArrivalEntry(`${entry.dest_ch}|${entry.dest_en}`, ttntNum, null, RouteList[`LR${entry.route_no}`], currentPlatform, true, isDeparture, null, 0, "");
+             finalData.push(arrivalEntry);
+         }
+-        finalData.sort((a, b) => String(a.ttnt).localeCompare(String(b.ttnt)));
++        finalData.sort((a, b) => a.ttnt - b.ttnt);
+     }
+     return finalData;
+ }
+@@ -90,13 +91,13 @@ function processHeavyRailData(data, route, stn, direction) {
+         let sysTime = new Date(`${data.sys_time.replace(" ", "T")}+08:00`);
+ 
+         /* Calculate the time difference */
+-        let ttnt = Math.max(Math.round((arrTime - sysTime) / 60000), 0);
++        let ttnt = Math.max(Math.ceil((arrTime - sysTime) / 60000), 0);
+         let destName = StationList.get(entry.dest).name;
+ 
+         if (entry.timeType == "A") {
+-            isDeparture = true;
+-        } else if (entry.timeType == "D") {
+             isDeparture = false;
++        } else if (entry.timeType == "D") {
++            isDeparture = true;
+         }
+ 
+         /* EAL only */
+diff --git a/assets/js/ui.js b/assets/js/ui.js
+index 21b6706..4192474 100644
+--- a/assets/js/ui.js
++++ b/assets/js/ui.js
+@@ -39,7 +39,7 @@ function drawUI(etaData) {
+         let arrivalEntryValid = null;
+         // ETA is not displayed if first train is over 20 min.
+         do {
+-            arrivalEntryValid = SETTINGS.debugMode ? true : (etaData[0]?.ttnt <= 20 && isArrivalEntryValid(etaData[entryIndex]));
++            arrivalEntryValid = SETTINGS.debugMode ? true : (etaData[0]?.ttnt <= SETTINGS.firstTrainCutoff && isArrivalEntryValid(etaData[entryIndex]));
+             if(etaData[entryIndex] == null) break;
+             if(!arrivalEntryValid) entryIndex++;
+         } while(!arrivalEntryValid);
+@@ -176,6 +176,8 @@ function getETAmin(eta, departure) {
+     if (eta == 0 || eta == 1) {
+         return "";
+     }
++    // MTR PIDS clamp eta at 99
++    if(eta > 99) return "99";
+     return eta;
+ }
+ 
+@@ -190,14 +192,14 @@ function getETAtime(ttnt, absTime, departure) {
+ 
+ function isArrivalEntryValid(arrivalEntry) {
+     return arrivalEntry == null || arrivalEntry.plat.length > 0 && arrivalEntry.dest.length > 0 && !isNaN(parseInt(arrivalEntry.ttnt))
+-    && (arrivalEntry.dest != "不載客列車|Not in Service");
++    && (arrivalEntry.dest != "不載客列車|Not in Service" || parseInt(arrivalEntry.ttnt) <= 1);
+ }
+ 
+ function switchLang(str) {
+     let targetLang = languageCycle;
+     
+     let name = str.split("|");
+-    return name[targetLang];
++    return name[targetLang % name.length];
+ }
+ 
+ function cycleLanguage() {

@@ -1,0 +1,294 @@
+"""Compress and queue management route handlers."""
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+
+import orjson
+from fastapi import APIRouter, Depends, HTTPException
+
+from ..auth import basic_auth
+from ..celery_app import celery_app
+from ..deps import (
+    OUTPUTS_DIR,
+    resolve_uploaded_path,
+    build_output_name,
+    redis,
+    store_job_metadata,
+)
+from ..models import CompressRequest, JobMetadata, QueueStatusResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["compress"])
+
+
+@router.post("/api/compress", dependencies=[Depends(basic_auth)])
+async def compress(req: CompressRequest):
+    logger.debug(
+        "compress: job_id=%s filename=%s target_mb=%s codec=%s preset=%s audio=%s/%skbps "
+        "container=%s audio_only=%s max_wh=%s/%s fps_cap=%s",
+        req.job_id, req.filename, req.target_size_mb, req.video_codec, req.preset,
+        req.audio_codec, req.audio_bitrate_kbps, req.container,
+        bool(req.audio_only), req.max_width, req.max_height, req.max_output_fps,
+    )
+    input_path = resolve_uploaded_path(req.filename)
+    if not input_path.exists():
+        logger.warning("compress: input missing: %s", input_path)
+        raise HTTPException(status_code=404, detail="Input not found")
+
+    task_id = str(uuid.uuid4())
+
+    output_name = build_output_name(input_path, task_id, req.container, bool(req.audio_only or False))
+    output_path = OUTPUTS_DIR / output_name
+
+    # Persist the queue record before dispatching. A worker can start and even
+    # finish very quickly; dispatch-first made a Redis/settings failure leave a
+    # successful output with no queue metadata and no usable response.
+    try:
+        await store_job_metadata(
+            task_id, req.job_id, req.filename, req.target_size_mb,
+            req.video_codec, str(input_path), str(output_path),
+        )
+    except Exception as exc:
+        # ``store_job_metadata`` writes the job key and active-job index as
+        # separate operations. If its second operation fails, remove any
+        # partial record so a failed request cannot leave an invisible queue
+        # entry behind.
+        try:
+            await redis.delete(f"job:{task_id}")
+            await redis.zrem("jobs:active", task_id)
+        except Exception:
+            pass
+        try:
+            input_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("compress: could not remove unqueued input %s", input_path)
+        logger.exception("compress: failed to persist queue metadata for %s", task_id)
+        raise HTTPException(status_code=500, detail="Failed to record compression job") from exc
+
+    logger.info(
+        "compress: dispatching task_id=%s codec=%s target=%sMB in=%s out=%s",
+        task_id, req.video_codec, req.target_size_mb, input_path.name, output_path.name,
+    )
+    try:
+        task = celery_app.send_task(
+            "worker.worker.compress_video",
+            task_id=task_id,
+            kwargs=dict(
+                job_id=req.job_id,
+                input_path=str(input_path),
+                output_path=str(output_path),
+                target_size_mb=req.target_size_mb,
+                target_video_bitrate_kbps=req.target_video_bitrate_kbps,
+                video_codec=req.video_codec,
+                audio_codec=req.audio_codec,
+                audio_bitrate_kbps=req.audio_bitrate_kbps,
+                preset=req.preset,
+                tune=req.tune,
+                max_width=req.max_width,
+                max_height=req.max_height,
+                start_time=req.start_time,
+                end_time=req.end_time,
+                force_hw_decode=bool(req.force_hw_decode or False),
+                fast_mp4_finalize=bool(req.fast_mp4_finalize or False),
+                auto_resolution=bool(req.auto_resolution or False),
+                min_auto_resolution=req.min_auto_resolution,
+                target_resolution=req.target_resolution,
+                audio_only=bool(req.audio_only or False),
+                max_output_fps=req.max_output_fps,
+                transient_input=True,
+            ),
+        )
+    except Exception as exc:
+        # A broker can acknowledge a task just before raising locally. Request
+        # cooperative cancellation and keep the metadata/input long enough for
+        # the worker or retention cleanup to finish safely; do not race FFmpeg
+        # by unlinking a possibly active source here.
+        try:
+            await redis.set(f"cancel:{task_id}", "1", ex=3600)
+            celery_app.control.revoke(task_id, terminate=False)
+        except Exception:
+            pass
+        logger.exception("compress: failed to enqueue task %s", task_id)
+        raise HTTPException(status_code=503, detail="Failed to enqueue compression job") from exc
+    try:
+        await redis.publish(f"progress:{task.id}", orjson.dumps({"type":"log","message":"Job queued – waiting for worker…"}).decode())
+    except Exception:
+        pass
+    
+    return {"task_id": task.id}
+
+
+@router.post("/api/jobs/{task_id}/cancel", dependencies=[Depends(basic_auth)])
+async def cancel_job(task_id: str):
+    """Signal a running job to cancel and attempt to stop ffmpeg."""
+    logger.info("cancel_job: task_id=%s", task_id)
+    try:
+        await redis.set(f"cancel:{task_id}", "1", ex=3600)
+        await redis.publish(f"progress:{task_id}", orjson.dumps({"type":"log","message":"Cancellation requested"}).decode())
+        try:
+            # The worker polls cancel:<task_id> and owns FFmpeg shutdown and
+            # partial-output cleanup. Hard-killing the Celery child can bypass
+            # that cleanup, so revoke queued delivery without termination.
+            celery_app.control.revoke(task_id, terminate=False)
+            logger.debug("cancel_job: celery revoke sent for %s", task_id)
+        except Exception as e:
+            logger.warning("cancel_job: celery revoke failed for %s: %s", task_id, e)
+        return {"status": "cancellation_requested"}
+    except Exception as e:
+        logger.exception("cancel_job failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/queue/clear", dependencies=[Depends(basic_auth)])
+async def clear_queue():
+    """Clear all jobs from the queue (cancel running, remove pending/completed)."""
+    try:
+        job_ids = await redis.zrange("jobs:active", 0, -1)
+        
+        cancelled_count = 0
+        removed_count = 0
+        
+        for task_id in job_ids:
+            try:
+                job_data = await redis.get(f"job:{task_id}")
+                if job_data:
+                    job_meta = JobMetadata(**orjson.loads(job_data))
+                    
+                    if job_meta.state in ('queued', 'running'):
+                        await redis.set(f"cancel:{task_id}", "1", ex=3600)
+                        await redis.publish(
+                            f"progress:{task_id}", 
+                            orjson.dumps({"type": "log", "message": "Queue cleared - job cancelled"}).decode()
+                        )
+                        try:
+                            celery_app.control.revoke(task_id, terminate=False)
+                        except Exception:
+                            pass
+                        cancelled_count += 1
+                    
+                    await redis.zrem("jobs:active", task_id)
+                    await redis.delete(f"job:{task_id}")
+                    removed_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to clear job {task_id}: {e}")
+                continue
+        
+        return {
+            "status": "cleared",
+            "cancelled": cancelled_count,
+            "removed": removed_count,
+            "total": len(job_ids)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/queue/status", response_model=QueueStatusResponse, dependencies=[Depends(basic_auth)])
+async def queue_status():
+    """Get current queue status showing all active, queued, and recently completed jobs."""
+    try:
+        job_ids = await redis.zrange("jobs:active", 0, -1)
+        
+        jobs = []
+        for task_id in job_ids:
+            try:
+                job_data = await redis.get(f"job:{task_id}")
+                if job_data:
+                    job_meta = JobMetadata(**orjson.loads(job_data))
+                    if job_meta.state in ('queued', 'running'):
+                        try:
+                            res = celery_app.AsyncResult(task_id)
+                            celery_state = res.state
+                            meta = res.info if isinstance(res.info, dict) else {}
+                            for telemetry_key in (
+                                'requested_encoder', 'resolved_encoder', 'actual_encoder',
+                                'hardware_used', 'hardware_device', 'fallback_occurred',
+                                'fallback_stage', 'fallback_reason', 'hardware_type', 'decoder',
+                            ):
+                                if meta.get(telemetry_key) is not None:
+                                    setattr(job_meta, telemetry_key, meta[telemetry_key])
+                            
+                            if celery_state == 'PENDING':
+                                job_meta.state = 'queued'
+                                job_meta.phase = 'queued'
+                            elif celery_state in ('STARTED', 'PROGRESS'):
+                                job_meta.state = 'running'
+                                old_progress = job_meta.progress
+                                job_meta.progress = meta.get('progress', job_meta.progress)
+                                
+                                if 'phase' in meta:
+                                    job_meta.phase = meta['phase']
+                                elif job_meta.progress < 95:
+                                    job_meta.phase = 'encoding'
+                                elif job_meta.progress < 100:
+                                    job_meta.phase = 'finalizing'
+                                else:
+                                    job_meta.phase = 'done'
+                                
+                                if not job_meta.started_at:
+                                    job_meta.started_at = time.time()
+                                
+                                now_ts = time.time()
+                                if job_meta.progress > old_progress and job_meta.progress > 0:
+                                    job_meta.last_progress_update = now_ts
+                                    elapsed = now_ts - job_meta.started_at
+                                    if job_meta.progress < 100:
+                                        estimated_total_time = elapsed / (job_meta.progress / 100.0)
+                                        job_meta.estimated_completion_time = job_meta.started_at + estimated_total_time
+                                
+                            elif celery_state == 'SUCCESS':
+                                job_meta.state = 'completed'
+                                job_meta.progress = 100.0
+                                job_meta.phase = 'done'
+                                if not job_meta.completed_at:
+                                    job_meta.completed_at = time.time()
+                                job_meta.output_path = meta.get('output_path')
+                                if 'final_size_mb' in meta:
+                                    job_meta.final_size_mb = meta.get('final_size_mb')
+                            elif celery_state == 'FAILURE':
+                                job_meta.state = 'failed'
+                                job_meta.phase = 'done'
+                                if not job_meta.completed_at:
+                                    job_meta.completed_at = time.time()
+                                job_meta.error = str(meta) if meta else 'Unknown error'
+                            elif celery_state in ('REVOKED', 'CANCELED'):
+                                job_meta.state = 'canceled'
+                                job_meta.phase = 'canceled'
+                                if not job_meta.completed_at:
+                                    job_meta.completed_at = time.time()
+                                job_meta.error = None
+                            
+                            await redis.setex(f"job:{task_id}", 86400, orjson.dumps(job_meta.dict()).decode())
+                        except Exception:
+                            pass
+                    
+                    jobs.append(job_meta)
+            except Exception as e:
+                logger.warning(f"Failed to load job {task_id}: {e}")
+                continue
+        
+        now = time.time()
+        for job in jobs:
+            if job.state in ('completed', 'failed', 'canceled') and job.completed_at:
+                if now - job.completed_at > 3600:
+                    try:
+                        await redis.zrem("jobs:active", job.task_id)
+                    except Exception:
+                        pass
+        
+        queued = sum(1 for j in jobs if j.state == 'queued')
+        running = sum(1 for j in jobs if j.state == 'running')
+        completed = sum(1 for j in jobs if j.state == 'completed' and j.completed_at and (now - j.completed_at) < 3600)
+        
+        return QueueStatusResponse(
+            active_jobs=jobs,
+            queued_count=queued,
+            running_count=running,
+            completed_count=completed
+        )
+    except Exception as e:
+        logger.error(f"Queue status error: {e}")
+        return QueueStatusResponse(active_jobs=[], queued_count=0, running_count=0, completed_count=0)

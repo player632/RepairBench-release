@@ -1,0 +1,136 @@
+diff --git a/src/components/Pile.tsx b/src/components/Pile.tsx
+index 4bd5ddc1f0eee87b1858e230f1443feacb4d5944..2d2d9e7 100644
+--- a/src/components/Pile.tsx
++++ b/src/components/Pile.tsx
+@@ -17,7 +17,7 @@
+   const pile = GlobalStateContext.useSelector(selectors.getPile);
+   const topCard = pile.at(-1);
+   const shouldBurnPile =
+-    topCard !== undefined && getRank(topCard) === Rank.Num9;
++    topCard !== undefined && getRank(topCard) === Rank.Num10;
+ 
+   function animate(card: TCard): TargetAndTransition {
+     const is8 = getRank(card) === Rank.Num8;
+diff --git a/src/components/ui/Hand.tsx b/src/components/ui/Hand.tsx
+index 6a57044975d2be1653929dfa97f50b9f05b22a83..fb81315 100644
+--- a/src/components/ui/Hand.tsx
++++ b/src/components/ui/Hand.tsx
+@@ -101,7 +101,7 @@
+             card={card}
+             onClick={(_, n) => onCardClick(card, i, n)}
+             flipped={props.hideCards}
+-            grayOut={false}
++            grayOut={props.grayOut?.(card, i)}
+           />
+         </motion.div>
+       ))}
+diff --git a/src/components/Switcher.tsx b/src/components/Switcher.tsx
+index 5f78e8877c0b5e5c2d197e2b5ab4b812d74c47d9..4ca53dd 100644
+--- a/src/components/Switcher.tsx
++++ b/src/components/Switcher.tsx
+@@ -28,7 +28,7 @@
+     left: ["Hand", hand.length],
+     right: [
+       "Off-Hand",
+-      offHandLen(offHand.faceUp),
++      offHandLen(offHand.faceDown) + offHandLen(offHand.faceUp),
+     ],
+     state: shownHand === "hand" ? "left" : "right",
+     onSwitch: (val) =>
+diff --git a/src/components/ShownHand.tsx b/src/components/ShownHand.tsx
+index e129d9e9e37f7e6c7991ada9fa5c402fe08bd5c6..6e967ad 100644
+--- a/src/components/ShownHand.tsx
++++ b/src/components/ShownHand.tsx
+@@ -43,7 +43,7 @@
+       >
+         {shownHand === "hand" && (
+           <Hand
+-            enablePlaySameRanks={false}
++            enablePlaySameRanks={props.player === "human" && isPlaying}
+             hand={hand}
+             onCardClick={(card, _, n) => {
+               if (props.player === "human") {
+diff --git a/src/state/machines/human.machine.ts b/src/state/machines/human.machine.ts
+index 227092d2d4c18bbc1bd12729bae82f6a0f90272a..74b6191 100644
+--- a/src/state/machines/human.machine.ts
++++ b/src/state/machines/human.machine.ts
+@@ -35,7 +35,7 @@
+             ({ event }) => ({
+               type: "CARD_CHOSEN",
+               card: event.card,
+-              n: undefined,
++              n: event.n,
+             })
+           ),
+           target: "idle",
+diff --git a/src/state/machines/zhithead.machine.ts b/src/state/machines/zhithead.machine.ts
+index c9cf414636b45f6ea6ec3b4738c8942180cdc700..1a22c9d 100644
+--- a/src/state/machines/zhithead.machine.ts
++++ b/src/state/machines/zhithead.machine.ts
+@@ -138,7 +138,7 @@
+     ),
+     takeCard: assign(({ context }) =>
+       produce(context, (draft) => {
+-        const card = draft.deck.shift();
++        const card = draft.deck.pop();
+         if (card !== undefined) draft[draft.currentTurn].hand.push(card);
+       })
+     ),
+@@ -160,7 +160,7 @@
+   },
+   guards: {
+     hasChosenAllFaceUpCards: ({ context }) =>
+-      context.human.offHand.faceUp.length >= 2,
++      context.human.offHand.faceUp.length === 3,
+     canPlay: ({ context, event }) => {
+       if (event.type !== "CARD_CHOSEN") {
+         return false;
+@@ -277,7 +277,7 @@
+                   actions: "takeCard",
+                   guard: ({ context }) =>
+                     context.deck.length > 0 &&
+-                    context[context.currentTurn].hand.length < 4,
++                    context[context.currentTurn].hand.length < 3,
+                   target: "#loop.afterPlay",
+                 },
+                 1000: [
+diff --git a/src/lib.ts b/src/lib.ts
+index bedf16131075b4d5ef66a60f96bfad6eb0f323a6..29e8bbf 100644
+--- a/src/lib.ts
++++ b/src/lib.ts
+@@ -47,7 +47,7 @@
+ }
+ 
+ export function compareCards(a: Readonly<Card>, b: Readonly<Card>) {
+-  return getRank(b) - getRank(a);
++  return getRank(a) - getRank(b);
+ }
+ 
+ function createRanks(): Rank[] {
+@@ -88,7 +88,7 @@
+   const isTopCard10 = getRank(topCard) === Rank.Num10;
+   const areTop4CardsSameRank =
+     pile.length >= 4 &&
+-    pile.slice(-3).every((card) => getRank(card) === getRank(topCard));
++    pile.slice(-4).every((card) => getRank(card) === getRank(topCard));
+   return isTopCard10 || areTop4CardsSameRank;
+ }
+ 
+@@ -180,7 +180,7 @@
+ function topCard(pile: Readonly<Pile>): Card | undefined {
+   const top = pile.at(-1);
+   if (top === undefined) return;
+-  if (getRank(top) === Rank.Num9) return topCard(pile.slice(0, -1));
++  if (getRank(top) === Rank.Num8) return topCard(pile.slice(0, -1));
+   return top;
+ }
+ 
+@@ -188,7 +188,7 @@
+   if ([Rank.Num2, Rank.Num8].includes(getRank(card))) return true;
+   const top = topCard(pile);
+   if (top === undefined) return true;
+-  if (getRank(top) === Rank.Num7) return getRank(card) < getRank(top);
++  if (getRank(top) === Rank.Num7) return getRank(card) <= getRank(top);
+   return getRank(card) >= getRank(top);
+ }
+ 

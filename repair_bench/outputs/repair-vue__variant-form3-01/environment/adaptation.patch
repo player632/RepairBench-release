@@ -1,0 +1,102 @@
+diff --git a/src/utils/config.js b/src/utils/config.js
+--- a/src/utils/config.js
++++ b/src/utils/config.js
+@@ -1,9 +1,9 @@
+ export const VARIANT_FORM_VERSION = '3.0.10'
+ 
+ //export const MOCK_CASE_URL = 'https://www.fastmock.site/mock/2de212e0dc4b8e0885fea44ab9f2e1d0/vform/'
+-export const MOCK_CASE_URL = 'https://ks3-cn-beijing.ksyuncs.com/vform-static/vcase/'
+-
+-//export const ACE_BASE_PATH = 'public/lib/ace/src-min-noconflict'
+-export const ACE_BASE_PATH = 'https://ks3-cn-beijing.ksyun.com/vform2021/ace-mini'
+-
+-export const BEAUTIFIER_PATH= 'https://ks3-cn-beijing.ksyun.com/vform2021/js-beautify/1.14.0/beautifier.min.js'
++export const MOCK_CASE_URL = '/rb-inert/vcase/'  // rb-adapt: was a cross-origin ksyuncs CDN prefix (form-designer/index.vue:228 axios.get); evaluation runs with allow_internet=false, so the request could only hang or fail by timeout. Same-origin inert path: identical control flow, no egress, deterministic.
++
++//export const ACE_BASE_PATH = 'public/lib/ace/src-min-noconflict'
++export const ACE_BASE_PATH = '/rb-inert/ace-mini'  // rb-adapt: ace.config.set('basePath', ...) in code-editor/index.vue:47 makes every editor fetch its dynamic worker/mode chunks from this base. Offline that is 8 cross-origin hangs per dialog; the ace modes this seed uses (javascript/json/css) are STATICALLY imported at code-editor/index.vue:15-17, so text still renders and edits still round-trip. Same-origin inert path: no egress, same rendered behaviour.
++
++export const BEAUTIFIER_PATH= '/rb-inert/js-beautify/beautifier.min.js'  // rb-adapt: loadRemoteScript(BEAUTIFIER_PATH) in utils/beautifierLoader.js:72 appends a cross-origin <script>. Offline the callback never fires, so the 生成SFC dialog is dead either way - this only moves the doomed request from a cross-origin hang to a same-origin 404. No checkpoint exercises 生成SFC (see meta.json adaptation ledger).
+diff --git a/src/components/form-designer/widget-panel/templatesConfig.js b/src/components/form-designer/widget-panel/templatesConfig.js
+--- a/src/components/form-designer/widget-panel/templatesConfig.js
++++ b/src/components/form-designer/widget-panel/templatesConfig.js
+@@ -1,57 +1,63 @@
++// rb-adapt (environment/adaptation.patch): the seed ships 8 cross-origin template thumbnails and
++// 8 cross-origin template JSON urls. widget-panel/index.vue:74 renders <img :src="ft.imgUrl"> for all
++// 4 templates inside a NON-lazy el-tab-pane (showFormTemplates() defaults to true), so every one of
++// them is requested on EVERY page load - offline that is 4 hangs per checkpoint, and it is pure
++// measurement noise: no checkpoint reads a template thumbnail. Both keys are rewritten to inert
++// same-origin/data values; titles, descriptions and the array shape are untouched.
+ export const formTemplates = [
+   {
+     title: '单列表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t1.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json1.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '多列表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t2.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json2.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '分组表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t3.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json3.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '标签页表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t4.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json4.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '主从表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t5.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json5.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '响应式表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t6.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json6.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '问卷调查表',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t7.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json7.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 
+   {
+     title: '固定表格表单',
+-    imgUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/t8.png',
+-    jsonUrl: 'https://ks3-cn-beijing.ksyuncs.com/vform-static/form-samples/json8.txt',
++    imgUrl: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E',  // rb-adapt: 1x1 transparent SVG placeholder, was a cross-origin ksyuncs PNG
++    jsonUrl: '/rb-inert/form-samples/template.json',  // rb-adapt: was a cross-origin ksyuncs .txt, fetched only by the 载入模板 button (widget-panel/index.vue:249) which no checkpoint clicks
+     description: '表单模板详细说明...'
+   },
+ 

@@ -1,0 +1,139 @@
+diff --git a/js/highscore.js b/js/highscore.js
+index 75179e2..e4f04d4 100644
+--- a/js/highscore.js
++++ b/js/highscore.js
+@@ -6,7 +6,7 @@ zombiegame.Highscore = function() {
+   this._lastscore = 0;
+   this.best = localStorage.getItem('zombiehunter.score.best');
+   this.blinkspeed = 1000;
+-  this.increaseRate = 0.02;
++  this.increaseRate = 0.01;
+   this.scoreImproved = false;
+   this.globalScore = null;
+ 
+@@ -44,7 +44,7 @@ zombiegame.Highscore = function() {
+ 
+   this.getGlobalScoreRange = function(scoreIndex, numberOfItemsBefore, numberOfItemsAfter) {
+     if(scoreIndex <= numberOfItemsBefore) {
+-      numberOfItemsBefore = numberOfItemsBefore + scoreIndex;
++      numberOfItemsBefore = numberOfItemsBefore - scoreIndex;
+     }
+ 
+     if(scoreIndex+numberOfItemsAfter > this.globalScore.length) {
+@@ -70,7 +70,7 @@ zombiegame.Highscore = function() {
+     $.getJSON("rb-offline/topscores.json", (result) => {
+       this.globalScore = result;
+ 
+-      this.globalScore.forEach((item, index) => item.position = index);
++      this.globalScore.forEach((item, index) => item.position = index+1);
+ 
+       let playerScore = this.globalScore.find(item => 
+         item.name === zombiegame.game.model.playername 
+diff --git a/js/player.js b/js/player.js
+index 5440663..ecff7eb 100644
+--- a/js/player.js
++++ b/js/player.js
+@@ -52,7 +52,7 @@ zombiegame.Player = function(game) {
+ }
+ 
+ zombiegame.Player.prototype.jump = function() {
+-  if(!this.sprite.body.touching.down) {
++  if(this.sprite.body.touching.down) {
+     this.sprite.body.velocity.y = -this.jumpStrange;
+     this.sprite.animations.play('jump');
+   }
+diff --git a/js/states/game.js b/js/states/game.js
+index 0adc716..67a3c91 100644
+--- a/js/states/game.js
++++ b/js/states/game.js
+@@ -280,7 +280,7 @@ zombiegame.rungame.prototype = {
+           zombiegame.rungame.gamespeed);
+ 
+         // set up the time for next zombie
+-        this.zombies.nextSpawnTime = zombiegame.rungame.spawntime;
++        this.zombies.nextSpawnTime = this.game.time.now + zombiegame.rungame.spawntime;
+ 		  }
+     },
+ 
+diff --git a/js/states/menu.js b/js/states/menu.js
+index bc01c10..67ad687 100644
+--- a/js/states/menu.js
++++ b/js/states/menu.js
+@@ -103,7 +103,7 @@ zombiegame.menu.prototype = {
+   },
+ 
+   onSavePlayername: function() {
+-    if(this.input.text.length < 1)
++    if(this.input.text.length < 3)
+       return;
+ 
+     zombiegame.game.model.playername = this.input.text;
+diff --git a/js/stats.js b/js/stats.js
+index 4d5cf6a..979fc2e 100644
+--- a/js/stats.js
++++ b/js/stats.js
+@@ -13,7 +13,7 @@ class Stats {
+         if(this.shots === 0) {
+             return 0;
+         }
+-        return ((this.shots / this.hits) * 100).toFixed(2);
++        return ((this.hits / this.shots) * 100).toFixed(2);
+     }
+     
+     increaseHits() {
+@@ -27,7 +27,7 @@ class Stats {
+     increaseKilledZombies(zombie, callback) {
+         this.killedZombies++;
+         this.interKillTime = this.game.time.now - this.__lastkill;
+-        this.__lastkill = 0;
++        this.__lastkill = this.game.time.now;
+ 
+         if(callback) {
+             callback(zombie, this.killedZombies, this.interKillTime);
+diff --git a/js/utils.js b/js/utils.js
+index 6c0f43f..4074294 100644
+--- a/js/utils.js
++++ b/js/utils.js
+@@ -21,5 +21,5 @@ function getMusicState() {
+   }
+   
+   function constrain(value, min, max) {
+-    return value < min ? max : value > max ? min : value;
++    return value < min ? min : value > max ? max : value;
+   }
+\ No newline at end of file
+diff --git a/js/weapon.js b/js/weapon.js
+index fde30dc..d768cee 100644
+--- a/js/weapon.js
++++ b/js/weapon.js
+@@ -91,7 +91,7 @@ zombiegame.Weapon.prototype.onShoot = function(playersprite) {
+         this.capsuleEmitter.start(true, 2000, null, 1);
+ 
+         // Update show bullets
+-        var magBullet = this.magBullets.getAt(this.size-this.remainingBullets);
++        var magBullet = this.magBullets.getAt(this.size-this.remainingBullets-1);
+         magBullet.body.velocity.y = -1000;
+ 
+         // magazine is empty
+diff --git a/js/world.js b/js/world.js
+index 871d725..0f59a24 100644
+--- a/js/world.js
++++ b/js/world.js
+@@ -71,7 +71,7 @@ zombiegame.world = {
+     if(group) {
+       group.children.forEach(element => {
+         if(element.x + element.width <= 0) {
+-          element.x = zombiegame.game.width;
++          element.x = zombiegame.game.width + (element.x + element.width);
+         }
+       });
+     }
+@@ -117,7 +117,7 @@ zombiegame.world = {
+       zombies.children
+         .filter(zombie => zombie.body)
+         .forEach(zombie => {
+-          zombie.body.velocity.x = -gamespeed - (zombie.speed * zombie.direction);
++          zombie.body.velocity.x = -gamespeed + (zombie.speed * zombie.direction);
+           if(zombie.body.velocity.x <= -gamespeed) {
+             zombie.scale.x = -1;
+           } else {

@@ -1,0 +1,643 @@
+<script lang="ts" generics="TData">
+	import type { CellVariantProps, FileCellData } from '$lib/types/data-grid.js';
+	import { formatFileSize, getFileIcon } from '$lib/data-grid.js';
+	import { getCellKey, getLineCount } from '$lib/types/data-grid.js';
+	import { useBadgeOverflow } from '$lib/hooks/use-badge-overflow.svelte.js';
+	import DataGridCellWrapper from '../data-grid-cell-wrapper.svelte';
+	import { PopoverContent } from '$lib/components/ui/popover/index.js';
+	import { Popover as PopoverPrimitive, useId } from 'bits-ui';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { DEFAULT_ROW_HEIGHT } from '$lib/config/data-grid.js';
+	import { cn } from '$lib/utils.js';
+	import { toast } from 'svelte-sonner';
+	import Upload from '@lucide/svelte/icons/upload';
+	import X from '@lucide/svelte/icons/x';
+	import { onDestroy, untrack } from 'svelte';
+
+	let {
+		cell,
+		table,
+		rowIndex,
+		columnId,
+		isEditing,
+		isFocused,
+		isSelected,
+		readOnly = false,
+		cellValue
+	}: CellVariantProps<TData> = $props();
+
+	// Use centralized cellValue prop - fine-grained reactivity is handled by DataGridCell
+	const initialCellValue = $derived((cellValue as FileCellData[]) ?? []);
+	const cellKey = $derived(getCellKey(rowIndex, columnId));
+
+	let files = $derived(initialCellValue);
+	let previousInitialCellValue = $state<FileCellData[] | null>(null);
+	let previousCellKey = $state<string | null>(null);
+	let uploadingFiles = $state<Set<string>>(new Set());
+	let deletingFiles = $state<Set<string>>(new Set());
+	let isDraggingOver = $state(false);
+	let isDragging = $state(false);
+	let errorState = $state<{ cellKey: string; message: string } | null>(null);
+	let containerRef = $state<HTMLDivElement | null>(null);
+	let fileInputRef = $state<HTMLInputElement | null>(null);
+	let dropzoneRef = $state<HTMLDivElement | null>(null);
+	const cellOpts = $derived(cell.column.columnDef.meta?.cell);
+	const sideOffset = $derived(-(containerRef?.clientHeight ?? 0));
+	const labelId = useId();
+	const descriptionId = useId();
+
+	const fileCellOpts = $derived(cellOpts?.variant === 'file' ? cellOpts : null);
+	const maxFileSize = $derived(fileCellOpts?.maxFileSize ?? 10 * 1024 * 1024);
+	const maxFiles = $derived(fileCellOpts?.maxFiles ?? 10);
+	const accept = $derived(fileCellOpts?.accept);
+	const multiple = $derived(fileCellOpts?.multiple ?? false);
+
+	const acceptedTypes = $derived(accept ? accept.split(',').map((t) => t.trim()) : null);
+	const error = $derived(errorState?.cellKey === cellKey ? errorState.message : null);
+	const isUploading = $derived(uploadingFiles.size > 0);
+	const isDeleting = $derived(deletingFiles.size > 0);
+	const isPending = $derived(isUploading || isDeleting);
+
+	$effect(() => {
+		if (previousInitialCellValue === null) {
+			previousInitialCellValue = initialCellValue;
+			return;
+		}
+
+		if (initialCellValue === previousInitialCellValue) return;
+
+		for (const file of untrack(() => files)) {
+			if (file.url) {
+				URL.revokeObjectURL(file.url);
+			}
+		}
+
+		previousInitialCellValue = initialCellValue;
+		files = initialCellValue;
+		setError(null);
+	});
+
+	onDestroy(() => {
+		for (const file of files) {
+			if (file.url) {
+				URL.revokeObjectURL(file.url);
+			}
+		}
+	});
+
+	$effect(() => {
+		if (previousCellKey === null) {
+			previousCellKey = cellKey;
+			return;
+		}
+
+		if (cellKey === previousCellKey) return;
+
+		previousCellKey = cellKey;
+		setError(null);
+	});
+
+	function setError(message: string | null) {
+		errorState = message ? { cellKey, message } : null;
+	}
+
+	function validateFile(file: File): string | null {
+		if (maxFileSize && file.size > maxFileSize) {
+			return `File size exceeds ${formatFileSize(maxFileSize)}`;
+		}
+		if (acceptedTypes) {
+			const fileExtension = `.${file.name.split('.').pop()}`;
+			const isAccepted = acceptedTypes.some((type) => {
+				if (type.endsWith('/*')) {
+					const baseType = type.slice(0, -2);
+					return file.type.startsWith(`${baseType}/`);
+				}
+				if (type.startsWith('.')) {
+					return fileExtension.toLowerCase() === type.toLowerCase();
+				}
+				return file.type === type;
+			});
+			if (!isAccepted) {
+				return 'File type not accepted';
+			}
+		}
+		return null;
+	}
+
+	async function addFiles(newFiles: File[], skipUpload = false) {
+		if (readOnly || isPending) return;
+		setError(null);
+
+		if (maxFiles && files.length + newFiles.length > maxFiles) {
+			const errorMessage = `Maximum ${maxFiles} files allowed`;
+			setError(errorMessage);
+			toast(errorMessage);
+			setTimeout(() => {
+				setError(null);
+			}, 2000);
+			return;
+		}
+
+		const rejectedFiles: Array<{ name: string; reason: string }> = [];
+		const filesToValidate: File[] = [];
+
+		for (const file of newFiles) {
+			const validationError = validateFile(file);
+			if (validationError) {
+				rejectedFiles.push({ name: file.name, reason: validationError });
+				continue;
+			}
+			filesToValidate.push(file);
+		}
+
+		if (rejectedFiles.length > 0) {
+			const firstError = rejectedFiles[0];
+			if (firstError) {
+				setError(firstError.reason);
+
+				const truncatedName =
+					firstError.name.length > 20 ? `${firstError.name.slice(0, 20)}...` : firstError.name;
+
+				if (rejectedFiles.length === 1) {
+					toast(firstError.reason, {
+						description: `"${truncatedName}" has been rejected`
+					});
+				} else {
+					toast(firstError.reason, {
+						description: `"${truncatedName}" and ${rejectedFiles.length - 1} more rejected`
+					});
+				}
+
+				setTimeout(() => {
+					setError(null);
+				}, 2000);
+			}
+		}
+
+		if (filesToValidate.length > 0) {
+			if (!skipUpload) {
+				const tempFiles = filesToValidate.map((f) => ({
+					id: crypto.randomUUID(),
+					name: f.name,
+					size: f.size,
+					type: f.type,
+					url: undefined
+				}));
+				const filesWithTemp = [...files, ...tempFiles];
+				files = filesWithTemp;
+
+				const uploadingIds = new Set<string>(tempFiles.map((f) => f.id));
+				uploadingFiles = uploadingIds;
+
+				let uploadedFiles: FileCellData[] = [];
+				if (table.options.meta?.onFilesUpload) {
+					try {
+						uploadedFiles = await table.options.meta.onFilesUpload({
+							files: filesToValidate,
+							rowIndex,
+							columnId
+						});
+					} catch (err) {
+						toast.error(
+							err instanceof Error
+								? err.message
+								: `Failed to upload ${filesToValidate.length} file${filesToValidate.length !== 1 ? 's' : ''}`
+						);
+						files = files.filter((f) => !uploadingIds.has(f.id));
+						uploadingFiles = new Set();
+						return;
+					}
+				} else {
+					uploadedFiles = filesToValidate.map((f, i) => ({
+						id: tempFiles[i]?.id ?? crypto.randomUUID(),
+						name: f.name,
+						size: f.size,
+						type: f.type,
+						url: URL.createObjectURL(f)
+					}));
+				}
+
+				const finalFiles = filesWithTemp
+					.map((f) => {
+						if (uploadingIds.has(f.id)) {
+							return uploadedFiles.find((uf) => uf.name === f.name) ?? f;
+						}
+						return f;
+					})
+					.filter((f) => f.url !== undefined);
+
+				files = finalFiles;
+				uploadingFiles = new Set();
+				table.options.meta?.onDataUpdate?.({ rowIndex, columnId, value: finalFiles });
+			} else {
+				const newFilesData: FileCellData[] = filesToValidate.map((f) => ({
+					id: crypto.randomUUID(),
+					name: f.name,
+					size: f.size,
+					type: f.type,
+					url: URL.createObjectURL(f)
+				}));
+				const updatedFiles = [...files, ...newFilesData];
+				files = updatedFiles;
+				table.options.meta?.onDataUpdate?.({ rowIndex, columnId, value: updatedFiles });
+			}
+		}
+	}
+
+	async function removeFile(fileId: string) {
+		if (readOnly || isPending) return;
+		setError(null);
+
+		const fileToRemove = files.find((f) => f.id === fileId);
+		if (!fileToRemove) return;
+
+		deletingFiles = new Set(deletingFiles).add(fileId);
+
+		if (table.options.meta?.onFilesDelete) {
+			try {
+				await table.options.meta.onFilesDelete({
+					fileIds: [fileId],
+					rowIndex,
+					columnId
+				});
+			} catch (err) {
+				toast.error(err instanceof Error ? err.message : `Failed to delete ${fileToRemove.name}`);
+				const nextDeleting = new Set(deletingFiles);
+				nextDeleting.delete(fileId);
+				deletingFiles = nextDeleting;
+				return;
+			}
+		}
+
+		if (fileToRemove.url?.startsWith('blob:')) {
+			URL.revokeObjectURL(fileToRemove.url);
+		}
+
+		const updatedFiles = files.filter((f) => f.id !== fileId);
+		files = updatedFiles;
+		const nextDeleting = new Set(deletingFiles);
+		nextDeleting.delete(fileId);
+		deletingFiles = nextDeleting;
+		table.options.meta?.onDataUpdate?.({ rowIndex, columnId, value: updatedFiles });
+	}
+
+	async function clearAll() {
+		if (readOnly || isPending) return;
+		setError(null);
+
+		const fileIds = files.map((f) => f.id);
+		deletingFiles = new Set(fileIds);
+
+		if (table.options.meta?.onFilesDelete && files.length > 0) {
+			try {
+				await table.options.meta.onFilesDelete({
+					fileIds,
+					rowIndex,
+					columnId
+				});
+			} catch (err) {
+				toast.error(err instanceof Error ? err.message : 'Failed to delete files');
+				deletingFiles = new Set();
+				return;
+			}
+		}
+
+		for (const file of files) {
+			if (file.url?.startsWith('blob:')) {
+				URL.revokeObjectURL(file.url);
+			}
+		}
+		files = [];
+		deletingFiles = new Set();
+		table.options.meta?.onDataUpdate?.({ rowIndex, columnId, value: [] });
+	}
+
+	function handleCellDragEnter(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer?.types.includes('Files')) {
+			isDraggingOver = true;
+		}
+	}
+
+	function handleCellDragLeave(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const x = event.clientX;
+		const y = event.clientY;
+
+		if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+			isDraggingOver = false;
+		}
+	}
+
+	function handleCellDragOver(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function handleCellDrop(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		isDraggingOver = false;
+
+		const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+		if (droppedFiles.length > 0) {
+			addFiles(droppedFiles, false);
+		}
+	}
+
+	function handleDropzoneDragEnter(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		isDragging = true;
+	}
+
+	function handleDropzoneDragLeave(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const x = event.clientX;
+		const y = event.clientY;
+
+		if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+			isDragging = false;
+		}
+	}
+
+	function handleDropzoneDragOver(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function handleDropzoneDrop(event: DragEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		isDragging = false;
+
+		const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+		addFiles(droppedFiles, false);
+	}
+
+	function handleDropzoneClick() {
+		fileInputRef?.click();
+	}
+
+	function handleDropzoneKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			handleDropzoneClick();
+		}
+	}
+
+	function handleFileInputChange(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const selectedFiles = Array.from(target.files ?? []);
+		addFiles(selectedFiles, false);
+		target.value = '';
+	}
+
+	function handleOpenChange(isOpen: boolean) {
+		if (isOpen && !readOnly) {
+			setError(null);
+			table.options.meta?.onCellEditingStart?.(rowIndex, columnId);
+		} else {
+			setError(null);
+			table.options.meta?.onCellEditingStop?.();
+		}
+	}
+
+	function handlePopoverKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.stopPropagation();
+		}
+	}
+
+	function handleOpenAutoFocus(event: Event) {
+		event.preventDefault();
+		queueMicrotask(() => {
+			dropzoneRef?.focus();
+		});
+	}
+
+	function handleWrapperKeyDown(event: KeyboardEvent) {
+		if (isEditing) {
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				files = [...initialCellValue];
+				setError(null);
+				table.options.meta?.onCellEditingStop?.();
+			} else if (event.key === ' ') {
+				event.preventDefault();
+				event.stopPropagation();
+				handleDropzoneClick();
+			} else if (event.key === 'Tab') {
+				event.preventDefault();
+				event.stopPropagation();
+				table.options.meta?.onCellEditingStop?.({
+					direction: event.shiftKey ? 'left' : 'right'
+				});
+			}
+		} else if (isFocused && event.key === 'Enter') {
+			event.preventDefault();
+			event.stopPropagation();
+			table.options.meta?.onCellEditingStart?.(rowIndex, columnId);
+		} else if (!isEditing && isFocused && event.key === 'Tab') {
+			event.preventDefault();
+			event.stopPropagation();
+			table.options.meta?.onCellEditingStop?.({
+				direction: event.shiftKey ? 'left' : 'right'
+			});
+		}
+	}
+
+	const rowHeight = $derived(table.options.meta?.rowHeight ?? DEFAULT_ROW_HEIGHT);
+	const lineCount = $derived(getLineCount(rowHeight));
+
+	// Use the badge overflow hook for accurate measurement
+	// File badges have an icon (12px) and truncated name (max 100px)
+	const badgeOverflow = useBadgeOverflow(() => ({
+		items: files,
+		getLabel: (file) => file.name,
+		containerRef: containerRef,
+		lineCount: lineCount,
+		cacheKeyPrefix: 'file',
+		iconSize: 12, // size-3 = 12px
+		maxWidth: 100 // max-w-[100px] on truncated text
+	}));
+
+	const visibleFiles = $derived(badgeOverflow.value.visibleItems);
+	const hiddenFileCount = $derived(badgeOverflow.value.hiddenCount);
+</script>
+
+<DataGridCellWrapper
+	bind:wrapperRef={containerRef}
+	{cell}
+	{table}
+	{rowIndex}
+	{columnId}
+	{isEditing}
+	{isFocused}
+	{isSelected}
+	class={cn({
+		'ring-1 ring-primary/80 ring-inset': isDraggingOver
+	})}
+	ondragenter={handleCellDragEnter}
+	ondragleave={handleCellDragLeave}
+	ondragover={handleCellDragOver}
+	ondrop={handleCellDrop}
+	onkeydown={handleWrapperKeyDown}
+>
+	{#if isEditing}
+		<PopoverPrimitive.Root open={isEditing} onOpenChange={handleOpenChange}>
+			<PopoverContent
+				data-grid-cell-editor=""
+				align="start"
+				{sideOffset}
+				class="w-[400px] rounded-none p-0"
+				onkeydown={handlePopoverKeyDown}
+				onOpenAutoFocus={handleOpenAutoFocus}
+				customAnchor={containerRef}
+			>
+				<div class="flex flex-col gap-2 p-3">
+					<span id={labelId} class="sr-only">File upload</span>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<!-- svelte-ignore a11y_role_supports_aria_props -->
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<div
+						role="region"
+						aria-labelledby={labelId}
+						aria-describedby={descriptionId}
+						aria-invalid={!!error}
+						aria-disabled={isPending}
+						data-dragging={isDragging ? '' : undefined}
+						data-invalid={error ? '' : undefined}
+						data-disabled={isPending ? '' : undefined}
+						tabindex={isDragging || isPending ? -1 : 0}
+						class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 outline-none transition-colors hover:bg-accent/30 focus-visible:border-ring/50 data-[dragging]:border-primary/30 data-[invalid]:border-destructive data-[dragging]:bg-accent/30 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[invalid]:ring-destructive/20"
+						bind:this={dropzoneRef}
+						onclick={handleDropzoneClick}
+						ondragenter={handleDropzoneDragEnter}
+						ondragleave={handleDropzoneDragLeave}
+						ondragover={handleDropzoneDragOver}
+						ondrop={handleDropzoneDrop}
+						onkeydown={handleDropzoneKeyDown}
+					>
+						<Upload class="size-8 text-muted-foreground" />
+						<div class="text-center text-sm">
+							<p class="font-medium">
+								{isDragging ? 'Drop files here' : 'Drag files here'}
+							</p>
+							<p class="text-muted-foreground text-xs">or click to browse</p>
+						</div>
+						<p id={descriptionId} class="text-muted-foreground text-xs">
+							{maxFileSize
+								? `Max size: ${formatFileSize(maxFileSize)}${maxFiles ? ` • Max ${maxFiles} files` : ''}`
+								: maxFiles
+									? `Max ${maxFiles} files`
+									: 'Select files to upload'}
+						</p>
+					</div>
+					<input
+						type="file"
+						aria-labelledby={labelId}
+						aria-describedby={descriptionId}
+						{multiple}
+						{accept}
+						class="sr-only"
+						bind:this={fileInputRef}
+						onchange={handleFileInputChange}
+					/>
+					{#if files.length > 0}
+						<div class="flex flex-col gap-2">
+							<div class="flex items-center justify-between">
+								<p class="font-medium text-muted-foreground text-xs">
+									{files.length}
+									{' '}
+									{files.length === 1 ? 'file' : 'files'}
+								</p>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="h-6 text-muted-foreground text-xs"
+									onclick={clearAll}
+									disabled={isPending}
+								>
+									Clear all
+								</Button>
+							</div>
+							<div class="max-h-[200px] space-y-1 overflow-y-auto">
+								{#each files as file (file.id)}
+									{@const FileIcon = getFileIcon(file.type)}
+									{@const isFileUploading = uploadingFiles.has(file.id)}
+									{@const isFileDeleting = deletingFiles.has(file.id)}
+									{@const isFilePending = isFileUploading || isFileDeleting}
+									<div
+										data-pending={isFilePending ? '' : undefined}
+										class="flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1.5 data-[pending]:opacity-60"
+									>
+										<FileIcon class="size-4 shrink-0 text-muted-foreground" />
+										<div class="flex-1 overflow-hidden">
+											<p class="truncate text-sm">{file.name}</p>
+											<p class="text-muted-foreground text-xs">
+												{isFileUploading
+													? 'Uploading...'
+													: isFileDeleting
+														? 'Deleting...'
+														: formatFileSize(file.size)}
+											</p>
+										</div>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											class="size-5 rounded-sm"
+											onclick={() => removeFile(file.id)}
+											disabled={isPending}
+										>
+											<X class="size-3" />
+										</Button>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</PopoverContent>
+		</PopoverPrimitive.Root>
+	{/if}
+	{#if isDraggingOver}
+		<div class="flex items-center justify-center gap-2 text-primary text-sm">
+			<Upload class="size-4" />
+			<span>Drop files here</span>
+		</div>
+	{:else if files.length > 0}
+		<div class="flex flex-wrap items-center gap-1 overflow-hidden">
+			{#each visibleFiles as file (file.id)}
+				{@const isUploading = uploadingFiles.has(file.id)}
+				{#if isUploading}
+					<Skeleton
+						class="h-5 shrink-0 px-1.5"
+						style="width: {Math.min(file.name.length * 8 + 30, 100)}px"
+					/>
+				{:else}
+					{@const FileIcon = getFileIcon(file.type)}
+					<Badge variant="secondary" class="shrink-0 gap-1 px-1.5 py-px">
+						<FileIcon class="size-3 shrink-0" />
+						<span class="max-w-[100px] truncate">{file.name}</span>
+					</Badge>
+				{/if}
+			{/each}
+			{#if hiddenFileCount > 0}
+				<Badge variant="outline" class="shrink-0 px-1.5 py-px text-muted-foreground">
+					+{hiddenFileCount}
+				</Badge>
+			{/if}
+		</div>
+	{/if}
+</DataGridCellWrapper>

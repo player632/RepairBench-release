@@ -1,0 +1,114 @@
+diff --git a/src/lib/components/App/App.svelte b/src/lib/components/App/App.svelte
+--- a/src/lib/components/App/App.svelte
++++ b/src/lib/components/App/App.svelte
+@@ -28,7 +28,7 @@
+ 		url.search = searchParams.toString();
+ 		const newUrl = url.toString();
+ 		replaceState(newUrl, $page.state);
+-	}, 400);
++	}, 4000);
+ </script>
+ 
+ <form
+diff --git a/src/lib/components/App/Form/GroupIncludeFallbacks.svelte b/src/lib/components/App/Form/GroupIncludeFallbacks.svelte
+--- a/src/lib/components/App/Form/GroupIncludeFallbacks.svelte
++++ b/src/lib/components/App/Form/GroupIncludeFallbacks.svelte
+@@ -20,6 +20,6 @@
+ 		checked={$form[name]}
+ 		errors={$errors[name]}
+ 		constraints={$constraints[name]}
+-		onInput={(e) => form.set({ ...$form, [name]: e.currentTarget.checked })}
++		onInput={(e) => form.set({ ...$form, [name]: $form[name] })}
+ 	/>
+ </Label>
+diff --git a/src/lib/components/App/Output.svelte b/src/lib/components/App/Output.svelte
+--- a/src/lib/components/App/Output.svelte
++++ b/src/lib/components/App/Output.svelte
+@@ -13,11 +13,11 @@
+ 	$: fontSizes = Array.from($typeScale.entries());
+ 
+ 	/** Helper to assemble a CSS custom property for a given font size step. */
+-	$: getCustomPropertyName = (step: string) => `--${$form.prefix}-${step}`;
++	$: getCustomPropertyName = (step: string) => `--fs-${step}`;
+ 
+ 	$: fluidVariables = fontSizes
+ 		.map(([step, { min, max, preferred }]) => {
+-			return `${getCustomPropertyName(step)}: clamp(${min}, ${preferred}, ${max});`;
++			return `${getCustomPropertyName(step)}: clamp(${min}, ${max}, ${preferred});`;
+ 		})
+ 		.join('\n')
+ 		.trim();
+@@ -53,7 +53,7 @@
+       :root {
+     ${indent(minFallbackVariables, 2)}
+       }
+-      @media screen and (min-width: ${$form.maxWidth}px) {
++      @media screen and (min-width: ${$form.minWidth}px) {
+         :root {
+     ${indent(maxFallbackVariables, 3)}
+         }
+diff --git a/src/lib/components/App/Preview.svelte b/src/lib/components/App/Preview.svelte
+--- a/src/lib/components/App/Preview.svelte
++++ b/src/lib/components/App/Preview.svelte
+@@ -107,7 +107,7 @@
+ 						<td>{step}</td>
+ 						<td class="numeric">{min}</td>
+ 						<td class="numeric">{max}</td>
+-						<td class="numeric">{getFontSizeAtScreenWidth(previewWidth)}</td>
++						<td class="numeric">{getFontSizeAtScreenWidth(SCHEMA_DEFAULTS.previewWidth)}</td>
+ 						<td
+ 							class="nowrap"
+ 							style={`font-size: calc(${getFontSizeAtScreenWidth(previewWidth)} * ${
+diff --git a/src/lib/components/TypeScalePicker.svelte b/src/lib/components/TypeScalePicker.svelte
+--- a/src/lib/components/TypeScalePicker.svelte
++++ b/src/lib/components/TypeScalePicker.svelte
+@@ -39,7 +39,7 @@
+ 
+ <datalist id={dataListId}>
+ 	{#each Object.entries(typeScaleRatios) as [_key, { name, ratio }]}
+-		<option value={ratio}>
++		<option value={name}>
+ 			{name}
+ 		</option>
+ 	{/each}
+diff --git a/src/lib/schema/schema.utils.ts b/src/lib/schema/schema.utils.ts
+--- a/src/lib/schema/schema.utils.ts
++++ b/src/lib/schema/schema.utils.ts
+@@ -18,7 +18,7 @@
+ 	const round = (val: number) => Number(val.toFixed(state.decimals));
+ 
+ 	/** If we're using rems, converts the pixel arg to rems. Else, keeps it in pixels. */
+-	const convertToDesiredUnit = (px: number) => (state.useRems ? px / state.remValue : px);
++	const convertToDesiredUnit = (px: number) => (state.useRems ? px / 16 : px);
+ 
+ 	const allSteps = toCommaSeparatedList(state.steps);
+ 
+@@ -37,8 +37,8 @@
+ 			fontSize: state.maxFontSize * Math.pow(state.maxRatio, i - baseStepIndex),
+ 			breakpoint: state.maxWidth
+ 		};
+-		const slope = (max.fontSize - min.fontSize) / (max.breakpoint - min.breakpoint);
+-		const slopeVw = `${round(slope * 100)}${state.useContainerWidth ? 'cqi' : 'vi'}`;
++		const slope = (min.fontSize - max.fontSize) / (max.breakpoint - min.breakpoint);
++		const slopeVw = `${round(slope * 100)}vi`;
+ 		const intercept = min.fontSize - slope * min.breakpoint;
+ 
+ 		steps.set(step, {
+diff --git a/src/lib/utils.ts b/src/lib/utils.ts
+--- a/src/lib/utils.ts
++++ b/src/lib/utils.ts
+@@ -45,7 +45,6 @@
+ export const toCommaSeparatedList = (rawValue: string): string[] => {
+ 	return rawValue
+ 		.split(',')
+-		.map((el) => el.trim())
+ 		.filter((el) => !!el);
+ };
+ 
+@@ -66,5 +65,5 @@
+ /** Generates unique IDs for use in HTML. */
+ export const createId = (() => {
+ 	let id = 0;
+-	return (prefix = 'uuid') => `${prefix}-${id++}`;
++	return (prefix = 'uuid') => `${prefix}-${id}`;
+ })();

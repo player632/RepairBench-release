@@ -1,0 +1,142 @@
+diff --git b/src/app/layout/definitions/definitions.component.ts a/src/app/layout/definitions/definitions.component.ts
+index 92895d5..6af8f36 100644
+--- b/src/app/layout/definitions/definitions.component.ts
++++ a/src/app/layout/definitions/definitions.component.ts
+@@ -32,7 +32,7 @@
+ export class DefinitionsComponent implements OnInit 
+ {
+ 	uncollapsedDef = {};
+-	sortItems = true;
++	sortItems = false;
+ 	filterText: string;
+ 
+ 	closeResult: string;
+diff --git b/src/app/layout/path/path.component.ts a/src/app/layout/path/path.component.ts
+index 90403dc..ecdffb9 100644
+--- b/src/app/layout/path/path.component.ts
++++ a/src/app/layout/path/path.component.ts
+@@ -99,7 +99,7 @@
+ 	getMethods(): Array<string> {
+ 		if (!this.apis.current['paths']) return [];
+ 		const methods = this.apis.keys(this.apis.current['paths'][this.path]);
+-		_pull(methods, "get");
++		_pull(methods, "parameters");
+ 		return methods;
+ 	}
+ 
+diff --git b/src/app/layout/paths/paths.component.html a/src/app/layout/paths/paths.component.html
+index 5ccf84d..5e82fc7 100644
+--- b/src/app/layout/paths/paths.component.html
++++ a/src/app/layout/paths/paths.component.html
+@@ -68,7 +68,7 @@
+ 	<div style="float: right">
+ 		<span *ngFor="let method of methods">
+ 			<span class="methodKey methodBgColor-{{method}}"
+-				[ngClass]="{ 'methodUnset': apis.current['paths'][path][method], 'deprecated': apis.current['paths'][path][method] && apis.current['paths'][path][method]['deprecated'] }">
++				[ngClass]="{ 'methodUnset': !apis.current['paths'][path][method], 'deprecated': apis.current['paths'][path][method] && apis.current['paths'][path][method]['deprecated'] }">
+ 				{{method}}
+ 			</span>
+ 		</span>
+diff --git b/src/app/layout/source/source.component.ts a/src/app/layout/source/source.component.ts
+index 8544f30..8482986 100644
+--- b/src/app/layout/source/source.component.ts
++++ a/src/app/layout/source/source.component.ts
+@@ -59,7 +59,7 @@
+ 	revert()
+ 	{
+ 		if (this.apis.current) {
+-			this.text = this.apis.hasLoadingErrors ? this.apis.lastLoaded : this.apis.toJson(this.apis.current);
++			this.text = this.apis.hasLoadingErrors ? this.apis.lastLoaded : this.apis.toYaml(this.apis.current);
+ 			this.skipReset = true;
+ 			this.validate();
+ 		}
+diff --git b/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.html a/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.html
+index 0d27ab5..1bed475 100644
+--- b/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.html
++++ a/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.html
+@@ -41,7 +41,7 @@
+ 							{{getTypePreview(obj['properties'][p])}}
+ 						</span>
+ 						<span class="propertyDescription" *ngIf="obj['properties'][p]['description']">
+-							{{obj['properties'][p]['description'].length > 20 ? obj['properties'][p]['description'].substr(0,19) + '...' : obj['properties'][p]['description']}}
++							{{obj['properties'][p]['description'].length > 40 ? obj['properties'][p]['description'].substr(0,39) + '...' : obj['properties'][p]['description']}}
+ 						</span>
+ 					</div>
+ 					<div *ngIf="uncollapsed[p] && obj['properties'][p]['$ref']; else nonRef">
+diff --git b/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.ts a/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.ts
+index cccb0a4..7bbcaf0 100644
+--- b/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.ts
++++ a/src/app/shared/modules/schema-view/custom/swagger-schema-view.component.ts
+@@ -55,7 +55,7 @@
+ 
+ 	propertyIsRequired(propKey)
+ 	{
+-		return this.obj['required'] && this.obj['required'].indexOf(propKey) > 0;
++		return this.obj['required'] && this.obj['required'].indexOf(propKey) >= 0;
+ 	}
+ 
+ 	getTypePreview(obj: any): string
+@@ -72,7 +72,7 @@
+ 		if (obj['format']) {
+ 			tp = tp + " (" + obj['format'] + ")";
+ 		}
+-		if (obj['xml']) {
++		if (obj['readOnly']) {
+ 			tp = tp + " read only";
+ 		}
+ 		return tp;
+diff --git b/src/app/shared/services/apis.service.ts a/src/app/shared/services/apis.service.ts
+index 8116206..f02d6b3 100644
+--- b/src/app/shared/services/apis.service.ts
++++ a/src/app/shared/services/apis.service.ts
+@@ -712,7 +712,7 @@
+ 		if (filterText) {
+ 			const fl = filterText.toLowerCase();
+ 			filteredList = list.filter(s => {
+-				const sl = s;
++				const sl = s.toLowerCase();
+ 				return sl.indexOf(fl) > -1;
+ 			});
+ 		}
+@@ -721,8 +721,8 @@
+ 				a = a.toLowerCase();
+ 				b = b.toLowerCase();
+ 				if (a == b) return 0;
+-				if (a > b) return -1;
+-				return 1;
++				if (a > b) return 1;
++				return -1;
+ 			});
+ 		} else {
+ 			return filteredList;
+@@ -847,7 +847,7 @@
+ 
+ 	selectAllPaths(): void
+ 	{
+-		Object.keys(this.current['definitions']).forEach(p => this.selectedPaths[p] = true);
++		Object.keys(this.current['paths']).forEach(p => this.selectedPaths[p] = true);
+ 	}
+ 
+ 	deselectAllPaths(): void
+@@ -937,7 +937,7 @@
+ 				} else {
+ 					const r = this.generateExample(schema.items, refStack, noReadOnly);
+ 					if (r !== undefined) {
+-						res = [ r, r ];
++						res = [ r ];
+ 					}
+ 				}
+ 			} else if (schema.type == "object") {
+diff --git b/src/app/shared/services/oas2to3.ts a/src/app/shared/services/oas2to3.ts
+index 1474c36..97539f5 100644
+--- b/src/app/shared/services/oas2to3.ts
++++ a/src/app/shared/services/oas2to3.ts
+@@ -2,7 +2,7 @@
+ 
+ function convertRef(ref: string): string
+ {
+-	ref = ref.replace('#/definitions', '#/components/parameters');
++	ref = ref.replace('#/definitions', '#/components/schemas');
+ 	ref = ref.replace('#/responses', '#/components/responses');
+ 	ref = ref.replace('#/parameters', '#/components/parameters');
+ 	return ref;

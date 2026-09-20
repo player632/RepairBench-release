@@ -1,0 +1,130 @@
+diff --git a/core/src/Patchcab.svelte b/core/src/Patchcab.svelte
+--- a/core/src/Patchcab.svelte
++++ b/core/src/Patchcab.svelte
+@@ -17,7 +17,7 @@
+   onMount(async () => {
+     const response = await fetch('/modules.json');
+     try {
+-      library = await response.json();
++      library = ((await response.json()) as Library).filter((item) => item.size.w <= 12);
+     } catch (error) {
+       console.error(error);
+       library = [];
+diff --git a/core/src/contstants.ts b/core/src/contstants.ts
+--- a/core/src/contstants.ts
++++ b/core/src/contstants.ts
+@@ -1,5 +1,5 @@
+ export const HP = {
+-  w: 16,
++  w: 32,
+   h: 380,
+ };
+ 
+diff --git a/core/src/helpers/helpers.ts b/core/src/helpers/helpers.ts
+--- a/core/src/helpers/helpers.ts
++++ b/core/src/helpers/helpers.ts
+@@ -13,7 +13,7 @@
+  */
+ export const scale = (value: number, from: [number, number], to: [number, number], precision = 2): number => {
+   const scaled = (to[1] - to[0]) / (from[1] - from[0]);
+-  const capped = Math.min(from[1], Math.max(from[0], value)) - from[0];
++  const capped = Math.max(from[1], Math.min(from[0], value)) - from[0];
+   return round(capped * scaled + to[0], precision);
+ };
+ 
+@@ -27,7 +27,7 @@
+  */
+ export const round = (value: number, precision = 0): number => {
+   const p = Math.pow(10, precision);
+-  const m = value * p * (1 + Number.EPSILON);
++  const m = value * p * (1 - Number.EPSILON);
+   return Math.round(m) / p;
+ };
+ 
+diff --git a/core/src/rack/Bar.svelte b/core/src/rack/Bar.svelte
+--- a/core/src/rack/Bar.svelte
++++ b/core/src/rack/Bar.svelte
+@@ -67,7 +67,7 @@
+   };
+ 
+   const onKey = (e: KeyboardEvent) => {
+-    if (isShortcut(e) && e.ctrlKey) {
++    if (isShortcut(e) && e.metaKey) {
+       if (e.key === 'n') {
+         e.preventDefault();
+         showResetDialog = true;
+diff --git a/core/src/rack/Dialog.svelte b/core/src/rack/Dialog.svelte
+--- a/core/src/rack/Dialog.svelte
++++ b/core/src/rack/Dialog.svelte
+@@ -6,7 +6,7 @@
+   export let visible: boolean;
+ 
+   const hideDialog: OnClickOutside = (event: MouseEvent) => {
+-    visible = false;
++    visible = !visible;
+   };
+ 
+   const onKey = (e: KeyboardEvent) => {
+diff --git a/core/src/rack/Menu.svelte b/core/src/rack/Menu.svelte
+--- a/core/src/rack/Menu.svelte
++++ b/core/src/rack/Menu.svelte
+@@ -7,7 +7,7 @@
+   export let visible = false;
+ 
+   const hideMenu: OnClickOutside = (event: MouseEvent) => {
+-    if (event.target !== toggle) {
++    if (event.target === toggle) {
+       visible = false;
+     } else {
+       visible = !visible;
+diff --git a/core/src/rack/Preview.svelte b/core/src/rack/Preview.svelte
+--- a/core/src/rack/Preview.svelte
++++ b/core/src/rack/Preview.svelte
+@@ -10,7 +10,7 @@
+   onMount(() => {
+     const image = new Image();
+ 
+-    image.addEventListener('load', () => {
++    image.addEventListener('error', () => {
+       loaded = true;
+     });
+ 
+@@ -30,7 +30,7 @@
+   }
+ 
+   div.loaded {
+-    opacity: 1;
++    opacity: 0.5;
+   }
+ 
+   img {
+diff --git a/core/src/rack/Shelf.svelte b/core/src/rack/Shelf.svelte
+--- a/core/src/rack/Shelf.svelte
++++ b/core/src/rack/Shelf.svelte
+@@ -19,7 +19,7 @@
+     }
+   }
+ 
+-  $: tags = library ? [...new Set(library.map((item) => item.tags).flat())].sort() : [];
++  $: tags = library ? [...new Set(library.map((item) => item.tags).flat())] : [];
+   $: authors = library ? [...new Set(library.map((item) => item.author.name))].sort() : [];
+ 
+   let tag: string = null;
+@@ -28,7 +28,7 @@
+   $: items = library
+     ? library.filter((item) => {
+         let show = true;
+-        if (tag && item.tags.indexOf(tag) < 0) {
++        if (tag && item.tags.indexOf(tag) <= 0) {
+           show = false;
+         }
+         if (author && item.author.name !== author) {
+@@ -123,7 +123,7 @@
+ {#if visible && library}
+   <main>
+     <aside>
+-      <button aria-label="Close" class="close" on:click={() => (view = 'rack')}>
++      <button aria-label="Close" class="close" on:click={() => (view = 'help')}>
+         <svg width="17" height="17" fill="none" xmlns="http://www.w3.org/2000/svg">
+           <path
+             d="M7.793 8.5L.646 15.646l.708.708L8.5 9.207l7.146 7.147.708-.707L9.207 8.5l7.147-7.146-.707-.708L8.5 7.793

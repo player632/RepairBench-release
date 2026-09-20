@@ -1,0 +1,89 @@
+import { Component, inject, signal } from '@angular/core';
+import { email, form, FormField, FormRoot, required } from '@angular/forms/signals';
+import { Router, RouterLink } from '@angular/router';
+import { LOCAL_STORAGE } from '@core/config/tokens';
+import { TranslocoModule } from '@jsverse/transloco';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
+import { svglGithubDark, svglGoogle } from '@ng-icons/svgl';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCard } from '@spartan-ng/helm/card';
+import { HlmCheckboxImports } from '@spartan-ng/helm/checkbox';
+import { HlmFieldImports } from '@spartan-ng/helm/field';
+import { HlmInputImports } from '@spartan-ng/helm/input';
+import { HlmInputGroupImports } from '@spartan-ng/helm/input-group';
+import { HlmLabelImports } from '@spartan-ng/helm/label';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
+import { AuthLayout } from '../layout';
+
+@Component({
+  selector: 'adm-login',
+  imports: [
+    HlmButtonImports,
+    NgIcon,
+    HlmFieldImports,
+    HlmInputImports,
+    HlmCheckboxImports,
+    HlmLabelImports,
+    HlmSpinnerImports,
+    HlmCheckboxImports,
+    HlmInputGroupImports,
+    TranslocoModule,
+    HlmCard,
+    RouterLink,
+    AuthLayout,
+    FormField,
+    FormRoot,
+  ],
+  providers: [
+    provideIcons({
+      svglGithubDark,
+      lucideEye,
+      lucideEyeOff,
+      svglGoogle,
+    }),
+  ],
+  templateUrl: './login.html',
+})
+export default class Login {
+  // ==========================================
+  // Services
+  // ==========================================
+
+  private readonly _router = inject(Router);
+  private readonly _localStorage = inject(LOCAL_STORAGE);
+
+  // ==========================================
+  // State
+  // ==========================================
+
+  protected readonly showPassword = signal(false);
+
+  protected readonly loginModel = signal({
+    email: 'admin@gmail.com',
+    password: 'admin',
+  });
+
+  protected readonly loginForm = form(
+    this.loginModel,
+    (schema) => {
+      required(schema.email);
+      email(schema.email);
+      required(schema.password);
+    },
+    {
+      submission: {
+        action: async () => this.onLogin(),
+      },
+    }
+  );
+
+  // ==========================================
+  // Private Methods
+  // ==========================================
+
+  onLogin(): void {
+    this._localStorage?.setItem('token', 'dummy-jwt-token');
+    this._router.navigate(['/dashboard/dashboard-1']);
+  }
+}

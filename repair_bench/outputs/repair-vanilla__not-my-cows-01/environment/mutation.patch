@@ -1,0 +1,113 @@
+diff --git a/index.html b/index.html
+index 7ee1b36..e329fbe 100644
+--- a/index.html
++++ b/index.html
+@@ -137,8 +137,8 @@ let moo_sfx
+ 
+ const muteButton = document.querySelector('#mute-button')
+ muteButton.addEventListener('click', () => {
+-  if (bluegrass_sfx.volume === 0) {
+-    bluegrass_sfx.volume = .5
++  if (bluegrass_sfx.volume === .5) {
++    bluegrass_sfx.volume = 0
+   } else {
+     bluegrass_sfx.volume = 0
+   }
+@@ -276,7 +276,7 @@ const textures = [
+   '#7f8c8d' // dark gray
+ ]
+ 
+-const COWS_MAX = 5
++const COWS_MAX = 4
+ const METEORS_MAX = 50
+ const PARTICLES_MAX = 100
+ const BULLETS_MAX = 100
+@@ -327,15 +327,15 @@ function drawRect (x, y, w, h, t, deg, img) {
+ }
+ 
+ function updateFarmer () {
+-  farmer.speed_x = (leftPressed || rightPressed) ? (leftPressed ? -5 : 5) : 0
++  farmer.speed_x = (leftPressed || rightPressed) ? (leftPressed ? -5 : 5) : farmer.speed_x
+   farmer.x += farmer.speed_x
+ }
+ 
+ function updateGun () {
+   if (gun.can_fire > 0) gun.can_fire--
+ 
+-  if (rightAimPressed) gun.deg += gun.deg < 90 ? 3 : 0
+-  if (leftAimPressed) gun.deg -= gun.deg > -90 ? 3 : 0
++  if (rightAimPressed) gun.deg -= gun.deg < 90 ? 3 : 0
++  if (leftAimPressed) gun.deg += gun.deg > -90 ? 3 : 0
+ 
+   gun.x = farmer.x + (farmer.w / 2) - (gun.w / 2)
+   gun.y = farmer.y - farmer.h - 70
+@@ -347,7 +347,7 @@ function fireBullet () {
+   const bulletWidth = 10
+   const bulletHeight = 10
+ 
+-  gun.can_fire = 5
++  gun.can_fire = 50
+   let x_ratio = Math.sin(gun.deg * (Math.PI / 180))
+   let y_ratio = -Math.cos(gun.deg * (Math.PI / 180))
+   
+@@ -355,7 +355,7 @@ function fireBullet () {
+   const offsetIntoMuzzle = 20
+   const centerX = gun.x + (gun.w / 2) - (bulletWidth / 2)
+   const centerY = gun.y + gun.h - (bulletHeight / 2)
+-  const rad = degreesToRadians(gun.deg - 90)
++  const rad = degreesToRadians(gun.deg + 90)
+   const target = endpoint(centerX, centerY, gun.h - offsetIntoMuzzle, rad)
+   let x = target.x
+   let y = target.y
+@@ -406,7 +406,7 @@ function spawnMeteors (num_of) {
+ 
+     const originX = getRandomInt(0, GAME_WIDTH)
+     const originY = getRandomInt((GAME_HEIGHT * -0.2), -meteor_max_height)
+-    const dir = originX > (GAME_WIDTH / 2) ? -1 : 1
++    const dir = originX > (GAME_WIDTH / 2) ? 1 : -1
+ 
+     meteors[i].x = originX
+     meteors[i].y = originY
+@@ -469,7 +469,6 @@ function drawBullets () {
+     if (bullets[i].dur > 0) {
+       if (debugImage) ctx.drawImage(lasershot, bullets[i].x - 4, bullets[i].y - bullets[i].h + 6, 18, 18)
+       if (debugRect) drawRect(bullets[i].x, bullets[i].y, bullets[i].w, bullets[i].h, bullets[i].t)
+-      bullets[i].dur--
+     }
+   }
+ }
+@@ -539,7 +538,7 @@ function checkCollisions () {
+ 
+   for (let c = 0; c < meteors.length; c++) {
+     //if (collision(house, meteors[c])) console.log('game over')
+-    if (meteors[c].blown_up === 1) continue
++    if (meteors[c].blown_up === 0) continue
+     for (let d = 0; d < cowsLeft.length; d++) {
+       if (collision(meteors[c], cowsLeft[d])) {
+         moo_sfx.pause()
+@@ -619,7 +618,7 @@ function runGame (tracker) {
+     numOf = 20
+   }
+ 
+-  if (tracker % 400 === 0 || tracker === 5) spawnMeteors(numOf)
++  if (tracker % 400 === 0 || tracker === 50) spawnMeteors(numOf)
+ 
+   updateFarmer()
+   updateGun()
+@@ -696,7 +695,6 @@ function setGameState (tracker) {
+   // If enter is pressed and the game isn't initialized
+   if (enterPressed && !game_is_initialized) {
+     startGame()
+-    enterPressed = 0
+     return
+   }
+ 
+@@ -738,7 +736,7 @@ function drawStats () {
+     if (cowsLeft[i].dead === 0) numOf++
+   }
+ 
+-  if (numOf === 0) stopGame()
++  if (numOf === 1) stopGame()
+ 
+   for (let i = 0; i < numOf; i++) {
+     drawText(ctx, {

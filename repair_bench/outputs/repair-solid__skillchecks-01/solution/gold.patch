@@ -1,0 +1,145 @@
+diff --git a/src/components/callback.ts b/src/components/callback.ts
+--- a/src/components/callback.ts
++++ b/src/components/callback.ts
+@@ -4,7 +4,7 @@
+ export const callback = (state) => {
+     resetGame()
+     fetchNui("skillchecks:minigameResult", {
+-        result : !state,
++        result : state,
+         callback: useConfig().gameFinishedEndpoint
+     })
+ }
+\ No newline at end of file
+diff --git a/src/components/continer/direction/index.tsx b/src/components/continer/direction/index.tsx
+--- a/src/components/continer/direction/index.tsx
++++ b/src/components/continer/direction/index.tsx
+@@ -40,7 +40,7 @@
+           break;
+         }
+       }
+-      if (!isEmptyRow) {
++      if (isEmptyRow) {
+         const randomCol = getRandomInt(0, size - 1);
+         const randomIndex = row * size + randomCol;
+         grid[randomIndex] = chooseRandom([Directions.Left, Directions.Right]);
+diff --git a/src/components/continer/flip/index.tsx b/src/components/continer/flip/index.tsx
+--- a/src/components/continer/flip/index.tsx
++++ b/src/components/continer/flip/index.tsx
+@@ -15,7 +15,7 @@
+   if (pCellType === "cross") {
+     const topCell = cellsArray.find(_cell => _cell.x === cellX && _cell.y === cellY - 1);
+     const bottomCell = cellsArray.find(_cell => _cell.x === cellX && _cell.y === cellY + 1);
+-    const leftCell = cellsArray.find(_cell => _cell.x === cellX - 1 && _cell.y === cellY - 1);
++    const leftCell = cellsArray.find(_cell => _cell.x === cellX - 1 && _cell.y === cellY);
+     const rightCell = cellsArray.find(_cell => _cell.x === cellX + 1 && _cell.y === cellY);
+ 
+     if (topCell) {
+diff --git a/src/components/continer/flood/index.tsx b/src/components/continer/flood/index.tsx
+--- a/src/components/continer/flood/index.tsx
++++ b/src/components/continer/flood/index.tsx
+@@ -139,7 +139,7 @@
+       });
+     }
+     setChells(chells);
+-    setTotalCells(countFloods(chells) - useConfig().moveCountLeniency);
++    setTotalCells(countFloods(chells) + useConfig().moveCountLeniency);
+   });
+ 
+   return (
+diff --git a/src/components/continer/lockpicking/index.tsx b/src/components/continer/lockpicking/index.tsx
+--- a/src/components/continer/lockpicking/index.tsx
++++ b/src/components/continer/lockpicking/index.tsx
+@@ -210,7 +210,7 @@
+         orb.index = (orb.index + offset) % numSegments();
+       });
+     });
+-    drawOrbits(16);
++    drawOrbits(12);
+   });
+   
+   onCleanup(() => {
+diff --git a/src/components/continer/same/index.tsx b/src/components/continer/same/index.tsx
+--- a/src/components/continer/same/index.tsx
++++ b/src/components/continer/same/index.tsx
+@@ -169,7 +169,7 @@
+         id: i,
+         x: cellX,
+         y: cellY,
+-        color: colorList[Math.round(Math.random() * colorList.length)]
++        color: colorList[Math.floor(Math.random() * colorList.length)]
+       });
+     }
+     setGrid(newGrid);
+diff --git a/src/components/continer/untangle/index.tsx b/src/components/continer/untangle/index.tsx
+--- a/src/components/continer/untangle/index.tsx
++++ b/src/components/continer/untangle/index.tsx
+@@ -36,7 +36,7 @@
+   let gameState = {
+     circles: [],
+     thinLineThickness: 1,
+-    boldLineThickness: 1,
++    boldLineThickness: 5,
+     lines: [],
+     currentLevel: 0,
+     progressPercentage: 0,
+diff --git a/src/components/continer/words/index.tsx b/src/components/continer/words/index.tsx
+--- a/src/components/continer/words/index.tsx
++++ b/src/components/continer/words/index.tsx
+@@ -47,7 +47,7 @@
+         callback(true)
+       }else {
+         isFinshed(false);
+-        setCurrentChoice(currentChoice() + 2);
++        setCurrentChoice(currentChoice() + 1);
+         pushSeen();
+         if (Math.random() > .5 && seen().length > 1){
+           setWord(seen()[getRandomInt(0, seen().length - 1)]);
+diff --git a/src/components/events.ts b/src/components/events.ts
+--- a/src/components/events.ts
++++ b/src/components/events.ts
+@@ -24,7 +24,7 @@
+         gameTimeout: data?.gameTimeout,
+         gameId: data?.gameId, 
+         numPoints: data?.numPoints, 
+-        numKeys: data?.numLocks, 
++        numKeys: data?.numKeys, 
+         numLocks: data?.numLocks, 
+         numLevels: data?.numLevels, 
+     });
+diff --git a/src/lib/audio/play.ts b/src/lib/audio/play.ts
+--- a/src/lib/audio/play.ts
++++ b/src/lib/audio/play.ts
+@@ -4,7 +4,7 @@
+ 
+ export const isFinshed = (state) => {
+   const sound = new Audio(state ? finsh : string);
+-  sound.volume = state ? 0.05 : 0.1;
++  sound.volume = state ? 0.1 : 0.05;
+   sound.controls = false;
+   sound.play();
+   setTimeout(() => {
+diff --git a/src/lib/store.tsx b/src/lib/store.tsx
+--- a/src/lib/store.tsx
++++ b/src/lib/store.tsx
+@@ -52,7 +52,7 @@
+       gameWon: false,
+       introShown: false,
+       gameTimeout: 0,
+-      show: true,
++      show: false,
+     };
+   });
+ };
+diff --git a/src/utils/fetchNui.ts b/src/utils/fetchNui.ts
+--- a/src/utils/fetchNui.ts
++++ b/src/utils/fetchNui.ts
+@@ -25,7 +25,7 @@
+     body: JSON.stringify(data),
+   };
+ 
+-  if (isEnvBrowser()) return mockData;
++  if (isEnvBrowser() && mockData) return mockData;
+ 
+   const resourceName = (window as any).GetParentResourceName
+     ? (window as any).GetParentResourceName()

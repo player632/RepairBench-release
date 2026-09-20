@@ -1,0 +1,147 @@
+diff --git a/src/classes/food.js b/src/classes/food.js
+index d0eb6f0..7de42cf 100644
+--- a/src/classes/food.js
++++ b/src/classes/food.js
+@@ -42,11 +42,11 @@ export default class Food extends Phaser.GameObjects.Image {
+     x = x || Phaser.Math.Between(this.bounds.left / this.size, (this.bounds.right / this.size) - 1)
+     y = y || Phaser.Math.Between(this.bounds.top / this.size, (this.bounds.bottom / this.size) - 1)
+ 
+-    this.setPosition(x * this.size, y * this.size)
++    this.setPosition(x, y)
+   }
+ 
+   eat(amount = 1) {
+-    this.total += amount
++    this.total = amount
+ 
+     this.reposition()
+   }
+diff --git a/src/classes/snake.js b/src/classes/snake.js
+index ced3dc3..413f7a4 100644
+--- a/src/classes/snake.js
++++ b/src/classes/snake.js
+@@ -63,13 +63,13 @@ export default class Snake {
+   }
+ 
+   goUp() {
+-    if (this.direction === LEFT || this.direction === RIGHT) {
++    if (this.direction === UP || this.direction === DOWN) {
+       this.nextDirection = UP
+     }
+   }
+ 
+   goDown() {
+-    if (this.direction === LEFT || this.direction === RIGHT) {
++    if (this.direction === UP || this.direction === DOWN) {
+       this.nextDirection = DOWN
+     }
+   }
+@@ -98,8 +98,6 @@ export default class Snake {
+         break
+     }
+ 
+-    this.direction = this.nextDirection
+-
+     Phaser.Actions.ShiftPosition(
+       this.body.getChildren(),
+       this.headPosition.x * this.size,
+@@ -108,7 +106,7 @@ export default class Snake {
+       this.tail,
+     )
+ 
+-    this.nextUpdateTime = time + (1000 / this.movesPerSecond)
++    this.nextUpdateTime = time + (1000 * this.movesPerSecond)
+ 
+     return true
+   }
+@@ -118,7 +116,7 @@ export default class Snake {
+       return false
+     }
+ 
+-    return this.head.x === item.x && this.head.y === item.y
++    return this.head.x === item.x || this.head.y === item.y
+   }
+ 
+   handleOverlapSelf() {
+diff --git a/src/scenes/baseScene.js b/src/scenes/baseScene.js
+index def15df..1d7bdc1 100644
+--- a/src/scenes/baseScene.js
++++ b/src/scenes/baseScene.js
+@@ -28,7 +28,7 @@ export default class BaseScene extends Phaser.Scene {
+   }
+ 
+   toggleAudioMute(audioText) {
+-    const shouldMute = !this.sound.mute
++    const shouldMute = this.sound.mute
+     this.sound.setMute(shouldMute)
+     audioText && audioText.setText(shouldMute ? this.audioOffText : this.audioOnText)
+   }
+diff --git a/src/scenes/game.js b/src/scenes/game.js
+index 5e13bdd..2eab300 100644
+--- a/src/scenes/game.js
++++ b/src/scenes/game.js
+@@ -25,7 +25,7 @@ export default class Game extends BaseScene {
+       top: this.courtTop,
+       right: this.gameWidth,
+       bottom: this.gameHeight,
+-      left: this.middleX,
++      left: 0,
+     }
+   }
+ 
+@@ -97,7 +97,7 @@ export default class Game extends BaseScene {
+   }
+ 
+   updateFoodScore1() {
+-    this.foodScore1Display.setText(this.food1.total)
++    this.foodScore1Display.setText(this.food2.total)
+   }
+ 
+   updateFoodScore2() {
+@@ -301,12 +301,12 @@ export default class Game extends BaseScene {
+     }
+ 
+     if (this.ball.x < 0) {
+-      this.updateScore2()
++      this.updateScore1()
+       this.resetBall(1)
+     }
+ 
+     if (this.ball.x > this.gameWidth) {
+-      this.updateScore1()
++      this.updateScore2()
+       this.resetBall(-1)
+     }
+   }
+diff --git a/src/scenes/menu.js b/src/scenes/menu.js
+index a5a8ae2..9c63036 100644
+--- a/src/scenes/menu.js
++++ b/src/scenes/menu.js
+@@ -160,8 +160,8 @@ export default class Menu extends BaseScene {
+   handleKeyPress() {
+     if (this.keyJustDown(this.enterKey)) {
+       this.scene.start('game', {
+-        color1: this.colors[this.player1ColorIndex],
+-        color2: this.colors[this.player2ColorIndex],
++        color1: this.colors[this.player2ColorIndex],
++        color2: this.colors[this.player1ColorIndex],
+       })
+     }
+ 
+diff --git a/src/scenes/title.js b/src/scenes/title.js
+index 99cf112..7f0599a 100644
+--- a/src/scenes/title.js
++++ b/src/scenes/title.js
+@@ -51,10 +51,10 @@ export default class Title extends BaseScene {
+   get selections() {
+     return [{
+       label: 'Local',
+-      scene: 'menu',
++      scene: 'onlineMenu',
+     }, {
+       label: 'Online',
+-      scene: 'onlineMenu',
++      scene: 'menu',
+     }]
+   }
+ 

@@ -1,0 +1,371 @@
+/**
+ * rb-probe.ts - read-only observation bridge for repair-svelte__8mb.local-01.
+ *
+ * What this file is allowed to do, and what it is not:
+ *  - OBSERVE: DOM census, attributes, collapsed text, computed style, layout box,
+ *    performance resource timing, localStorage reads, and a passive error latch.
+ *  - WRITE only what a user can write in the browser: click a rendered control, type
+ *    into a rendered input, choose a rendered <option>, tick a rendered checkbox,
+ *    choose/drop files into a rendered <input type="file">, move through the app's own
+ *    client-side router, and set/clear the very localStorage keys the app itself
+ *    persists for the user (a returning user's stored preferences).
+ *  - NEVER: 0 data-testid, 0 template edits, 0 moved elements, 0 added bindings,
+ *    0 reads of component internals (no Svelte context, no store internals).
+ *  - READ pure functions of the app's own $lib modules, fpsCap only: a total function of the
+ *    argument handed in, with 0 storage writes, 0 DOM writes, 0 network, 0 markup hooks and no
+ *    component or store internals. $lib/fpsCap has no module-scope side effects (every line
+ *    classified, 0 import statements, 0 top-level call expressions, and a vm-realm import
+ *    observation touched 0 watched globals), so importing it cannot perturb the application or
+ *    the prerender. This reader exists because the D02 membership test is unreachable through
+ *    any persisted observable: the page's own reactive statement writes '' over localStorage
+ *    maxOutputFpsCap before onMount reads it, identically on every face (measured on both faces
+ *    with a storage interceptor timeline), so only a direct pure-function read can reach it.
+ *  - Every getter is wrapped and degrades to a sentinel ('-' for strings, -1 for
+ *    counts, false for booleans, 'RB_ABSENT' for a missing storage key) instead of
+ *    throwing, so a checkpoint can only fail on a measured value, never on a bridge
+ *    crash. Nothing touches window/document at module scope, so SvelteKit prerender
+ *    (which imports this module through +layout.svelte) stays safe.
+ */
+import { goto } from '$app/navigation';
+import { FPS_CAP_VALUES, parseStoredFpsCap } from '$lib/fpsCap';
+
+const MARK = 'RB8-8MBLOCAL-PROBE-1';
+const SENT = '-';
+const ABSENT = 'RB_ABSENT';
+/** parseStoredFpsCap's documented null, encoded so a reading can never be confused with '' or SENT. */
+const RB_NULL = 'RB_NULL';
+/** Keys the bridge may seed on a checkpoint's behalf (the residue census counts these). */
+const RB_SEEDED = ['activeJobId', 'activeBatchId', 'maxOutputFpsCap'];
+/** Every key the app itself persists for the user; resetResidue clears all of them. */
+const RB_KEYS = [
+  'activeJobId',
+  'maxOutputFpsCap',
+  'activeBatchId',
+  'autoDownload',
+  'autoAudioBitrate',
+  'playSoundWhenDone',
+  'lastAutoDownloadedTaskId',
+  '8mblocal:lastSeenBootId',
+];
+const SCAN = 'p,h1,h2,h3,h4,td,th,span,button,a,label,div,li,summary,option';
+
+let errorLatch = 0;
+
+function guard<T>(fn: () => T, fallback: T): T {
+  try {
+    const v = fn();
+    return v === undefined || v === null ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
+
+function squash(v: unknown): string {
+  return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
+}
+
+function el(sel: string): Element | null {
+  return guard(() => document.querySelector(sel), null);
+}
+
+function els(sel: string): Element[] {
+  return guard(() => Array.from(document.querySelectorAll(sel)), [] as Element[]);
+}
+
+function styleOf(sel: string, prop: string): string {
+  return guard(() => {
+    const n = el(sel);
+    if (!n) return SENT;
+    const v = (getComputedStyle(n as HTMLElement) as unknown as Record<string, string>)[prop];
+    return typeof v === 'string' && v.length ? v : SENT;
+  }, SENT);
+}
+
+function makeFile(name: string, bytes: number, type: string): File {
+  const n = Math.max(0, Math.floor(Number(bytes) || 0));
+  const buf = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) buf[i] = i % 251;
+  return new File([buf], String(name), { type: String(type || '') });
+}
+
+function transferOf(specs: Array<{ name: string; bytes: number; type: string }>): DataTransfer {
+  const dt = new DataTransfer();
+  for (const s of specs || []) dt.items.add(makeFile(s.name, s.bytes, s.type));
+  return dt;
+}
+
+function totalBytes(specs: Array<{ name: string; bytes: number; type: string }>): number {
+  return (specs || []).reduce((sum, s) => sum + (Math.max(0, Math.floor(Number(s.bytes) || 0))), 0);
+}
+
+const bridge = {
+  // ---------- identity / build provenance ----------
+  mark: () => MARK,
+  bridgeScripts: () => els('script[src]').length,
+
+  // ---------- location / document ----------
+  path: () => guard(() => window.location.pathname, SENT),
+  search: () => guard(() => window.location.search, SENT),
+  hash: () => guard(() => window.location.hash, SENT),
+  title: () => guard(() => document.title, SENT),
+  htmlLang: () => guard(() => document.documentElement.getAttribute('lang') || SENT, SENT),
+  metaViewport: () => guard(() => {
+    const n = el('meta[name="viewport"]');
+    return n ? squash(n.getAttribute('content')) || SENT : SENT;
+  }, SENT),
+  colorScheme: () => guard(() => squash(getComputedStyle(document.documentElement).colorScheme) || SENT, SENT),
+
+  // ---------- DOM census ----------
+  count: (sel: string) => els(sel).length,
+  exists: (sel: string) => el(sel) !== null,
+  text: (sel: string) => guard(() => {
+    const n = el(sel);
+    return n ? squash(n.textContent) || SENT : SENT;
+  }, SENT),
+  hasText: (sel: string, needle: string) => guard(() => {
+    const n = el(sel);
+    return !!n && squash(n.textContent).includes(String(needle));
+  }, false),
+  firstTextContaining: (needle: string) => guard(() => {
+    const want = String(needle);
+    let best = '';
+    let bestLen = -1;
+    for (const n of els(SCAN)) {
+      const t = squash(n.textContent);
+      if (t.includes(want) && (bestLen < 0 || t.length < bestLen)) {
+        best = t;
+        bestLen = t.length;
+      }
+    }
+    return bestLen < 0 ? SENT : best;
+  }, SENT),
+  attr: (sel: string, name: string) => guard(() => {
+    const n = el(sel);
+    if (!n) return SENT;
+    const v = n.getAttribute(String(name));
+    return v === null ? ABSENT : squash(v) || SENT;
+  }, SENT),
+  attrContains: (sel: string, name: string, needle: string) => guard(() => {
+    const n = el(sel);
+    return !!n && String(n.getAttribute(String(name)) || '').includes(String(needle));
+  }, false),
+  value: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLInputElement | HTMLSelectElement | null;
+    return n && typeof n.value === 'string' ? n.value : SENT;
+  }, SENT),
+  checked: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLInputElement | null;
+    return !!n && n.checked === true;
+  }, false),
+  disabled: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLInputElement | null;
+    return !!n && (n as unknown as { disabled: boolean }).disabled === true;
+  }, false),
+  bg: (sel: string) => styleOf(sel, 'backgroundColor'),
+  color: (sel: string) => styleOf(sel, 'color'),
+  display: (sel: string) => styleOf(sel, 'display'),
+  boxWidth: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLElement | null;
+    return n ? Math.round(n.getBoundingClientRect().width) : -1;
+  }, -1),
+
+  // ---------- selects / option tables ----------
+  optionCount: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLSelectElement | null;
+    return n ? n.options.length : -1;
+  }, -1),
+  optionValues: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLSelectElement | null;
+    return n ? Array.from(n.options).map((o) => o.value).join('|') : SENT;
+  }, SENT),
+  optionLabels: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLSelectElement | null;
+    return n ? Array.from(n.options).map((o) => squash(o.textContent)).join('|') : SENT;
+  }, SENT),
+  optionGroups: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLSelectElement | null;
+    return n ? Array.from(n.options).map((o) => o.getAttribute('data-group') || ABSENT).join('|') : SENT;
+  }, SENT),
+
+  // ---------- app-specific read-only views ----------
+  chipLabels: (anchorSel: string) => guard(() => {
+    const a = el(anchorSel);
+    if (!a) return SENT;
+    let card: Element | null = a;
+    while (card && !(card.classList && card.classList.contains('card'))) card = card.parentElement;
+    if (!card) return SENT;
+    const out: string[] = [];
+    for (const sp of Array.from(card.querySelectorAll('span'))) {
+      const first = Array.from(sp.childNodes).find((n) => n.nodeType === 3 && squash(n.nodeValue).length > 0);
+      if (first) out.push(squash(first.nodeValue));
+    }
+    return out.length ? out.join('|') : ABSENT;
+  }, SENT),
+  sizeButtonLabels: () => guard(() => {
+    const out: string[] = [];
+    for (const b of els('button')) {
+      const t = squash(b.textContent);
+      if (/^[0-9]+(\.[0-9]+)?MB$/.test(t)) out.push(t);
+    }
+    return out.length ? out.join('|') : ABSENT;
+  }, SENT),
+  tableCell: (row: number, col: number) => guard(() => {
+    const tr = els('table tbody tr')[Number(row) || 0];
+    if (!tr) return SENT;
+    const td = Array.from(tr.querySelectorAll('td'))[Number(col) || 0];
+    return td ? squash(td.textContent) || SENT : SENT;
+  }, SENT),
+  hasLink: (href: string) => guard(() => !!el('a[href="' + String(href) + '"]'), false),
+  hasExternalAnchor: (needle: string) => guard(() => {
+    for (const a of els('a[href]')) {
+      const h = String(a.getAttribute('href') || '');
+      if (/^https?:\/\//i.test(h) && h.includes(String(needle))) return true;
+    }
+    return false;
+  }, false),
+  externalAnchorCount: () => guard(() => {
+    let n = 0;
+    for (const a of els('a[href]')) if (/^https?:\/\//i.test(String(a.getAttribute('href') || ''))) n += 1;
+    return n;
+  }, -1),
+
+  // ---------- pure $lib readers (total functions of their argument, 0 side effects) ----------
+  fpsCapParse: (raw: unknown) => guard(() => {
+    const v = parseStoredFpsCap(raw == null ? null : String(raw));
+    return v === null ? RB_NULL : v;
+  }, SENT),
+  fpsCapValues: () => guard(() => FPS_CAP_VALUES.join('|'), SENT),
+
+  // ---------- resource timing (offline / self-sufficiency census) ----------
+  apiResourceHit: () => guard(() => {
+    const list = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    return list.some((e) => String(e.name || '').includes('/api/'));
+  }, false),
+  externalResourceCount: () => guard(() => {
+    const here = window.location.origin;
+    const list = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    return list.filter((e) => String(e.name || '').indexOf(here) !== 0).length;
+  }, -1),
+  resourceCountContaining: (needle: string) => guard(() => {
+    const list = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    return list.filter((e) => String(e.name || '').includes(String(needle))).length;
+  }, -1),
+
+  // ---------- storage (the keys the app itself persists for the user) ----------
+  seedStorage: (key: string, value: string) => guard(() => {
+    window.localStorage.setItem(String(key), String(value));
+    return 'seeded:' + String(key) + '=' + String(window.localStorage.getItem(String(key)));
+  }, SENT),
+  storageGet: (key: string) => guard(() => {
+    const v = window.localStorage.getItem(String(key));
+    return v === null ? ABSENT : v;
+  }, SENT),
+  storageTake: (key: string) => guard(() => {
+    const v = window.localStorage.getItem(String(key));
+    try { window.localStorage.removeItem(String(key)); } catch { /* read-only fallback */ }
+    return v === null ? ABSENT : v;
+  }, SENT),
+  resetResidue: () => guard(() => {
+    let n = 0;
+    for (const k of RB_KEYS) {
+      const v = window.localStorage.getItem(k);
+      if (v !== null && v !== '') {
+        try { window.localStorage.removeItem(k); n += 1; } catch { /* ignore */ }
+      }
+    }
+    return n;
+  }, -1),
+  rbResidueCount: () => guard(() => {
+    let n = 0;
+    for (const k of RB_SEEDED) {
+      const v = window.localStorage.getItem(k);
+      if (v !== null && v !== '') n += 1;
+    }
+    return n;
+  }, -1),
+  storageCount: () => guard(() => window.localStorage.length, -1),
+
+  // ---------- passive error latch ----------
+  errorCount: () => errorLatch,
+
+  // ---------- drivers: writes a user could perform ----------
+  click: (sel: string) => guard(() => {
+    const n = el(sel) as HTMLElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    n.click();
+    return 'clicked:' + sel;
+  }, SENT),
+  clickText: (needle: string) => guard(() => {
+    const want = squash(needle);
+    for (const n of els('button,a')) {
+      if (squash(n.textContent) === want) {
+        (n as HTMLElement).click();
+        return 'clicked-text:' + want;
+      }
+    }
+    return 'RB_NO_ELEMENT:' + want;
+  }, SENT),
+  setSelect: (sel: string, v: string) => guard(() => {
+    const n = el(sel) as HTMLSelectElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    n.value = String(v);
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'select:' + sel + '=' + n.value;
+  }, SENT),
+  setInput: (sel: string, v: string) => guard(() => {
+    const n = el(sel) as HTMLInputElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    n.value = String(v);
+    n.dispatchEvent(new Event('input', { bubbles: true }));
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'input:' + sel + '=' + n.value;
+  }, SENT),
+  tick: (sel: string, on: boolean) => guard(() => {
+    const n = el(sel) as HTMLInputElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    n.checked = !!on;
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'tick:' + sel + '=' + String(n.checked);
+  }, SENT),
+  pickFiles: (sel: string, specs: Array<{ name: string; bytes: number; type: string }>) => guard(() => {
+    const n = el(sel) as HTMLInputElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    const dt = transferOf(specs);
+    n.files = dt.files;
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'picked:' + dt.files.length + ':' + totalBytes(specs);
+  }, SENT),
+  dropFiles: (sel: string, specs: Array<{ name: string; bytes: number; type: string }>) => guard(() => {
+    const n = el(sel) as HTMLElement | null;
+    if (!n) return 'RB_NO_ELEMENT:' + sel;
+    const dt = transferOf(specs);
+    let ev: Event;
+    try {
+      ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+    } catch {
+      ev = new Event('drop', { bubbles: true, cancelable: true });
+    }
+    if (!(ev as DragEvent).dataTransfer) {
+      Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    }
+    n.dispatchEvent(ev);
+    return 'dropped:' + dt.files.length + ':' + totalBytes(specs);
+  }, SENT),
+  navSpa: (p: string) => guard(() => {
+    void goto(String(p));
+    return 'nav:' + String(p);
+  }, SENT),
+};
+
+function install(): void {
+  guard(() => {
+    window.addEventListener('error', () => { errorLatch += 1; });
+    window.addEventListener('unhandledrejection', () => { errorLatch += 1; });
+    return true;
+  }, false);
+  (window as unknown as Record<string, unknown>).__RB8__ = bridge;
+}
+
+if (typeof window !== 'undefined') install();
+
+export default bridge;

@@ -1,0 +1,398 @@
+/**
+ * rb-probe.ts - READ-ONLY measurement bridge for repair-svelte__ghostty-config-01.
+ *
+ *
+ *  - it OBSERVES the running app (config store, diff(), computed/inline --config-* CSS vars, DOM census,
+ *    storage keys, resource timing) and performs ONLY actions a real user can perform (element.click(),
+ *    element.focus(), value write + the same input/change/blur events a keystroke produces, and bubbling
+ *    MouseEvents carrying the modifier keys the app itself reads);
+ *  - it adds NO data-testid, edits NO template, moves NO element and adds NO binding;
+ *  - every getter is wrapped so an unavailable reading degrades to the sentinel '-' (string) or -1 (number)
+ *    instead of throwing, so a checkpoint can only fail on a measured value and never on a bridge crash;
+ *  - 🔴 EVERY READING IS A SCALAR (string | number). Measured reason: the js_eval assert in
+ *    evaluation/dsl_runner.mjs:787-790 compares with assertEq(expected, got, loose=true) => `actual == expected`,
+ *    so an array or object returned by the bridge can never equal a JSON literal in `expected`. Multi-element
+ *    readings are joined inside the bridge ('|' for value lists, ',' for key lists).
+ *  - it writes NO STORAGE, NO COOKIE, NO DOM NODE AND NO ATTRIBUTE. What it does create: exactly one global
+ *    (window.__GC__), a module-scoped error tally, a module-scoped cumulative toast tally fed by ONE
+ *    observe-only MutationObserver, and two OBSERVE-ONLY window listeners ('error' and 'unhandledrejection',
+ *    which count what the app already threw and never call preventDefault or stopImmediatePropagation).
+ *    dunderGlobals() excludes the bridge's own namespace by EXACT name, so the bridge cannot mask a solver's
+ *    global-flag hack.
+ *  - it is imported for its side effect from src/lib/components/ToastStack.svelte with exactly one added line.
+ *
+ * Build-graph note (why the bridge imports only two modules): `$lib/stores/config.svelte` and
+ * `$lib/settings/registry` are ALREADY in the root layout's graph (src/routes/+layout.svelte:21 imports the
+ * config store, which imports the registry at config.svelte.ts:2), so this module adds no new edge to the
+ * prerender pass. It deliberately does NOT import `$lib/stores/history.svelte` - that module reads
+ * window.location.pathname at MODULE scope (history.svelte.ts:3), and the bridge is imported from a component
+ * that the prerendered shell evaluates, so importing it here would put a bare window read into the static pass.
+ * The back/forward readings below therefore come from the rendered buttons (History.svelte:18-21), which is
+ * also the more honest reading: it is what a user sees.
+ *
+ * Prerender safety: the whole publisher block is inside `typeof window !== "undefined"`. This app builds with
+ * @sveltejs/adapter-static (svelte.config.js) and src/routes/+page.ts sets prerender = true while
+ * src/routes/+layout.ts sets ssr = false, so the module IS evaluated in a non-browser pass at build time.
+ */
+/* eslint-disable */
+import config, {diff} from "$lib/stores/config.svelte";
+import {registry} from "$lib/settings/registry";
+
+const PREFIX = "__GC__";
+const S_SENTINEL = "-";
+const N_SENTINEL = -1;
+
+type Ctor = Record<string, unknown>;
+
+// config key ("window-width") -> registry id ("windowWidth"); built once from the registry itself so the
+// bridge never hardcodes a mapping the seed could drift on.
+const keyToId: Record<string, string> = {};
+for (const [id, info] of Object.entries(registry as unknown as Record<string, {key?: string}>)) {
+    if (info && typeof info.key === "string") keyToId[info.key] = id;
+}
+
+function safeS(fn: () => string): string { try { const v = fn(); return typeof v === "string" ? v : S_SENTINEL; } catch { return S_SENTINEL; } }
+function safeN(fn: () => number): number { try { const v = fn(); return typeof v === "number" && Number.isFinite(v) ? v : N_SENTINEL; } catch { return N_SENTINEL; } }
+const q = (sel: string): Element | null => (typeof document === "undefined" ? null : document.querySelector(sel));
+const qa = (sel: string): Element[] => (typeof document === "undefined" ? [] : Array.from(document.querySelectorAll(sel)));
+const txt = (el: Element | null): string => (el && el.textContent ? el.textContent.trim() : "");
+const val = (el: Element | null): string => (el && "value" in el ? String((el as HTMLInputElement).value) : "");
+const rowOf = (settingId: string): Element | null => q('[data-setting-id="' + settingId + '"]');
+const joinList = (arr: string[]): string => (arr.length ? arr.join(",") : "(none)");
+
+function cfgRaw(key: string): unknown {
+    const id = keyToId[key] || key;
+    return (config as unknown as Record<string, unknown>)[id];
+}
+function cfgStr(key: string): string {
+    const v = cfgRaw(key);
+    if (v === undefined || v === null) return S_SENTINEL;
+    if (Array.isArray(v)) return v.length ? v.map((x) => String(x)).join("|") : "(empty)";
+    return String(v) === "" ? "(unset)" : String(v);
+}
+function appWindowStyle(): string {
+    const el = q(".app-window");
+    return el ? String(el.getAttribute("style") || "") : "";
+}
+
+/* Cumulative toast tally. ToastStack.svelte:8-12 renders exactly one Toast per stack entry and Toast.svelte:20
+ * roots each of them in .toast-container, so counting ADDED containers is 1:1 with toasts the app raised and is
+ * immune to the 3000 ms auto-dismiss (toasts.svelte.ts:15,44-46) that a live DOM count would race against.
+ * The observer is observe-only: it never mutates a record, never calls preventDefault and never touches the DOM. */
+let toastSeen = 0;
+const errorTally: string[] = [];
+
+const api = {
+    /* ---------- identity ---------- */
+    probeVersion: (): string => "s7-r28k3-ghostty-1",
+
+    /* ---------- config store / export diff ---------- */
+    cfg: (key: string): string => safeS(() => cfgStr(String(key))),
+    cfgLen: (key: string): number => safeN(() => { const v = cfgRaw(String(key)); return Array.isArray(v) ? v.length : N_SENTINEL; }),
+    diffCount: (): number => safeN(() => Object.keys(diff()).length),
+    diffKeys: (): string => safeS(() => joinList(Object.keys(diff()).sort())),
+    diffHasKey: (key: string): number => safeN(() => (Object.prototype.hasOwnProperty.call(diff(), String(key)) ? 1 : 0)),
+
+    /* ---------- emitted --config-* CSS variables (+layout.svelte:32-60 -> :80) ---------- */
+    cssVar: (name: string): string => safeS(() => {
+        const el = q(".app-window");
+        if (!el) return S_SENTINEL;
+        const v = getComputedStyle(el as HTMLElement).getPropertyValue(String(name)).trim();
+        return v === "" ? "(none)" : v;
+    }),
+    cssVarPresent: (name: string): number => safeN(() => {
+        const el = q(".app-window");
+        if (!el) return N_SENTINEL;
+        return getComputedStyle(el as HTMLElement).getPropertyValue(String(name)).trim() === "" ? 0 : 1;
+    }),
+    paletteVarCount: (): number => safeN(() => (appWindowStyle().match(/--config-palette-\d+\s*:/g) || []).length),
+    configVarCount: (): number => safeN(() => (appWindowStyle().match(/--config-[a-z0-9-]+\s*:/g) || []).length),
+
+    /* ---------- generic DOM census ---------- */
+    count: (sel: string): number => safeN(() => qa(String(sel)).length),
+    text: (sel: string): string => safeS(() => { const t = txt(q(String(sel))); return t === "" ? S_SENTINEL : t.slice(0, 400); }),
+    attrOf: (sel: string, attr: string): string => safeS(() => { const el = q(String(sel)); if (!el) return S_SENTINEL; const v = el.getAttribute(String(attr)); return v === null ? "(none)" : v; }),
+
+    /* ---------- settings rows (Item.svelte:93-99 -> [data-setting-id]) ---------- */
+    rowExists: (settingId: string): number => safeN(() => (rowOf(String(settingId)) ? 1 : 0)),
+    inputOf: (settingId: string): string => safeS(() => { const r = rowOf(String(settingId)); if (!r) return S_SENTINEL; const i = r.querySelector("input, textarea, select"); return i ? (val(i) === "" ? "(empty)" : val(i)) : "(no-input)"; }),
+    inputCount: (settingId: string): number => safeN(() => { const r = rowOf(String(settingId)); return r ? r.querySelectorAll("input, textarea, select").length : N_SENTINEL; }),
+    rowText: (settingId: string): string => safeS(() => { const t = txt(rowOf(String(settingId))); return t === "" ? S_SENTINEL : t.slice(0, 240); }),
+    dropdownOpen: (settingId: string): string => safeS(() => {
+        const r = rowOf(String(settingId)); if (!r) return S_SENTINEL;
+        const t = r.querySelector(".dropdown .trigger"); if (!t) return "(no-trigger)";
+        const v = t.getAttribute("aria-expanded"); return v === null ? "(none)" : v;
+    }),
+    dropdownLabel: (settingId: string): string => safeS(() => {
+        const r = rowOf(String(settingId)); if (!r) return S_SENTINEL;
+        const t = txt(r.querySelector(".dropdown .trigger .value")); return t === "" ? "(empty)" : t;
+    }),
+    menuCount: (): number => safeN(() => qa(".menu").length),
+    menuOptionCount: (): number => safeN(() => qa('.menu [data-option-value]').length),
+
+    /* ---------- toasts ---------- */
+    toastCount: (): number => safeN(() => qa(".toast-container").length),
+    toastSeen: (): number => safeN(() => toastSeen),
+    toastMark: (): number => { toastSeen = 0; return 0; },
+    toastTexts: (): string => safeS(() => joinList(qa(".toast-message").map((e) => txt(e)).filter(Boolean))),
+
+    /* ---------- modals ---------- */
+    alertCount: (): number => safeN(() => qa(".alert-card").length),
+    alertTitle: (): string => safeS(() => { const t = txt(q(".alert-card .alert-header h3")); return t === "" ? "(none)" : t; }),
+    alertButtons: (): string => safeS(() => joinList(qa(".alert-card .alert-actions button").map((e) => txt(e)).filter(Boolean))),
+    editorOpen: (): number => safeN(() => qa(".editor-row").length > 0 ? 1 : 0),
+    editorRowCount: (): number => safeN(() => qa(".editor-row").length),
+    editorRowValue: (i: number): string => safeS(() => { const rows = qa(".editor-row input"); const el = rows[Number(i)]; return el ? (val(el) === "" ? "(empty)" : val(el)) : S_SENTINEL; }),
+
+    /* ---------- sidebar search ---------- */
+    searchResultCount: (): number => safeN(() => qa(".search-result").length),
+    searchGroupCount: (): number => safeN(() => qa(".search-category").length),
+    searchSelectedCount: (): number => safeN(() => qa(".search-result.selected").length),
+    searchSelectedId: (): string => safeS(() => { const el = q(".search-result.selected"); return el ? (el.id === "" ? "(no-id)" : el.id) : "(none)"; }),
+    searchInputValue: (): string => safeS(() => { const v = val(q("#sidebar-settings-search")); return v === "" ? "(empty)" : v; }),
+
+    /* ---------- export preview (ConfigPreview.svelte:18-45) ---------- */
+    previewKeyCount: (): number => safeN(() => qa(".preview .row .p4").length),
+    previewKeys: (): string => safeS(() => joinList(qa(".preview .row .p4").map((e) => txt(e)).filter(Boolean))),
+    previewHas: (key: string): number => safeN(() => (qa(".preview .row .p4").some((e) => txt(e) === String(key)) ? 1 : 0)),
+
+    /* ---------- keybind list ---------- */
+    keybindRowCount: (): number => safeN(() => qa(".keybind").length),
+    keybindRowText: (i: number): string => safeS(() => {
+        const rows = qa(".keybind"); const r = rows[Number(i)]; if (!r) return S_SENTINEL;
+        const inputs = Array.from(r.querySelectorAll("input")).map((e) => val(e));
+        return inputs.length ? inputs.join("=") : txt(r);
+    }),
+    keybindSelectedCount: (): number => safeN(() => qa(".keybind.selected").length),
+    keybindSelectedRows: (): string => safeS(() => joinList(qa(".keybind").map((r, i) => (r.classList.contains("selected") ? String(i) : "")).filter((x) => x !== ""))),
+
+    /* ---------- floating terminal ---------- */
+    termOpen: (): number => safeN(() => (q(".term") ? 1 : 0)),
+    termLineCount: (): number => safeN(() => qa(".term .line").length),
+    termHasText: (needle: string): number => safeN(() => { const el = q(".term"); return el && el.textContent && el.textContent.indexOf(String(needle)) >= 0 ? 1 : 0; }),
+    termInput: (): string => safeS(() => {
+        const line = q(".term .input-line"); if (!line) return S_SENTINEL;
+        const spans = Array.from(line.children);
+        if (spans.length < 3) return "(short)";
+        // InteractiveTerminalDom.svelte:301-318 renders [prompt..., beforeCursor, .cursor, afterCursor]; the
+        // cursor span holds a padding space when the caret sits at end-of-buffer, so the tail is trimmed.
+        const raw = spans.slice(-3).map((s) => txt(s)).join("");
+        return raw.replace(/\s+$/, "") === "" ? "(empty)" : raw.replace(/\s+$/, "");
+    }),
+    dockPressed: (): string => safeS(() => { const el = q("#ghostty-terminal-dock-button"); if (!el) return S_SENTINEL; const v = el.getAttribute("aria-pressed"); return v === null ? "(none)" : v; }),
+
+    /* ---------- header history (History.svelte:18-21) ---------- */
+    backDisabled: (): number => safeN(() => { const el = q("button.back") as HTMLButtonElement | null; return el ? (el.disabled ? 1 : 0) : N_SENTINEL; }),
+    forwardDisabled: (): number => safeN(() => { const el = q("button.forward") as HTMLButtonElement | null; return el ? (el.disabled ? 1 : 0) : N_SENTINEL; }),
+    backExists: (): number => safeN(() => (q("button.back") ? 1 : 0)),
+    forwardExists: (): number => safeN(() => (q("button.forward") ? 1 : 0)),
+    pathname: (): string => safeS(() => (typeof location === "undefined" ? S_SENTINEL : location.pathname)),
+    categoryLinkCount: (): number => safeN(() => qa('a.nav-tab[href^="/settings/"]').length),
+
+    /**/
+    localStorageKeys: (): string => safeS(() => { const k: string[] = []; for (let i = 0; i < window.localStorage.length; i++) { const key = window.localStorage.key(i); if (key) k.push(key); } return joinList(k.sort()); }),
+    sessionStorageKeys: (): string => safeS(() => { const k: string[] = []; for (let i = 0; i < window.sessionStorage.length; i++) { const key = window.sessionStorage.key(i); if (key) k.push(key); } return joinList(k.sort()); }),
+    storageKeyCount: (): number => safeN(() => window.localStorage.length + window.sessionStorage.length),
+    cookieCount: (): number => safeN(() => (document.cookie ? document.cookie.split(";").filter((c) => c.trim() !== "").length : 0)),
+    hashPath: (): string => safeS(() => (location.hash === "" ? "(none)" : location.hash)),
+    searchPart: (): string => safeS(() => (location.search === "" ? "(none)" : location.search)),
+    /* Global-residue census. EXACTLY ONE exclusion (the bridge's own namespace, by exact name), same ruling as
+     *
+     * P04 dunderGlobals() == '(none)'. If it comes back with harness globals, the string recorded in
+     * validation/<state>.json IS the measured census - extend the exclusion list from that measurement and re-register
+     * it; never relax the '(none)' expectation instead.
+     *
+     * measured census, verbatim: clean "__svelte,__sveltekit_1jfs0z7" / mut "__svelte,__sveltekit_1hmzz3p".
+     * The exclusion list was extended FROM THAT MEASUREMENT (exact "__svelte" + prefix "__sveltekit_"), the
+     * '(none)' expectation was NOT relaxed, and the census is re-registered in meta.lane_evidence. */
+    dunderGlobals: (): string => safeS(() => {
+        const found: string[] = [];
+        /*
+         * 运行时 dunder，**永不排应用自己的全局**。排除清单＝[精确 "__svelte"] ∪ [前缀 "__sveltekit_"]。
+         *
+         * "__svelte,__sveltekit_1jfs0z7"、mut＝"__svelte,__sveltekit_1hmzz3p" —— 两臂后缀**不同**（构建期
+         *
+         * 🔴 "(none)" 语义一字未改：出现任何**其它** __* 全局仍会返回该名字、断言仍红。 */
+        const FRAMEWORK_EXACT: string[] = ["__svelte"];
+        const FRAMEWORK_PREFIX: string[] = ["__sveltekit_"];
+        for (const k in window) {
+            if (k.indexOf("__") !== 0) continue;
+            if (k === PREFIX) continue;
+            if (FRAMEWORK_EXACT.indexOf(k) >= 0) continue;
+            let isFw = false;
+            for (const pf of FRAMEWORK_PREFIX) { if (k.indexOf(pf) === 0) { isFw = true; break; } }
+            if (isFw) continue;
+            found.push(k);
+        }
+        return joinList(found.sort());
+    }),
+    remoteResourceCount: (): number => safeN(() => {
+        if (typeof performance === "undefined" || !performance.getEntriesByType) return N_SENTINEL;
+        return performance.getEntriesByType("resource").filter((e) => e.name && e.name.indexOf(location.origin) !== 0).length;
+    }),
+    errorCount: (): number => safeN(() => errorTally.length),
+    errors: (): string => safeS(() => joinList(errorTally.slice(0, 8))),
+    residue: (): number => safeN(() => window.localStorage.length + window.sessionStorage.length
+        + (document.cookie ? document.cookie.split(";").filter((c) => c.trim() !== "").length : 0)
+        + (location.hash ? 1 : 0) + (location.search ? 1 : 0)),
+
+    /* ---------- gestures: only what a real user can do ---------- */
+    tap: (sel: string): number => safeN(() => { const el = q(String(sel)) as HTMLElement | null; if (!el) return 0; el.click(); return 1; }),
+    tapSettingTrigger: (settingId: string): number => safeN(() => {
+        const r = rowOf(String(settingId)); if (!r) return 0;
+        const t = r.querySelector(".dropdown .trigger") as HTMLElement | null; if (!t) return 0;
+        t.click(); return 1;
+    }),
+    pressOpenMenuSearch: (): number => safeN(() => {
+        // The dropdown menu is moved to document.body by {@attach toRoot} (Dropdown.svelte:412, portal.ts:4-9), and
+        // the close-on-outside-press handler listens for MOUSEDOWN on window (:194-208). element.click() does not
+        // dispatch mousedown, so the gesture that a real user performs (pressing inside the menu) is replayed here
+        // as a bubbling MouseEvent chain - it reaches the very same window listener and the very same
+        // contains() decision, which is the mechanism under test in D01.
+        const el = q(".menu .search-row input") as HTMLElement | null; if (!el) return 0;
+        const mk = (type: string): MouseEvent => new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 });
+        el.dispatchEvent(mk("mousedown"));
+        el.dispatchEvent(mk("mouseup"));
+        el.dispatchEvent(mk("click"));
+        return 1;
+    }),
+    tapMenuOption: (optionValue: string): number => safeN(() => {
+        const el = q('.menu [data-option-value="' + String(optionValue) + '"]') as HTMLElement | null; if (!el) return 0; el.click(); return 1;
+    }),
+    tapKeybindRow: (i: number, ctrl: boolean): number => safeN(() => {
+        const rows = qa(".keybind"); const el = rows[Number(i)] as HTMLElement | undefined; if (!el) return 0;
+        // Keybinds.svelte:24-30 reads event.ctrlKey to decide replace-vs-extend; element.click() cannot carry a
+        // modifier, so the click is dispatched with the modifier a real ctrl-click would carry.
+        el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: ctrl === true }));
+        return 1;
+    }),
+    tapButtonByTitle: (title: string): number => safeN(() => {
+        const el = q('button[title="' + String(title) + '"]') as HTMLElement | null; if (!el) return 0; el.click(); return 1;
+    }),
+    tapButtonText: (label: string): number => safeN(() => {
+        const el = qa("button").find((b) => txt(b) === String(label)) as HTMLElement | undefined; if (!el) return 0; el.click(); return 1;
+    }),
+    tapTwiceByText: (label: string): number => safeN(() => {
+        const el = qa("button").find((b) => txt(b) === String(label)) as HTMLElement | undefined; if (!el) return 0;
+        el.click(); el.click(); return 1;
+    }),
+    tapModalButton: (label: string): number => safeN(() => {
+        const el = qa(".alert-card .alert-actions button, .dialog-footer button, .editor button, .modal button").find((b) => txt(b) === String(label)) as HTMLElement | undefined;
+        if (!el) return 0; el.click(); return 1;
+    }),
+    tapDockTerminal: (): number => safeN(() => { const el = q("#ghostty-terminal-dock-button") as HTMLElement | null; if (!el) return 0; el.click(); return 1; }),
+    tapHistory: (which: string): number => safeN(() => {
+        const el = q(which === "forward" ? "button.forward" : "button.back") as HTMLElement | null; if (!el) return 0; el.click(); return 1;
+    }),
+    tapTabLink: (href: string): number => safeN(() => {
+        const el = qa('a[href="' + String(href) + '"]')[0] as HTMLElement | undefined; if (!el) return 0; el.click(); return 1;
+    }),
+    focusSettingInput: (settingId: string): number => safeN(() => {
+        const r = rowOf(String(settingId)); if (!r) return 0;
+        const i = r.querySelector("input, textarea") as HTMLElement | null; if (!i) return 0;
+        i.focus(); i.dispatchEvent(new FocusEvent("focus", { bubbles: false })); return 1;
+    }),
+    setSettingInput: (settingId: string, text: string): number => safeN(() => {
+        const r = rowOf(String(settingId)); if (!r) return 0;
+        const i = r.querySelector("input, textarea") as HTMLInputElement | null; if (!i) return 0;
+        i.focus(); i.value = String(text);
+        i.dispatchEvent(new Event("input", { bubbles: true }));
+        return 1;
+    }),
+    commitSettingInput: (settingId: string): number => safeN(() => {
+        const r = rowOf(String(settingId)); if (!r) return 0;
+        const i = r.querySelector("input, textarea") as HTMLInputElement | null; if (!i) return 0;
+        i.dispatchEvent(new Event("change", { bubbles: true }));
+        i.dispatchEvent(new FocusEvent("blur", { bubbles: false }));
+        i.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        return 1;
+    }),
+    setEditorRow: (i: number, text: string): number => safeN(() => {
+        const rows = qa(".editor-row input"); const el = rows[Number(i)] as HTMLInputElement | undefined; if (!el) return 0;
+        el.focus(); el.value = String(text); el.dispatchEvent(new Event("input", { bubbles: true })); return 1;
+    }),
+    focusTerm: (): number => safeN(() => { const el = q(".term") as HTMLElement | null; if (!el) return 0; el.focus(); return 1; }),
+    termKey: (key: string): number => safeN(() => {
+        // InteractiveTerminalDom.svelte:249-256 is a tabindex=0 div with onkeydown and NO input element (:195
+        // appends e.key to its own buffer), so keystrokes are replayed as bubbling KeyboardEvents on that div -
+        // the same handler, the same code path a hardware key takes. dsl press steps are used wherever possible;
+        // this helper exists so a checkpoint can never depend on focus surviving a transition.
+        const el = q(".term") as HTMLElement | null; if (!el) return 0;
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+    termType: (text: string): number => safeN(() => {
+        const el = q(".term") as HTMLElement | null; if (!el) return 0;
+        for (const ch of String(text)) el.dispatchEvent(new KeyboardEvent("keydown", { key: ch, bubbles: true, cancelable: true }));
+        return 1;
+    }),
+
+    /**/
+    setSearchQuery: (text: string): number => safeN(() => {
+        // SettingsSearch.svelte:120 reads event.currentTarget.value on 'input'; the field is a plain
+        // <input id="sidebar-settings-search">, so writing .value and dispatching the same 'input' event a
+        // keystroke produces is exactly the user gesture (no framework-internal setter is touched).
+        const el = q("#sidebar-settings-search") as HTMLInputElement | null; if (!el) return 0;
+        el.focus(); el.value = String(text);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        return 1;
+    }),
+    pressSearchKey: (key: string): number => safeN(() => {
+        // SettingsSearch.svelte:121 attaches onkeydown to that same input (:107 adds a <svelte:window>
+        // listener for the meta+k shortcut only), so a bubbling KeyboardEvent from the input walks the very
+        // path a hardware key walks: element handler first, then document, then window.
+        const el = q("#sidebar-settings-search") as HTMLElement | null; if (!el) return 0;
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+    pressTriggerKey: (settingId: string, key: string): number => safeN(() => {
+        const r = rowOf(String(settingId)); if (!r) return 0;
+        const t = r.querySelector(".dropdown .trigger") as HTMLElement | null; if (!t) return 0;
+        t.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+    pressMenuKey: (key: string): number => safeN(() => {
+        // Dropdown.svelte:410 attaches onkeydown to the .menu element itself, and that element is portalled
+        // to document.body by {@attach toRoot} (:412). The key is therefore replayed on the menu element -
+        // the same listener, the same handler a hardware key reaches - which makes the gesture independent
+        // of which node happens to hold focus after the portal move (the trigger's own Enter only toggles
+        // the menu open, it never selects: :334-343).
+        const el = q(".menu") as HTMLElement | null; if (!el) return 0;
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+    pressPageKey: (key: string): number => safeN(() => {
+        // ModalStack.svelte:21 listens through <svelte:document onkeydown>, so a bubbling keydown raised on
+        // document.body reaches it exactly as a hardware key does; nothing is focused or clicked here.
+        const el = (document.body || document.documentElement) as HTMLElement;
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+    pressKeyOn: (sel: string, key: string): number => safeN(() => {
+        const el = q(String(sel)) as HTMLElement | null; if (!el) return 0;
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: String(key), bubbles: true, cancelable: true }));
+        return 1;
+    }),
+};
+
+if (typeof window !== "undefined") {
+    try {
+        const observer = new MutationObserver((records) => {
+            for (const record of records) {
+                for (const node of Array.from(record.addedNodes)) {
+                    if (!(node instanceof Element)) continue;
+                    if (node.classList.contains("toast-container")) toastSeen += 1;
+                    else toastSeen += node.querySelectorAll(".toast-container").length;
+                }
+            }
+        });
+        observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* degrade silently: toastSeen() then reports 0 and F07 fails on a measured value */ }
+    try {
+        window.addEventListener("error", () => { errorTally.push("error"); });
+        window.addEventListener("unhandledrejection", () => { errorTally.push("rejection"); });
+    } catch (e) { /* degrade silently */ }
+    try { (window as unknown as Ctor)[PREFIX] = api; } catch (e) { /* degrade silently */ }
+}
+
+export const RB_PROBE_API = api;

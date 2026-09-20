@@ -1,0 +1,113 @@
+import * as casing from '../../../utils/casing.js';
+
+// import all references
+import { reference as ButtonReference } from './button-api';
+import { reference as ChatReference } from './chat-api';
+import { reference as CodeReference } from './code-api';
+import { reference as CopyButtonReference } from './copy-button-api';
+import { reference as FieldSetReference } from './field-set-api';
+import { reference as FileDropZoneReference } from './file-drop-zone-api';
+import { reference as GithubButtonReference } from './github-button-api';
+import { reference as ImageCropperReference } from './image-cropper-api';
+import { reference as Ipv4addressInputReference } from './ipv4address-input-api';
+import { reference as LanguageSwitcherReference } from './language-switcher-api';
+import { reference as LightSwitchReference } from './light-switch-api';
+import { reference as LinkReference } from './link-api';
+import { reference as MeterReference } from './meter-api';
+import { reference as ModalReference } from './modal-api';
+import { reference as NlpDateInputReference } from './nlp-date-input-api';
+import { reference as PhoneInputReference } from './phone-input-api';
+import { reference as PMCommandReference } from './pm-command-api';
+import { reference as NumberFieldReference } from './number-field-api';
+import { reference as SnippetReference } from './snippet-api';
+import { reference as SplitButtonReference } from './split-button-api';
+import { reference as StarRatingReference } from './star-rating-api';
+import { reference as StepperReference } from './stepper-api';
+import { reference as TagsInputReference } from './tags-input-api';
+import { reference as TerminalReference } from './terminal-api';
+import { reference as ThemeSelectorReference } from './theme-selector-api';
+import { reference as TocReference } from './toc-api';
+import { reference as TreeViewReference } from './tree-view-api';
+import { reference as UnderlineTabsReference } from './underline-tabs-api';
+import { reference as WindowReference } from './window-api';
+import { reference as EmojiPickerReference } from './emoji-picker-api';
+import { reference as PasswordReference } from './password-api';
+import { reference as RenameReference } from './rename-api';
+
+export const references = [
+	ButtonReference,
+	ChatReference,
+	CodeReference,
+	CopyButtonReference,
+	FieldSetReference,
+	FileDropZoneReference,
+	GithubButtonReference,
+	ImageCropperReference,
+	Ipv4addressInputReference,
+	LanguageSwitcherReference,
+	LightSwitchReference,
+	LinkReference,
+	MeterReference,
+	ModalReference,
+	NlpDateInputReference,
+	PhoneInputReference,
+	PMCommandReference,
+	NumberFieldReference,
+	SnippetReference,
+	SplitButtonReference,
+	StarRatingReference,
+	StepperReference,
+	TagsInputReference,
+	TerminalReference,
+	ThemeSelectorReference,
+	TocReference,
+	TreeViewReference,
+	UnderlineTabsReference,
+	WindowReference,
+	EmojiPickerReference,
+	PasswordReference,
+	RenameReference
+];
+
+/** Get a reference by name
+ *
+ * @param name `kebab-case` name of the component to get the reference for
+ */
+export function getReference(name: string) {
+	return references.find((reference) => reference.name === casing.kebabToPascal(name));
+}
+
+export {
+	ButtonReference,
+	ChatReference,
+	CodeReference,
+	CopyButtonReference,
+	FieldSetReference,
+	FileDropZoneReference,
+	GithubButtonReference,
+	ImageCropperReference,
+	Ipv4addressInputReference,
+	LanguageSwitcherReference,
+	LightSwitchReference,
+	LinkReference,
+	MeterReference,
+	ModalReference,
+	NlpDateInputReference,
+	PhoneInputReference,
+	PMCommandReference,
+	NumberFieldReference,
+	SnippetReference,
+	SplitButtonReference,
+	StarRatingReference,
+	StepperReference,
+	TagsInputReference,
+	TerminalReference,
+	ThemeSelectorReference,
+	TocReference,
+	TreeViewReference,
+	UnderlineTabsReference,
+	WindowReference,
+	EmojiPickerReference,
+	PasswordReference,
+	RenameReference
+};

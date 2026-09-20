@@ -1,0 +1,544 @@
+import { useCurrentInstance } from "@/hooks/useCurrentInstance";
+import { useMeiliClient } from "@/hooks/useMeiliClient";
+import { isValidJSON, stringifyJsonPretty } from "@/utils/text";
+import { getTimeText, isValidDateTime, isValidImgUrl } from "@/utils/text";
+import {
+	toast,
+	showTaskSubmitNotification,
+	showTaskErrorNotification,
+} from "@/lib/toast";
+import { Table } from "@douyinfe/semi-ui";
+import { Button } from "@arco-design/web-react";
+import { Image, Radio, RadioGroup, Modal } from "@douyinfe/semi-ui";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import _ from "lodash";
+import type { Index } from "meilisearch";
+import { useCallback, useMemo, useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Copyable } from "../../common/Copyable";
+import { AttrTagsNoSort } from "./AttrTagsNoSort";
+import { GridItem } from "./GridItem";
+import { JSONItem } from "./JSONItem";
+import { JsonEditor } from "../../common/JsonEditor";
+import { SortArrows } from "./SortArrows";
+import { MdOutlineRawOn } from "react-icons/md";
+import { BsStars } from "react-icons/bs";
+import type { ColumnProps } from "@douyinfe/semi-ui/lib/es/table";
+
+export type Doc = {
+	indexId: string;
+	content: Record<string, unknown>;
+	primaryKey: string;
+};
+export type BaseDocItemProps = {
+	doc: Doc;
+	onClickDocumentUpdate: (doc: Doc) => void;
+	onClickDocumentDel: (doc: Doc) => void;
+};
+export type ListType = "json" | "table" | "grid";
+
+// used in Modal to display the detailed value of a document field
+const ValueContent = ({ str }: { str: string }) => {
+	const [prettify, setIsPrettify] = useState(false);
+
+	const isImg = isValidImgUrl(str);
+
+	const isDateTime = isValidDateTime(str);
+
+	const isJSON = isValidJSON(str);
+
+	const canBePrettify = isImg || isDateTime || isJSON;
+
+	return (
+		<div className="grid gap-2">
+			<div data-testid={canBePrettify ? "rb-doc-prettify-on" : "rb-doc-prettify-off"} className="w-full flex justify-end">
+				<RadioGroup
+					type="button"
+					defaultValue={1}
+					disabled={!canBePrettify}
+					onChange={(ev) => setIsPrettify(ev.target.value === 2)}
+				>
+					<Radio value={1}>
+						<MdOutlineRawOn className="text-md scale-150" />
+					</Radio>
+					<Radio value={2}>
+						<BsStars className="text-md" />
+					</Radio>
+				</RadioGroup>
+			</div>
+			{prettify ? (
+				isImg ? (
+					<Image width={"100%"} src={str} />
+				) : isDateTime ? (
+					<Copyable className="overflow-scroll whitespace-pre-wrap text-balance break-words">
+						{getTimeText(isValidDateTime(str) as Date)}
+					</Copyable>
+				) : isJSON ? (
+					<JsonEditor
+						lineNumbers={false}
+						className="max-h-[65vh] flex-1 overflow-scroll"
+						defaultValue={JSON.stringify(JSON.parse(str), null, 2)}
+						readonly
+						onChange={() => {}}
+					/>
+				) : (
+					<Copyable className="overflow-scroll whitespace-pre-wrap text-balance break-words">
+						{str}
+					</Copyable>
+				)
+			) : (
+				<Copyable className="overflow-scroll whitespace-pre-wrap text-balance break-words">
+					{str}
+				</Copyable>
+			)}
+		</div>
+	);
+};
+
+export const ValueDisplay = ({
+	name,
+	value,
+	dateParser = true,
+}: {
+	name: string;
+	value: unknown;
+	dateParser?: boolean;
+}) => {
+	// Handle null/undefined values early
+	if (value == null) {
+		return (
+			<div
+				className="cursor-pointer"
+				onClick={() => {
+					Modal.info({
+						title: name,
+						centered: true,
+						size: "large",
+						content: <ValueContent str="null" />,
+						// use a empty div as footer to hide the default btn footer and maintain the padding height for the content
+						footer: <div />,
+					});
+				}}
+			>
+				-
+			</div>
+		);
+	}
+
+	let str = _.toString(value).trim();
+
+	if (_.isObjectLike(value)) {
+		str = stringifyJsonPretty(value as object);
+	}
+
+	return (
+		<div
+			className="cursor-pointer"
+			onClick={() => {
+				Modal.info({
+					title: name,
+					centered: true,
+					size: "large",
+					content: <ValueContent str={str} />,
+					// use a empty div as footer to hide the default btn footer and maintain the padding height for the content
+					footer: <div />,
+				});
+			}}
+		>
+			{dateParser &&
+			/^.*(date|time).*$/gim.test(name) &&
+			isValidDateTime(str) ? (
+				getTimeText(isValidDateTime(str) as Date)
+			) : isValidImgUrl(str) ? (
+				<span data-testid="rb-doc-value-image" style={{ display: "contents" }}>
+					<Image width={"100%"} src={str} preview={false} />
+				</span>
+			) : (
+				<span data-testid="rb-doc-value-text" style={{ display: "contents" }}>
+					{_.truncate(str, { length: 20 })}
+				</span>
+			)}
+		</div>
+	);
+};
+
+interface Props {
+	currentIndex: Index;
+	type?: ListType;
+	docs?: Doc[];
+	refetchDocs: () => void;
+	sort?: string;
+	onSortChange?: (sort: string) => void;
+}
+
+// Parse sort string to extract current sort field and direction
+// Format: "field:asc, field2:desc" -> { field: "field", direction: "asc" }
+const parseSortState = (
+	sort: string | undefined,
+): {
+	field: string;
+	direction: "asc" | "desc";
+} | null => {
+	if (!sort || !sort.trim()) {
+		return null;
+	}
+
+	// Match sort expressions like "field:asc" or "field:desc"
+	const sortExpressions = sort.match(
+		/(([\w\.]+)|(_geoPoint\([\d\.,\s]+\))){1}\:((asc)|(desc))/g,
+	);
+
+	if (!sortExpressions || sortExpressions.length === 0) {
+		return null;
+	}
+
+	// Get the first sort expression (primary sort)
+	const firstSort = sortExpressions[0].trim();
+	const match = firstSort.match(/^([^:]+):(asc|desc)$/);
+
+	if (!match) {
+		return null;
+	}
+
+	return {
+		field: match[1],
+		direction: match[2] as "asc" | "desc",
+	};
+};
+
+// Convert sort state to Semi-UI Table sortOrder format
+// "asc" -> "ascend", "desc" -> "descend", null -> null
+const convertToSortOrder = (
+	sortState: { field: string; direction: "asc" | "desc" } | null,
+	field: string,
+): "ascend" | "descend" | null => {
+	if (!sortState || sortState.field !== field) {
+		return null;
+	}
+	return sortState.direction === "asc" ? "ascend" : "descend";
+};
+
+export const DocumentList = ({
+	docs = [],
+	type = "json",
+	currentIndex,
+	sort,
+	onSortChange,
+}: Props) => {
+	const { t } = useTranslation("document");
+	const client = useMeiliClient();
+	const [editingDocument, setEditingDocument] = useState<Doc>();
+	const [updateDocEditorData, setUpdateDocEditorData] = useState<string>();
+	const [editingDocModalVisible, setEditingDocModalVisible] =
+		useState<boolean>(false);
+	const currentInstance = useCurrentInstance();
+	const tableContainerRef = useRef<HTMLDivElement>(null);
+	const [tableScrollY, setTableScrollY] = useState(475); // default fallback
+
+	const indexSettingsQuery = useQuery({
+		queryKey: ["indexSettings", currentInstance.host, currentIndex.uid],
+		queryFn: async () => {
+			return await currentIndex.getSettings();
+		},
+	});
+
+	const indexSettings = useMemo(() => {
+		return indexSettingsQuery.data;
+	}, [indexSettingsQuery.data]);
+
+	const sortState = useMemo(() => {
+		return parseSortState(sort);
+	}, [sort]);
+
+	const editDocumentMutation = useMutation({
+		mutationFn: async ({ docs }: { docs: object[] }) => {
+			return await currentIndex.updateDocuments(docs);
+		},
+		onSuccess: (t) => {
+			showTaskSubmitNotification(t);
+		},
+		onError: (error) => {
+			console.error(error);
+			showTaskErrorNotification(error);
+		},
+	});
+
+	const removeDocumentsMutation = useMutation({
+		mutationFn: async ({
+			indexId,
+			docId,
+		}: {
+			indexId: string;
+			docId: string[] | number[];
+		}) => {
+			return await client.index(indexId).deleteDocuments(docId);
+		},
+		onSuccess: (t) => {
+			showTaskSubmitNotification(t);
+		},
+		onError: (error: Error) => {
+			console.error(error);
+			showTaskErrorNotification(error);
+		},
+	});
+
+	const onClickDocumentDel = useCallback(
+		(doc: Doc) => {
+			const pk = doc.primaryKey;
+			console.debug("onClickDocumentDel", "pk", pk);
+			if (pk) {
+				Modal.confirm({
+					title: t("delete_document"),
+					content: (
+						<p
+							dangerouslySetInnerHTML={{
+								__html: t("delete.tip", {
+									indexId: doc.indexId,
+									// @ts-ignore
+									primaryKey: doc.content[pk],
+								}),
+							}}
+						/>
+					),
+					okText: t("confirm"),
+					cancelText: t("cancel"),
+					onOk: () => {
+						removeDocumentsMutation.mutate({
+							indexId: doc.indexId,
+							// @ts-ignore
+							docId: [doc.content[pk]],
+						});
+					},
+				});
+			} else {
+				toast.error(t("delete.require_primaryKey", { indexId: doc.indexId }));
+			}
+		},
+		[removeDocumentsMutation, t],
+	);
+
+	const onEditDocumentJsonEditorUpdate = useCallback(
+		(value = "[]") => setUpdateDocEditorData(value),
+		[],
+	);
+
+	const onClickDocumentUpdate = useCallback((doc: Doc) => {
+		const pk = doc.primaryKey;
+		console.debug("onClickDocumentUpdate", "pk", pk);
+		console.debug("onClickDocumentUpdate", "doc", doc.content);
+		if (pk) {
+			setEditingDocument(doc);
+			setEditingDocModalVisible(true);
+		}
+	}, []);
+
+	const updateTableScrollY = useCallback(() => {
+		if (tableContainerRef.current) {
+			const containerHeight = tableContainerRef.current.clientHeight;
+			const offset = 40; // table header height offset
+			setTableScrollY(
+				containerHeight - offset > 100 ? containerHeight - offset : 100,
+			);
+		}
+	}, []);
+
+	useEffect(() => {
+		updateTableScrollY();
+		window.addEventListener("resize", updateTableScrollY);
+		return () => window.removeEventListener("resize", updateTableScrollY);
+	}, [updateTableScrollY]);
+
+	useEffect(() => {
+		if (type === "table") {
+			updateTableScrollY();
+		}
+	}, [type, updateTableScrollY]);
+
+	return useMemo(
+		() => (
+			<>
+				<Modal
+					// destroy DOM after close, otherwise the JSON editor will remain previously edited content
+					// unmountOnExit
+					visible={editingDocModalVisible}
+					confirmLoading={editDocumentMutation.isPending}
+					title={t("edit_document")}
+					okText={t("submit")}
+					cancelText={t("cancel")}
+					simple={false}
+					className="!w-1/2"
+					onOk={() => {
+						console.debug(
+							"submit doc update",
+							editingDocument,
+							updateDocEditorData,
+						);
+						if (editingDocument && updateDocEditorData) {
+							editDocumentMutation
+								.mutateAsync({
+									docs: [JSON.parse(updateDocEditorData)],
+								})
+								.then(() => {
+									setEditingDocModalVisible(false);
+								});
+						}
+					}}
+					onCancel={() => setEditingDocModalVisible(false)}
+				>
+					<div className={"border rounded-xl p-2"}>
+						<JsonEditor
+							className="h-80"
+							defaultValue={
+								editingDocument?.content
+									? JSON.stringify(editingDocument.content, null, 2)
+									: "{}"
+							}
+							onChange={onEditDocumentJsonEditorUpdate}
+						/>
+					</div>
+				</Modal>
+				{type === "table" ? (
+					<>
+						<div
+							ref={tableContainerRef}
+							className={"rounded border overflow-hidden flex-1 h-full"}
+						>
+							<Table
+								columns={[
+									...new Set(
+										docs.reduce(
+											(keys, obj) => {
+												return keys.concat(Object.keys(obj.content));
+											},
+											[docs[0].primaryKey],
+										),
+									),
+								]
+									.map((i) => {
+										const isSortable =
+											indexSettings?.sortableAttributes?.includes(i);
+										const currentSortOrder = convertToSortOrder(sortState, i);
+
+										return {
+											title: (
+												<div className="flex items-center gap-1.5">
+													<p>{i}</p>
+													{indexSettings && (
+														<div className="flex items-center gap-1">
+															<AttrTagsNoSort
+																attr={i}
+																indexSettings={indexSettings}
+															/>
+															<SortArrows
+																attr={i}
+																indexSettings={indexSettings}
+																sortState={sortState}
+																currentSort={sort || ""}
+																onSortChange={onSortChange || (() => {})}
+															/>
+														</div>
+													)}
+												</div>
+											),
+											dataIndex: i,
+											width: "15rem",
+											ellipsis: true,
+											render(_col, item) {
+												return (
+													<ValueDisplay
+														name={i}
+														value={item[i]}
+														dateParser={false}
+													/>
+												);
+											},
+										} as ColumnProps;
+									})
+									?.concat([
+										{
+											title: t("common:actions"),
+											fixed: "right",
+											align: "center",
+											width: "9rem",
+											render: (_col, _record, index) => (
+												<div className={"flex items-center gap-2"}>
+													<Button
+														type="secondary"
+														size="mini"
+														status="warning"
+														onClick={() => onClickDocumentUpdate(docs[index])}
+													>
+														{t("common:update")}
+													</Button>
+													<Button
+														type="secondary"
+														size="mini"
+														status="danger"
+														onClick={() => onClickDocumentDel(docs[index])}
+													>
+														{t("common:delete")}
+													</Button>
+												</div>
+											),
+										},
+									])}
+								dataSource={docs.map((d) => ({ ...d.content }))}
+								virtualized
+								pagination={false}
+								size="small"
+								sticky
+								style={{ width: "100%", margin: "0 auto" }}
+								scroll={{ y: tableScrollY }}
+								bordered={false}
+							/>
+						</div>
+					</>
+				) : type === "grid" ? (
+					<div className="grid grid-cols-3 laptop:grid-cols-4 gap-3">
+						{docs.map((d, i) => {
+							return (
+								<GridItem
+									doc={d}
+									key={i}
+									indexSettings={indexSettings}
+									onClickDocumentDel={onClickDocumentDel}
+									onClickDocumentUpdate={onClickDocumentUpdate}
+								/>
+							);
+						})}
+					</div>
+				) : (
+					<>
+						{docs.map((d, i) => {
+							return (
+								<JSONItem
+									doc={d}
+									key={i}
+									onClickDocumentDel={onClickDocumentDel}
+									onClickDocumentUpdate={onClickDocumentUpdate}
+								/>
+							);
+						})}
+					</>
+				)}
+			</>
+		),
+		[
+			docs,
+			editDocumentMutation,
+			editingDocModalVisible,
+			editingDocument,
+			updateDocEditorData,
+			indexSettings,
+			onClickDocumentDel,
+			onClickDocumentUpdate,
+			onEditDocumentJsonEditorUpdate,
+			t,
+			type,
+			tableScrollY,
+			sortState,
+			sort,
+			onSortChange,
+		],
+	);
+};

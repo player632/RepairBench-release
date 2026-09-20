@@ -1,0 +1,51 @@
+<template>
+  <p :data-testid="props.testId" :class="[$style.alert, classes]">
+    <component :is="mapping[type][1]" :class="$style.icon" />
+    <span>{{ text }}</span>
+  </p>
+</template>
+
+<script lang="ts" setup>
+import { useThemeStyles } from '@composables/theme-styles/useThemeStyles.ts';
+import { RiCheckLine, RiErrorWarningLine } from '@remixicon/vue';
+import { computed } from 'vue';
+import type { AlertType } from '@components/base/alert/Alert.types';
+import type { Color } from '@composables/theme-styles/useThemeStyles.ts';
+import type { ClassNames } from '@utils/types.ts';
+import type { Component } from 'vue';
+
+const props = defineProps<{
+  class?: ClassNames;
+  testId?: string;
+  text: string;
+  type: AlertType;
+}>();
+
+const mapping: Record<AlertType, [Color, Component]> = {
+  error: ['danger', RiErrorWarningLine],
+  success: ['success', RiCheckLine],
+  warning: ['warning', RiErrorWarningLine]
+};
+
+const classes = computed(() => props.class);
+const theme = useThemeStyles(() => mapping[props.type][0]);
+</script>
+
+<style lang="scss" module>
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: v-bind('theme.text.base');
+  background: v-bind('theme.color.base');
+  padding: 6px 10px;
+  font-weight: var(--font-weight-l);
+  font-size: var(--font-size-xs);
+  border-radius: var(--border-radius-m);
+
+  .icon {
+    width: 17px;
+    flex-shrink: 0;
+  }
+}
+</style>
